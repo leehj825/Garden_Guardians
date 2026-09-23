@@ -2,37 +2,83 @@
 //  Android entry point
 // -----------------------------------------------------------------------------
 //  Android apps don't start from Program.Main; the OS launches the Activity
-//  marked MainLauncher instead.
+//  marked MainLauncher instead. raylib's Android backend is built on
+//  NativeActivity + android_native_app_glue, so this Activity *is* a
+//  NativeActivity. Start-up works like this:
 //
-//  For now this is a placeholder screen. The Raylib-cs NuGet package has no
-//  Android build of the native raylib library, so calling into Raylib here
-//  would crash. Once libraylib.so is supplied (see Platforms/Android/libs/)
-//  and wired to an OpenGL ES surface, this Activity will host the game loop
-//  from Program.cs.
+//    1. Android starts the .NET runtime, then creates MainActivity.
+//    2. OnCreate registers GameMain with the native library (gg_set_main).
+//    3. base.OnCreate (NativeActivity) loads libraylib.so — named by the
+//       "android.app.lib_name" meta-data below — and calls the glue's
+//       ANativeActivity_onCreate, which starts a dedicated game thread.
+//    4. On that thread raylib's android_main() calls main() in
+//       native/gg_android_main.c, which calls back into GameMain here.
+//    5. GameMain runs the same Game.Run loop as the desktop build.
+//
+//  libraylib.so is built by Platforms/Android/build-raylib.sh.
 // =============================================================================
 
+using System.Runtime.InteropServices;
 using Android.Content.PM;
-using Android.Views;
+using Android.Util;
 
 namespace GardenGuardians;
 
 [Activity(
+    Name = "com.gardenguardians.game.MainActivity",   // Stable Java name (used by adb/tests).
     Label = "Garden Guardians",
     MainLauncher = true,
+    Exported = true,
+    Theme = "@android:style/Theme.NoTitleBar.Fullscreen",
     ScreenOrientation = ScreenOrientation.SensorLandscape,
-    ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.KeyboardHidden)]
-public class MainActivity : Activity
+    // Handle these ourselves so rotating/resizing doesn't destroy the
+    // activity (and with it the GL context and game thread).
+    ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize |
+                           ConfigChanges.ScreenLayout | ConfigChanges.KeyboardHidden |
+                           ConfigChanges.Keyboard)]
+[MetaData("android.app.lib_name", Value = "raylib")]
+public class MainActivity : NativeActivity
 {
     protected override void OnCreate(Bundle? savedInstanceState)
     {
+        // Must happen before base.OnCreate: that call starts the native game
+        // thread, which immediately looks for the registered entry point.
+        NativeBridge.RegisterGameMain();
         base.OnCreate(savedInstanceState);
+    }
+}
 
-        var label = new TextView(this)
+/// <summary>
+/// P/Invoke glue between the native game thread and the managed game loop.
+/// </summary>
+internal static unsafe class NativeBridge
+{
+    private const string LogTag = "GardenGuardians";
+
+    // Resolves to libraylib.so — the same library NativeActivity loads, so
+    // both sides share one copy of raylib's global state.
+    [DllImport("raylib", EntryPoint = "gg_set_main")]
+    private static extern void SetMain(delegate* unmanaged<void> entryPoint);
+
+    public static void RegisterGameMain() => SetMain(&GameMain);
+
+    /// <summary>
+    /// Runs on the native-app-glue thread (not the Android UI thread).
+    /// Exceptions must never cross back into native code, so everything is
+    /// caught and logged here.
+    /// </summary>
+    [UnmanagedCallersOnly]
+    private static void GameMain()
+    {
+        try
         {
-            Text = "Garden Guardians\n\nAndroid build pipeline OK.\nRaylib renderer not wired up yet.",
-            Gravity = GravityFlags.Center,
-            TextSize = 20f,
-        };
-        SetContentView(label);
+            Log.Info(LogTag, "Native game thread started; entering Game.Run.");
+            Game.Run(GamePlatform.Android);
+            Log.Info(LogTag, "Game.Run returned; activity will finish.");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(LogTag, $"Unhandled exception in game loop: {ex}");
+        }
     }
 }

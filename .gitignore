@@ -482,3 +482,7 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Android native build (produced by Platforms/Android/build-raylib.sh)
+Platforms/Android/.build/
+Platforms/Android/libs/*/

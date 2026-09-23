@@ -44,6 +44,11 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # Raylib-cs has no Android native library, so compile raylib 6.0 (plus
+      # the NativeActivity glue and our main() bridge) with the runner's NDK.
+      - name: Build raylib for Android
+        run: bash Platforms/Android/build-raylib.sh
+
       - name: Decode keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}

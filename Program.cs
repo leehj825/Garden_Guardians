@@ -21,21 +21,46 @@ using Raylib_cs;
 namespace GardenGuardians;
 
 /// <summary>
-/// Application entry point. Owns the window and the main loop, and wires the
-/// individual systems (camera, terrain, physics, input, UI) together.
+/// Desktop entry point. Android starts the game from MainActivity instead
+/// (see Platforms/Android/MainActivity.cs); both end up in <see cref="Game.Run"/>.
 /// </summary>
 public static class Program
 {
+    public static void Main() => Game.Run(GamePlatform.Desktop);
+}
+
+/// <summary>Which host is running the game; controls a few window settings.</summary>
+public enum GamePlatform
+{
+    Desktop,
+    Android,
+}
+
+/// <summary>
+/// Owns the window and the main loop, and wires the individual systems
+/// (camera, terrain, physics, input, UI) together. Platform-independent.
+/// </summary>
+public static class Game
+{
     // Window settings. Kept as constants so they are easy to find and tweak.
+    // On Android this is a *virtual* resolution: raylib scales it to fill the
+    // display (letterboxing if the aspect ratio differs) and maps touches back
+    // into these coordinates, so UI positions work unchanged on any phone.
+    // Width > height also tells raylib to lock the activity to landscape.
     private const int ScreenWidth = 1280;
     private const int ScreenHeight = 720;
     private const int TargetFps = 60;
 
-    public static void Main()
+    public static void Run(GamePlatform platform)
     {
-        // MSAA smooths the edges of the spheres and grid lines; resizable lets
-        // us test different aspect ratios (useful later for mobile layouts).
-        Raylib.SetConfigFlags(ConfigFlags.Msaa4xHint | ConfigFlags.ResizableWindow);
+        if (platform == GamePlatform.Desktop)
+        {
+            // MSAA smooths the edges of the spheres and grid lines; resizable
+            // lets us test different aspect ratios. Both are skipped on Android,
+            // where not every GPU offers a 4x MSAA surface.
+            Raylib.SetConfigFlags(ConfigFlags.Msaa4xHint | ConfigFlags.ResizableWindow);
+        }
+
         Raylib.InitWindow(ScreenWidth, ScreenHeight, "Garden Guardians — Phase 1 Touch-Physics Prototype");
         Raylib.SetTargetFPS(TargetFps);
 
