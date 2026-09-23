@@ -19,6 +19,12 @@
 //    * The macro-economy: every 5 food sprouts a new Bramblekin, and the
 //      colony's worship refills the Faith that miracles cost.
 //
+//  Safety: entities are created and destroyed constantly (sprouts, spider
+//  kills, expiring pebbles), so every list that can change size mid-frame is
+//  either walked with a reverse for-loop or mutated through a deferred
+//  pending-add/pending-remove queue processed once at the end of the frame,
+//  never directly inside another entity's Update().
+//
 //  Scale convention: 1 world unit = 1 meter. The terrain is a 20 m x 20 m plane
 //  centred on the origin, and "up" is +Y. Gravity is 9.8 m/s² downwards.
 //
@@ -124,6 +130,12 @@ public static class Game
             DrawHud(input, world);
 
             Raylib.EndDrawing();
+
+            // 4) Deferred spawns/removals: applied once here, after this
+            //    frame's Update() and Draw() have both fully run, so no
+            //    entity list ever changes size while something is iterating
+            //    it (a sprout mid-Colony-update, a kill mid-pounce, etc).
+            world.CommitPendingChanges();
         }
 
         Raylib.CloseWindow();
@@ -469,9 +481,13 @@ public sealed class PhysicsManager
     {
         _impacts.Clear();
 
-        // 1-2) Integrate, then catch first contact with the ground.
-        foreach (var obj in _objects)
+        // 1-2) Integrate, then catch first contact with the ground. Reverse
+        // for-loop: nothing here mutates _objects, but pebbles are created
+        // and expired every frame elsewhere, so every walk of this list uses
+        // the same crash-proof pattern as a rule, not case by case.
+        for (int i = _objects.Count - 1; i >= 0; i--)
         {
+            PhysicsObject obj = _objects[i];
             obj.Velocity.Y -= Gravity * deltaTime;
             obj.Position += obj.Velocity * deltaTime;
 
@@ -488,13 +504,14 @@ public sealed class PhysicsManager
         for (int iteration = 0; iteration < SolverIterations; iteration++)
         {
             ResolveSphereContacts();
-            foreach (var obj in _objects)
-                ResolveStaticContacts(obj);
+            for (int i = _objects.Count - 1; i >= 0; i--)
+                ResolveStaticContacts(_objects[i]);
         }
 
         // 4) Friction.
-        foreach (var obj in _objects)
+        for (int i = _objects.Count - 1; i >= 0; i--)
         {
+            PhysicsObject obj = _objects[i];
             if (!obj.OnGround)
                 continue;
 
@@ -508,9 +525,11 @@ public sealed class PhysicsManager
             }
         }
 
-        // 5) Lifetimes.
-        foreach (var obj in _objects)
-            obj.Tick(deltaTime);
+        // 5) Lifetimes: age every pebble, then remove the ones that expired.
+        // RemoveAll is safe here — it is the list's own single mutating pass,
+        // not a foreach we are mutating out from under.
+        for (int i = _objects.Count - 1; i >= 0; i--)
+            _objects[i].Tick(deltaTime);
         _objects.RemoveAll(o => o.IsExpired);
     }
 
@@ -729,14 +748,39 @@ public sealed class MiracleInput
     /// <summary>
     /// Casts a ray from the camera through the given screen position and
     /// returns where it meets the terrain (or null if it misses).
+    ///
+    /// Guards against every way this can go wrong on a phone: a touch
+    /// reported before the window/surface has a real size yet (e.g. mid
+    /// rotation, or the first frame or two after Android hands the activity
+    /// its window), a tap slightly outside the rendered viewport, or a
+    /// screen position that is already NaN/Infinity. Any of those would make
+    /// GetScreenToWorldRay's projection math hand back a garbage ray; none of
+    /// them should ever crash the raycast or the tap that triggered it.
     /// </summary>
     private static Vector3? PickGround(Camera3D camera, Terrain terrain, Vector2 screenPosition)
     {
+        int width = Raylib.GetScreenWidth();
+        int height = Raylib.GetScreenHeight();
+        if (width <= 0 || height <= 0)
+            return null;
+
+        if (!IsFinite(screenPosition) ||
+            screenPosition.X < 0 || screenPosition.X > width ||
+            screenPosition.Y < 0 || screenPosition.Y > height)
+            return null;
+
         // GetScreenToWorldRay is raylib 5.5's name for GetMouseRay (the old
         // name still exists but is marked obsolete in Raylib-cs 8).
         Ray ray = Raylib.GetScreenToWorldRay(screenPosition, camera);
+        if (!IsFinite(ray.Position) || !IsFinite(ray.Direction))
+            return null;
+
         return terrain.Raycast(ray);
     }
+
+    private static bool IsFinite(Vector2 v) => float.IsFinite(v.X) && float.IsFinite(v.Y);
+
+    private static bool IsFinite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
 
     /// <summary>
     /// While a pebble is equipped, draws where it would land: the outer ring is
@@ -949,6 +993,17 @@ public sealed class World
     private readonly List<(Vector3 Position, float TimeLeft)> _splats = new();
     private float _acornRespawnTimer;
 
+    // Deferred creation/destruction. Nothing below is added to or removed
+    // from Colony/FoodShards while any part of the frame might still be
+    // iterating them (a returning Bramblekin sprouting a new one while the
+    // Colony foreach that is updating it is still running, for example).
+    // Entities are instead queued here and the queues are drained once, in
+    // CommitPendingChanges(), after every Update() and Draw() this frame.
+    private readonly List<Bramblekin> _pendingBramblekinSpawns = new();
+    private readonly List<Bramblekin> _pendingBramblekinRemovals = new();
+    private readonly List<FoodShard> _pendingShardSpawns = new();
+    private readonly List<FoodShard> _pendingShardRemovals = new();
+
     public Terrain Terrain { get; }
     public PhysicsManager Physics { get; }
     public MiracleManager Miracles { get; } = new();
@@ -1013,12 +1068,21 @@ public sealed class World
         Spider = new WolfSpider(position, Rng);
     }
 
-    /// <summary>A Bramblekin caught by a predator: it drops its food and is removed.</summary>
+    /// <summary>
+    /// A Bramblekin caught by a predator: it drops its food and is marked
+    /// dead immediately (so nothing keeps hunting or gathering with it), but
+    /// its removal from <see cref="Colony"/> is deferred to the end of the
+    /// frame so this is safe to call from inside a Colony iteration (e.g.
+    /// the Wolf Spider's pounce, mid-way through updating the colony).
+    /// </summary>
     public void Kill(Bramblekin bramblekin)
     {
-        bramblekin.DropCarried();
-        if (Colony.Remove(bramblekin))
-            Casualties++;
+        if (bramblekin.IsDead)
+            return; // Already caught this frame; don't double-count it.
+
+        bramblekin.MarkDead();
+        _pendingBramblekinRemovals.Add(bramblekin);
+        Casualties++;
     }
 
     /// <summary>Pays for a miracle. Returns false (and spends nothing) if there isn't enough Faith.</summary>
@@ -1035,7 +1099,12 @@ public sealed class World
     {
         // Worship: every living Bramblekin feeds the Faith pool, so each
         // loss weakens the player's miracles as well as the economy.
-        Faith = MathF.Min(MaxFaith, Faith + FaithPerBramblekinPerSecond * Colony.Count * deltaTime);
+        // Counted as !IsDead rather than Colony.Count: a kill this frame is
+        // marked dead immediately but its removal from Colony is deferred to
+        // the end of the frame, and a just-caught Bramblekin shouldn't still
+        // be tithing.
+        int livingPopulation = Colony.Count(b => !b.IsDead);
+        Faith = MathF.Min(MaxFaith, Faith + FaithPerBramblekinPerSecond * livingPopulation * deltaTime);
 
         Miracles.Update(deltaTime, Physics);
         Physics.Update(deltaTime);
@@ -1044,8 +1113,14 @@ public sealed class World
 
         RebuildObstacles();
         PushFoodOutOfObstacles();
-        foreach (var bramblekin in Colony)
-            bramblekin.Update(deltaTime, this);
+
+        // Reverse for-loop: a Bramblekin's own Update() can indirectly queue
+        // a sprout (via DeliverFood) or, via the spider, a kill — neither
+        // touches Colony directly any more, but walking it backwards means
+        // this loop stays correct even if that ever changes.
+        for (int i = Colony.Count - 1; i >= 0; i--)
+            Colony[i].Update(deltaTime, this);
+
         Spider?.Update(deltaTime, this);
 
         UpdateAcornRespawn(deltaTime);
@@ -1062,11 +1137,47 @@ public sealed class World
         }
     }
 
+    /// <summary>
+    /// Applies every entity spawned or removed this frame. Called once, at
+    /// the very end of the frame after Update() and Draw() have both run, so
+    /// nothing is ever adding to or removing from Colony/FoodShards while
+    /// something else might still be iterating them.
+    /// </summary>
+    public void CommitPendingChanges()
+    {
+        if (_pendingBramblekinRemovals.Count > 0)
+        {
+            for (int i = _pendingBramblekinRemovals.Count - 1; i >= 0; i--)
+                Colony.Remove(_pendingBramblekinRemovals[i]);
+            _pendingBramblekinRemovals.Clear();
+        }
+
+        if (_pendingBramblekinSpawns.Count > 0)
+        {
+            Colony.AddRange(_pendingBramblekinSpawns);
+            _pendingBramblekinSpawns.Clear();
+        }
+
+        if (_pendingShardRemovals.Count > 0)
+        {
+            for (int i = _pendingShardRemovals.Count - 1; i >= 0; i--)
+                FoodShards.Remove(_pendingShardRemovals[i]);
+            _pendingShardRemovals.Clear();
+        }
+
+        if (_pendingShardSpawns.Count > 0)
+        {
+            FoodShards.AddRange(_pendingShardSpawns);
+            _pendingShardSpawns.Clear();
+        }
+    }
+
     public void Draw()
     {
         Terrain.Draw();
-        foreach (var (position, timeLeft) in _splats)
+        for (int i = _splats.Count - 1; i >= 0; i--)
         {
+            var (position, timeLeft) = _splats[i];
             // A dark stain that fades out.
             byte alpha = (byte)(200 * Math.Clamp(timeLeft / 2f, 0f, 1f));
             Raylib.DrawCylinder(position + new Vector3(0, 0.012f, 0), 0.9f, 0.9f, 0.005f, 20, new Color(30, 25, 20, (int)alpha));
@@ -1074,13 +1185,23 @@ public sealed class World
         Miracles.Draw();
         Village.Draw();
         Acorn?.Draw();
-        foreach (var shard in FoodShards)
+
+        for (int i = FoodShards.Count - 1; i >= 0; i--)
         {
+            FoodShard shard = FoodShards[i];
             if (!shard.IsCarried)
                 shard.Draw(shard.Position);
         }
-        foreach (var bramblekin in Colony)
-            bramblekin.Draw();
+
+        // Reverse for-loop, and skip anything marked dead this frame: its
+        // removal from Colony is deferred, so without this check a
+        // Bramblekin caught a moment ago would still be drawn standing there.
+        for (int i = Colony.Count - 1; i >= 0; i--)
+        {
+            if (!Colony[i].IsDead)
+                Colony[i].Draw();
+        }
+
         Spider?.Draw();
         Physics.Draw();
     }
@@ -1126,8 +1247,9 @@ public sealed class World
     {
         FoodShard? best = null;
         float bestDistance = float.MaxValue;
-        foreach (var shard in FoodShards)
+        for (int i = FoodShards.Count - 1; i >= 0; i--)
         {
+            FoodShard shard = FoodShards[i];
             if (!IsAvailable(shard))
                 continue;
 
@@ -1146,10 +1268,16 @@ public sealed class World
     /// Bramblekin are plant-based: every <see cref="FoodPerSprout"/> stored
     /// food is spent at once to sprout a new one at the Village Heart. There
     /// is no population cap.
+    ///
+    /// This is called from inside a Bramblekin's own Update(), which is
+    /// itself inside World's reverse for-loop over Colony — so the shard's
+    /// removal and any resulting sprout are both queued, never applied to
+    /// FoodShards/Colony directly here.
     /// </summary>
     public void DeliverFood(FoodShard shard)
     {
-        FoodShards.Remove(shard);
+        if (!_pendingShardRemovals.Contains(shard))
+            _pendingShardRemovals.Add(shard);
         FoodStored++;
 
         while (FoodStored >= FoodPerSprout)
@@ -1159,7 +1287,7 @@ public sealed class World
         }
     }
 
-    /// <summary>Adds a new Bramblekin on a free spot right beside the Village Heart.</summary>
+    /// <summary>Queues a new Bramblekin on a free spot right beside the Village Heart.</summary>
     private void SproutBramblekin()
     {
         float distance = Village.Obstacle.Radius + Bramblekin.BodyRadius + 0.2f;
@@ -1178,7 +1306,7 @@ public sealed class World
             }
         }
 
-        Colony.Add(new Bramblekin(spot, Rng));
+        _pendingBramblekinSpawns.Add(new Bramblekin(spot, Rng));
         Births++;
     }
 
@@ -1200,15 +1328,24 @@ public sealed class World
     /// <summary>
     /// Collects the solid circles on the ground: the village, plus every
     /// pebble low enough to block a walker (a pebble still falling from 10 m
-    /// shouldn't make anyone swerve).
+    /// shouldn't make anyone swerve). A pebble that has nearly shrunk away
+    /// (see PhysicsObject's end-of-life shrink) is skipped too, so
+    /// Bramblekin start walking through the spot as it fades rather than
+    /// stopping dead at an invisible speck.
     /// </summary>
     private void RebuildObstacles()
     {
         _obstacles.Clear();
         _obstacles.Add(Village.Obstacle);
 
-        foreach (var pebble in Physics.Objects)
+        for (int i = Physics.Objects.Count - 1; i >= 0; i--)
         {
+            PhysicsObject? pebble = Physics.Objects[i];
+            // Defensive: obstacle avoidance must never see a null/garbage
+            // entry here, however this list is populated in the future.
+            if (pebble is null || pebble.Radius <= 0.01f)
+                continue;
+
             if (pebble.Position.Y - pebble.Radius < Bramblekin.BodyHeight)
                 _obstacles.Add(new Obstacle(new Vector2(pebble.Position.X, pebble.Position.Z), pebble.Radius));
         }
@@ -1224,8 +1361,9 @@ public sealed class World
     {
         float half = Terrain.Size / 2f - FoodShard.Radius;
 
-        foreach (var shard in FoodShards)
+        for (int i = FoodShards.Count - 1; i >= 0; i--)
         {
+            FoodShard shard = FoodShards[i];
             if (shard.IsCarried)
                 continue;
 
@@ -1281,6 +1419,9 @@ public sealed class World
     /// Scatters the shards in a ring around the pebble that cracked the acorn,
     /// just outside it, so none end up buried under the rock. The first shard
     /// flies out on the acorn's side; the others are spaced evenly round.
+    /// Queued rather than added directly: this runs from inside World.Update
+    /// before the Colony pass, and the new shards should only become visible
+    /// to gatherers on a clean iteration next frame.
     /// </summary>
     private void SpawnFoodShards(Vector3 acornPosition, PhysicsObject pebble)
     {
@@ -1301,7 +1442,7 @@ public sealed class World
             float half = Terrain.Size / 2f - Bramblekin.EdgeMargin;
             position.X = Math.Clamp(position.X, -half, half);
             position.Z = Math.Clamp(position.Z, -half, half);
-            FoodShards.Add(new FoodShard(position));
+            _pendingShardSpawns.Add(new FoodShard(position));
         }
     }
 
@@ -1789,8 +1930,17 @@ public sealed class Bramblekin
 
     public bool IsCarrying => _carried is not null;
 
-    /// <summary>Busy workers (gathering or hauling food) make vibrations a Wolf Spider can feel.</summary>
-    public bool IsVibrating => State is BramblekinState.Gathering or BramblekinState.Returning;
+    /// <summary>
+    /// True once this Bramblekin has been caught by a predator. A dead
+    /// Bramblekin lingers in <see cref="World.Colony"/> until the end of the
+    /// frame (see World's pending-removal queue) so nothing removes it out
+    /// from under an in-progress iteration; every system checks this flag
+    /// and treats a dead Bramblekin as already gone.
+    /// </summary>
+    public bool IsDead { get; private set; }
+
+    /// <summary>Busy workers (gathering or hauling food) make vibrations a Wolf Spider can feel. A dead Bramblekin never vibrates.</summary>
+    public bool IsVibrating => !IsDead && State is BramblekinState.Gathering or BramblekinState.Returning;
 
     public Bramblekin(Vector3 position, Random rng)
     {
@@ -1802,8 +1952,27 @@ public sealed class Bramblekin
         _pauseTimer = (float)rng.NextDouble() * PauseDuration;
     }
 
+    /// <summary>
+    /// Marks this Bramblekin as caught: drops any carried food immediately
+    /// (so it's still gatherable) and flags it dead. Called once, from
+    /// <see cref="World.Kill"/>; it does not touch <see cref="World.Colony"/>
+    /// itself — that removal is deferred and processed at the end of the
+    /// frame.
+    /// </summary>
+    public void MarkDead()
+    {
+        if (IsDead)
+            return;
+
+        DropCarried();
+        IsDead = true;
+    }
+
     public void Update(float deltaTime, World world)
     {
+        if (IsDead)
+            return; // Awaiting removal at the end of the frame; do nothing.
+
         _mover.Idle();
         bool isSafe(Vector3 p) => IsSafeSpot(p, world);
 
@@ -2131,6 +2300,19 @@ public sealed class WolfSpider
     {
         _mover.Idle();
 
+        // Safety net: if the Bramblekin we're tracking died or vanished by
+        // any means since last frame, drop the reference immediately rather
+        // than move toward or read a dead target. Only forces the state back
+        // to Prowling out of an active Hunt — a Pounce already in flight
+        // doesn't use _prey for its hit test, so it's left to finish (and,
+        // on a kill, sets Feeding itself).
+        if (_prey is not null && (_prey.IsDead || !world.Colony.Contains(_prey)))
+        {
+            _prey = null;
+            if (State == SpiderState.Hunting)
+                StartProwling();
+        }
+
         // --- The Distraction: a pebble impact trumps everything but a meal ----
         foreach (var impact in State == SpiderState.Feeding ? [] : world.Physics.Impacts)
         {
@@ -2211,8 +2393,10 @@ public sealed class WolfSpider
     {
         // Keep chasing while the prey is alive, in range, and either still
         // vibrating or only recently gone quiet. Otherwise switch to another
-        // busy worker if there is one, or give up.
-        if (_prey is null || !world.Colony.Contains(_prey) ||
+        // busy worker if there is one, or give up. IsDead is checked
+        // explicitly: a killed Bramblekin's removal from Colony is deferred
+        // to the end of the frame, so Contains() alone can't tell it's gone.
+        if (_prey is null || _prey.IsDead || !world.Colony.Contains(_prey) ||
             GroundMover.HorizontalDistance(Position, _prey.Position) > VibrationRadius * 1.5f)
         {
             _prey = null;
@@ -2255,10 +2439,16 @@ public sealed class WolfSpider
         _mover.MoveTowards(dashTarget, PounceSpeed, deltaTime, world, _ => false);
         _mover.Heading = _pounceDirection;
 
-        // The first Bramblekin it touches mid-pounce is caught, and the
-        // spider settles down to eat.
-        foreach (var bramblekin in world.Colony)
+        // The first (live) Bramblekin it touches mid-pounce is caught, and
+        // the spider settles down to eat. Reverse for-loop: World.Kill only
+        // queues the removal now, so Colony never actually changes size
+        // during this walk, but the pattern stays consistent everywhere.
+        for (int i = world.Colony.Count - 1; i >= 0; i--)
         {
+            Bramblekin bramblekin = world.Colony[i];
+            if (bramblekin.IsDead)
+                continue;
+
             if (GroundMover.HorizontalDistance(Position, bramblekin.Position) < BodyRadius + Bramblekin.BodyRadius)
             {
                 world.Kill(bramblekin);
@@ -2273,6 +2463,9 @@ public sealed class WolfSpider
         _timer -= deltaTime;
         if (_timer <= 0f)
         {
+            // Dash ended without catching anyone: drop the stale target
+            // reference rather than leave it dangling through Recovering.
+            _prey = null;
             _timer = RecoverDuration;
             SetState(SpiderState.Recovering);
         }
@@ -2342,9 +2535,12 @@ public sealed class WolfSpider
     {
         Bramblekin? best = null;
         float bestDistance = VibrationRadius;
-        foreach (var bramblekin in world.Colony)
+        for (int i = world.Colony.Count - 1; i >= 0; i--)
         {
-            if (!bramblekin.IsVibrating)
+            Bramblekin bramblekin = world.Colony[i];
+            // IsVibrating is already false for a dead Bramblekin; checked
+            // again explicitly so this never targets one even if that changes.
+            if (bramblekin.IsDead || !bramblekin.IsVibrating)
                 continue;
 
             float distance = GroundMover.HorizontalDistance(Position, bramblekin.Position);
