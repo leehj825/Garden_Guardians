@@ -16,10 +16,16 @@
     <RootNamespace>GardenGuardians</RootNamespace>
   </PropertyGroup>
 
-  <ItemGroup>
-    <!-- Managed bindings only on Android: the package ships native raylib
-         binaries for desktop/wasm, but none for Android (see below). -->
+  <ItemGroup Condition="'$(TargetFramework)' != 'net8.0-android'">
     <PackageReference Include="Raylib-cs" Version="8.1.0" />
+  </ItemGroup>
+
+  <!-- On Android, take only the managed bindings. The package's native
+       binaries are desktop builds, and NuGet treats android-x64 as a kind of
+       linux-x64, so without ExcludeAssets the glibc linux-x64 libraylib.so
+       would be packed into the APK instead of our NDK build (see below). -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-android'">
+    <PackageReference Include="Raylib-cs" Version="8.1.0" ExcludeAssets="native" />
   </ItemGroup>
 
   <!-- ===================================================================
