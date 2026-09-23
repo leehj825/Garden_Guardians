@@ -29,6 +29,9 @@ dump_logs() {
 
 logcat_has() { adb logcat -d | grep -q -- "$1"; }
 
+echo "Native libraries in APK:"
+unzip -l "$APK" | grep -E "lib/.*\.so$" || true
+
 echo "Installing $APK"
 adb install -r "$APK"
 adb logcat -c

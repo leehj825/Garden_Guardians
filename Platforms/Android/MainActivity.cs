@@ -60,7 +60,24 @@ internal static unsafe class NativeBridge
     [DllImport("raylib", EntryPoint = "gg_set_main")]
     private static extern void SetMain(delegate* unmanaged<void> entryPoint);
 
-    public static void RegisterGameMain() => SetMain(&GameMain);
+    public static void RegisterGameMain()
+    {
+        // Load libraylib.so through Java first. This is the same loader
+        // NativeActivity uses, so the P/Invoke below and NativeActivity see
+        // one shared copy of the library — and if loading fails, Java reports
+        // the real linker error, which .NET's DllNotFoundException hides.
+        try
+        {
+            Java.Lang.JavaSystem.LoadLibrary("raylib");
+        }
+        catch (Java.Lang.Throwable ex)
+        {
+            Log.Error(LogTag, $"Failed to load libraylib.so: {ex}");
+            throw;
+        }
+
+        SetMain(&GameMain);
+    }
 
     /// <summary>
     /// Runs on the native-app-glue thread (not the Android UI thread).
