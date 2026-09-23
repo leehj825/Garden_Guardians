@@ -6,6 +6,10 @@
 //    * A tiny hand-rolled physics loop (Raylib has no rigidbodies).
 //    * A two-state input model: click the "Equip Pebble" button, then click the
 //      ground to cast the Pebble-Drop miracle at that spot.
+//    * The God's Shadow: a cast pebble is telegraphed by a dark shadow on the
+//      ground for 1.5 s before it actually drops.
+//    * A small colony of Bramblekin that wander the terrain and scurry out of
+//      any God's Shadow at 3x speed (see Garden_Guardians_Design.md).
 //
 //  Scale convention: 1 world unit = 1 meter. The terrain is a 20 m x 20 m plane
 //  centred on the origin, and "up" is +Y. Gravity is 9.8 m/s² downwards.
@@ -51,6 +55,16 @@ public static class Game
     private const int ScreenHeight = 720;
     private const int TargetFps = 60;
 
+    /// <summary>How many Bramblekin the colony starts with.</summary>
+    private const int ColonySize = 8;
+
+    /// <summary>
+    /// Largest time step the game simulates in one frame. A hitch (window
+    /// dragged, app resumed) would otherwise teleport walkers and tunnel
+    /// pebbles through the ground.
+    /// </summary>
+    private const float MaxDeltaTime = 1f / 20f;
+
     public static void Run(GamePlatform platform)
     {
         if (platform == GamePlatform.Desktop)
@@ -68,19 +82,30 @@ public static class Game
         var camera = IsometricCamera.Create(target: Vector3.Zero, distance: 30f);
         var terrain = new Terrain(size: 20f);
         var physics = new PhysicsManager();
+        var miracles = new MiracleManager();
         var input = new MiracleInput();
         var equipButton = new UiButton(new Rectangle(20, 20, 180, 50));
+
+        var rng = new Random();
+        var colony = new List<Bramblekin>();
+        for (int i = 0; i < ColonySize; i++)
+            colony.Add(new Bramblekin(terrain.RandomPoint(rng, Bramblekin.EdgeMargin), rng));
 
         // --- Main loop -------------------------------------------------------
         while (!Raylib.WindowShouldClose())
         {
-            float deltaTime = Raylib.GetFrameTime();
+            float deltaTime = MathF.Min(Raylib.GetFrameTime(), MaxDeltaTime);
 
             // 1) Input: UI gets first pick of the click so that pressing the
             //    button never also drops a pebble "through" it onto the ground.
-            input.Update(camera, terrain, physics, equipButton);
+            //    A ground click queues a God's Shadow rather than a pebble.
+            input.Update(camera, terrain, miracles, equipButton);
 
-            // 2) Simulation.
+            // 2) Simulation. Miracles first, so a shadow cast this frame is
+            //    already visible to the Bramblekin deciding where to run.
+            miracles.Update(deltaTime, physics);
+            foreach (var bramblekin in colony)
+                bramblekin.Update(deltaTime, terrain, miracles.ActiveShadows);
             physics.Update(deltaTime);
 
             // 3) Rendering.
@@ -89,6 +114,9 @@ public static class Game
 
             Raylib.BeginMode3D(camera);
             terrain.Draw();
+            miracles.Draw();
+            foreach (var bramblekin in colony)
+                bramblekin.Draw();
             physics.Draw();
             input.DrawCursorPreview(camera, terrain);
             Raylib.EndMode3D();
@@ -96,7 +124,7 @@ public static class Game
             // 2D overlay (UI) is drawn after EndMode3D so it sits on top.
             equipButton.Draw(input.State == InputState.PebbleEquipped ? "Pebble Equipped" : "Equip Pebble",
                              highlighted: input.State == InputState.PebbleEquipped);
-            DrawHud(input, physics);
+            DrawHud(input, physics, colony);
 
             Raylib.EndDrawing();
         }
@@ -105,14 +133,16 @@ public static class Game
     }
 
     /// <summary>Small help text and debug counters in the bottom-left corner.</summary>
-    private static void DrawHud(MiracleInput input, PhysicsManager physics)
+    private static void DrawHud(MiracleInput input, PhysicsManager physics, List<Bramblekin> colony)
     {
+        int fleeing = colony.Count(b => b.State == BramblekinState.Fleeing);
         int y = Raylib.GetScreenHeight() - 60;
         string hint = input.State == InputState.PebbleEquipped
             ? "Click the ground to drop the pebble."
             : "Click 'Equip Pebble', then click the ground.";
         Raylib.DrawText(hint, 20, y, 20, Color.DarkGray);
-        Raylib.DrawText($"Pebbles: {physics.Count}   FPS: {Raylib.GetFPS()}", 20, y + 26, 20, Color.DarkGray);
+        Raylib.DrawText($"Pebbles: {physics.Count}   Bramblekin: {colony.Count} ({fleeing} fleeing)   FPS: {Raylib.GetFPS()}",
+                        20, y + 26, 20, Color.DarkGray);
     }
 }
 
@@ -176,6 +206,25 @@ public sealed class Terrain
     {
         float half = Size / 2f;
         return point.X >= -half && point.X <= half && point.Z >= -half && point.Z <= half;
+    }
+
+    /// <summary>
+    /// True if the (x, z) point is on the terrain and at least
+    /// <paramref name="margin"/> meters away from every edge.
+    /// </summary>
+    public bool Contains(Vector3 point, float margin)
+    {
+        float half = Size / 2f - margin;
+        return point.X >= -half && point.X <= half && point.Z >= -half && point.Z <= half;
+    }
+
+    /// <summary>A uniformly random ground point, keeping <paramref name="margin"/> meters from the edges.</summary>
+    public Vector3 RandomPoint(Random rng, float margin)
+    {
+        float half = Size / 2f - margin;
+        float x = (float)(rng.NextDouble() * 2 - 1) * half;
+        float z = (float)(rng.NextDouble() * 2 - 1) * half;
+        return new Vector3(x, GroundHeight, z);
     }
 
     /// <summary>
@@ -316,9 +365,9 @@ public sealed class PhysicsManager
     {
         foreach (var obj in _objects)
         {
-            // While an object is falling, draw a dark disc on the ground under
-            // it. This is the first sketch of the "God's Shadow" telegraph from
-            // the design doc, and it also helps judge depth from the iso view.
+            // While an object is falling, draw a small dark disc on the ground
+            // under it. It helps judge height from the isometric view (the
+            // bigger God's Shadow telegraph is drawn by MiracleManager).
             if (!obj.IsGrounded)
                 DrawDropShadow(obj);
 
@@ -354,22 +403,13 @@ public enum InputState
 /// </summary>
 public sealed class MiracleInput
 {
-    /// <summary>How high above the clicked point the pebble spawns, in meters.</summary>
-    private const float PebbleSpawnHeight = 10f;
-
-    /// <summary>Pebble radius in meters (oversized for the prototype so it reads clearly).</summary>
-    private const float PebbleRadius = 0.5f;
-
-    /// <summary>Pebble mass in kilograms (placeholder for future impact damage).</summary>
-    private const float PebbleMass = 2f;
-
     public InputState State { get; private set; } = InputState.Idle;
 
     /// <summary>
     /// Processes this frame's click, if any. The UI button is checked first and
     /// "consumes" the click, so a single click never both equips and drops.
     /// </summary>
-    public void Update(Camera3D camera, Terrain terrain, PhysicsManager physics, UiButton equipButton)
+    public void Update(Camera3D camera, Terrain terrain, MiracleManager miracles, UiButton equipButton)
     {
         // Raylib maps a primary touch to the left mouse button, so this same
         // code path will serve touch input on mobile later.
@@ -394,18 +434,10 @@ public sealed class MiracleInput
         if (groundPoint is null)
             return; // Clicked the sky or off the edge of the terrain: stay equipped.
 
-        CastPebbleDrop(physics, groundPoint.Value);
+        // Don't drop yet: cast the God's Shadow first. MiracleManager spawns
+        // the pebble when the shadow's timer runs out.
+        miracles.QueuePebbleDrop(groundPoint.Value);
         State = InputState.Idle; // One pebble per equip.
-    }
-
-    /// <summary>
-    /// The Raycast Miracle: spawns a pebble 10 m above the target point and
-    /// hands it to the physics loop, which lets gravity do the rest.
-    /// </summary>
-    private static void CastPebbleDrop(PhysicsManager physics, Vector3 groundPoint)
-    {
-        var spawn = groundPoint + new Vector3(0, PebbleSpawnHeight, 0);
-        physics.Add(new PhysicsObject(spawn, PebbleRadius, PebbleMass, Color.Gray));
     }
 
     /// <summary>
@@ -421,8 +453,9 @@ public sealed class MiracleInput
     }
 
     /// <summary>
-    /// While a pebble is equipped, draws a targeting ring where it would land
-    /// so the player can see what they are aiming at.
+    /// While a pebble is equipped, draws where it would land: the outer ring is
+    /// the God's Shadow that will scare Bramblekin away, the inner ring the
+    /// pebble itself.
     /// </summary>
     public void DrawCursorPreview(Camera3D camera, Terrain terrain)
     {
@@ -434,8 +467,353 @@ public sealed class MiracleInput
             return;
 
         var p = target.Value + new Vector3(0, 0.02f, 0); // Lift slightly to avoid z-fighting.
-        Raylib.DrawCircle3D(p, PebbleRadius, Vector3.UnitX, 90f, Color.Yellow);
-        Raylib.DrawLine3D(p, p + new Vector3(0, PebbleSpawnHeight, 0), new Color(255, 255, 0, 80));
+        Raylib.DrawCircle3D(p, MiracleManager.ShadowRadius, Vector3.UnitX, 90f, new Color(255, 255, 0, 140));
+        Raylib.DrawCircle3D(p, MiracleManager.PebbleRadius, Vector3.UnitX, 90f, Color.Yellow);
+        Raylib.DrawLine3D(p, p + new Vector3(0, MiracleManager.PebbleSpawnHeight, 0), new Color(255, 255, 0, 80));
+    }
+}
+
+// =============================================================================
+//  Miracles: the God's Shadow telegraph
+// =============================================================================
+
+/// <summary>
+/// A pending Pebble-Drop: a dark circle on the ground that warns the
+/// Bramblekin a pebble is about to fall there. While it exists, any Bramblekin
+/// under it drops what it is doing and scurries out.
+/// </summary>
+public sealed class GodShadow
+{
+    /// <summary>Centre of the shadow on the ground (y = GroundHeight).</summary>
+    public Vector3 Center { get; }
+
+    /// <summary>Radius of the danger zone, in meters.</summary>
+    public float Radius { get; }
+
+    /// <summary>Total telegraph time, in seconds.</summary>
+    public float Duration { get; }
+
+    /// <summary>Seconds left before the pebble is released.</summary>
+    public float TimeLeft { get; private set; }
+
+    /// <summary>0 when the shadow appears, 1 when the pebble drops.</summary>
+    public float Progress => 1f - TimeLeft / Duration;
+
+    public bool HasExpired => TimeLeft <= 0f;
+
+    public GodShadow(Vector3 center, float radius, float duration)
+    {
+        Center = center;
+        Radius = radius;
+        Duration = duration;
+        TimeLeft = duration;
+    }
+
+    public void Tick(float deltaTime) => TimeLeft -= deltaTime;
+
+    /// <summary>
+    /// True if a round body of radius <paramref name="bodyRadius"/> standing at
+    /// <paramref name="point"/> is at least partly under the shadow. Only the
+    /// horizontal (x, z) distance matters.
+    /// </summary>
+    public bool Overlaps(Vector3 point, float bodyRadius)
+    {
+        float dx = point.X - Center.X;
+        float dz = point.Z - Center.Z;
+        float reach = Radius + bodyRadius;
+        return dx * dx + dz * dz < reach * reach;
+    }
+}
+
+/// <summary>
+/// Runs cast miracles over time. For now that means the Pebble-Drop: each
+/// cast first becomes a <see cref="GodShadow"/>, and only when its timer runs
+/// out does the physical pebble spawn and fall.
+/// </summary>
+public sealed class MiracleManager
+{
+    /// <summary>How long the shadow telegraphs the drop before the pebble spawns.</summary>
+    public const float TelegraphDuration = 1.5f;
+
+    /// <summary>
+    /// Radius of the God's Shadow, in meters. Deliberately larger than the
+    /// pebble so the danger zone is easy to read and Bramblekin clear it with
+    /// some room to spare.
+    /// </summary>
+    public const float ShadowRadius = 1.5f;
+
+    /// <summary>How high above the target the pebble spawns, in meters.</summary>
+    public const float PebbleSpawnHeight = 10f;
+
+    /// <summary>Pebble radius in meters (oversized for the prototype so it reads clearly).</summary>
+    public const float PebbleRadius = 0.5f;
+
+    /// <summary>Pebble mass in kilograms (placeholder for future impact damage).</summary>
+    public const float PebbleMass = 2f;
+
+    private readonly List<GodShadow> _shadows = new();
+
+    /// <summary>Shadows currently on the ground. Bramblekin read this to decide when to flee.</summary>
+    public IReadOnlyList<GodShadow> ActiveShadows => _shadows;
+
+    /// <summary>Starts a Pebble-Drop at <paramref name="groundPoint"/>: shadow now, pebble later.</summary>
+    public void QueuePebbleDrop(Vector3 groundPoint)
+    {
+        _shadows.Add(new GodShadow(groundPoint, ShadowRadius, TelegraphDuration));
+    }
+
+    /// <summary>Counts down every shadow and releases the pebble for any that expired.</summary>
+    public void Update(float deltaTime, PhysicsManager physics)
+    {
+        // Iterate backwards so expired shadows can be removed in place.
+        for (int i = _shadows.Count - 1; i >= 0; i--)
+        {
+            GodShadow shadow = _shadows[i];
+            shadow.Tick(deltaTime);
+            if (!shadow.HasExpired)
+                continue;
+
+            var spawn = shadow.Center + new Vector3(0, PebbleSpawnHeight, 0);
+            physics.Add(new PhysicsObject(spawn, PebbleRadius, PebbleMass, Color.Gray));
+            _shadows.RemoveAt(i);
+        }
+    }
+
+    public void Draw()
+    {
+        foreach (var shadow in _shadows)
+        {
+            // The shadow darkens as the drop approaches, like something
+            // descending from above.
+            byte alpha = (byte)(80 + 110 * shadow.Progress);
+            var p = shadow.Center + new Vector3(0, 0.015f, 0); // Just above the grid lines.
+
+            // A very flat cylinder is a cheap filled disc lying on the ground.
+            Raylib.DrawCylinder(p, shadow.Radius, shadow.Radius, 0.01f, 36, new Color(0, 0, 0, (int)alpha));
+            Raylib.DrawCircle3D(p + new Vector3(0, 0.015f, 0), shadow.Radius, Vector3.UnitX, 90f, new Color(0, 0, 0, 220));
+        }
+    }
+}
+
+// =============================================================================
+//  Creatures: the Bramblekin
+// =============================================================================
+
+/// <summary>What a Bramblekin is currently doing.</summary>
+public enum BramblekinState
+{
+    /// <summary>Walking at a slow, steady pace toward a random wander target.</summary>
+    Walking,
+
+    /// <summary>Standing still for a moment after arriving somewhere.</summary>
+    Pausing,
+
+    /// <summary>Scurrying out from under a God's Shadow at 3x speed.</summary>
+    Fleeing,
+}
+
+/// <summary>
+/// One of the tiny creatures the player protects. The player never controls
+/// them directly; they run a small state machine:
+///
+///   Walking --arrive--> Pausing (2 s) --timer--> Walking (new random target)
+///
+/// and, overriding everything, the self-preservation rule from the design doc:
+/// standing under a God's Shadow sends it Fleeing at 3x speed to the nearest
+/// safe spot, after which it pauses and resumes wandering.
+/// </summary>
+public sealed class Bramblekin
+{
+    /// <summary>Normal walking speed in m/s (a slow amble).</summary>
+    public const float WalkSpeed = 1.0f;
+
+    /// <summary>Flee speed as a multiple of <see cref="WalkSpeed"/>.</summary>
+    public const float FleeSpeedMultiplier = 3f;
+
+    /// <summary>How long a Bramblekin rests after reaching a target, in seconds.</summary>
+    public const float PauseDuration = 2f;
+
+    /// <summary>Body radius in meters (also used for the shadow overlap test).</summary>
+    public const float BodyRadius = 0.25f;
+
+    /// <summary>Total body height in meters, including the rounded ends.</summary>
+    public const float BodyHeight = 0.9f;
+
+    /// <summary>How far from the terrain edge targets are kept, in meters.</summary>
+    public const float EdgeMargin = 0.5f;
+
+    /// <summary>Extra clearance beyond the shadow's edge when picking an escape point.</summary>
+    private const float SafetyMargin = 0.5f;
+
+    /// <summary>Within this distance of a target counts as "arrived".</summary>
+    private const float ArriveDistance = 0.05f;
+
+    private static readonly Color CalmColor = new(196, 160, 110, 255);   // Bark brown.
+    private static readonly Color PanicColor = new(225, 85, 60, 255);    // Alarm red.
+
+    private readonly Random _rng;
+    private Vector3 _target;
+    private float _pauseTimer;
+
+    /// <summary>Feet position on the ground (y = GroundHeight).</summary>
+    public Vector3 Position { get; private set; }
+
+    public BramblekinState State { get; private set; }
+
+    public Bramblekin(Vector3 position, Random rng)
+    {
+        Position = position;
+        _rng = rng;
+
+        // Start mid-pause with a random timer so the colony doesn't move in lockstep.
+        State = BramblekinState.Pausing;
+        _pauseTimer = (float)rng.NextDouble() * PauseDuration;
+    }
+
+    public void Update(float deltaTime, Terrain terrain, IReadOnlyList<GodShadow> shadows)
+    {
+        // --- Self-preservation override --------------------------------------
+        // Checked before the normal state logic, every frame, so it wins over
+        // whatever the Bramblekin was doing. A fleeing Bramblekin only replans
+        // if its escape point has itself been covered by a newer shadow.
+        GodShadow? threat = FirstOverlapping(Position, shadows);
+        if (threat is not null &&
+            (State != BramblekinState.Fleeing || FirstOverlapping(_target, shadows) is not null))
+        {
+            _target = FindEscapePoint(threat, terrain, shadows);
+            State = BramblekinState.Fleeing;
+        }
+
+        // --- Normal behaviour -------------------------------------------------
+        switch (State)
+        {
+            case BramblekinState.Pausing:
+                _pauseTimer -= deltaTime;
+                if (_pauseTimer <= 0f)
+                {
+                    _target = PickWanderTarget(terrain, shadows);
+                    State = BramblekinState.Walking;
+                }
+                break;
+
+            case BramblekinState.Walking:
+                // Don't stroll into a spot that has since been marked for a drop.
+                if (FirstOverlapping(_target, shadows) is not null)
+                    _target = PickWanderTarget(terrain, shadows);
+
+                if (MoveTowards(_target, WalkSpeed * deltaTime))
+                    StartPause();
+                break;
+
+            case BramblekinState.Fleeing:
+                if (MoveTowards(_target, WalkSpeed * FleeSpeedMultiplier * deltaTime))
+                    StartPause(); // Catch its breath, then go back to wandering.
+                break;
+        }
+    }
+
+    public void Draw()
+    {
+        Color color = State == BramblekinState.Fleeing ? PanicColor : CalmColor;
+
+        // A capsule standing upright: DrawCapsule takes the centres of its two
+        // hemispherical ends, so inset them by the radius.
+        var bottom = Position + new Vector3(0, BodyRadius, 0);
+        var top = Position + new Vector3(0, BodyHeight - BodyRadius, 0);
+        Raylib.DrawCapsule(bottom, top, BodyRadius, 8, 4, color);
+        Raylib.DrawCapsuleWires(bottom, top, BodyRadius, 8, 4, new Color(0, 0, 0, 50));
+    }
+
+    private void StartPause()
+    {
+        State = BramblekinState.Pausing;
+        _pauseTimer = PauseDuration;
+    }
+
+    /// <summary>
+    /// Moves along the ground toward <paramref name="target"/> by at most
+    /// <paramref name="maxStep"/> meters. Returns true on arrival.
+    /// </summary>
+    private bool MoveTowards(Vector3 target, float maxStep)
+    {
+        Vector3 toTarget = target - Position;
+        float distance = toTarget.Length();
+        if (distance <= MathF.Max(maxStep, ArriveDistance))
+        {
+            Position = target;
+            return true;
+        }
+
+        Position += toTarget / distance * maxStep;
+        return false;
+    }
+
+    /// <summary>A random terrain point that isn't under any shadow.</summary>
+    private Vector3 PickWanderTarget(Terrain terrain, IReadOnlyList<GodShadow> shadows)
+    {
+        // A few tries is plenty: shadows cover a tiny fraction of the terrain.
+        Vector3 candidate = Position;
+        for (int attempt = 0; attempt < 10; attempt++)
+        {
+            candidate = terrain.RandomPoint(_rng, EdgeMargin);
+            if (FirstOverlapping(candidate, shadows) is null)
+                return candidate;
+        }
+        return candidate;
+    }
+
+    /// <summary>
+    /// Picks the closest safe spot just outside <paramref name="threat"/>.
+    /// The ideal escape runs straight away from the shadow's centre; if that
+    /// point is off the terrain or under another shadow, it tries directions
+    /// progressively further round the circle, alternating left and right.
+    /// </summary>
+    private Vector3 FindEscapePoint(GodShadow threat, Terrain terrain, IReadOnlyList<GodShadow> shadows)
+    {
+        float awayX = Position.X - threat.Center.X;
+        float awayZ = Position.Z - threat.Center.Z;
+
+        // Standing dead centre: any direction is as good as another.
+        float baseAngle = awayX * awayX + awayZ * awayZ > 1e-6f
+            ? MathF.Atan2(awayZ, awayX)
+            : (float)(_rng.NextDouble() * MathF.Tau);
+
+        float escapeDistance = threat.Radius + BodyRadius + SafetyMargin;
+        const int steps = 12;                      // 30° increments.
+        const float stepAngle = MathF.Tau / steps;
+
+        for (int i = 0; i <= steps / 2; i++)
+        {
+            foreach (int side in i == 0 ? new[] { 1 } : new[] { 1, -1 })
+            {
+                float angle = baseAngle + side * i * stepAngle;
+                var candidate = new Vector3(
+                    threat.Center.X + MathF.Cos(angle) * escapeDistance,
+                    Terrain.GroundHeight,
+                    threat.Center.Z + MathF.Sin(angle) * escapeDistance);
+
+                if (terrain.Contains(candidate, EdgeMargin) && FirstOverlapping(candidate, shadows) is null)
+                    return candidate;
+            }
+        }
+
+        // Boxed in (e.g. overlapping shadows in a corner): run straight away
+        // and hope. Clamp so it at least stays on the terrain.
+        float half = terrain.Size / 2f - EdgeMargin;
+        return new Vector3(
+            Math.Clamp(threat.Center.X + MathF.Cos(baseAngle) * escapeDistance, -half, half),
+            Terrain.GroundHeight,
+            Math.Clamp(threat.Center.Z + MathF.Sin(baseAngle) * escapeDistance, -half, half));
+    }
+
+    private static GodShadow? FirstOverlapping(Vector3 point, IReadOnlyList<GodShadow> shadows)
+    {
+        foreach (var shadow in shadows)
+        {
+            if (shadow.Overlaps(point, BodyRadius))
+                return shadow;
+        }
+        return null;
     }
 }
 

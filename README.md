@@ -14,7 +14,7 @@ Requires the .NET 8 SDK.
 
 GitHub Actions builds the Android APKs automatically:
 
-- `debug-build.yml` runs on every push to a branch other than `main` and uploads a debug APK. It then runs the APK on an Android emulator, taps through a Pebble-Drop, and uploads the screenshots and logs.
+- `debug-build.yml` runs on every push to a branch other than `main` and uploads a debug APK.
 - `release-build.yml` runs on every push to `main` and uploads a signed APK. It needs the `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` repository secrets.
 
 On Android the same C# game loop runs inside a `NativeActivity`. See `Platforms/Android/MainActivity.cs` for how it starts up.
