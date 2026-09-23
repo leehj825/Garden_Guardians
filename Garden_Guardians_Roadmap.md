@@ -5,7 +5,7 @@
 *Last updated: 2026-09-23*
 
 ## Progress Snapshot
-The game runs as a Raylib-cs (C#/.NET 8) prototype on desktop and Android. So far it covers the first micro-loop: cast the Pebble-Drop miracle, the Bramblekin get out of the way, and cracked acorns feed the village. A Wolf Spider hunts the workers; a well-placed pebble distracts it, and a direct hit crushes it. Food grows the population, and the population powers the Faith that miracles cost. All game code is in `Program.cs`.
+The game runs as a Raylib-cs (C#/.NET 8) prototype on desktop and Android. So far it covers the first micro-loop: cast the Pebble-Drop miracle, the Bramblekin get out of the way, and cracked acorns feed the village. A Wolf Spider hunts the workers; a well-placed pebble distracts it, and a direct hit crushes it. The Gust can now scatter its target, knock it back, or tumble it mid-hunt. Food grows the population, and the population powers the Faith that miracles cost. All game code is in `Program.cs`.
 
 ## Phase 0: Engine & Tooling
 *   ✅ **Engine:** Switched to Raylib via Raylib-cs 8.1 (raylib 6.0) on a .NET 8 project. A fixed 45° isometric camera looks down at a 20 m × 20 m terrain, at 1 unit = 1 m.
@@ -18,7 +18,8 @@ The game runs as a Raylib-cs (C#/.NET 8) prototype on desktop and Android. So fa
     *   ✅ Pebble-Drop: tap "Equip Pebble", then tap the ground. The drop point comes from a raycast through the tap onto the ground.
     *   ✅ God's Shadow: a 1.5 s dark shadow at the target warns of the drop before the pebble falls from 10 m.
     *   ✅ Rock clutter control: pebbles last 30 s and then shrink away, with at most 25 at once.
-    *   ⬜ The Gust, The Dewdrop, The Sunbeam.
+    *   ✅ The Gust: click-drag-release aims a wide wind corridor across the terrain (10 Faith). It flings loose Food Shards (friction slows them), gently nudges Bramblekin without interrupting their AI, and knocks the Wolf Spider back — tumbling it for 4 s if it was Hunting or Pouncing.
+    *   ⬜ The Dewdrop, The Sunbeam.
 *   🟡 **Task 2:** Build the dynamic NavMesh system that updates in real-time when miracles alter the terrain (e.g., a pebble dropping, grass bending).
     *   ✅ Interim version: the list of obstacles (pebbles and the village) is rebuilt every frame. Bramblekin steer around obstacles, get pushed back out if they overlap one, take a short detour if stuck, and never pick a destination inside a rock.
     *   ⬜ Real pathfinding (NavMesh or grid). Terrain features like grass ramps and stepping stones.

@@ -97,17 +97,20 @@ public static class Game
         var world = new World(new Terrain(size: 20f), new Random(), ColonySize);
         world.SpawnSpiderNearEdge();
         var input = new MiracleInput();
-        var equipButton = new UiButton(new Rectangle(20, 20, 220, 50));
+        var pebbleButton = new UiButton(new Rectangle(20, 20, 220, 50));
+        var gustButton = new UiButton(new Rectangle(250, 20, 180, 50));
 
         // --- Main loop -------------------------------------------------------
         while (!Raylib.WindowShouldClose())
         {
             float deltaTime = MathF.Min(Raylib.GetFrameTime(), MaxDeltaTime);
 
-            // 1) Input: UI gets first pick of the click so that pressing the
-            //    button never also drops a pebble "through" it onto the ground.
-            //    A ground click spends Faith and queues a God's Shadow.
-            input.Update(deltaTime, camera, world, equipButton);
+            // 1) Input: UI gets first pick of a press so that touching a
+            //    button never also starts casting a miracle "through" it. A
+            //    Pebble tap spends Faith and queues a God's Shadow; a Gust
+            //    swipe spends Faith and pushes everything caught in it the
+            //    instant the press is released.
+            input.Update(deltaTime, camera, world, pebbleButton, gustButton);
 
             // 2) Simulation.
             world.Update(deltaTime);
@@ -122,9 +125,12 @@ public static class Game
             Raylib.EndMode3D();
 
             // 2D overlay (UI) is drawn after EndMode3D so it sits on top.
-            equipButton.Draw(input.ButtonLabel,
-                             highlighted: input.State == InputState.PebbleEquipped,
-                             disabled: !input.CanAffordPebble(world));
+            pebbleButton.Draw(input.PebbleButtonLabel,
+                              highlighted: input.State == InputState.PebbleEquipped,
+                              disabled: !input.CanAffordPebble(world));
+            gustButton.Draw(input.GustButtonLabel,
+                            highlighted: input.State is InputState.GustEquipped or InputState.GustDragging,
+                            disabled: !input.CanAffordGust(world));
             DrawFaithMeter(world.Faith);
             DrawColonyPanel(world);
             DrawHud(input, world);
@@ -146,31 +152,38 @@ public static class Game
 
     /// <summary>
     /// The Faith meter, top centre: a bar that fills toward
-    /// <see cref="World.MaxFaith"/>, with a tick at the Pebble-Drop's cost so
-    /// the player can see at a glance whether they can afford a miracle.
+    /// <see cref="World.MaxFaith"/>, with a tick at each miracle's cost (Gust
+    /// at 10, Pebble-Drop at 30) so the player can see at a glance what they
+    /// can currently afford.
     /// </summary>
     private static void DrawFaithMeter(float faith)
     {
         const int width = 380, height = 56, barHeight = 16;
         int x = (Raylib.GetScreenWidth() - width) / 2;
         const int y = 18;
-        bool affordable = faith >= MiracleManager.PebbleFaithCost;
+        bool canAffordAnything = faith >= MiracleManager.GustFaithCost;
 
         Raylib.DrawRectangle(x, y, width, height, PanelFill);
         Raylib.DrawRectangleLines(x, y, width, height, PanelInk);
 
         string text = $"Faith: {(int)faith} / {(int)World.MaxFaith}";
-        Raylib.DrawText(text, x + 12, y + 6, 24, affordable ? PanelInk : new Color(170, 60, 40, 255));
+        Raylib.DrawText(text, x + 12, y + 6, 24, canAffordAnything ? PanelInk : new Color(170, 60, 40, 255));
 
-        // Bar: gold when a pebble is affordable, dull when it isn't.
+        // Bar: gold once at least the cheapest miracle is affordable, dull otherwise.
         var bar = new Rectangle(x + 12, y + height - barHeight - 8, width - 24, barHeight);
         Raylib.DrawRectangleRec(bar, new Color(225, 215, 190, 255));
         var fill = bar with { Width = bar.Width * Math.Clamp(faith / World.MaxFaith, 0f, 1f) };
-        Raylib.DrawRectangleRec(fill, affordable ? new Color(235, 185, 50, 255) : new Color(190, 160, 110, 255));
+        Raylib.DrawRectangleRec(fill, canAffordAnything ? new Color(235, 185, 50, 255) : new Color(190, 160, 110, 255));
         Raylib.DrawRectangleLinesEx(bar, 1f, PanelInk);
 
-        // Cost tick.
-        float tickX = bar.X + bar.Width * (MiracleManager.PebbleFaithCost / World.MaxFaith);
+        // Cost ticks, one per miracle.
+        DrawCostTick(bar, MiracleManager.GustFaithCost);
+        DrawCostTick(bar, MiracleManager.PebbleFaithCost);
+    }
+
+    private static void DrawCostTick(Rectangle bar, float cost)
+    {
+        float tickX = bar.X + bar.Width * (cost / World.MaxFaith);
         Raylib.DrawLineEx(new Vector2(tickX, bar.Y - 3), new Vector2(tickX, bar.Y + bar.Height + 3), 2f, PanelInk);
     }
 
@@ -195,9 +208,13 @@ public static class Game
         int Count(BramblekinState state) => world.Colony.Count(b => b.State == state);
 
         int y = Raylib.GetScreenHeight() - 60;
-        string hint = input.State == InputState.PebbleEquipped
-            ? $"Click the ground to drop the pebble ({MiracleManager.PebbleFaithCost} Faith)."
-            : "Crack acorns for food. A pebble's thud distracts the spider; a direct hit crushes it.";
+        string hint = input.State switch
+        {
+            InputState.PebbleEquipped => $"Click the ground to drop the pebble ({MiracleManager.PebbleFaithCost} Faith).",
+            InputState.GustEquipped => $"Click and drag across the ground, then release to blow a Gust ({MiracleManager.GustFaithCost} Faith).",
+            InputState.GustDragging => "Release to blow the Gust in this direction.",
+            _ => "Crack acorns for food. A pebble's thud distracts the spider; a direct hit crushes it. The Gust scatters shards, shoves Bramblekin and tumbles a hunting spider.",
+        };
         Raylib.DrawText(hint, 20, y, 20, Color.DarkGray);
         Raylib.DrawText(
             $"Pebbles: {world.Physics.Count}   Bramblekin: {world.Colony.Count} " +
@@ -301,6 +318,19 @@ public sealed class Terrain
     /// </summary>
     public Vector3? Raycast(Ray ray)
     {
+        Vector3? hit = RaycastGroundPlane(ray);
+        return hit is not null && Contains(hit.Value) ? hit : null;
+    }
+
+    /// <summary>
+    /// Intersects a ray with the infinite horizontal plane y = GroundHeight,
+    /// with no bound on where that point falls — unlike <see cref="Raycast"/>,
+    /// a hit off the edge of the terrain (or well beyond it) still counts.
+    /// Used for The Gust, where a swipe only needs a direction and may start
+    /// or end past the terrain's edge.
+    /// </summary>
+    public Vector3? RaycastGroundPlane(Ray ray)
+    {
         // Plane: y = GroundHeight. Ray: P(t) = origin + t·direction.
         // Solve origin.y + t·direction.y = GroundHeight for t.
         if (MathF.Abs(ray.Direction.Y) < 1e-6f)
@@ -310,8 +340,7 @@ public sealed class Terrain
         if (t < 0f)
             return null; // Intersection is behind the camera.
 
-        Vector3 hit = ray.Position + ray.Direction * t;
-        return Contains(hit) ? hit : null;
+        return ray.Position + ray.Direction * t;
     }
 
     public void Draw()
@@ -662,72 +691,135 @@ public enum InputState
 
     /// <summary>The Pebble-Drop miracle is armed; the next ground click casts it.</summary>
     PebbleEquipped,
+
+    /// <summary>The Gust is armed; the next press starts a swipe.</summary>
+    GustEquipped,
+
+    /// <summary>Mid-swipe: the player is holding the press down, aiming the Gust.</summary>
+    GustDragging,
+}
+
+/// <summary>Which miracle a "Not Enough Faith" refusal message belongs to.</summary>
+public enum RefusedMiracle
+{
+    None,
+    Pebble,
+    Gust,
 }
 
 /// <summary>
-/// Translates mouse/touch clicks into miracles. Holds the equip state and
-/// knows how to turn a screen position into a point on the terrain.
+/// Translates mouse/touch input into miracles. Holds the equip/drag state and
+/// knows how to turn a screen position into a point on the terrain (or, for
+/// the Gust, the wider ground plane).
 /// </summary>
 public sealed class MiracleInput
 {
-    /// <summary>How long the "Not Enough Faith" message stays on the button, in seconds.</summary>
+    /// <summary>How long the "Not Enough Faith" message stays on its button, in seconds.</summary>
     private const float RefusalMessageDuration = 1.5f;
 
+    /// <summary>
+    /// Shortest horizontal swipe (m, world space) that counts as a Gust cast.
+    /// A shorter drag — effectively a tap-and-release — is ignored, so an
+    /// accidental fumble doesn't spend Faith or fling something with no
+    /// meaningful direction; the Gust stays equipped so the player can just
+    /// try again.
+    /// </summary>
+    private const float MinGustDragDistance = 0.5f;
+
     private float _refusalTimer;
+    private RefusedMiracle _refused = RefusedMiracle.None;
+    private Vector3? _gustStartGround;
 
     public InputState State { get; private set; } = InputState.Idle;
 
-    /// <summary>Text for the equip button, including the temporary "Not Enough Faith" refusal.</summary>
-    public string ButtonLabel =>
-        _refusalTimer > 0f ? "Not Enough Faith"
+    /// <summary>Text for the Pebble button, including its temporary "Not Enough Faith" refusal.</summary>
+    public string PebbleButtonLabel =>
+        _refused == RefusedMiracle.Pebble && _refusalTimer > 0f ? "Not Enough Faith"
         : State == InputState.PebbleEquipped ? "Pebble Equipped"
         : "Equip Pebble";
 
+    /// <summary>Text for the Gust button, including its temporary "Not Enough Faith" refusal.</summary>
+    public string GustButtonLabel =>
+        _refused == RefusedMiracle.Gust && _refusalTimer > 0f ? "Not Enough Faith"
+        : State is InputState.GustEquipped or InputState.GustDragging ? "Gust Equipped"
+        : "Equip Gust";
+
     public bool CanAffordPebble(World world) => world.Faith >= MiracleManager.PebbleFaithCost;
 
-    /// <summary>Polls the mouse/touch and handles this frame's click, if any.</summary>
-    public void Update(float deltaTime, Camera3D camera, World world, UiButton equipButton)
+    public bool CanAffordGust(World world) => world.Faith >= MiracleManager.GustFaithCost;
+
+    /// <summary>Polls the mouse/touch and handles this frame's press/release, if any.</summary>
+    public void Update(float deltaTime, Camera3D camera, World world, UiButton pebbleButton, UiButton gustButton)
     {
         _refusalTimer = MathF.Max(0f, _refusalTimer - deltaTime);
 
         // Raylib maps a primary touch to the left mouse button, so the same
-        // code path serves desktop clicks and phone taps.
+        // code path serves desktop clicks and phone taps/drags.
         if (Raylib.IsMouseButtonPressed(MouseButton.Left))
-            HandleClick(Raylib.GetMousePosition(), camera, world, equipButton);
+            HandlePress(Raylib.GetMousePosition(), camera, world, pebbleButton, gustButton);
+
+        if (State == InputState.GustDragging && Raylib.IsMouseButtonReleased(MouseButton.Left))
+            HandleGustRelease(Raylib.GetMousePosition(), camera, world);
     }
 
     /// <summary>
-    /// Handles one click/tap at <paramref name="screenPosition"/>. The UI
-    /// button is checked first and "consumes" the click, so a single click
-    /// never both equips and drops.
+    /// Handles the start of a press at <paramref name="screenPosition"/>: a
+    /// button toggles its miracle, a Pebble cast fires immediately, and a
+    /// Gust cast begins tracking a swipe. Public (like <see cref="HandleGustRelease"/>)
+    /// so input can be driven directly, from a test harness or an
+    /// alternate input source.
     /// </summary>
-    public void HandleClick(Vector2 screenPosition, Camera3D camera, World world, UiButton equipButton)
+    public void HandlePress(Vector2 screenPosition, Camera3D camera, World world, UiButton pebbleButton, UiButton gustButton)
     {
         // --- UI layer ------------------------------------------------------
-        if (equipButton.Contains(screenPosition))
+        if (pebbleButton.Contains(screenPosition))
         {
             if (State == InputState.PebbleEquipped)
-            {
                 State = InputState.Idle; // Toggle off (nothing was spent yet).
-            }
             else if (CanAffordPebble(world))
-            {
                 State = InputState.PebbleEquipped;
-            }
             else
-            {
-                _refusalTimer = RefusalMessageDuration;
-            }
+                Refuse(RefusedMiracle.Pebble);
+            return;
+        }
+
+        if (gustButton.Contains(screenPosition))
+        {
+            if (State is InputState.GustEquipped or InputState.GustDragging)
+                State = InputState.Idle; // Toggle off (nothing was spent yet).
+            else if (CanAffordGust(world))
+                State = InputState.GustEquipped;
+            else
+                Refuse(RefusedMiracle.Gust);
             return;
         }
 
         // --- World layer ---------------------------------------------------
-        if (State != InputState.PebbleEquipped)
-            return;
+        switch (State)
+        {
+            case InputState.PebbleEquipped:
+                CastPebble(screenPosition, camera, world);
+                break;
 
+            case InputState.GustEquipped:
+                // Anchor the swipe. Uses the unbounded ground-plane raycast:
+                // a swipe can reasonably start right at the terrain's edge.
+                Vector3? start = PickGroundPlane(camera, world.Terrain, screenPosition);
+                if (start is not null)
+                {
+                    _gustStartGround = start;
+                    State = InputState.GustDragging;
+                }
+                break;
+        }
+    }
+
+    /// <summary>Raycasts the tap onto the terrain and, if it lands, spends Faith and casts the Pebble-Drop.</summary>
+    private void CastPebble(Vector2 screenPosition, Camera3D camera, World world)
+    {
         Vector3? groundPoint = PickGround(camera, world.Terrain, screenPosition);
         if (groundPoint is null)
-            return; // Clicked the sky or off the edge of the terrain: stay equipped, nothing spent.
+            return; // Tapped the sky or off the edge of the terrain: stay equipped, nothing spent.
 
         // Pay the moment the raycast lands. Equipping already checked the
         // cost and Faith only goes down when a miracle is cast, so this
@@ -735,7 +827,7 @@ public sealed class MiracleInput
         if (!world.TrySpendFaith(MiracleManager.PebbleFaithCost))
         {
             State = InputState.Idle;
-            _refusalTimer = RefusalMessageDuration;
+            Refuse(RefusedMiracle.Pebble);
             return;
         }
 
@@ -746,8 +838,56 @@ public sealed class MiracleInput
     }
 
     /// <summary>
+    /// Ends a Gust swipe: projects the release point onto the ground plane,
+    /// and — if the drag was long enough to read as a real swipe — spends
+    /// Faith and casts the Gust along the start-to-end vector. Public so it
+    /// can be driven directly (see <see cref="HandlePress"/>).
+    /// </summary>
+    public void HandleGustRelease(Vector2 screenPosition, Camera3D camera, World world)
+    {
+        Vector3? start = _gustStartGround;
+        Vector3? end = PickGroundPlane(camera, world.Terrain, screenPosition);
+        _gustStartGround = null;
+
+        if (start is null || end is null)
+        {
+            // Should be unreachable with this fixed camera (the ground plane
+            // raycast only fails for a ray parallel to or behind it), but
+            // stay armed rather than lose the Faith on a gesture with no
+            // usable vector.
+            State = InputState.GustEquipped;
+            return;
+        }
+
+        Vector3 delta = end.Value - start.Value;
+        delta.Y = 0f; // The Gust only ever blows horizontally.
+        if (delta.Length() < MinGustDragDistance)
+        {
+            State = InputState.GustEquipped; // Too short to read as a swipe; try again.
+            return;
+        }
+
+        if (!world.TrySpendFaith(MiracleManager.GustFaithCost))
+        {
+            State = InputState.Idle;
+            Refuse(RefusedMiracle.Gust);
+            return;
+        }
+
+        world.CastGust(start.Value, Vector3.Normalize(delta));
+        State = InputState.Idle;
+    }
+
+    private void Refuse(RefusedMiracle which)
+    {
+        _refused = which;
+        _refusalTimer = RefusalMessageDuration;
+    }
+
+    /// <summary>
     /// Casts a ray from the camera through the given screen position and
-    /// returns where it meets the terrain (or null if it misses).
+    /// returns where it meets the terrain (or null if it misses the terrain,
+    /// or the terrain's edge).
     ///
     /// Guards against every way this can go wrong on a phone: a touch
     /// reported before the window/surface has a real size yet (e.g. mid
@@ -758,6 +898,29 @@ public sealed class MiracleInput
     /// them should ever crash the raycast or the tap that triggered it.
     /// </summary>
     private static Vector3? PickGround(Camera3D camera, Terrain terrain, Vector2 screenPosition)
+    {
+        Ray? ray = SafeScreenRay(screenPosition, camera);
+        return ray is null ? null : terrain.Raycast(ray.Value);
+    }
+
+    /// <summary>
+    /// Same as <see cref="PickGround"/>, but the hit point is not bounded to
+    /// the terrain rectangle — used for the Gust, where a swipe only needs a
+    /// direction and may reasonably start or end just past the terrain's edge.
+    /// </summary>
+    private static Vector3? PickGroundPlane(Camera3D camera, Terrain terrain, Vector2 screenPosition)
+    {
+        Ray? ray = SafeScreenRay(screenPosition, camera);
+        return ray is null ? null : terrain.RaycastGroundPlane(ray.Value);
+    }
+
+    /// <summary>
+    /// The bounds/NaN/Infinity guards shared by <see cref="PickGround"/> and
+    /// <see cref="PickGroundPlane"/>: validates the screen position and the
+    /// window before asking raylib to project it, and validates the ray it
+    /// gets back.
+    /// </summary>
+    private static Ray? SafeScreenRay(Vector2 screenPosition, Camera3D camera)
     {
         int width = Raylib.GetScreenWidth();
         int height = Raylib.GetScreenHeight();
@@ -772,10 +935,7 @@ public sealed class MiracleInput
         // GetScreenToWorldRay is raylib 5.5's name for GetMouseRay (the old
         // name still exists but is marked obsolete in Raylib-cs 8).
         Ray ray = Raylib.GetScreenToWorldRay(screenPosition, camera);
-        if (!IsFinite(ray.Position) || !IsFinite(ray.Direction))
-            return null;
-
-        return terrain.Raycast(ray);
+        return IsFinite(ray.Position) && IsFinite(ray.Direction) ? ray : null;
     }
 
     private static bool IsFinite(Vector2 v) => float.IsFinite(v.X) && float.IsFinite(v.Y);
@@ -783,23 +943,37 @@ public sealed class MiracleInput
     private static bool IsFinite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
 
     /// <summary>
-    /// While a pebble is equipped, draws where it would land: the outer ring is
-    /// the God's Shadow that will scare Bramblekin away, the inner ring the
-    /// pebble itself.
+    /// Live aiming feedback: while a pebble is equipped, where it would land
+    /// (the outer ring is the God's Shadow, the inner ring the pebble
+    /// itself); while dragging a Gust, a line from where the swipe started
+    /// to the current touch position.
     /// </summary>
     public void DrawCursorPreview(Camera3D camera, Terrain terrain)
     {
-        if (State != InputState.PebbleEquipped)
-            return;
+        switch (State)
+        {
+            case InputState.PebbleEquipped:
+                Vector3? target = PickGround(camera, terrain, Raylib.GetMousePosition());
+                if (target is null)
+                    return;
 
-        Vector3? target = PickGround(camera, terrain, Raylib.GetMousePosition());
-        if (target is null)
-            return;
+                var p = target.Value + new Vector3(0, 0.02f, 0); // Lift slightly to avoid z-fighting.
+                Raylib.DrawCircle3D(p, MiracleManager.ShadowRadius, Vector3.UnitX, 90f, new Color(255, 255, 0, 140));
+                Raylib.DrawCircle3D(p, MiracleManager.PebbleRadius, Vector3.UnitX, 90f, Color.Yellow);
+                Raylib.DrawLine3D(p, p + new Vector3(0, MiracleManager.PebbleSpawnHeight, 0), new Color(255, 255, 0, 80));
+                break;
 
-        var p = target.Value + new Vector3(0, 0.02f, 0); // Lift slightly to avoid z-fighting.
-        Raylib.DrawCircle3D(p, MiracleManager.ShadowRadius, Vector3.UnitX, 90f, new Color(255, 255, 0, 140));
-        Raylib.DrawCircle3D(p, MiracleManager.PebbleRadius, Vector3.UnitX, 90f, Color.Yellow);
-        Raylib.DrawLine3D(p, p + new Vector3(0, MiracleManager.PebbleSpawnHeight, 0), new Color(255, 255, 0, 80));
+            case InputState.GustDragging when _gustStartGround is not null:
+                Vector3? end = PickGroundPlane(camera, terrain, Raylib.GetMousePosition());
+                if (end is null)
+                    return;
+
+                var start = _gustStartGround.Value + new Vector3(0, 0.05f, 0);
+                var endPoint = end.Value + new Vector3(0, 0.05f, 0);
+                Raylib.DrawSphere(start, 0.15f, new Color(255, 255, 255, 160));
+                Raylib.DrawLine3D(start, endPoint, new Color(255, 255, 255, 180));
+                break;
+        }
     }
 }
 
@@ -856,9 +1030,46 @@ public sealed class GodShadow
 }
 
 /// <summary>
+/// A cast Gust's wind-streak visual: a set of lines that shoot across the
+/// terrain along <see cref="Direction"/> from <see cref="Origin"/> and fade
+/// out over <see cref="Duration"/> seconds. Purely cosmetic — the physics
+/// push happens once, immediately, when the Gust is cast (see World.CastGust).
+/// </summary>
+public sealed class GustEffect
+{
+    /// <summary>Ground point the swipe started from (y = GroundHeight).</summary>
+    public Vector3 Origin { get; }
+
+    /// <summary>Unit, horizontal (y = 0) direction of the wind.</summary>
+    public Vector3 Direction { get; }
+
+    public float Duration { get; }
+
+    /// <summary>Seconds left before the visual finishes.</summary>
+    public float TimeLeft { get; private set; }
+
+    /// <summary>0 when cast, 1 once the visual has fully played out.</summary>
+    public float Progress => 1f - TimeLeft / Duration;
+
+    public bool HasExpired => TimeLeft <= 0f;
+
+    public GustEffect(Vector3 origin, Vector3 direction, float duration)
+    {
+        Origin = origin;
+        Direction = direction;
+        Duration = duration;
+        TimeLeft = duration;
+    }
+
+    public void Tick(float deltaTime) => TimeLeft -= deltaTime;
+}
+
+/// <summary>
 /// Runs cast miracles over time. For now that means the Pebble-Drop: each
 /// cast first becomes a <see cref="GodShadow"/>, and only when its timer runs
-/// out does the physical pebble spawn and fall.
+/// out does the physical pebble spawn and fall. The Gust is simpler — its
+/// physics happens all at once in World.CastGust — so this only owns its
+/// fading wind-streak visual.
 /// </summary>
 public sealed class MiracleManager
 {
@@ -891,7 +1102,14 @@ public sealed class MiracleManager
     /// </summary>
     public const float PebbleLifetime = 30f;
 
+    /// <summary>Faith spent per Gust.</summary>
+    public const float GustFaithCost = 10f;
+
+    /// <summary>How long the wind-streak visual plays for, in seconds.</summary>
+    public const float GustVisualDuration = 1f;
+
     private readonly List<GodShadow> _shadows = new();
+    private readonly List<GustEffect> _gusts = new();
 
     /// <summary>Shadows currently on the ground. Bramblekin read this to decide when to flee.</summary>
     public IReadOnlyList<GodShadow> ActiveShadows => _shadows;
@@ -902,10 +1120,20 @@ public sealed class MiracleManager
         _shadows.Add(new GodShadow(groundPoint, ShadowRadius, TelegraphDuration));
     }
 
-    /// <summary>Counts down every shadow and releases the pebble for any that expired.</summary>
+    /// <summary>
+    /// Starts the wind-streak visual for a Gust cast from <paramref name="origin"/>
+    /// along <paramref name="direction"/>. The physics push itself is applied
+    /// immediately by the caller (World.CastGust) — this only animates it.
+    /// </summary>
+    public void QueueGust(Vector3 origin, Vector3 direction)
+    {
+        _gusts.Add(new GustEffect(origin, direction, GustVisualDuration));
+    }
+
+    /// <summary>Counts down every shadow and gust, releasing the pebble for any shadow that expired.</summary>
     public void Update(float deltaTime, PhysicsManager physics)
     {
-        // Iterate backwards so expired shadows can be removed in place.
+        // Iterate backwards so expired entries can be removed in place.
         for (int i = _shadows.Count - 1; i >= 0; i--)
         {
             GodShadow shadow = _shadows[i];
@@ -916,6 +1144,13 @@ public sealed class MiracleManager
             var spawn = shadow.Center + new Vector3(0, PebbleSpawnHeight, 0);
             physics.Add(new PhysicsObject(spawn, PebbleRadius, PebbleMass, Color.Gray, PebbleLifetime));
             _shadows.RemoveAt(i);
+        }
+
+        for (int i = _gusts.Count - 1; i >= 0; i--)
+        {
+            _gusts[i].Tick(deltaTime);
+            if (_gusts[i].HasExpired)
+                _gusts.RemoveAt(i);
         }
     }
 
@@ -931,6 +1166,42 @@ public sealed class MiracleManager
             // A very flat cylinder is a cheap filled disc lying on the ground.
             Raylib.DrawCylinder(p, shadow.Radius, shadow.Radius, 0.01f, 36, new Color(0, 0, 0, (int)alpha));
             Raylib.DrawCircle3D(p + new Vector3(0, 0.015f, 0), shadow.Radius, Vector3.UnitX, 90f, new Color(0, 0, 0, 220));
+        }
+
+        foreach (var gust in _gusts)
+            DrawGustStreaks(gust);
+    }
+
+    /// <summary>
+    /// A handful of white streak lines that race out from <paramref name="gust"/>'s
+    /// origin along its direction and fade as they go, like a burst of wind
+    /// made visible. Purely decorative — the actual push already happened.
+    /// </summary>
+    private static void DrawGustStreaks(GustEffect gust)
+    {
+        const int StreakCount = 6;
+        const float HalfSpread = 1.8f;    // Roughly matches World's Gust corridor width.
+        const float StreakLength = 3.5f;
+        const float TravelDistance = 26f; // How far the streak heads race out over the visual's life.
+
+        var direction2D = new Vector2(gust.Direction.X, gust.Direction.Z);
+        var side = new Vector2(-direction2D.Y, direction2D.X); // Perpendicular, for lateral spread.
+        var sideOffset3D = new Vector3(side.X, 0, side.Y);
+
+        var color = new Color(255, 255, 255, (int)(210 * (1f - gust.Progress)));
+
+        // A stable per-streak lateral offset, so the streaks fan out instead
+        // of all riding the same line, without needing per-frame randomness.
+        for (int i = 0; i < StreakCount; i++)
+        {
+            float lateral = (i - (StreakCount - 1) / 2f) / StreakCount * 2f * HalfSpread;
+            float headDistance = gust.Progress * TravelDistance + i * 0.5f; // Staggered starts.
+            float tailDistance = MathF.Max(0f, headDistance - StreakLength);
+
+            Vector3 offset = sideOffset3D * lateral + new Vector3(0, 0.05f, 0);
+            Vector3 head = gust.Origin + gust.Direction * headDistance + offset;
+            Vector3 tail = gust.Origin + gust.Direction * tailDistance + offset;
+            Raylib.DrawLine3D(tail, head, color);
         }
     }
 }
@@ -951,8 +1222,13 @@ public readonly record struct Obstacle(Vector2 Center, float Radius);
 ///
 ///   faith regen -> miracles (shadows, pebble release)
 ///   -> physics (+ acorn cracking, spider squishing)
-///   -> obstacle list -> shove food out from under rocks -> Bramblekin
-///   -> Wolf Spider (may kill Bramblekin) -> acorn / spider respawn
+///   -> shard sliding (from a Gust) -> obstacle list -> shove food out from
+///   under rocks -> Bramblekin -> Wolf Spider (may kill Bramblekin)
+///   -> acorn / spider respawn
+///
+/// A cast Gust (CastGust) sits outside this per-frame order: it applies its
+/// push to everything caught in its corridor all at once, the instant it's
+/// cast, rather than as a lingering per-frame force.
 /// </summary>
 public sealed class World
 {
@@ -988,6 +1264,27 @@ public sealed class World
 
     /// <summary>How long a crushed spider's splat mark stays on the ground, in seconds.</summary>
     private const float SplatDuration = 6f;
+
+    /// <summary>How far (m) the Gust's wind corridor reaches from the swipe's start point.</summary>
+    public const float GustCorridorLength = 30f;
+
+    /// <summary>Half-width (m) of the wind corridor — "wide" per the design.</summary>
+    public const float GustCorridorHalfWidth = 2f;
+
+    /// <summary>Speed (m/s) a loose Food Shard is flung to when caught in a Gust.</summary>
+    public const float ShardGustSpeed = 5f;
+
+    /// <summary>How quickly a flung shard's speed bleeds off, per second.</summary>
+    public const float ShardFriction = 2.5f;
+
+    /// <summary>Below this speed (m/s) a sliding shard is simply stopped.</summary>
+    private const float ShardRestSpeed = 0.05f;
+
+    /// <summary>One-time position nudge (m) a Bramblekin gets from a Gust.</summary>
+    public const float BramblekinGustPush = 1f;
+
+    /// <summary>One-time knockback (m) the Wolf Spider gets from a Gust.</summary>
+    public const float SpiderGustKnockback = 3f;
 
     private readonly List<Obstacle> _obstacles = new();
     private readonly List<(Vector3 Position, float TimeLeft)> _splats = new();
@@ -1095,6 +1392,82 @@ public sealed class World
         return true;
     }
 
+    /// <summary>
+    /// The Gust miracle: starts the wind-streak visual and immediately shoves
+    /// every loose Food Shard, Bramblekin and the Wolf Spider caught in a
+    /// wide corridor running from <paramref name="origin"/> along
+    /// <paramref name="direction"/> (a horizontal unit vector) across the
+    /// terrain. Faith is spent by the caller before this is invoked.
+    /// </summary>
+    public void CastGust(Vector3 origin, Vector3 direction)
+    {
+        Miracles.QueueGust(origin, direction);
+
+        for (int i = FoodShards.Count - 1; i >= 0; i--)
+        {
+            FoodShard shard = FoodShards[i];
+            if (!shard.IsCarried && IsInGustCorridor(origin, direction, shard.Position))
+                shard.Velocity = direction * ShardGustSpeed;
+        }
+
+        for (int i = Colony.Count - 1; i >= 0; i--)
+        {
+            Bramblekin bramblekin = Colony[i];
+            if (!bramblekin.IsDead && IsInGustCorridor(origin, direction, bramblekin.Position))
+                bramblekin.ApplyWindPush(direction * BramblekinGustPush, this);
+        }
+
+        if (Spider is { } spider && IsInGustCorridor(origin, direction, spider.Position))
+            spider.ApplyWindPush(direction * SpiderGustKnockback, this);
+    }
+
+    /// <summary>
+    /// True if <paramref name="point"/> lies within the wide rectangular
+    /// corridor running from <paramref name="origin"/> along
+    /// <paramref name="direction"/> (both horizontal; <paramref name="direction"/>
+    /// must already be a unit vector).
+    /// </summary>
+    private static bool IsInGustCorridor(Vector3 origin, Vector3 direction, Vector3 point)
+    {
+        var o = new Vector2(origin.X, origin.Z);
+        var d = new Vector2(direction.X, direction.Z);
+        var toPoint = new Vector2(point.X, point.Z) - o;
+
+        float along = Vector2.Dot(toPoint, d);
+        if (along < 0f || along > GustCorridorLength)
+            return false;
+
+        Vector2 perpendicular = toPoint - d * along;
+        return perpendicular.LengthSquared() <= GustCorridorHalfWidth * GustCorridorHalfWidth;
+    }
+
+    /// <summary>
+    /// Slides any Food Shard the Gust has flung, decelerating it with
+    /// friction each frame until it stops. Shards at rest (the common case)
+    /// are skipped entirely.
+    /// </summary>
+    private void UpdateShardPhysics(float deltaTime)
+    {
+        float half = Terrain.Size / 2f - FoodShard.Radius;
+        for (int i = FoodShards.Count - 1; i >= 0; i--)
+        {
+            FoodShard shard = FoodShards[i];
+            if (shard.IsCarried || shard.Velocity == Vector3.Zero)
+                continue;
+
+            shard.Position += shard.Velocity * deltaTime;
+
+            float damping = MathF.Max(0f, 1f - ShardFriction * deltaTime);
+            Vector3 velocity = shard.Velocity * damping;
+            shard.Velocity = velocity.LengthSquared() < ShardRestSpeed * ShardRestSpeed ? Vector3.Zero : velocity;
+
+            shard.Position = new Vector3(
+                Math.Clamp(shard.Position.X, -half, half),
+                Terrain.GroundHeight,
+                Math.Clamp(shard.Position.Z, -half, half));
+        }
+    }
+
     public void Update(float deltaTime)
     {
         // Worship: every living Bramblekin feeds the Faith pool, so each
@@ -1111,6 +1484,7 @@ public sealed class World
         CrackAcornOnImpact();
         SquishSpiderOnImpact();
 
+        UpdateShardPhysics(deltaTime);
         RebuildObstacles();
         PushFoodOutOfObstacles();
 
@@ -1591,6 +1965,13 @@ public sealed class FoodShard
     /// <summary>True while a Bramblekin is holding it; carried shards are hidden from the map.</summary>
     public bool IsCarried { get; set; }
 
+    /// <summary>
+    /// Ground-plane sliding speed. Zero at rest; a Gust sets it, and World's
+    /// shard-physics step bleeds it off with friction each frame. Ignored
+    /// while carried.
+    /// </summary>
+    public Vector3 Velocity { get; set; }
+
     public FoodShard(Vector3 groundPoint) => Position = groundPoint;
 
     /// <summary>Draws the shard resting on the ground at (or carried above) <paramref name="groundPoint"/>.</summary>
@@ -1666,6 +2047,21 @@ public sealed class GroundMover
 
     /// <summary>Marks the body as standing still this frame.</summary>
     public void Idle() => IsMoving = false;
+
+    /// <summary>
+    /// Instantly displaces the body by <paramref name="offset"/> — e.g. a
+    /// Gust knockback — then re-clamps it to the terrain and pushes it back
+    /// out of any obstacle the displacement landed it inside, exactly as
+    /// normal movement would. Doesn't touch the current target/detour or
+    /// stuck-detection: whatever the body was doing, it keeps doing it from
+    /// its new spot.
+    /// </summary>
+    public void Nudge(Vector3 offset, World world)
+    {
+        Position += offset;
+        PushOutOfObstacles(world.Obstacles);
+        ClampToTerrain(world.Terrain);
+    }
 
     /// <summary>
     /// Moves toward <paramref name="target"/> at <paramref name="speed"/>,
@@ -2064,6 +2460,20 @@ public sealed class Bramblekin
         _carried = null;
     }
 
+    /// <summary>
+    /// The Gust's effect on a Bramblekin: an immediate, gentle shove in the
+    /// wind's direction. Never touches <see cref="State"/> or its current
+    /// target — it's just physically moved a little, same as running into
+    /// a pebble that suddenly appeared underfoot.
+    /// </summary>
+    public void ApplyWindPush(Vector3 push, World world)
+    {
+        if (IsDead)
+            return;
+
+        _mover.Nudge(push, world);
+    }
+
     // --- Economy states ----------------------------------------------------------
 
     private void UpdateGathering(float deltaTime, World world)
@@ -2213,6 +2623,9 @@ public enum SpiderState
 
     /// <summary>Eating a catch: stays put and ignores everything for a while.</summary>
     Feeding,
+
+    /// <summary>Knocked over by a Gust while Hunting or Pouncing: stunned, does nothing for a few seconds.</summary>
+    Tumbled,
 }
 
 /// <summary>
@@ -2232,6 +2645,10 @@ public enum SpiderState
 /// Bramblekin's footsteps, so the spider instantly abandons whatever it was
 /// doing (even mid-pounce) and goes to investigate the impact, staring at
 /// it for 3 s before resuming its prowl.
+///
+/// A second counter, The Gust, always knocks it back physically; if it was
+/// actively Hunting or Pouncing, that shove also tumbles it — stunned,
+/// doing nothing — for <see cref="TumbledDuration"/> seconds.
 /// </summary>
 public sealed class WolfSpider
 {
@@ -2255,6 +2672,9 @@ public sealed class WolfSpider
     private const float ProwlPauseDuration = 1.5f;
     private const float StareDuration = 3f;
     private const float FeedDuration = 20f;
+
+    /// <summary>How long a Gust-tumbled spider is stunned for, in seconds.</summary>
+    public const float TumbledDuration = 4f;
 
     /// <summary>
     /// Seconds a hunt continues after the target stops vibrating (e.g. it
@@ -2313,8 +2733,9 @@ public sealed class WolfSpider
                 StartProwling();
         }
 
-        // --- The Distraction: a pebble impact trumps everything but a meal ----
-        foreach (var impact in State == SpiderState.Feeding ? [] : world.Physics.Impacts)
+        // --- The Distraction: a pebble impact trumps everything but a meal
+        //     or being too stunned to notice --------------------------------
+        foreach (var impact in (State is SpiderState.Feeding or SpiderState.Tumbled) ? [] : world.Physics.Impacts)
         {
             if (GroundMover.HorizontalDistance(Position, impact.Point) <= ImpactHearingRadius)
             {
@@ -2363,10 +2784,36 @@ public sealed class WolfSpider
                 if (_timer <= 0f)
                     StartProwling();
                 break;
+
+            case SpiderState.Tumbled:
+                _timer -= deltaTime;
+                if (_timer <= 0f)
+                    StartProwling();
+                break;
         }
 
         if (_mover.IsMoving)
             _walkCycle += deltaTime * (State == SpiderState.Pouncing ? 30f : 12f);
+    }
+
+    /// <summary>
+    /// The Gust's counter to the spider: always a strong physical knockback.
+    /// If it was actively Hunting or Pouncing, the shove also interrupts
+    /// that — dropping any tracked prey and knocking it into the Tumbled
+    /// (stunned) state for <see cref="TumbledDuration"/> seconds before it
+    /// resets to Prowling. Caught in any other state, it's simply shoved;
+    /// whatever it was doing (prowling, staring, eating) carries on.
+    /// </summary>
+    public void ApplyWindPush(Vector3 push, World world)
+    {
+        _mover.Nudge(push, world);
+
+        if (State is SpiderState.Hunting or SpiderState.Pouncing)
+        {
+            _prey = null;
+            _timer = TumbledDuration;
+            SetState(SpiderState.Tumbled);
+        }
     }
 
     // --- States ---------------------------------------------------------------------
@@ -2569,6 +3016,16 @@ public sealed class WolfSpider
         Rlgl.Translatef(Position.X, Position.Y, Position.Z);
         Rlgl.Rotatef(yawDegrees, 0, 1, 0);
 
+        // Tumbled: roll onto its side (tips over in the first moment, then a
+        // small dazed wobble) rather than standing upright.
+        if (State == SpiderState.Tumbled)
+        {
+            float elapsed = TumbledDuration - _timer;
+            float fallIn = MathF.Min(elapsed / 0.3f, 1f);
+            float wobble = MathF.Sin(elapsed * 6f) * 6f;
+            Rlgl.Rotatef(fallIn * 80f + wobble, 1, 0, 0);
+        }
+
         // Abdomen: a flattened, elongated sphere.
         Rlgl.PushMatrix();
         Rlgl.Translatef(-0.28f, 0.34f, 0);
@@ -2588,6 +3045,7 @@ public sealed class WolfSpider
         {
             SpiderState.Hunting or SpiderState.Pouncing => new Color(230, 40, 30, 255),
             SpiderState.Investigating => new Color(240, 210, 60, 255),
+            SpiderState.Tumbled => new Color(175, 190, 220, 220),
             _ => new Color(120, 110, 100, 255),
         };
         Raylib.DrawSphere(new Vector3(0.43f, 0.38f, -0.08f), 0.045f, eyeColor);
