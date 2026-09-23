@@ -125,6 +125,7 @@ public static class Game
             Raylib.EndMode3D();
 
             // 2D overlay (UI) is drawn after EndMode3D so it sits on top.
+            DrawHealthBars(camera, world);
             pebbleButton.Draw(input.PebbleButtonLabel,
                               highlighted: input.State == InputState.PebbleEquipped,
                               disabled: !input.CanAffordPebble(world));
@@ -149,6 +150,40 @@ public static class Game
 
     private static readonly Color PanelFill = new(255, 250, 235, 220);
     private static readonly Color PanelInk = new(110, 70, 35, 255);
+
+    /// <summary>
+    /// Health bars for every living Bramblekin and the Wolf Spider, each
+    /// projected from its 3D position into 2D screen space and drawn only
+    /// while it's actually missing Health — a full-health entity gets no bar
+    /// at all, so the battlefield doesn't get cluttered by default.
+    /// </summary>
+    private static void DrawHealthBars(Camera3D camera, World world)
+    {
+        for (int i = 0; i < world.Colony.Count; i++)
+        {
+            Bramblekin b = world.Colony[i];
+            if (!b.IsDead)
+                DrawHealthBar(camera, b.Position + new Vector3(0, Bramblekin.BodyHeight + 0.15f, 0), b.Health, Bramblekin.MaxHealth);
+        }
+
+        if (world.Spider is { } spider)
+            DrawHealthBar(camera, spider.Position + new Vector3(0, WolfSpider.BodyRadius * 2f + 0.3f, 0), spider.Health, WolfSpider.MaxHealth);
+    }
+
+    /// <summary>A small red-background/green-fill bar at <paramref name="worldPosition"/>'s projected screen point.</summary>
+    private static void DrawHealthBar(Camera3D camera, Vector3 worldPosition, int health, int maxHealth)
+    {
+        if (health >= maxHealth)
+            return;
+
+        Vector2 screen = Raylib.GetWorldToScreen(worldPosition, camera);
+        const int width = 34, height = 5;
+        var back = new Rectangle(screen.X - width / 2f, screen.Y - height / 2f, width, height);
+        Raylib.DrawRectangleRec(back, Color.Red);
+        var fill = back with { Width = back.Width * Math.Clamp((float)health / maxHealth, 0f, 1f) };
+        Raylib.DrawRectangleRec(fill, Color.Green);
+        Raylib.DrawRectangleLinesEx(back, 1f, Color.Black);
+    }
 
     /// <summary>
     /// The Faith meter, top centre: a bar that fills toward
@@ -220,7 +255,7 @@ public static class Game
             InputState.PebbleEquipped => $"Click the ground to drop the pebble ({MiracleManager.PebbleFaithCost} Faith).",
             InputState.GustEquipped => $"Click and drag across the ground, then release to blow a Gust ({MiracleManager.GustFaithCost} Faith).",
             InputState.GustDragging => "Release to blow the Gust in this direction.",
-            _ => "A pure God Game: Pebble-Drop and Gust are all you command. The Village Heart runs itself — sprouting, drafting Militia and building Granaries/Walls on its own — while a Gust tumbles a hunting spider and a Pike Defense does too.",
+            _ => "A pure God Game: Pebble-Drop and Gust are all you command. The Village Heart runs itself — sprouting, drafting Militia and building Granaries on its own — while Militia trade blows with the spider toe-to-toe, and a Gust tumbles one mid-hunt.",
         };
         Raylib.DrawText(hint, 20, y, 20, Color.DarkGray);
         Raylib.DrawText(
@@ -1232,10 +1267,10 @@ public readonly record struct Obstacle(Vector2 Center, float Radius);
 ///   faith regen -> miracles (shadows, pebble release)
 ///   -> physics (+ acorn cracking, spider squishing every frame, Tumbled or not)
 ///   -> shard sliding (from a Gust) -> obstacle list -> shove food out from
-///   under rocks -> ambient prey -> Bramblekin -> Wolf Spider (may kill
-///   Bramblekin) -> spider/Bramble-Wall collision -> the Village Heart's own
-///   autonomous business (Auto-Conscription, War Weariness, Auto-Sprout,
-///   Auto-Construction) -> acorn / spider respawn
+///   under rocks -> ambient prey -> Bramblekin (Militia poke, may damage
+///   the spider) -> Wolf Spider (may bite Militia, may kill a Gatherer) ->
+///   the Village Heart's own autonomous business (Auto-Conscription, War
+///   Weariness, Auto-Sprout, Auto-Construction) -> acorn / spider respawn
 ///
 /// A cast Gust (CastGust) sits outside this per-frame order: it applies its
 /// push to everything caught in its corridor all at once, the instant it's
@@ -1325,23 +1360,11 @@ public sealed class World
     /// <summary>Food Stored spent to place a Granary blueprint.</summary>
     public const int GranaryFoodCost = 10;
 
-    /// <summary>Food Stored spent to place a Bramble-Wall blueprint.</summary>
-    public const int WallFoodCost = 5;
-
-    /// <summary>Auto-Construction (Granaries): fraction of the current food cap that triggers placing one.</summary>
+    /// <summary>Auto-Construction: fraction of the current food cap that triggers placing a Granary.</summary>
     private const float GranaryTriggerFraction = 0.9f;
 
     /// <summary>How far (m) from the Village Heart an Auto-Granary may be placed.</summary>
     private const float GranaryPlacementRadius = 5f;
-
-    /// <summary>Auto-Construction (Walls): a Bramble-Wall is queued every time the population has grown by this many.</summary>
-    private const int PopulationPerWall = 5;
-
-    /// <summary>How far (m) from the Village Heart the Auto-Wall perimeter sits.</summary>
-    private const float WallPerimeterRadius = 8f;
-
-    /// <summary>Angular spacing (radians) between consecutive Auto-Walls around the perimeter — 8 evenly spaced before the ring repeats.</summary>
-    private const float WallPerimeterAngleStep = MathF.Tau / 8f;
 
     /// <summary>Morale cap. Also the starting amount: the colony begins confident.</summary>
     public const float MaxMorale = 100f;
@@ -1368,8 +1391,6 @@ public sealed class World
     public const float HighMoraleBuildMultiplier = 2f;
 
     private readonly List<Obstacle> _obstacles = new();
-    private readonly List<Obstacle> _wallObstacles = new();
-    private readonly List<Obstacle> _spiderObstacles = new();
     private readonly List<(Vector3 Position, float TimeLeft)> _splats = new();
     private float _acornRespawnTimer;
 
@@ -1389,14 +1410,6 @@ public sealed class World
     private float _berrySpawnTimer = BerrySpawnInterval;
     private float _aphidRespawnTimer = AphidRespawnDelay;
 
-    // Auto-Construction (Walls): how many population/PopulationPerWall
-    // milestones have been turned into a queued placement so far, how many
-    // of those are still waiting on affordable Food Stored, and where
-    // around the perimeter the next one goes.
-    private int _wallMilestonesQueued;
-    private int _pendingWallPlacements;
-    private float _wallPerimeterAngle;
-
     public Terrain Terrain { get; }
     public PhysicsManager Physics { get; }
     public MiracleManager Miracles { get; } = new();
@@ -1411,7 +1424,7 @@ public sealed class World
     /// <summary>Under-construction sites; a Blueprint becomes a <see cref="Building"/> once its Construction Progress is complete.</summary>
     public List<Blueprint> Blueprints { get; } = new();
 
-    /// <summary>Finished structures: Granaries (raise <see cref="MaxFoodCapacity"/>) and Bramble-Walls (block the spider and pebbles).</summary>
+    /// <summary>Finished structures: Granaries, which permanently raise <see cref="MaxFoodCapacity"/>.</summary>
     public List<Building> Buildings { get; } = new();
 
     /// <summary>Bramblekin lost to predators so far.</summary>
@@ -1447,14 +1460,8 @@ public sealed class World
     /// <summary>Above <see cref="HighMoraleThreshold"/>: Builders work at <see cref="HighMoraleBuildMultiplier"/> speed.</summary>
     public bool BuildersAreInspired => Morale > HighMoraleThreshold;
 
-    /// <summary>Solid circles Bramblekin (and Aphids) must walk around. Rebuilt every frame. Never includes a Bramble-Wall — see <see cref="ObstaclesForSpider"/>.</summary>
+    /// <summary>Solid circles every walker (Bramblekin, Aphids, the Wolf Spider) must steer around. Rebuilt every frame.</summary>
     public IReadOnlyList<Obstacle> Obstacles => _obstacles;
-
-    /// <summary>
-    /// Same as <see cref="Obstacles"/>, plus every completed Bramble-Wall: the
-    /// Wolf Spider is physically blocked by walls, Bramblekin are not.
-    /// </summary>
-    public IReadOnlyList<Obstacle> ObstaclesForSpider => _spiderObstacles;
 
     public World(Terrain terrain, Random rng, int colonySize)
     {
@@ -1792,21 +1799,19 @@ public sealed class World
             Colony[i].Update(deltaTime, this);
 
         Spider?.Update(deltaTime, this);
-        ResolveSpiderWallCollisions();
         UpdateJobManager();
         UpdateMorale(deltaTime);
 
         // Auto-Construction gets first claim on Food Stored, checked before
         // Auto-Sprout: Sprout's own trigger (>= FoodPerSprout) is the lowest
-        // bar of the three, and its while-loop drains anything at or above
+        // bar of the two, and its while-loop drains anything at or above
         // that back toward zero every single frame. Left to run first, it
         // would starve Auto-Construction completely -- Food Stored could
-        // never sit at the Granary's 90%-of-cap threshold, or even hold the
-        // Wall's flat cost, across a frame boundary for Auto-Construction to
-        // ever see it. Checking Construction first still leaves Sprout free
-        // to spend whatever's left over once nothing needs building.
+        // never sit at the Granary's 90%-of-cap threshold across a frame
+        // boundary for it to ever see it. Checking Construction first still
+        // leaves Sprout free to spend whatever's left over once nothing
+        // needs building.
         UpdateAutoGranary();
-        UpdateAutoWalls();
         UpdateAutoSprout();
 
         UpdateAcornRespawn(deltaTime);
@@ -1924,9 +1929,6 @@ public sealed class World
     /// <summary>True if a round body of <paramref name="clearance"/> radius at <paramref name="point"/> would overlap an obstacle.</summary>
     public bool IsBlocked(Vector3 point, float clearance) => IsBlocked(point, clearance, _obstacles);
 
-    /// <summary>Same as <see cref="IsBlocked(Vector3,float)"/>, but also treats every completed Bramble-Wall as solid — see <see cref="ObstaclesForSpider"/>.</summary>
-    public bool IsBlockedForSpider(Vector3 point, float clearance) => IsBlocked(point, clearance, _spiderObstacles);
-
     private static bool IsBlocked(Vector3 point, float clearance, IReadOnlyList<Obstacle> obstacles)
     {
         var p = new Vector2(point.X, point.Z);
@@ -1987,9 +1989,8 @@ public sealed class World
     /// still delivered (the Bramblekin isn't left holding it forever) but
     /// doesn't raise the count. The Village Heart itself decides what to do
     /// with what's banked (Auto-Sprout, Auto-Construction — see <see cref="UpdateAutoSprout"/>/
-    /// <see cref="UpdateAutoGranary"/>/<see cref="UpdateAutoWalls"/>), all
-    /// autonomous; this is a pure God Game, so the player never spends food
-    /// directly.
+    /// <see cref="UpdateAutoGranary"/>), all autonomous; this is a pure God
+    /// Game, so the player never spends food directly.
     ///
     /// This is called from inside a Bramblekin's own Update(), which is
     /// itself inside World's reverse for-loop over Colony — so the shard's
@@ -2028,41 +2029,12 @@ public sealed class World
     {
         if (FoodStored < MaxFoodCapacity * GranaryTriggerFraction)
             return;
-        if (Blueprints.Any(b => b.Kind == BuildingKind.Granary))
+        if (Blueprints.Count > 0)
             return; // Already building one; don't queue a second.
 
         Vector3? spot = RandomPointNearVillage(GranaryPlacementRadius, Building.GranaryRadius + 0.2f);
         if (spot is { } point)
-            TryPlaceBlueprint(BuildingKind.Granary, point);
-    }
-
-    /// <summary>
-    /// Auto-Construction (Walls): every <see cref="PopulationPerWall"/> the
-    /// population has grown by (tracked via <see cref="Births"/>, which only
-    /// ever goes up), the Village Heart queues one more Bramble-Wall on a
-    /// circular perimeter <see cref="WallPerimeterRadius"/> meters out,
-    /// spaced <see cref="WallPerimeterAngleStep"/> apart. Checked every frame
-    /// in <see cref="Update"/>; if it can't afford one yet, the attempt (and
-    /// the milestone behind it) just stays queued and retries next frame.
-    /// </summary>
-    private void UpdateAutoWalls()
-    {
-        int milestonesReached = Births / PopulationPerWall;
-        if (milestonesReached > _wallMilestonesQueued)
-        {
-            _pendingWallPlacements += milestonesReached - _wallMilestonesQueued;
-            _wallMilestonesQueued = milestonesReached;
-        }
-
-        if (_pendingWallPlacements <= 0)
-            return;
-
-        Vector3 spot = Village.Center + new Vector3(MathF.Cos(_wallPerimeterAngle), 0, MathF.Sin(_wallPerimeterAngle)) * WallPerimeterRadius;
-        if (TryPlaceBlueprint(BuildingKind.Wall, spot))
-        {
-            _pendingWallPlacements--;
-            _wallPerimeterAngle += WallPerimeterAngleStep;
-        }
+            TryPlaceBlueprint(point);
     }
 
     /// <summary>A random point within <paramref name="maxRadius"/> meters of the Village Heart that isn't blocked. Null if nothing opened up in a handful of tries.</summary>
@@ -2081,20 +2053,18 @@ public sealed class World
     }
 
     /// <summary>
-    /// Village Building: spends Food Stored to place a Blueprint at
-    /// <paramref name="groundPoint"/> — called by the Village Heart's own
-    /// Auto-Construction (<see cref="UpdateAutoGranary"/>/<see cref="UpdateAutoWalls"/>).
-    /// Returns false (and spends nothing) if there isn't enough Food Stored
-    /// for the kind's cost (<see cref="GranaryFoodCost"/> or <see cref="WallFoodCost"/>).
+    /// Village Building: spends <see cref="GranaryFoodCost"/> Food Stored to
+    /// place a Granary Blueprint at <paramref name="groundPoint"/> — called
+    /// by the Village Heart's own Auto-Construction (<see cref="UpdateAutoGranary"/>).
+    /// Returns false (and spends nothing) if there isn't enough Food Stored.
     /// </summary>
-    public bool TryPlaceBlueprint(BuildingKind kind, Vector3 groundPoint)
+    public bool TryPlaceBlueprint(Vector3 groundPoint)
     {
-        int cost = kind == BuildingKind.Granary ? GranaryFoodCost : WallFoodCost;
-        if (FoodStored < cost)
+        if (FoodStored < GranaryFoodCost)
             return false;
 
-        FoodStored -= cost;
-        Blueprints.Add(new Blueprint(kind, groundPoint));
+        FoodStored -= GranaryFoodCost;
+        Blueprints.Add(new Blueprint(groundPoint));
         return true;
     }
 
@@ -2121,12 +2091,9 @@ public sealed class World
 
     /// <summary>
     /// Finishes a Blueprint once a Builder's Construction Progress reaches
-    /// its requirement: removes the site and adds the completed Building. A
-    /// Granary permanently raises <see cref="MaxFoodCapacity"/>; a
-    /// Bramble-Wall becomes a solid obstacle for the Wolf Spider (added to
-    /// <see cref="ObstaclesForSpider"/>) and for pebbles (a static physics
-    /// box) — Bramblekin are never blocked by it. Called from inside a
-    /// Bramblekin's own Update() (itself inside World's reverse for-loop
+    /// its requirement: removes the site, adds the completed Building, and
+    /// permanently raises <see cref="MaxFoodCapacity"/>. Called from inside
+    /// a Bramblekin's own Update() (itself inside World's reverse for-loop
     /// over Colony), but mutates Blueprints/Buildings directly rather than
     /// through a pending queue: nothing else iterates either list while the
     /// Colony loop is running, so — unlike Colony/FoodShards/Aphids — there's
@@ -2135,18 +2102,8 @@ public sealed class World
     public void CompleteBlueprint(Blueprint blueprint)
     {
         Blueprints.Remove(blueprint);
-        var building = new Building(blueprint.Kind, blueprint.Position);
-        Buildings.Add(building);
-
-        if (building.Kind == BuildingKind.Granary)
-        {
-            MaxFoodCapacity += GranaryFoodBonus;
-        }
-        else
-        {
-            _wallObstacles.Add(building.Obstacle);
-            Physics.AddStaticBox(building.Bounds);
-        }
+        Buildings.Add(new Building(blueprint.Position));
+        MaxFoodCapacity += GranaryFoodBonus;
     }
 
     /// <summary>Queues a new Bramblekin on a free spot right beside the Village Heart.</summary>
@@ -2211,14 +2168,6 @@ public sealed class World
             if (pebble.Position.Y - pebble.Radius < Bramblekin.BodyHeight)
                 _obstacles.Add(new Obstacle(new Vector2(pebble.Position.X, pebble.Position.Z), pebble.Radius));
         }
-
-        // The Wolf Spider additionally treats every completed Bramble-Wall as
-        // solid (Bramblekin walk straight through one, so it's left out of
-        // _obstacles above). Walls never move or disappear once built, but
-        // pebbles do, so this still has to be rebuilt every frame.
-        _spiderObstacles.Clear();
-        _spiderObstacles.AddRange(_obstacles);
-        _spiderObstacles.AddRange(_wallObstacles);
     }
 
     /// <summary>
@@ -2341,14 +2290,23 @@ public sealed class World
     }
 
     /// <summary>
-    /// Lethal Militia Swarm: a third poke landing on an already-Tumbled
-    /// spider (see WolfSpider.TumbleFromPoke, called from a Defending
-    /// Militia unit) kills it outright, the same despawn/respawn-timer path
-    /// as a direct pebble hit.
+    /// Sustained Combat: applies Militia poke damage to the spider and, if
+    /// that brings its Health to 0, kills it outright — the same
+    /// despawn/respawn-timer path as a direct pebble hit. Purely a Health
+    /// mutation otherwise: never touches State, so it can never wake a
+    /// Tumbled spider early (see the hard lock in WolfSpider.Update()).
     /// </summary>
-    public void KillSpiderBySwarm() => DespawnSpider();
+    public void DamageSpider(int amount)
+    {
+        if (Spider is null)
+            return;
 
-    /// <summary>Removes the spider, leaves a splat where it stood, and starts the respawn timer — shared by a pebble squish and a Militia swarm kill.</summary>
+        Spider.TakeDamage(amount);
+        if (Spider.Health <= 0)
+            DespawnSpider();
+    }
+
+    /// <summary>Removes the spider, leaves a splat where it stood, and starts the respawn timer — shared by a pebble squish and a Health-based kill.</summary>
     private void DespawnSpider()
     {
         if (Spider is null)
@@ -2358,63 +2316,6 @@ public sealed class World
         Spider = null;
         SpidersCrushed++;
         SpiderRespawnTimer = SpiderRespawnDelay;
-    }
-
-    /// <summary>
-    /// Wall Collision: an AABB (a completed Bramble-Wall's footprint) vs
-    /// Circle (the spider's body) check, resolved every frame regardless of
-    /// how the spider got there. Unlike the circular obstacle-avoidance it
-    /// steers around day to day (<see cref="ObstaclesForSpider"/>), this
-    /// catches a large single-frame displacement — a Gust knockback, say —
-    /// that could otherwise tunnel it straight through a wall in one jump,
-    /// by always pushing it back out along the axis of least penetration.
-    /// </summary>
-    private void ResolveSpiderWallCollisions()
-    {
-        if (Spider is null)
-            return;
-
-        Vector3 position = Spider.Position;
-        float radius = WolfSpider.BodyRadius;
-
-        foreach (var building in Buildings)
-        {
-            if (building.Kind != BuildingKind.Wall)
-                continue;
-
-            BoundingBox box = building.Bounds;
-            float closestX = Math.Clamp(position.X, box.Min.X, box.Max.X);
-            float closestZ = Math.Clamp(position.Z, box.Min.Z, box.Max.Z);
-            float dx = position.X - closestX;
-            float dz = position.Z - closestZ;
-            float distanceSquared = dx * dx + dz * dz;
-            if (distanceSquared >= radius * radius)
-                continue; // Outside the wall's footprint (grown by the spider's radius): no overlap.
-
-            if (distanceSquared > 1e-6f)
-            {
-                float distance = MathF.Sqrt(distanceSquared);
-                float push = radius - distance;
-                position += new Vector3(dx / distance, 0, dz / distance) * push;
-            }
-            else
-            {
-                // Dead centre — fully inside, with no clear outward
-                // direction from the closest-point test. Push out along
-                // whichever axis has the shallower penetration instead.
-                float centerX = (box.Min.X + box.Max.X) / 2f;
-                float centerZ = (box.Min.Z + box.Max.Z) / 2f;
-                float penetrationX = (box.Max.X - box.Min.X) / 2f + radius - MathF.Abs(position.X - centerX);
-                float penetrationZ = (box.Max.Z - box.Min.Z) / 2f + radius - MathF.Abs(position.Z - centerZ);
-                if (penetrationX < penetrationZ)
-                    position.X += position.X >= centerX ? penetrationX : -penetrationX;
-                else
-                    position.Z += position.Z >= centerZ ? penetrationZ : -penetrationZ;
-            }
-        }
-
-        if (position != Spider.Position)
-            Spider.WarpPosition(position);
     }
 
     private void UpdateSpiderRespawn(float deltaTime)
@@ -2577,65 +2478,26 @@ public sealed class FoodShard
 //  Village Building
 // =============================================================================
 
-/// <summary>A completed structure's kind — what a Blueprint becomes once finished.</summary>
-public enum BuildingKind
-{
-    /// <summary>Permanently raises <see cref="World.MaxFoodCapacity"/> by <see cref="World.GranaryFoodBonus"/>. Doesn't block anything.</summary>
-    Granary,
-
-    /// <summary>Blocks the Wolf Spider and pebbles; Bramblekin walk straight through it.</summary>
-    Wall,
-}
-
-/// <summary>
-/// A finished piece of Village Building: a Granary (raises the food cap) or a
-/// Bramble-Wall (a solid obstacle for the spider and pebbles, but not for
-/// Bramblekin — see <see cref="World.ObstaclesForSpider"/>).
-/// </summary>
+/// <summary>A finished piece of Village Building: a Granary, which permanently raises the food cap.</summary>
 public sealed class Building
 {
     public const float GranaryRadius = 0.7f;
     public const float GranaryHeight = 1.1f;
-    public const float WallWidth = 1.6f;
-    public const float WallDepth = 0.5f;
-    public const float WallHeight = 0.9f;
 
-    public BuildingKind Kind { get; }
     public Vector3 Position { get; }
 
-    public Building(BuildingKind kind, Vector3 position)
-    {
-        Kind = kind;
-        Position = position;
-    }
-
-    /// <summary>The Bramble-Wall's circular footprint, used for the spider/GroundMover's circle-based obstacle system.</summary>
-    public Obstacle Obstacle => new(new Vector2(Position.X, Position.Z), WallWidth / 2f * 1.1f);
-
-    /// <summary>The Bramble-Wall's box, used for pebble physics (<see cref="PhysicsManager.AddStaticBox"/>).</summary>
-    public BoundingBox Bounds => new(
-        new Vector3(Position.X - WallWidth / 2f, Terrain.GroundHeight, Position.Z - WallDepth / 2f),
-        new Vector3(Position.X + WallWidth / 2f, Terrain.GroundHeight + WallHeight, Position.Z + WallDepth / 2f));
+    public Building(Vector3 position) => Position = position;
 
     public void Draw()
     {
-        if (Kind == BuildingKind.Granary)
-        {
-            var center = Position + new Vector3(0, GranaryHeight / 2f, 0);
-            Raylib.DrawCylinder(center, GranaryRadius, GranaryRadius, GranaryHeight, 16, new Color(180, 140, 70, 255));
-            Raylib.DrawCylinderWires(center, GranaryRadius, GranaryRadius, GranaryHeight, 16, new Color(90, 65, 30, 255));
-        }
-        else
-        {
-            var center = Position + new Vector3(0, WallHeight / 2f, 0);
-            Raylib.DrawCube(center, WallWidth, WallHeight, WallDepth, new Color(140, 120, 95, 255));
-            Raylib.DrawCubeWires(center, WallWidth, WallHeight, WallDepth, new Color(70, 55, 40, 255));
-        }
+        var center = Position + new Vector3(0, GranaryHeight / 2f, 0);
+        Raylib.DrawCylinder(center, GranaryRadius, GranaryRadius, GranaryHeight, 16, new Color(180, 140, 70, 255));
+        Raylib.DrawCylinderWires(center, GranaryRadius, GranaryRadius, GranaryHeight, 16, new Color(90, 65, 30, 255));
     }
 }
 
 /// <summary>
-/// A Village Building site under construction: placed for Food Stored via
+/// A Granary site under construction: placed for Food Stored via
 /// <see cref="World.TryPlaceBlueprint"/>, then worked on by idle Gatherers
 /// (the Builder AI, <see cref="Bramblekin"/>'s Building state) until its
 /// Construction Progress reaches <see cref="ProgressRequired"/>, at which
@@ -2643,21 +2505,14 @@ public sealed class Building
 /// </summary>
 public sealed class Blueprint
 {
-    private const float GranaryProgressRequired = 10f;
-    private const float WallProgressRequired = 5f;
+    public const float ProgressRequired = 10f;
 
-    public BuildingKind Kind { get; }
     public Vector3 Position { get; }
     public float Progress { get; private set; }
 
-    public float ProgressRequired => Kind == BuildingKind.Granary ? GranaryProgressRequired : WallProgressRequired;
     public bool IsComplete => Progress >= ProgressRequired;
 
-    public Blueprint(BuildingKind kind, Vector3 position)
-    {
-        Kind = kind;
-        Position = position;
-    }
+    public Blueprint(Vector3 position) => Position = position;
 
     public void AddProgress(float amount) => Progress = MathF.Min(Progress + amount, ProgressRequired);
 
@@ -2668,20 +2523,10 @@ public sealed class Blueprint
         var fill = new Color(255, 255, 255, 90);
         var wire = new Color(210, 200, 70, 200);
 
-        if (Kind == BuildingKind.Granary)
-        {
-            var wireCenter = Position + new Vector3(0, Building.GranaryHeight / 2f, 0);
-            Raylib.DrawCylinderWires(wireCenter, Building.GranaryRadius, Building.GranaryRadius, Building.GranaryHeight, 16, wire);
-            float height = Building.GranaryHeight * t;
-            Raylib.DrawCylinder(Position + new Vector3(0, height / 2f, 0), Building.GranaryRadius, Building.GranaryRadius, height, 16, fill);
-        }
-        else
-        {
-            var wireCenter = Position + new Vector3(0, Building.WallHeight / 2f, 0);
-            Raylib.DrawCubeWires(wireCenter, Building.WallWidth, Building.WallHeight, Building.WallDepth, wire);
-            float height = Building.WallHeight * t;
-            Raylib.DrawCube(Position + new Vector3(0, height / 2f, 0), Building.WallWidth, height, Building.WallDepth, fill);
-        }
+        var wireCenter = Position + new Vector3(0, Building.GranaryHeight / 2f, 0);
+        Raylib.DrawCylinderWires(wireCenter, Building.GranaryRadius, Building.GranaryRadius, Building.GranaryHeight, 16, wire);
+        float height = Building.GranaryHeight * t;
+        Raylib.DrawCylinder(Position + new Vector3(0, height / 2f, 0), Building.GranaryRadius, Building.GranaryRadius, height, 16, fill);
     }
 }
 
@@ -2758,14 +2603,12 @@ public sealed class GroundMover
     /// out of any obstacle the displacement landed it inside, exactly as
     /// normal movement would. Doesn't touch the current target/detour or
     /// stuck-detection: whatever the body was doing, it keeps doing it from
-    /// its new spot. <paramref name="obstaclesOverride"/> lets the Wolf
-    /// Spider push out against <see cref="World.ObstaclesForSpider"/> (which
-    /// includes Bramble-Walls) instead of the default <see cref="World.Obstacles"/>.
+    /// its new spot.
     /// </summary>
-    public void Nudge(Vector3 offset, World world, IReadOnlyList<Obstacle>? obstaclesOverride = null)
+    public void Nudge(Vector3 offset, World world)
     {
         Position += offset;
-        PushOutOfObstacles(obstaclesOverride ?? world.Obstacles);
+        PushOutOfObstacles(world.Obstacles);
         ClampToTerrain(world.Terrain);
     }
 
@@ -2773,15 +2616,11 @@ public sealed class GroundMover
     /// Moves toward <paramref name="target"/> at <paramref name="speed"/>,
     /// steering around obstacles, then pushes the body back out of anything
     /// it still overlaps. <paramref name="isSafeSpot"/> vets detour points.
-    /// <paramref name="obstaclesOverride"/> lets the Wolf Spider steer/collide
-    /// against <see cref="World.ObstaclesForSpider"/> instead of the default
-    /// <see cref="World.Obstacles"/>, so it — unlike a Bramblekin — is blocked
-    /// by a completed Bramble-Wall. Returns true on arrival.
+    /// Returns true on arrival.
     /// </summary>
-    public bool MoveTowards(Vector3 target, float speed, float deltaTime, World world, Func<Vector3, bool> isSafeSpot,
-                             IReadOnlyList<Obstacle>? obstaclesOverride = null)
+    public bool MoveTowards(Vector3 target, float speed, float deltaTime, World world, Func<Vector3, bool> isSafeSpot)
     {
-        IReadOnlyList<Obstacle> obstacles = obstaclesOverride ?? world.Obstacles;
+        IReadOnlyList<Obstacle> obstacles = world.Obstacles;
         float step = speed * deltaTime;
         CheckIfStuck(target, step, deltaTime, world, isSafeSpot);
 
@@ -2994,9 +2833,11 @@ public enum BramblekinRole
 ///   1. God's Shadow (always wins, every role): standing under a shadow drops
 ///      any carried food and sends it Fleeing at 3x speed to the nearest safe
 ///      spot — even with a spider on its tail.
-///   2. The Wolf Spider, within <see cref="FearRadius"/>: a Gatherer drops
-///      its food and Flees directly away; a Militia unit instead Defends —
-///      charging in to stand between the spider and the Village Heart.
+///   2. The Wolf Spider: a Militia unit's absolute highest priority the
+///      instant one exists, at any distance — it abandons anything else
+///      (Aphids included) and Defends, closing in to trade blows with it.
+///      A Gatherer only reacts once the spider is within <see cref="FearRadius"/>,
+///      dropping its food and Fleeing directly away.
 ///   3. Economy (Gatherers only): while Food Shards are available, wandering
 ///      (Walking/Pausing) is overridden by Gathering -> pick up ->
 ///      Returning -> deliver.
@@ -3007,8 +2848,8 @@ public enum BramblekinRole
 ///
 /// Gathering and Returning Bramblekin shake the ground; that is what the Wolf
 /// Spider hunts by (<see cref="IsVibrating"/>). Militia never gather, so they
-/// never draw that attention — the spider only notices them by running into
-/// one (see WolfSpider's Pike Defense in Pounce()).
+/// never draw that attention — the spider only ever engages one through the
+/// Bite/Poke exchange once it's within range.
 /// </summary>
 public sealed class Bramblekin
 {
@@ -3053,13 +2894,6 @@ public sealed class Bramblekin
     /// <summary>How far from the spider, back toward the Village Heart, a defending Militia tries to stand.</summary>
     private const float InterceptStandoff = 1.2f;
 
-    /// <summary>
-    /// Beyond this distance (m) from the spider, a Defending Militia gives up
-    /// and goes back to its own business. Larger than <see cref="FearRadius"/>
-    /// so it doesn't flicker in and out right at the trigger boundary.
-    /// </summary>
-    private const float DisengageRadius = FearRadius * 2f;
-
     /// <summary>Speed while chasing an Aphid.</summary>
     private const float HuntSpeed = WalkSpeed;
 
@@ -3069,11 +2903,14 @@ public sealed class Bramblekin
     /// <summary>Within this distance of a Blueprint, a Builder is close enough to work it.</summary>
     private const float BuildContactDistance = BodyRadius + 1.0f;
 
-    /// <summary>Active Militia Combat: within this distance of the Wolf Spider, a Defending Militia unit pokes it instead of just standing guard.</summary>
+    /// <summary>Sustained Combat: within this distance of the Wolf Spider, a Defending Militia unit pokes it instead of just closing in.</summary>
     private const float PokeRange = 1.5f;
 
-    /// <summary>Cooldown (s) between pokes, so a Militia unit can't spam the spider into a permanent stun-lock.</summary>
-    private const float PokeCooldownDuration = 5f;
+    /// <summary>Cooldown (s) between pokes — rapid, so Militia can wail on a spider (especially a Tumbled one) quickly.</summary>
+    private const float PokeCooldownDuration = 1.0f;
+
+    /// <summary>Damage a Militia poke deals to the Wolf Spider.</summary>
+    private const int PokeDamage = 15;
 
     private static readonly Color CalmColor = new(196, 160, 110, 255);   // Bark brown.
     private static readonly Color PanicColor = new(225, 85, 60, 255);    // Alarm red.
@@ -3109,6 +2946,11 @@ public sealed class Bramblekin
     /// <summary>Busy workers (gathering or hauling food) make vibrations a Wolf Spider can feel. A dead Bramblekin never vibrates.</summary>
     public bool IsVibrating => !IsDead && State is BramblekinState.Gathering or BramblekinState.Returning;
 
+    /// <summary>Hit points out of <see cref="MaxHealth"/>. Only a Militia unit ever takes damage (the spider's Bite), but every Bramblekin tracks it.</summary>
+    public int Health { get; private set; } = MaxHealth;
+
+    public const int MaxHealth = 30;
+
     public Bramblekin(Vector3 position, Random rng)
     {
         _rng = rng;
@@ -3117,6 +2959,21 @@ public sealed class Bramblekin
         // Start mid-pause with a random timer so the colony doesn't move in lockstep.
         SetState(BramblekinState.Pausing);
         _pauseTimer = (float)rng.NextDouble() * PauseDuration;
+    }
+
+    /// <summary>
+    /// Sustained Combat: the Wolf Spider's Bite. Reduces Health and, if that
+    /// brings it to 0, dies via <see cref="World.Kill"/> (the usual
+    /// drop-food/Casualties/Morale/deferred-removal path).
+    /// </summary>
+    public void TakeDamage(int amount, World world)
+    {
+        if (IsDead)
+            return;
+
+        Health = Math.Max(0, Health - amount);
+        if (Health <= 0)
+            world.Kill(this);
     }
 
     /// <summary>
@@ -3195,29 +3052,27 @@ public sealed class Bramblekin
                 SetState(BramblekinState.Fleeing);
             }
         }
-        // --- 2. The Wolf Spider: Gatherers flee, Militia defends --------------
-        // Re-aimed every frame while the spider is close, so a fleeing
-        // Gatherer keeps running straight away and a defending Militia keeps
-        // adjusting where it's standing as the spider moves.
-        else if (world.Spider is { } spider &&
-                 GroundMover.HorizontalDistance(Position, spider.Position) < FearRadius)
+        // --- 2. The Wolf Spider: Militia's absolute top priority at any
+        // distance the instant one exists; a Gatherer only flees once it's
+        // within FearRadius. Re-aimed every frame, so a defending Militia
+        // keeps adjusting where it's standing (and a fleeing Gatherer keeps
+        // running straight away) as the spider moves.
+        else if (Role == BramblekinRole.Militia && world.Spider is { } spider)
         {
-            if (Role == BramblekinRole.Militia)
-            {
-                _target = ComputeInterceptPoint(spider, world);
-                if (State != BramblekinState.Defending)
-                {
-                    DropCarried();
-                    SetState(BramblekinState.Defending);
-                }
-            }
-            else
+            _target = ComputeInterceptPoint(spider, world);
+            if (State != BramblekinState.Defending)
             {
                 DropCarried();
-                _target = FindPointAwayFrom(spider.Position, world);
-                if (State != BramblekinState.Fleeing)
-                    SetState(BramblekinState.Fleeing);
+                SetState(BramblekinState.Defending);
             }
+        }
+        else if (Role == BramblekinRole.Gatherer && world.Spider is { } nearSpider &&
+                 GroundMover.HorizontalDistance(Position, nearSpider.Position) < FearRadius)
+        {
+            DropCarried();
+            _target = FindPointAwayFrom(nearSpider.Position, world);
+            if (State != BramblekinState.Fleeing)
+                SetState(BramblekinState.Fleeing);
         }
 
         // --- 3. Economy overrides wandering (Gatherers only) -------------------
@@ -3415,9 +3270,12 @@ public sealed class Bramblekin
 
     private void UpdateDefending(float deltaTime, World world)
     {
-        // The spider is gone or has wandered well clear: stand down.
-        if (world.Spider is not { } spider ||
-            GroundMover.HorizontalDistance(Position, spider.Position) > DisengageRadius)
+        // The spider is gone (crushed, or its own Health ran out): stand
+        // down. Unlike before, there's no distance-based disengage any
+        // more — the spider is Militia's top priority at any range (see
+        // Update()'s priority chain), so it keeps closing in until it's
+        // actually dead.
+        if (world.Spider is not { } spider)
         {
             StartWandering(world);
             return;
@@ -3425,18 +3283,16 @@ public sealed class Bramblekin
 
         _target = ComputeInterceptPoint(spider, world);
 
-        // Active Militia Combat: close enough to jab it directly, rather than
-        // just standing guard and waiting to block a pounce. Forces the
-        // spider into Tumbled immediately, on a per-unit cooldown so a
-        // handful of Militia can't spam it into a permanent stun-lock. A
-        // third poke landing on an already-Tumbled spider (the Lethal
-        // Militia Swarm) kills it outright.
+        // Sustained Combat: close enough to jab it directly, dealing
+        // PokeDamage. A fast, per-unit cooldown lets Militia wail on it
+        // rapidly, especially a Tumbled spider that can't fight back. This
+        // is pure Health damage -- it never touches the spider's State, so
+        // it can't wake a Tumbled spider early (see the hard lock in
+        // WolfSpider.Update()).
         if (_pokeCooldown <= 0f && GroundMover.HorizontalDistance(Position, spider.Position) <= PokeRange)
         {
-            bool lethal = spider.TumbleFromPoke();
+            world.DamageSpider(PokeDamage);
             _pokeCooldown = PokeCooldownDuration;
-            if (lethal)
-                world.KillSpiderBySwarm();
         }
 
         _mover.MoveTowards(_target, DefendSpeed, deltaTime, world, p => IsSafeSpot(p, world));
@@ -3607,9 +3463,15 @@ public enum SpiderState
 ///
 /// A second counter, The Gust, always knocks it back physically; if it was
 /// actively Hunting or Pouncing, that shove also tumbles it — stunned,
-/// doing nothing — for <see cref="TumbledDuration"/> seconds. A third: Pike
-/// Defense, when a Pounce lands on a Militia unit instead of a Gatherer —
-/// the unit survives and the failed pounce tumbles the spider the same way.
+/// doing nothing — for <see cref="TumbledDuration"/> seconds, a strict lock
+/// (see the early return at the top of Update()): nothing, not even taking
+/// Poke damage, can end it early.
+///
+/// Sustained Combat: Militia don't just block a Pounce any more — see
+/// Bramblekin's Defending state, they close in and Poke it (damage, on a
+/// fast cooldown) whenever they're in range, stunned or not. While awake
+/// (not Tumbled) and a Militia unit gets close enough, it Bites back on its
+/// own cooldown. Health reaching 0, from either side, is death.
 /// </summary>
 public sealed class WolfSpider
 {
@@ -3637,6 +3499,18 @@ public sealed class WolfSpider
     /// <summary>How long a Gust-tumbled spider is stunned for, in seconds.</summary>
     public const float TumbledDuration = 4f;
 
+    /// <summary>Hit points out of <see cref="MaxHealth"/>.</summary>
+    public const int MaxHealth = 100;
+
+    /// <summary>Sustained Combat: how close a Militia unit must be for the spider to Bite it.</summary>
+    private const float BiteRange = 1.5f;
+
+    /// <summary>Bite damage dealt to the nearest Militia unit in range.</summary>
+    private const int BiteDamage = 15;
+
+    /// <summary>Cooldown (s) between Bites.</summary>
+    private const float BiteCooldownDuration = 1.5f;
+
     /// <summary>
     /// Seconds a hunt continues after the target stops vibrating (e.g. it
     /// panicked and dropped its food) before the spider gives up on it.
@@ -3661,6 +3535,7 @@ public sealed class WolfSpider
     private Vector2 _pounceDirection;
     private bool _staring;
     private float _walkCycle;              // Leg animation phase.
+    private float _biteCooldown;
 
     public Vector3 Position => _mover.Position;
 
@@ -3669,8 +3544,8 @@ public sealed class WolfSpider
     /// <summary>Bramblekin killed so far.</summary>
     public int Kills { get; private set; }
 
-    /// <summary>Lethal Militia Swarm: how many times a Militia poke has landed while already Tumbled this stun. Reset to 0 whenever it recovers (see <see cref="StartProwling"/>).</summary>
-    public int PokesReceived { get; private set; }
+    /// <summary>Hit points out of <see cref="MaxHealth"/>.</summary>
+    public int Health { get; private set; } = MaxHealth;
 
     public WolfSpider(Vector3 position, Random rng)
     {
@@ -3681,12 +3556,12 @@ public sealed class WolfSpider
     }
 
     /// <summary>
-    /// Wall Collision: lets World directly reposition the spider after
-    /// resolving an AABB-vs-circle overlap with a Bramble-Wall
-    /// (World.ResolveSpiderWallCollisions) — a hard correction, not a normal
-    /// step, so it bypasses GroundMover's obstacle/terrain handling entirely.
+    /// Sustained Combat: a Militia poke's damage. Purely a Health mutation —
+    /// never touches State — so it can never wake a Tumbled spider early
+    /// (see the hard lock at the top of Update()). Death itself (Health
+    /// reaching 0) is World's call, not this method's: see World.DamageSpider.
     /// </summary>
-    public void WarpPosition(Vector3 position) => _mover.Position = position;
+    public void TakeDamage(int amount) => Health = Math.Max(0, Health - amount);
 
     public void Update(float deltaTime, World world)
     {
@@ -3694,20 +3569,31 @@ public sealed class WolfSpider
 
         // Tumbled is a hard lock, checked and handled before anything else
         // in this method — the prey safety net, the pebble-thud distraction,
-        // every bit of vision/AI below. Nothing can re-target, re-notice or
-        // otherwise step on the stun early; the only way out is the timer
-        // running down. This used to be one case at the end of the switch
-        // below, reachable only if nothing upstream happened to touch state
-        // first — exactly the kind of thing a new interrupt source (a Pike
-        // Defense block, say) could quietly break. A dedicated early return
-        // makes that structurally impossible instead of relying on every
-        // future addition to remember to check for it.
+        // the Bite retaliation below, every bit of vision/AI. Nothing can
+        // re-target, re-notice, retaliate or otherwise step on the stun
+        // early — not even taking Poke damage (TakeDamage is a pure Health
+        // mutation that never touches State); the only way out is the timer
+        // counting all the way down to zero on its own. A dedicated early
+        // return makes that structurally impossible to short-circuit,
+        // rather than relying on every future addition to remember to check
+        // for it.
         if (State == SpiderState.Tumbled)
         {
             _timer -= deltaTime;
             if (_timer <= 0f)
                 StartProwling();
             return;
+        }
+
+        // Sustained Combat: while awake, retaliate against the nearest
+        // Militia unit in range on its own cooldown, regardless of what else
+        // it's otherwise doing (prowling, hunting, even mid-pounce) — a
+        // reflex, not a deliberate target choice the way Hunt/Pounce are.
+        _biteCooldown = MathF.Max(0f, _biteCooldown - deltaTime);
+        if (_biteCooldown <= 0f && NearestMilitiaInRange(world, BiteRange) is { } target)
+        {
+            target.TakeDamage(BiteDamage, world);
+            _biteCooldown = BiteCooldownDuration;
         }
 
         // Safety net: if the Bramblekin we're tracking died or vanished by
@@ -3791,7 +3677,7 @@ public sealed class WolfSpider
     /// </summary>
     public void ApplyWindPush(Vector3 push, World world)
     {
-        _mover.Nudge(push, world, world.ObstaclesForSpider);
+        _mover.Nudge(push, world);
 
         if (State is SpiderState.Hunting or SpiderState.Pouncing)
         {
@@ -3799,34 +3685,6 @@ public sealed class WolfSpider
             _timer = TumbledDuration;
             SetState(SpiderState.Tumbled);
         }
-    }
-
-    /// <summary>Lethal Militia Swarm: this many mid-stun pokes (see <see cref="PokesReceived"/>) kills the spider outright.</summary>
-    public const int LethalPokeCount = 3;
-
-    /// <summary>
-    /// Active Militia Combat: a Defending Militia unit that closes to poke
-    /// range forces an immediate Tumble, same duration as a Gust knockback or
-    /// a Pike Defense block. A poke landing on an already-Tumbled spider
-    /// doesn't restart or extend the stun — it counts toward <see cref="PokesReceived"/>
-    /// instead (the Lethal Militia Swarm), and once that reaches <see cref="LethalPokeCount"/>
-    /// this returns true. WolfSpider doesn't own its own despawn/respawn
-    /// state, so it's the caller's job to actually kill it on a true (see
-    /// World.KillSpiderBySwarm, called from Bramblekin's poke).
-    /// </summary>
-    public bool TumbleFromPoke()
-    {
-        if (State == SpiderState.Tumbled)
-        {
-            PokesReceived++;
-            return PokesReceived >= LethalPokeCount;
-        }
-
-        _prey = null;
-        _timer = TumbledDuration;
-        PokesReceived = 0;
-        SetState(SpiderState.Tumbled);
-        return false;
     }
 
     // --- States ---------------------------------------------------------------------
@@ -3845,7 +3703,7 @@ public sealed class WolfSpider
             return;
         }
 
-        if (_mover.MoveTowards(_target, ProwlSpeed, deltaTime, world, p => !world.IsBlockedForSpider(p, BodyRadius), world.ObstaclesForSpider))
+        if (_mover.MoveTowards(_target, ProwlSpeed, deltaTime, world, p => !world.IsBlocked(p, BodyRadius)))
             _timer = ProwlPauseDuration;
     }
 
@@ -3889,50 +3747,37 @@ public sealed class WolfSpider
             return;
         }
 
-        _mover.MoveTowards(_prey.Position, HuntSpeed, deltaTime, world, p => !world.IsBlockedForSpider(p, BodyRadius), world.ObstaclesForSpider);
+        _mover.MoveTowards(_prey.Position, HuntSpeed, deltaTime, world, p => !world.IsBlocked(p, BodyRadius));
     }
 
     private void Pounce(float deltaTime, World world)
     {
-        // Dash along the committed direction (still solid against rocks and walls).
+        // Dash along the committed direction (still solid against rocks).
         var dashTarget = Position + new Vector3(_pounceDirection.X, 0, _pounceDirection.Y) * (PounceSpeed * deltaTime + 0.01f);
-        _mover.MoveTowards(dashTarget, PounceSpeed, deltaTime, world, _ => false, world.ObstaclesForSpider);
+        _mover.MoveTowards(dashTarget, PounceSpeed, deltaTime, world, _ => false);
         _mover.Heading = _pounceDirection;
 
-        // Anything it touches mid-pounce: a Militia unit in range always
-        // wins the check over a Gatherer (it's there to intercept, that's
-        // the point of the Phalanx), even if both would technically overlap
-        // at once. Reverse for-loop: World.Kill only queues the removal now,
-        // so Colony never actually changes size during this walk, but the
-        // pattern stays consistent everywhere.
-        Bramblekin? militiaHit = null;
+        // Anything it touches mid-pounce: only a Gatherer is caught this way
+        // (Pounce is the spider hunting vibrating prey, and Militia never
+        // vibrate — see IsVibrating). A Militia unit that happens to be
+        // standing in the way no longer blocks or interrupts the pounce;
+        // sustained Militia-vs-spider combat is handled entirely by the
+        // Poke/Bite exchange in UpdateDefending/Update instead. Reverse
+        // for-loop: World.Kill only queues the removal now, so Colony never
+        // actually changes size during this walk, but the pattern stays
+        // consistent everywhere.
         Bramblekin? gathererHit = null;
         for (int i = world.Colony.Count - 1; i >= 0; i--)
         {
             Bramblekin bramblekin = world.Colony[i];
-            if (bramblekin.IsDead)
+            if (bramblekin.IsDead || bramblekin.Role != BramblekinRole.Gatherer)
                 continue;
 
             if (GroundMover.HorizontalDistance(Position, bramblekin.Position) >= BodyRadius + Bramblekin.BodyRadius)
                 continue;
 
-            if (bramblekin.Role == BramblekinRole.Militia)
-            {
-                militiaHit = bramblekin;
-                break; // Found the one that matters; no need to keep scanning.
-            }
-            gathererHit ??= bramblekin;
-        }
-
-        if (militiaHit is not null)
-        {
-            // Pike Defense: the pounce is blocked, not a kill. The Militia
-            // unit survives; the shove that would have been the kill instead
-            // knocks the spider straight into Tumbled.
-            _prey = null;
-            _timer = TumbledDuration;
-            SetState(SpiderState.Tumbled);
-            return;
+            gathererHit = bramblekin;
+            break;
         }
 
         if (gathererHit is not null)
@@ -3969,7 +3814,7 @@ public sealed class WolfSpider
             }
             else
             {
-                _mover.MoveTowards(_target, HuntSpeed, deltaTime, world, p => !world.IsBlockedForSpider(p, BodyRadius), world.ObstaclesForSpider);
+                _mover.MoveTowards(_target, HuntSpeed, deltaTime, world, p => !world.IsBlocked(p, BodyRadius));
             }
             return;
         }
@@ -3990,7 +3835,6 @@ public sealed class WolfSpider
     {
         _prey = null;
         _timer = ProwlPauseDuration;
-        PokesReceived = 0; // A fresh stun (or none) starts the swarm-kill count over.
         SetState(SpiderState.Prowling);
     }
 
@@ -4027,6 +3871,27 @@ public sealed class WolfSpider
             // IsVibrating is already false for a dead Bramblekin; checked
             // again explicitly so this never targets one even if that changes.
             if (bramblekin.IsDead || !bramblekin.IsVibrating)
+                continue;
+
+            float distance = GroundMover.HorizontalDistance(Position, bramblekin.Position);
+            if (distance <= bestDistance)
+            {
+                best = bramblekin;
+                bestDistance = distance;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>The nearest living Militia unit within <paramref name="range"/>, if any — the Bite's target.</summary>
+    private Bramblekin? NearestMilitiaInRange(World world, float range)
+    {
+        Bramblekin? best = null;
+        float bestDistance = range;
+        for (int i = world.Colony.Count - 1; i >= 0; i--)
+        {
+            Bramblekin bramblekin = world.Colony[i];
+            if (bramblekin.IsDead || bramblekin.Role != BramblekinRole.Militia)
                 continue;
 
             float distance = GroundMover.HorizontalDistance(Position, bramblekin.Position);
