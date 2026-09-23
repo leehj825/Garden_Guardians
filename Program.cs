@@ -274,14 +274,37 @@ public sealed class Terrain
 /// A minimal rigid body: a sphere with a position, a velocity and a radius.
 /// No rotation — pebbles slide rather than truly roll — but that is plenty
 /// for stacking, rolling off each other and coming to rest.
+///
+/// Every object has a limited lifetime. Over its last
+/// <see cref="ShrinkDuration"/> seconds it shrinks to nothing (so anything
+/// resting on it settles gently and walkers can pass), then it is removed.
 /// </summary>
 public sealed class PhysicsObject
 {
+    /// <summary>How long the shrink-away at the end of an object's life takes, in seconds.</summary>
+    public const float ShrinkDuration = 1.5f;
+
+    private readonly float _fullRadius;
+
     public Vector3 Position;
     public Vector3 Velocity;
 
-    /// <summary>Sphere radius in meters.</summary>
-    public float Radius { get; }
+    /// <summary>Current sphere radius in meters (shrinks at the end of the object's life).</summary>
+    public float Radius => _fullRadius * Scale;
+
+    /// <summary>Seconds since the object was spawned.</summary>
+    public float Age { get; private set; }
+
+    /// <summary>Total lifetime in seconds; the object is removed when <see cref="Age"/> reaches it.</summary>
+    public float Lifetime { get; }
+
+    /// <summary>1 for most of its life, falling to 0 during the final shrink.</summary>
+    public float Scale => Math.Clamp((Lifetime - Age) / ShrinkDuration, 0f, 1f);
+
+    /// <summary>True once the object has started shrinking away.</summary>
+    public bool IsExpiring => Age >= Lifetime - ShrinkDuration;
+
+    public bool IsExpired => Age >= Lifetime;
 
     /// <summary>Mass in kilograms. Heavier bodies are pushed less in collisions.</summary>
     public float Mass { get; }
@@ -296,17 +319,26 @@ public sealed class PhysicsObject
     /// <summary>True while the sphere is clearly above the ground (falling or perched on something).</summary>
     public bool IsAirborne => Position.Y - Radius > Terrain.GroundHeight + 0.05f;
 
-    public PhysicsObject(Vector3 position, float radius, float mass, Color color)
+    public PhysicsObject(Vector3 position, float radius, float mass, Color color, float lifetime = float.PositiveInfinity)
     {
         Position = position;
         Velocity = Vector3.Zero;
-        Radius = radius;
+        _fullRadius = radius;
         Mass = mass;
         Color = color;
+        Lifetime = lifetime;
     }
+
+    public void Tick(float deltaTime) => Age += deltaTime;
+
+    /// <summary>Skips ahead to the start of the shrink-away (no-op if already shrinking).</summary>
+    public void Expire() => Age = MathF.Max(Age, Lifetime - ShrinkDuration);
 
     public void Draw()
     {
+        if (Radius <= 0.001f)
+            return;
+
         Raylib.DrawSphere(Position, Radius, Color);
         Raylib.DrawSphereWires(Position, Radius, 8, 8, new Color(0, 0, 0, 60));
     }
@@ -325,6 +357,10 @@ public readonly record struct GroundImpact(PhysicsObject Body, Vector3 Point, fl
 ///      pass lets a stack settle: pushing one pair apart can create a new
 ///      overlap with a third sphere or the ground, which the next pass fixes.
 ///   4. Ground friction, so rocks that rolled off a pile come to rest.
+///   5. Age every object and remove the ones whose lifetime is over.
+///
+/// At most <see cref="MaxObjects"/> objects exist at once: adding one past
+/// the cap makes the oldest start shrinking away early.
 /// </summary>
 public sealed class PhysicsManager
 {
@@ -346,6 +382,13 @@ public sealed class PhysicsManager
     /// <summary>Landings faster than this (m/s) are reported as impacts.</summary>
     private const float ImpactSpeed = 3f;
 
+    /// <summary>
+    /// Most objects allowed at once. Keeps the garden readable and the
+    /// all-pairs collision check (which grows with the square of the count)
+    /// cheap on phones.
+    /// </summary>
+    public const int MaxObjects = 25;
+
     private readonly float _terrainHalfSize;
     private readonly List<PhysicsObject> _objects = new();
     private readonly List<BoundingBox> _staticBoxes = new();
@@ -360,7 +403,15 @@ public sealed class PhysicsManager
     /// <summary>Hard ground landings that happened during the last <see cref="Update"/>.</summary>
     public IReadOnlyList<GroundImpact> Impacts => _impacts;
 
-    public void Add(PhysicsObject obj) => _objects.Add(obj);
+    public void Add(PhysicsObject obj)
+    {
+        _objects.Add(obj);
+
+        // Over the cap: retire the oldest objects that aren't already on their way out.
+        int surplus = _objects.Count(o => !o.IsExpiring) - MaxObjects;
+        foreach (var oldest in _objects.Where(o => !o.IsExpiring).OrderByDescending(o => o.Age).Take(surplus).ToList())
+            oldest.Expire();
+    }
 
     /// <summary>Adds an immovable box (e.g. a building) that spheres collide with.</summary>
     public void AddStaticBox(BoundingBox box) => _staticBoxes.Add(box);
@@ -407,6 +458,11 @@ public sealed class PhysicsManager
                 obj.Velocity.Z = 0f;
             }
         }
+
+        // 5) Lifetimes.
+        foreach (var obj in _objects)
+            obj.Tick(deltaTime);
+        _objects.RemoveAll(o => o.IsExpired);
     }
 
     /// <summary>
@@ -694,6 +750,13 @@ public sealed class MiracleManager
     /// <summary>Pebble mass in kilograms (placeholder for future impact damage).</summary>
     public const float PebbleMass = 2f;
 
+    /// <summary>
+    /// How long a dropped pebble stays in the garden, in seconds, before it
+    /// shrinks away. Together with <see cref="PhysicsManager.MaxObjects"/>
+    /// this stops the map from silting up with rocks.
+    /// </summary>
+    public const float PebbleLifetime = 30f;
+
     private readonly List<GodShadow> _shadows = new();
 
     /// <summary>Shadows currently on the ground. Bramblekin read this to decide when to flee.</summary>
@@ -717,7 +780,7 @@ public sealed class MiracleManager
                 continue;
 
             var spawn = shadow.Center + new Vector3(0, PebbleSpawnHeight, 0);
-            physics.Add(new PhysicsObject(spawn, PebbleRadius, PebbleMass, Color.Gray));
+            physics.Add(new PhysicsObject(spawn, PebbleRadius, PebbleMass, Color.Gray, PebbleLifetime));
             _shadows.RemoveAt(i);
         }
     }
@@ -753,7 +816,8 @@ public readonly record struct Obstacle(Vector2 Center, float Radius);
 /// acorn, food shards and the colony — and steps it in a fixed order:
 ///
 ///   miracles (shadows, pebble release) -> physics (+ acorn cracking)
-///   -> obstacle list -> Bramblekin -> acorn respawn
+///   -> obstacle list -> shove food out from under rocks -> Bramblekin
+///   -> acorn respawn
 /// </summary>
 public sealed class World
 {
@@ -812,6 +876,7 @@ public sealed class World
         CrackAcornOnImpact();
 
         RebuildObstacles();
+        PushFoodOutOfObstacles();
         foreach (var bramblekin in Colony)
             bramblekin.Update(deltaTime, this);
 
@@ -861,9 +926,10 @@ public sealed class World
     }
 
     /// <summary>
-    /// A shard can be gathered if nobody is carrying it, no pebble is sitting
-    /// on it, and no God's Shadow is over it (walking in there would be
-    /// suicidal).
+    /// A shard can be gathered if nobody is carrying it and no God's Shadow
+    /// is over it (walking in there would be suicidal). Rocks never cover
+    /// shards — they shove them aside — but the blocked check stays as a
+    /// safety net for a shard wedged somewhere unreachable.
     /// </summary>
     public bool IsAvailable(FoodShard shard) =>
         !shard.IsCarried && !IsBlocked(shard.Position, 0f) && ShadowOver(shard.Position, FoodShard.Radius) is null;
@@ -925,6 +991,48 @@ public sealed class World
         {
             if (pebble.Position.Y - pebble.Radius < Bramblekin.BodyHeight)
                 _obstacles.Add(new Obstacle(new Vector2(pebble.Position.X, pebble.Position.Z), pebble.Radius));
+        }
+    }
+
+    /// <summary>
+    /// Rocks shove food aside instead of burying it: any shard on the ground
+    /// that overlaps a rock (or the village) is slid straight out along the
+    /// line from the obstacle's centre. A second pass catches a shard pushed
+    /// from one rock into a neighbouring one.
+    /// </summary>
+    private void PushFoodOutOfObstacles()
+    {
+        float half = Terrain.Size / 2f - FoodShard.Radius;
+
+        foreach (var shard in FoodShards)
+        {
+            if (shard.IsCarried)
+                continue;
+
+            var position = new Vector2(shard.Position.X, shard.Position.Z);
+            for (int pass = 0; pass < 2; pass++)
+            {
+                foreach (var obstacle in _obstacles)
+                {
+                    Vector2 offset = position - obstacle.Center;
+                    float minDistance = obstacle.Radius + FoodShard.Radius;
+                    float distanceSquared = offset.LengthSquared();
+                    if (distanceSquared >= minDistance * minDistance)
+                        continue;
+
+                    // Dead centre has no direction: pick one at random.
+                    float distance = MathF.Sqrt(distanceSquared);
+                    Vector2 normal = distance > 1e-5f
+                        ? offset / distance
+                        : Vector2.Normalize(new Vector2((float)Rng.NextDouble() - 0.5f, (float)Rng.NextDouble() - 0.5f) + new Vector2(1e-3f, 0));
+                    position = obstacle.Center + normal * minDistance;
+                }
+            }
+
+            shard.Position = new Vector3(
+                Math.Clamp(position.X, -half, half),
+                Terrain.GroundHeight,
+                Math.Clamp(position.Y, -half, half));
         }
     }
 
