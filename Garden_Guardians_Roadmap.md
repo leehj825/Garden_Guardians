@@ -2,7 +2,7 @@
 
 **Status key:** ✅ Done · 🟡 In progress (partly done) · ⬜ Not started
 
-*Last updated: 2026-09-23*
+*Last updated: 2026-09-23 (Conscription Slider)*
 
 ## Progress Snapshot
 The game runs as a Raylib-cs (C#/.NET 8) prototype on desktop and Android. So far it covers the first micro-loop: cast the Pebble-Drop miracle, the Bramblekin get out of the way, and cracked acorns feed the village. A Wolf Spider hunts the workers; a well-placed pebble distracts it, and a direct hit crushes it. The Gust can scatter its target, knock it back, or tumble it mid-hunt, and drafted Militia now defend the village directly, blocking a pounce with a pike. Food grows the population (acorns, wild berries and hunted aphids all feed it now), and the population powers the Faith that miracles cost. All game code is in `Program.cs`.
@@ -43,9 +43,11 @@ The game runs as a Raylib-cs (C#/.NET 8) prototype on desktop and Android. So fa
     *   ✅ Reproduction (The Sprout): every 5 Food Stored automatically becomes a new Bramblekin next to the Village Heart. There's no population cap.
     *   ✅ Faith Pool (the miracle economy): up to 100 Faith, refilling at 0.5 × population per second, so every lost Bramblekin also weakens your miracles. A Pebble-Drop costs 30, paid the moment the tap lands on the ground. Below 30 the button is greyed out and shows "Not Enough Faith" when tapped. The HUD shows a Faith meter, Food Stored toward the next sprout, and Population.
     *   ⬜ Storage capacities, caloric burn rates.
-*   ⬜ **Task 2:** Build the UI for the Conscription Slider and the War Weariness/Morale engine.
+*   🟡 **Task 2:** Build the UI for the Conscription Slider and the War Weariness/Morale engine.
+    *   ✅ The Conscription Slider: a `[ - ] Militia: N [ + ]` control under the miracle buttons sets a Militia Target (0 to total population). The Job Manager works the colony toward it every frame — one promotion/demotion at a time — so drafting is reversible instead of a one-shot, economy-soft-locking action. If a Wolf Spider kill drops the population below the target, the target auto-clamps down to match.
+    *   ⬜ War Weariness/Morale engine.
 *   🟡 **Task 3:** Create the tech tree/crafting logic for Found-Object Weaponry and the transition from Gatherer AI to Militia AI (Phalanx flocking).
-    *   ✅ The Armory: "Draft Militia" permanently reclassifies the nearest Gatherer to the Village Heart. Militia carry a small Rose-Thorn Pike and never gather.
+    *   ✅ The Armory: the Job Manager (Conscription) promotes the nearest Gatherer to the Village Heart to Militia when under target, and demotes the nearest Militia back to Gatherer (pike put away, sent back to Wandering) when over target. Militia carry a small Rose-Thorn Pike and never gather.
     *   ✅ Phalanx AI: when the Wolf Spider enters a Bramblekin's Fear Aura, Gatherers still flee, but Militia charge in and try to stand between the spider and the Village Heart.
     *   ✅ Pike Defense: a Pounce that lands on a Militia unit is blocked, not a kill — the unit survives and the spider is tumbled for 4 s, same as a Gust interrupt.
     *   ⬜ Found-Object Weaponry crafting/tech tree, multi-unit Phalanx spacing.

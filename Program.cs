@@ -99,7 +99,8 @@ public static class Game
         var input = new MiracleInput();
         var pebbleButton = new UiButton(new Rectangle(20, 20, 220, 50));
         var gustButton = new UiButton(new Rectangle(250, 20, 180, 50));
-        var draftButton = new UiButton(new Rectangle(20, 80, 220, 50));
+        var militiaMinusButton = new UiButton(new Rectangle(20, 80, 50, 50));
+        var militiaPlusButton = new UiButton(new Rectangle(190, 80, 50, 50));
 
         // --- Main loop -------------------------------------------------------
         while (!Raylib.WindowShouldClose())
@@ -110,13 +111,18 @@ public static class Game
             //    button never also starts casting a miracle "through" it. A
             //    Pebble tap spends Faith and queues a God's Shadow; a Gust
             //    swipe spends Faith and pushes everything caught in it the
-            //    instant the press is released. Draft Militia isn't a
-            //    miracle — free, instant, no equip state — so it's checked
-            //    directly here rather than through MiracleInput; consuming
-            //    the press this way (skipping input.Update() for the frame)
-            //    stops it from also being read as a world click.
-            if (Raylib.IsMouseButtonPressed(MouseButton.Left) && draftButton.Contains(Raylib.GetMousePosition()))
-                world.DraftMilitia();
+            //    instant the press is released. The Conscription Slider's
+            //    -/+ buttons aren't a miracle — free, instant, no equip
+            //    state — so they're checked directly here rather than
+            //    through MiracleInput; consuming the press this way
+            //    (skipping input.Update() for the frame) stops it from also
+            //    being read as a world click.
+            Vector2 mouse = Raylib.GetMousePosition();
+            bool pressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
+            if (pressed && militiaMinusButton.Contains(mouse))
+                world.DecreaseMilitiaTarget();
+            else if (pressed && militiaPlusButton.Contains(mouse))
+                world.IncreaseMilitiaTarget();
             else
                 input.Update(deltaTime, camera, world, pebbleButton, gustButton);
 
@@ -139,7 +145,7 @@ public static class Game
             gustButton.Draw(input.GustButtonLabel,
                             highlighted: input.State is InputState.GustEquipped or InputState.GustDragging,
                             disabled: !input.CanAffordGust(world));
-            draftButton.Draw("Draft Militia", highlighted: false, disabled: !world.HasDraftableGatherer);
+            DrawConscriptionSlider(militiaMinusButton, militiaPlusButton, world);
             DrawFaithMeter(world.Faith);
             DrawColonyPanel(world);
             DrawHud(input, world);
@@ -196,6 +202,32 @@ public static class Game
         Raylib.DrawLineEx(new Vector2(tickX, bar.Y - 3), new Vector2(tickX, bar.Y + bar.Height + 3), 2f, PanelInk);
     }
 
+    /// <summary>
+    /// The Conscription Slider, under the miracle buttons: [ - ] N [ + ],
+    /// where N is the Militia Target the Job Manager works toward. The -/+
+    /// buttons are drawn disabled at the 0/population clamp so the player
+    /// can see at a glance when they've hit the limit.
+    /// </summary>
+    private static void DrawConscriptionSlider(UiButton minusButton, UiButton plusButton, World world)
+    {
+        minusButton.Draw("-", highlighted: false, disabled: world.MilitiaTarget <= 0);
+        plusButton.Draw("+", highlighted: false, disabled: world.MilitiaTarget >= world.LivingPopulation);
+
+        const int fontSize = 22;
+        string label = $"Militia: {world.MilitiaTarget}";
+        var labelBounds = new Rectangle(minusButton.Bounds.X + minusButton.Bounds.Width,
+                                        minusButton.Bounds.Y,
+                                        plusButton.Bounds.X - (minusButton.Bounds.X + minusButton.Bounds.Width),
+                                        minusButton.Bounds.Height);
+        Raylib.DrawRectangleRec(labelBounds, new Color(220, 220, 220, 255));
+        Raylib.DrawRectangleLinesEx(labelBounds, 2f, Color.DarkGray);
+        int textWidth = Raylib.MeasureText(label, fontSize);
+        Raylib.DrawText(label,
+                        (int)(labelBounds.X + (labelBounds.Width - textWidth) / 2f),
+                        (int)(labelBounds.Y + (labelBounds.Height - fontSize) / 2f),
+                        fontSize, Color.Black);
+    }
+
     /// <summary>Food, population and Militia, top right. Shows progress toward the next sprout.</summary>
     private static void DrawColonyPanel(World world)
     {
@@ -223,7 +255,7 @@ public static class Game
             InputState.PebbleEquipped => $"Click the ground to drop the pebble ({MiracleManager.PebbleFaithCost} Faith).",
             InputState.GustEquipped => $"Click and drag across the ground, then release to blow a Gust ({MiracleManager.GustFaithCost} Faith).",
             InputState.GustDragging => "Release to blow the Gust in this direction.",
-            _ => "Crack acorns or forage berries. Draft Militia to defend the village and hunt aphids. A Gust tumbles a hunting spider; a Pike Defense does too.",
+            _ => "Crack acorns or forage berries. Raise the Militia Target to defend the village and hunt aphids. A Gust tumbles a hunting spider; a Pike Defense does too.",
         };
         Raylib.DrawText(hint, 20, y, 20, Color.DarkGray);
         Raylib.DrawText(
@@ -1235,8 +1267,9 @@ public readonly record struct Obstacle(Vector2 Center, float Radius);
 ///   faith regen -> miracles (shadows, pebble release)
 ///   -> physics (+ acorn cracking, spider squishing)
 ///   -> shard sliding (from a Gust) -> obstacle list -> shove food out from
-///   under rocks -> Bramblekin -> Wolf Spider (may kill Bramblekin)
-///   -> acorn / spider respawn
+///   under rocks -> ambient prey -> Bramblekin -> Wolf Spider (may kill
+///   Bramblekin) -> Job Manager (Conscription: nudges Militia headcount
+///   toward the target) -> acorn / spider respawn
 ///
 /// A cast Gust (CastGust) sits outside this per-frame order: it applies its
 /// push to everything caught in its corridor all at once, the instant it's
@@ -1390,19 +1423,57 @@ public sealed class World
             Aphids.Add(new Aphid(RandomFreePoint(Aphid.BodyRadius, Aphid.EdgeMargin), rng));
     }
 
+    /// <summary>Living Bramblekin, Militia and Gatherer alike.</summary>
+    public int LivingPopulation => Colony.Count(b => !b.IsDead);
+
+    /// <summary>How many are Militia right now (the Job Manager works to make this match <see cref="MilitiaTarget"/>).</summary>
+    public int CurrentMilitia => Colony.Count(b => !b.IsDead && b.Role == BramblekinRole.Militia);
+
     /// <summary>
-    /// The Armory: finds the closest Gatherer to the Village Heart and
-    /// permanently drafts it into the Militia. Returns false (and does
-    /// nothing) if every living Bramblekin is already Militia.
+    /// The Conscription Slider: how many Bramblekin the Job Manager tries to
+    /// keep as Militia. Always clamped to [0, <see cref="LivingPopulation"/>]
+    /// — see <see cref="IncreaseMilitiaTarget"/>/<see cref="DecreaseMilitiaTarget"/>
+    /// and the population-loss safety net in <see cref="UpdateJobManager"/>.
     /// </summary>
-    public bool DraftMilitia()
+    public int MilitiaTarget { get; private set; }
+
+    public void IncreaseMilitiaTarget() => MilitiaTarget = Math.Min(MilitiaTarget + 1, LivingPopulation);
+
+    public void DecreaseMilitiaTarget() => MilitiaTarget = Math.Max(MilitiaTarget - 1, 0);
+
+    /// <summary>
+    /// The Job Manager: each frame, nudges the Militia headcount one step
+    /// toward <see cref="MilitiaTarget"/> — promoting the Gatherer nearest
+    /// the Village Heart if under target, or standing down the Militia unit
+    /// nearest the Village Heart (pike put away, sent back to Wandering) if
+    /// over. One change per frame is plenty; at 60 fps even a large jump in
+    /// the target closes out in a fraction of a second.
+    ///
+    /// Safety constraint: the target can never sit above the population it's
+    /// drawn from. Re-clamped here every frame (not just when the slider
+    /// itself is touched) so a Wolf Spider kill that drops the population
+    /// below the target is corrected immediately, on the very next frame.
+    /// </summary>
+    private void UpdateJobManager()
+    {
+        MilitiaTarget = Math.Min(MilitiaTarget, LivingPopulation);
+
+        int current = CurrentMilitia;
+        if (current < MilitiaTarget)
+            NearestByRole(BramblekinRole.Gatherer)?.PromoteToMilitia();
+        else if (current > MilitiaTarget)
+            NearestByRole(BramblekinRole.Militia)?.DemoteToGatherer(this);
+    }
+
+    /// <summary>The living Bramblekin of <paramref name="role"/> nearest the Village Heart, if any.</summary>
+    private Bramblekin? NearestByRole(BramblekinRole role)
     {
         Bramblekin? nearest = null;
         float bestDistanceSquared = float.MaxValue;
         for (int i = Colony.Count - 1; i >= 0; i--)
         {
             Bramblekin bramblekin = Colony[i];
-            if (bramblekin.IsDead || bramblekin.Role == BramblekinRole.Militia)
+            if (bramblekin.IsDead || bramblekin.Role != role)
                 continue;
 
             float distanceSquared = Vector3.DistanceSquared(bramblekin.Position, Village.Center);
@@ -1412,16 +1483,8 @@ public sealed class World
                 nearest = bramblekin;
             }
         }
-
-        if (nearest is null)
-            return false;
-
-        nearest.PromoteToMilitia();
-        return true;
+        return nearest;
     }
-
-    /// <summary>Whether "Draft Militia" currently has anyone left to draft.</summary>
-    public bool HasDraftableGatherer => Colony.Any(b => !b.IsDead && b.Role == BramblekinRole.Gatherer);
 
     /// <summary>Spawns a Wolf Spider at a random spot just inside one of the terrain's edges.</summary>
     public void SpawnSpiderNearEdge()
@@ -1660,6 +1723,7 @@ public sealed class World
             Colony[i].Update(deltaTime, this);
 
         Spider?.Update(deltaTime, this);
+        UpdateJobManager();
 
         UpdateAcornRespawn(deltaTime);
         UpdateSpiderRespawn(deltaTime);
@@ -2472,7 +2536,7 @@ public enum BramblekinRole
     /// <summary>Gathers food; flees the Wolf Spider like everyone else.</summary>
     Gatherer,
 
-    /// <summary>Drafted via "Draft Militia". Never gathers; instead defends the colony and hunts Aphids.</summary>
+    /// <summary>Set by Conscription (the Job Manager). Never gathers; instead defends the colony and hunts Aphids.</summary>
     Militia,
 }
 
@@ -2572,7 +2636,7 @@ public sealed class Bramblekin
 
     public BramblekinState State { get; private set; }
 
-    /// <summary>Gatherer by default; permanently becomes Militia via "Draft Militia".</summary>
+    /// <summary>Gatherer by default; the Job Manager promotes/demotes it to track the player's Militia Target.</summary>
     public BramblekinRole Role { get; private set; } = BramblekinRole.Gatherer;
 
     public bool IsCarrying => _carried is not null;
@@ -2616,12 +2680,13 @@ public sealed class Bramblekin
     }
 
     /// <summary>
-    /// The Armory: permanently reclassifies this Bramblekin as Militia. Drops
-    /// anything carried and, if it was mid-Gathering or mid-Returning (a
-    /// Gatherer-only errand), immediately breaks that off with a short pause
-    /// rather than let it finish one last delivery — the transition is meant
-    /// to be immediate. The priority chain re-decides what to do next
-    /// (defend, hunt, or wander) on the very next Update().
+    /// Conscription: reclassifies this Bramblekin as Militia (called by
+    /// World's Job Manager as it works the colony toward the player's
+    /// Militia Target). Drops anything carried and, if it was mid-Gathering
+    /// or mid-Returning (a Gatherer-only errand), immediately breaks that off
+    /// with a short pause rather than let it finish one last delivery — the
+    /// transition is meant to be immediate. The priority chain re-decides
+    /// what to do next (defend, hunt, or wander) on the very next Update().
     /// </summary>
     public void PromoteToMilitia()
     {
@@ -2632,6 +2697,23 @@ public sealed class Bramblekin
         DropCarried();
         if (State is BramblekinState.Gathering or BramblekinState.Returning)
             StartPause();
+    }
+
+    /// <summary>
+    /// Conscription in reverse: stands this Militia unit down (pike put
+    /// away — Draw() stops drawing it the moment Role changes) and sends it
+    /// back to Wandering so it starts looking for food again. Whatever it
+    /// was doing — mid-charge Defending, mid-chase Hunting — is dropped
+    /// immediately, same as a promotion is.
+    /// </summary>
+    public void DemoteToGatherer(World world)
+    {
+        if (Role == BramblekinRole.Gatherer)
+            return;
+
+        Role = BramblekinRole.Gatherer;
+        DropCarried(); // Defensive: a Militia unit never actually carries food.
+        StartWandering(world);
     }
 
     public void Update(float deltaTime, World world)
