@@ -5,7 +5,7 @@
 *Last updated: 2026-09-23*
 
 ## Progress Snapshot
-The game runs as a Raylib-cs (C#/.NET 8) prototype on desktop and Android. So far it covers the first micro-loop: cast the Pebble-Drop miracle, the Bramblekin get out of the way, and cracked acorns feed the village. A Wolf Spider hunts the workers; a well-placed pebble distracts it, and a direct hit crushes it. The Gust can now scatter its target, knock it back, or tumble it mid-hunt. Food grows the population, and the population powers the Faith that miracles cost. All game code is in `Program.cs`.
+The game runs as a Raylib-cs (C#/.NET 8) prototype on desktop and Android. So far it covers the first micro-loop: cast the Pebble-Drop miracle, the Bramblekin get out of the way, and cracked acorns feed the village. A Wolf Spider hunts the workers; a well-placed pebble distracts it, and a direct hit crushes it. The Gust can scatter its target, knock it back, or tumble it mid-hunt, and drafted Militia now defend the village directly, blocking a pounce with a pike. Food grows the population (acorns, wild berries and hunted aphids all feed it now), and the population powers the Faith that miracles cost. All game code is in `Program.cs`.
 
 ## Phase 0: Engine & Tooling
 *   ✅ **Engine:** Switched to Raylib via Raylib-cs 8.1 (raylib 6.0) on a .NET 8 project. A fixed 45° isometric camera looks down at a 20 m × 20 m terrain, at 1 unit = 1 m.
@@ -37,12 +37,18 @@ The game runs as a Raylib-cs (C#/.NET 8) prototype on desktop and Android. So fa
 
 ## Phase 2: Economy & UI Infrastructure (The Macro-Loop)
 *   🟡 **Task 1:** Implement the resource gathering loop, storage capacities, and the caloric burn rate system for different unit states.
-    *   ✅ First gathering loop: drop a pebble on or near the Acorn to crack it into 3 Food Shards. Bramblekin carry them to the Village Heart, and "Food Stored" counts them. A new acorn appears after 4 s. Rocks shove shards aside instead of burying them.
+    *   ✅ Gathering loop: drop a pebble on or near the Acorn to crack it into 4 high-yield Food Shards (up from 3, rewarding the Faith spent). Bramblekin carry them to the Village Heart, and "Food Stored" counts them. A new acorn appears after 4 s. Rocks shove shards aside instead of burying them.
+    *   ✅ Passive Foraging: a Berry appears on its own every 8 s (up to 5 on the map at once) and is grabbable without spending Faith — worth 1 food, same as any shard.
+    *   ✅ Ambient Prey: up to 3 slow-wandering Aphids populate the map; Militia (once drafted) hunt them down, and a kill drops 2 Food Shards for the Gatherers to collect.
     *   ✅ Reproduction (The Sprout): every 5 Food Stored automatically becomes a new Bramblekin next to the Village Heart. There's no population cap.
     *   ✅ Faith Pool (the miracle economy): up to 100 Faith, refilling at 0.5 × population per second, so every lost Bramblekin also weakens your miracles. A Pebble-Drop costs 30, paid the moment the tap lands on the ground. Below 30 the button is greyed out and shows "Not Enough Faith" when tapped. The HUD shows a Faith meter, Food Stored toward the next sprout, and Population.
     *   ⬜ Storage capacities, caloric burn rates.
 *   ⬜ **Task 2:** Build the UI for the Conscription Slider and the War Weariness/Morale engine.
-*   ⬜ **Task 3:** Create the tech tree/crafting logic for Found-Object Weaponry and the transition from Gatherer AI to Militia AI (Phalanx flocking).
+*   🟡 **Task 3:** Create the tech tree/crafting logic for Found-Object Weaponry and the transition from Gatherer AI to Militia AI (Phalanx flocking).
+    *   ✅ The Armory: "Draft Militia" permanently reclassifies the nearest Gatherer to the Village Heart. Militia carry a small Rose-Thorn Pike and never gather.
+    *   ✅ Phalanx AI: when the Wolf Spider enters a Bramblekin's Fear Aura, Gatherers still flee, but Militia charge in and try to stand between the spider and the Village Heart.
+    *   ✅ Pike Defense: a Pounce that lands on a Militia unit is blocked, not a kill — the unit survives and the spider is tumbled for 4 s, same as a Gust interrupt.
+    *   ⬜ Found-Object Weaponry crafting/tech tree, multi-unit Phalanx spacing.
 
 ## Phase 3: Faction Systems & Territory
 *   ⬜ **Task 1:** Develop the Hex-based Dynamic Frontline system and Boundary Totem logic.

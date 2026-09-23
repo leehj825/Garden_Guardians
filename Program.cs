@@ -99,6 +99,7 @@ public static class Game
         var input = new MiracleInput();
         var pebbleButton = new UiButton(new Rectangle(20, 20, 220, 50));
         var gustButton = new UiButton(new Rectangle(250, 20, 180, 50));
+        var draftButton = new UiButton(new Rectangle(20, 80, 220, 50));
 
         // --- Main loop -------------------------------------------------------
         while (!Raylib.WindowShouldClose())
@@ -109,8 +110,15 @@ public static class Game
             //    button never also starts casting a miracle "through" it. A
             //    Pebble tap spends Faith and queues a God's Shadow; a Gust
             //    swipe spends Faith and pushes everything caught in it the
-            //    instant the press is released.
-            input.Update(deltaTime, camera, world, pebbleButton, gustButton);
+            //    instant the press is released. Draft Militia isn't a
+            //    miracle — free, instant, no equip state — so it's checked
+            //    directly here rather than through MiracleInput; consuming
+            //    the press this way (skipping input.Update() for the frame)
+            //    stops it from also being read as a world click.
+            if (Raylib.IsMouseButtonPressed(MouseButton.Left) && draftButton.Contains(Raylib.GetMousePosition()))
+                world.DraftMilitia();
+            else
+                input.Update(deltaTime, camera, world, pebbleButton, gustButton);
 
             // 2) Simulation.
             world.Update(deltaTime);
@@ -131,6 +139,7 @@ public static class Game
             gustButton.Draw(input.GustButtonLabel,
                             highlighted: input.State is InputState.GustEquipped or InputState.GustDragging,
                             disabled: !input.CanAffordGust(world));
+            draftButton.Draw("Draft Militia", highlighted: false, disabled: !world.HasDraftableGatherer);
             DrawFaithMeter(world.Faith);
             DrawColonyPanel(world);
             DrawHud(input, world);
@@ -187,12 +196,13 @@ public static class Game
         Raylib.DrawLineEx(new Vector2(tickX, bar.Y - 3), new Vector2(tickX, bar.Y + bar.Height + 3), 2f, PanelInk);
     }
 
-    /// <summary>Food and population, top right. Shows progress toward the next sprout.</summary>
+    /// <summary>Food, population and Militia, top right. Shows progress toward the next sprout.</summary>
     private static void DrawColonyPanel(World world)
     {
         const int fontSize = 24, lineHeight = 30;
+        int militia = world.Colony.Count(b => !b.IsDead && b.Role == BramblekinRole.Militia);
         string food = $"Food Stored: {world.FoodStored} / {World.FoodPerSprout}";
-        string population = $"Population: {world.Colony.Count}";
+        string population = $"Population: {world.Colony.Count}   Militia: {militia}";
         int width = Math.Max(Raylib.MeasureText(food, fontSize), Raylib.MeasureText(population, fontSize));
         int x = Raylib.GetScreenWidth() - width - 30;
 
@@ -213,13 +223,15 @@ public static class Game
             InputState.PebbleEquipped => $"Click the ground to drop the pebble ({MiracleManager.PebbleFaithCost} Faith).",
             InputState.GustEquipped => $"Click and drag across the ground, then release to blow a Gust ({MiracleManager.GustFaithCost} Faith).",
             InputState.GustDragging => "Release to blow the Gust in this direction.",
-            _ => "Crack acorns for food. A pebble's thud distracts the spider; a direct hit crushes it. The Gust scatters shards, shoves Bramblekin and tumbles a hunting spider.",
+            _ => "Crack acorns or forage berries. Draft Militia to defend the village and hunt aphids. A Gust tumbles a hunting spider; a Pike Defense does too.",
         };
         Raylib.DrawText(hint, 20, y, 20, Color.DarkGray);
         Raylib.DrawText(
             $"Pebbles: {world.Physics.Count}   Bramblekin: {world.Colony.Count} " +
             $"(gathering {Count(BramblekinState.Gathering)}, returning {Count(BramblekinState.Returning)}, " +
-            $"fleeing {Count(BramblekinState.Fleeing)}, lost {world.Casualties})   " +
+            $"fleeing {Count(BramblekinState.Fleeing)}, defending {Count(BramblekinState.Defending)}, " +
+            $"hunting {Count(BramblekinState.Hunting)}, lost {world.Casualties})   " +
+            $"Aphids: {world.Aphids.Count(a => !a.IsDead)}   " +
             $"Spider: {SpiderStatus(world)}   Sprouted: {world.Births}   FPS: {Raylib.GetFPS()}",
             20, y + 26, 20, Color.DarkGray);
     }
@@ -1241,8 +1253,12 @@ public sealed class World
     /// </summary>
     private const float AcornCrackSlack = 0.4f;
 
-    /// <summary>Number of Food Shards a cracked acorn yields.</summary>
-    private const int ShardsPerAcorn = 3;
+    /// <summary>
+    /// Number of Food Shards a cracked acorn yields. High-yield: the reward
+    /// for spending Faith on a Pebble-Drop, well above a Berry's 1 food or
+    /// an Aphid's 2.
+    /// </summary>
+    private const int ShardsPerAcorn = 4;
 
     /// <summary>Faith cap. Also the starting amount: the colony begins devout.</summary>
     public const float MaxFaith = 100f;
@@ -1286,6 +1302,21 @@ public sealed class World
     /// <summary>One-time knockback (m) the Wolf Spider gets from a Gust.</summary>
     public const float SpiderGustKnockback = 3f;
 
+    /// <summary>How often a wild Berry appears, in seconds.</summary>
+    public const float BerrySpawnInterval = 8f;
+
+    /// <summary>Most Berries allowed on the map (loose or carried) at once.</summary>
+    public const int MaxBerries = 5;
+
+    /// <summary>Aphid population the world tries to maintain.</summary>
+    public const int MaxAphids = 3;
+
+    /// <summary>Seconds between checks that top the Aphid population back up after a loss.</summary>
+    public const float AphidRespawnDelay = 12f;
+
+    /// <summary>Food Shards a Militia-hunted Aphid drops.</summary>
+    private const int AphidFoodShardYield = 2;
+
     private readonly List<Obstacle> _obstacles = new();
     private readonly List<(Vector3 Position, float TimeLeft)> _splats = new();
     private float _acornRespawnTimer;
@@ -1300,6 +1331,11 @@ public sealed class World
     private readonly List<Bramblekin> _pendingBramblekinRemovals = new();
     private readonly List<FoodShard> _pendingShardSpawns = new();
     private readonly List<FoodShard> _pendingShardRemovals = new();
+    private readonly List<Aphid> _pendingAphidSpawns = new();
+    private readonly List<Aphid> _pendingAphidRemovals = new();
+
+    private float _berrySpawnTimer = BerrySpawnInterval;
+    private float _aphidRespawnTimer = AphidRespawnDelay;
 
     public Terrain Terrain { get; }
     public PhysicsManager Physics { get; }
@@ -1308,6 +1344,7 @@ public sealed class World
     public Acorn? Acorn { get; private set; }
     public List<FoodShard> FoodShards { get; } = new();
     public List<Bramblekin> Colony { get; } = new();
+    public List<Aphid> Aphids { get; } = new();
     public WolfSpider? Spider { get; set; }
     public Random Rng { get; }
 
@@ -1348,7 +1385,43 @@ public sealed class World
 
         for (int i = 0; i < colonySize; i++)
             Colony.Add(new Bramblekin(RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin), rng));
+
+        for (int i = 0; i < MaxAphids; i++)
+            Aphids.Add(new Aphid(RandomFreePoint(Aphid.BodyRadius, Aphid.EdgeMargin), rng));
     }
+
+    /// <summary>
+    /// The Armory: finds the closest Gatherer to the Village Heart and
+    /// permanently drafts it into the Militia. Returns false (and does
+    /// nothing) if every living Bramblekin is already Militia.
+    /// </summary>
+    public bool DraftMilitia()
+    {
+        Bramblekin? nearest = null;
+        float bestDistanceSquared = float.MaxValue;
+        for (int i = Colony.Count - 1; i >= 0; i--)
+        {
+            Bramblekin bramblekin = Colony[i];
+            if (bramblekin.IsDead || bramblekin.Role == BramblekinRole.Militia)
+                continue;
+
+            float distanceSquared = Vector3.DistanceSquared(bramblekin.Position, Village.Center);
+            if (distanceSquared < bestDistanceSquared)
+            {
+                bestDistanceSquared = distanceSquared;
+                nearest = bramblekin;
+            }
+        }
+
+        if (nearest is null)
+            return false;
+
+        nearest.PromoteToMilitia();
+        return true;
+    }
+
+    /// <summary>Whether "Draft Militia" currently has anyone left to draft.</summary>
+    public bool HasDraftableGatherer => Colony.Any(b => !b.IsDead && b.Role == BramblekinRole.Gatherer);
 
     /// <summary>Spawns a Wolf Spider at a random spot just inside one of the terrain's edges.</summary>
     public void SpawnSpiderNearEdge()
@@ -1441,6 +1514,88 @@ public sealed class World
         return perpendicular.LengthSquared() <= GustCorridorHalfWidth * GustCorridorHalfWidth;
     }
 
+    /// <summary>Whether a Militia unit currently has anything to hunt.</summary>
+    public bool HasHuntableAphid => Aphids.Any(a => !a.IsDead);
+
+    /// <summary>The nearest still-live Aphid to <paramref name="from"/>, if any.</summary>
+    public Aphid? NearestLiveAphid(Vector3 from)
+    {
+        Aphid? nearest = null;
+        float bestDistanceSquared = float.MaxValue;
+        for (int i = Aphids.Count - 1; i >= 0; i--)
+        {
+            Aphid aphid = Aphids[i];
+            if (aphid.IsDead)
+                continue;
+
+            float distanceSquared = Vector3.DistanceSquared(from, aphid.Position);
+            if (distanceSquared < bestDistanceSquared)
+            {
+                bestDistanceSquared = distanceSquared;
+                nearest = aphid;
+            }
+        }
+        return nearest;
+    }
+
+    /// <summary>
+    /// Militia Hunting: an Aphid caught by a Militia unit. Marked dead and
+    /// its removal queued, exactly like a killed Bramblekin, and it drops
+    /// <see cref="AphidFoodShardYield"/> Food Shards where it stood for the
+    /// Gatherers to collect.
+    /// </summary>
+    public void KillAphid(Aphid aphid)
+    {
+        if (aphid.IsDead)
+            return;
+
+        aphid.MarkDead();
+        _pendingAphidRemovals.Add(aphid);
+
+        float half = Terrain.Size / 2f - Bramblekin.EdgeMargin;
+        for (int i = 0; i < AphidFoodShardYield; i++)
+        {
+            float angle = (float)(Rng.NextDouble() * MathF.Tau);
+            var position = aphid.Position + new Vector3(MathF.Cos(angle), 0, MathF.Sin(angle)) * 0.3f;
+            position.X = Math.Clamp(position.X, -half, half);
+            position.Z = Math.Clamp(position.Z, -half, half);
+            _pendingShardSpawns.Add(new FoodShard(position, FoodShardKind.Cracked));
+        }
+    }
+
+    /// <summary>Passive Foraging: spawns a wild Berry every <see cref="BerrySpawnInterval"/> s, up to <see cref="MaxBerries"/>.</summary>
+    private void UpdateBerrySpawn(float deltaTime)
+    {
+        _berrySpawnTimer -= deltaTime;
+        if (_berrySpawnTimer > 0f)
+            return;
+        _berrySpawnTimer = BerrySpawnInterval;
+
+        int berries = FoodShards.Count(s => s.Kind == FoodShardKind.Berry)
+                    + _pendingShardSpawns.Count(s => s.Kind == FoodShardKind.Berry);
+        if (berries >= MaxBerries)
+            return;
+
+        Vector3 spot = RandomFreePoint(FoodShard.Radius + 0.3f, edgeMargin: 1f);
+        _pendingShardSpawns.Add(new FoodShard(spot, FoodShardKind.Berry));
+    }
+
+    /// <summary>Tops the Aphid population back up to <see cref="MaxAphids"/> after a loss.</summary>
+    private void UpdateAphidRespawn(float deltaTime)
+    {
+        _aphidRespawnTimer -= deltaTime;
+        if (_aphidRespawnTimer > 0f)
+            return;
+        _aphidRespawnTimer = AphidRespawnDelay;
+
+        int living = Aphids.Count(a => !a.IsDead) + _pendingAphidSpawns.Count;
+        if (living >= MaxAphids)
+            return;
+
+        Vector3 spot = RandomFreePoint(Aphid.BodyRadius + 0.1f, Aphid.EdgeMargin);
+        _pendingAphidSpawns.Add(new Aphid(spot, Rng));
+    }
+
     /// <summary>
     /// Slides any Food Shard the Gust has flung, decelerating it with
     /// friction each frame until it stops. Shards at rest (the common case)
@@ -1488,10 +1643,19 @@ public sealed class World
         RebuildObstacles();
         PushFoodOutOfObstacles();
 
+        // Ambient prey moves before the colony reacts to it this frame —
+        // same ordering as pebbles settling before Bramblekin steer round
+        // them. Reverse for-loop: a Militia unit's own Update() (below) can
+        // call KillAphid, which marks an Aphid dead but, like everything
+        // else this session, defers the actual list removal.
+        for (int i = Aphids.Count - 1; i >= 0; i--)
+            Aphids[i].Update(deltaTime, this);
+
         // Reverse for-loop: a Bramblekin's own Update() can indirectly queue
-        // a sprout (via DeliverFood) or, via the spider, a kill — neither
-        // touches Colony directly any more, but walking it backwards means
-        // this loop stays correct even if that ever changes.
+        // a sprout (via DeliverFood), a kill (via the spider's pounce), or
+        // now a dead Aphid (via Militia Hunting) — none of them touch their
+        // list directly any more, but walking it backwards means this loop
+        // stays correct even if that ever changes.
         for (int i = Colony.Count - 1; i >= 0; i--)
             Colony[i].Update(deltaTime, this);
 
@@ -1499,6 +1663,8 @@ public sealed class World
 
         UpdateAcornRespawn(deltaTime);
         UpdateSpiderRespawn(deltaTime);
+        UpdateBerrySpawn(deltaTime);
+        UpdateAphidRespawn(deltaTime);
 
         for (int i = _splats.Count - 1; i >= 0; i--)
         {
@@ -1544,6 +1710,19 @@ public sealed class World
             FoodShards.AddRange(_pendingShardSpawns);
             _pendingShardSpawns.Clear();
         }
+
+        if (_pendingAphidRemovals.Count > 0)
+        {
+            for (int i = _pendingAphidRemovals.Count - 1; i >= 0; i--)
+                Aphids.Remove(_pendingAphidRemovals[i]);
+            _pendingAphidRemovals.Clear();
+        }
+
+        if (_pendingAphidSpawns.Count > 0)
+        {
+            Aphids.AddRange(_pendingAphidSpawns);
+            _pendingAphidSpawns.Clear();
+        }
     }
 
     public void Draw()
@@ -1565,6 +1744,13 @@ public sealed class World
             FoodShard shard = FoodShards[i];
             if (!shard.IsCarried)
                 shard.Draw(shard.Position);
+        }
+
+        // Same reverse-for/skip-dead pattern as the Colony loop below.
+        for (int i = Aphids.Count - 1; i >= 0; i--)
+        {
+            if (!Aphids[i].IsDead)
+                Aphids[i].Draw();
         }
 
         // Reverse for-loop, and skip anything marked dead this frame: its
@@ -1954,7 +2140,17 @@ public sealed class Acorn
     }
 }
 
-/// <summary>A small piece of cracked acorn that a Bramblekin can carry home.</summary>
+/// <summary>Where a Food Shard came from — purely cosmetic, it's worth the same 1 food either way.</summary>
+public enum FoodShardKind
+{
+    /// <summary>Cracked from an Acorn (by a Pebble-Drop) or dropped by a hunted Aphid. Orange.</summary>
+    Cracked,
+
+    /// <summary>Passive Foraging: a wild Berry, grabbable without spending Faith. Red.</summary>
+    Berry,
+}
+
+/// <summary>A small piece of food — cracked acorn, Aphid meat, or a wild berry — that a Bramblekin can carry home.</summary>
 public sealed class FoodShard
 {
     public const float Radius = 0.18f;
@@ -1965,6 +2161,9 @@ public sealed class FoodShard
     /// <summary>True while a Bramblekin is holding it; carried shards are hidden from the map.</summary>
     public bool IsCarried { get; set; }
 
+    /// <summary>Where it came from. Only affects colour; it's worth the same 1 food regardless.</summary>
+    public FoodShardKind Kind { get; }
+
     /// <summary>
     /// Ground-plane sliding speed. Zero at rest; a Gust sets it, and World's
     /// shard-physics step bleeds it off with friction each frame. Ignored
@@ -1972,12 +2171,17 @@ public sealed class FoodShard
     /// </summary>
     public Vector3 Velocity { get; set; }
 
-    public FoodShard(Vector3 groundPoint) => Position = groundPoint;
+    public FoodShard(Vector3 groundPoint, FoodShardKind kind = FoodShardKind.Cracked)
+    {
+        Position = groundPoint;
+        Kind = kind;
+    }
 
     /// <summary>Draws the shard resting on the ground at (or carried above) <paramref name="groundPoint"/>.</summary>
     public void Draw(Vector3 groundPoint)
     {
-        Raylib.DrawSphere(groundPoint + new Vector3(0, Radius, 0), Radius, new Color(245, 150, 45, 255));
+        Color color = Kind == FoodShardKind.Berry ? new Color(210, 40, 45, 255) : new Color(245, 150, 45, 255);
+        Raylib.DrawSphere(groundPoint + new Vector3(0, Radius, 0), Radius, color);
     }
 }
 
@@ -2254,6 +2458,22 @@ public enum BramblekinState
 
     /// <summary>Running at 3x speed from a God's Shadow or a predator.</summary>
     Fleeing,
+
+    /// <summary>Militia only: charging the Wolf Spider to intercept it before it reaches the village.</summary>
+    Defending,
+
+    /// <summary>Militia only: chasing down the nearest Aphid.</summary>
+    Hunting,
+}
+
+/// <summary>A Bramblekin's class: an ordinary worker, or a drafted defender.</summary>
+public enum BramblekinRole
+{
+    /// <summary>Gathers food; flees the Wolf Spider like everyone else.</summary>
+    Gatherer,
+
+    /// <summary>Drafted via "Draft Militia". Never gathers; instead defends the colony and hunts Aphids.</summary>
+    Militia,
 }
 
 /// <summary>
@@ -2261,17 +2481,24 @@ public enum BramblekinState
 /// them directly; each runs a small state machine, checked in priority order
 /// every frame:
 ///
-///   1. God's Shadow (always wins): standing under a shadow drops any carried
-///      food and sends it Fleeing at 3x speed to the nearest safe spot —
-///      even with a spider on its tail.
-///   2. Fear Aura: a Wolf Spider within <see cref="FearRadius"/> also drops
-///      the food and sends it Fleeing directly away from the spider.
-///   3. Economy: while Food Shards are available, wandering (Walking/Pausing)
-///      is overridden by Gathering -> pick up -> Returning -> deliver.
+///   1. God's Shadow (always wins, every role): standing under a shadow drops
+///      any carried food and sends it Fleeing at 3x speed to the nearest safe
+///      spot — even with a spider on its tail.
+///   2. The Wolf Spider, within <see cref="FearRadius"/>: a Gatherer drops
+///      its food and Flees directly away; a Militia unit instead Defends —
+///      charging in to stand between the spider and the Village Heart.
+///   3. Economy (Gatherers only): while Food Shards are available, wandering
+///      (Walking/Pausing) is overridden by Gathering -> pick up ->
+///      Returning -> deliver.
+///   3b. Hunting (Militia only): with no spider to fight, wandering is
+///      overridden by chasing down the nearest Aphid.
 ///   4. Wandering: Walking to a random free point, Pausing 2 s, repeat.
+///      Shared by both roles as the default idle behaviour.
 ///
 /// Gathering and Returning Bramblekin shake the ground; that is what the Wolf
-/// Spider hunts by (<see cref="IsVibrating"/>).
+/// Spider hunts by (<see cref="IsVibrating"/>). Militia never gather, so they
+/// never draw that attention — the spider only notices them by running into
+/// one (see WolfSpider's Pike Defense in Pounce()).
 /// </summary>
 public sealed class Bramblekin
 {
@@ -2310,8 +2537,29 @@ public sealed class Bramblekin
     /// <summary>Within this distance of a shard, it is picked up.</summary>
     private const float PickupDistance = BodyRadius + FoodShard.Radius + 0.1f;
 
+    /// <summary>Militia charge speed while Defending — faster than a gathering amble, short of a full panicked flee.</summary>
+    private const float DefendSpeed = WalkSpeed * 1.5f;
+
+    /// <summary>How far from the spider, back toward the Village Heart, a defending Militia tries to stand.</summary>
+    private const float InterceptStandoff = 1.2f;
+
+    /// <summary>
+    /// Beyond this distance (m) from the spider, a Defending Militia gives up
+    /// and goes back to its own business. Larger than <see cref="FearRadius"/>
+    /// so it doesn't flicker in and out right at the trigger boundary.
+    /// </summary>
+    private const float DisengageRadius = FearRadius * 2f;
+
+    /// <summary>Speed while chasing an Aphid.</summary>
+    private const float HuntSpeed = WalkSpeed;
+
+    /// <summary>Within this distance of an Aphid, it is caught.</summary>
+    private const float HuntContactDistance = BodyRadius + Aphid.BodyRadius + 0.05f;
+
     private static readonly Color CalmColor = new(196, 160, 110, 255);   // Bark brown.
     private static readonly Color PanicColor = new(225, 85, 60, 255);    // Alarm red.
+    private static readonly Color MilitiaColor = new(150, 130, 95, 255); // A shade duller than a Gatherer — worn, armed.
+    private static readonly Color PikeColor = new(120, 55, 40, 255);     // Rose-thorn brown-red.
 
     private readonly Random _rng;
     private readonly GroundMover _mover;
@@ -2323,6 +2571,9 @@ public sealed class Bramblekin
     public Vector3 Position => _mover.Position;
 
     public BramblekinState State { get; private set; }
+
+    /// <summary>Gatherer by default; permanently becomes Militia via "Draft Militia".</summary>
+    public BramblekinRole Role { get; private set; } = BramblekinRole.Gatherer;
 
     public bool IsCarrying => _carried is not null;
 
@@ -2364,6 +2615,25 @@ public sealed class Bramblekin
         IsDead = true;
     }
 
+    /// <summary>
+    /// The Armory: permanently reclassifies this Bramblekin as Militia. Drops
+    /// anything carried and, if it was mid-Gathering or mid-Returning (a
+    /// Gatherer-only errand), immediately breaks that off with a short pause
+    /// rather than let it finish one last delivery — the transition is meant
+    /// to be immediate. The priority chain re-decides what to do next
+    /// (defend, hunt, or wander) on the very next Update().
+    /// </summary>
+    public void PromoteToMilitia()
+    {
+        if (Role == BramblekinRole.Militia)
+            return;
+
+        Role = BramblekinRole.Militia;
+        DropCarried();
+        if (State is BramblekinState.Gathering or BramblekinState.Returning)
+            StartPause();
+    }
+
     public void Update(float deltaTime, World world)
     {
         if (IsDead)
@@ -2385,23 +2655,40 @@ public sealed class Bramblekin
                 SetState(BramblekinState.Fleeing);
             }
         }
-        // --- 2. Fear Aura -----------------------------------------------------
-        // Re-aimed every frame while the spider is close, so the Bramblekin
-        // keeps running straight away from it as it moves.
+        // --- 2. The Wolf Spider: Gatherers flee, Militia defends --------------
+        // Re-aimed every frame while the spider is close, so a fleeing
+        // Gatherer keeps running straight away and a defending Militia keeps
+        // adjusting where it's standing as the spider moves.
         else if (world.Spider is { } spider &&
                  GroundMover.HorizontalDistance(Position, spider.Position) < FearRadius)
         {
-            DropCarried();
-            _target = FindPointAwayFrom(spider.Position, world);
-            if (State != BramblekinState.Fleeing)
-                SetState(BramblekinState.Fleeing);
+            if (Role == BramblekinRole.Militia)
+            {
+                _target = ComputeInterceptPoint(spider, world);
+                if (State != BramblekinState.Defending)
+                {
+                    DropCarried();
+                    SetState(BramblekinState.Defending);
+                }
+            }
+            else
+            {
+                DropCarried();
+                _target = FindPointAwayFrom(spider.Position, world);
+                if (State != BramblekinState.Fleeing)
+                    SetState(BramblekinState.Fleeing);
+            }
         }
 
-        // --- 3. Economy overrides wandering -----------------------------------
-        if (State is BramblekinState.Walking or BramblekinState.Pausing && world.HasAvailableFood)
+        // --- 3. Economy overrides wandering (Gatherers only) -------------------
+        if (Role == BramblekinRole.Gatherer && State is BramblekinState.Walking or BramblekinState.Pausing && world.HasAvailableFood)
             SetState(BramblekinState.Gathering);
 
-        // --- 4. Run the current state -----------------------------------------
+        // --- 3b. Militia hunts Aphids when it has no spider to fight -----------
+        if (Role == BramblekinRole.Militia && State is BramblekinState.Walking or BramblekinState.Pausing && world.HasHuntableAphid)
+            SetState(BramblekinState.Hunting);
+
+        // --- 4. Run the current state -------------------------------------------
         switch (State)
         {
             case BramblekinState.Pausing:
@@ -2431,12 +2718,22 @@ public sealed class Bramblekin
                 if (_mover.MoveTowards(_target, WalkSpeed * FleeSpeedMultiplier, deltaTime, world, isSafe))
                     StartPause(); // Catch its breath, then back to work.
                 break;
+
+            case BramblekinState.Defending:
+                UpdateDefending(deltaTime, world);
+                break;
+
+            case BramblekinState.Hunting:
+                UpdateHunting(deltaTime, world);
+                break;
         }
     }
 
     public void Draw()
     {
-        Color color = State == BramblekinState.Fleeing ? PanicColor : CalmColor;
+        Color color = State == BramblekinState.Fleeing ? PanicColor
+                    : Role == BramblekinRole.Militia ? MilitiaColor
+                    : CalmColor;
 
         // A capsule standing upright: DrawCapsule takes the centres of its two
         // hemispherical ends, so inset them by the radius.
@@ -2444,6 +2741,17 @@ public sealed class Bramblekin
         var top = Position + new Vector3(0, BodyHeight - BodyRadius, 0);
         Raylib.DrawCapsule(bottom, top, BodyRadius, 8, 4, color);
         Raylib.DrawCapsuleWires(bottom, top, BodyRadius, 8, 4, new Color(0, 0, 0, 50));
+
+        // Militia carry a Rose-Thorn Pike: a small brown line held out front,
+        // angled up, so they read as armed even at a glance.
+        if (Role == BramblekinRole.Militia)
+        {
+            Vector2 facing = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;
+            var grip = Position + new Vector3(0, BodyHeight * 0.6f, 0);
+            var tip = grip + new Vector3(facing.X, 0.55f, facing.Y) * 0.6f;
+            Raylib.DrawLine3D(grip, tip, PikeColor);
+            Raylib.DrawSphere(tip, 0.025f, PikeColor);
+        }
 
         // Carried food rides on top of the head.
         _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
@@ -2505,7 +2813,11 @@ public sealed class Bramblekin
             world.DeliverFood(_carried!);
             _carried = null;
 
-            if (world.HasAvailableFood)
+            // Defensive: PromoteToMilitia() already breaks a Gatherer errand
+            // off immediately, so this path is Gatherer-only in practice —
+            // but a mid-delivery promotion should never be able to walk a
+            // freshly drafted Militia unit straight back into Gathering.
+            if (Role == BramblekinRole.Gatherer && world.HasAvailableFood)
                 SetState(BramblekinState.Gathering);
             else
                 StartWandering(world);
@@ -2513,6 +2825,54 @@ public sealed class Bramblekin
         }
 
         _mover.MoveTowards(world.Village.Center, WalkSpeed, deltaTime, world, p => IsSafeSpot(p, world));
+    }
+
+    // --- Militia states -------------------------------------------------------------
+
+    private void UpdateDefending(float deltaTime, World world)
+    {
+        // The spider is gone or has wandered well clear: stand down.
+        if (world.Spider is not { } spider ||
+            GroundMover.HorizontalDistance(Position, spider.Position) > DisengageRadius)
+        {
+            StartWandering(world);
+            return;
+        }
+
+        _target = ComputeInterceptPoint(spider, world);
+        _mover.MoveTowards(_target, DefendSpeed, deltaTime, world, p => IsSafeSpot(p, world));
+    }
+
+    /// <summary>
+    /// A point <see cref="InterceptStandoff"/> meters from the spider, on the
+    /// side facing the Village Heart — the spot a Militia unit tries to hold
+    /// to physically get between the spider and the village.
+    /// </summary>
+    private static Vector3 ComputeInterceptPoint(WolfSpider spider, World world)
+    {
+        Vector2 toVillage = new(world.Village.Center.X - spider.Position.X, world.Village.Center.Z - spider.Position.Z);
+        Vector2 direction = toVillage.LengthSquared() > 1e-6f ? Vector2.Normalize(toVillage) : Vector2.UnitX;
+        return spider.Position + new Vector3(direction.X, 0, direction.Y) * InterceptStandoff;
+    }
+
+    private void UpdateHunting(float deltaTime, World world)
+    {
+        // Re-pick the nearest live Aphid every frame: another Militia unit
+        // may have already caught ours, or it may simply have wandered off.
+        Aphid? aphid = world.NearestLiveAphid(Position);
+        if (aphid is null)
+        {
+            StartWandering(world);
+            return;
+        }
+
+        if (GroundMover.HorizontalDistance(Position, aphid.Position) <= HuntContactDistance)
+        {
+            world.KillAphid(aphid);
+            return; // Re-targets (or wanders) fresh next frame.
+        }
+
+        _mover.MoveTowards(aphid.Position, HuntSpeed, deltaTime, world, p => IsSafeSpot(p, world));
     }
 
     // --- Wandering ----------------------------------------------------------------
@@ -2648,7 +3008,9 @@ public enum SpiderState
 ///
 /// A second counter, The Gust, always knocks it back physically; if it was
 /// actively Hunting or Pouncing, that shove also tumbles it — stunned,
-/// doing nothing — for <see cref="TumbledDuration"/> seconds.
+/// doing nothing — for <see cref="TumbledDuration"/> seconds. A third: Pike
+/// Defense, when a Pounce lands on a Militia unit instead of a Gatherer —
+/// the unit survives and the failed pounce tumbles the spider the same way.
 /// </summary>
 public sealed class WolfSpider
 {
@@ -2720,6 +3082,24 @@ public sealed class WolfSpider
     {
         _mover.Idle();
 
+        // Tumbled is a hard lock, checked and handled before anything else
+        // in this method — the prey safety net, the pebble-thud distraction,
+        // every bit of vision/AI below. Nothing can re-target, re-notice or
+        // otherwise step on the stun early; the only way out is the timer
+        // running down. This used to be one case at the end of the switch
+        // below, reachable only if nothing upstream happened to touch state
+        // first — exactly the kind of thing a new interrupt source (a Pike
+        // Defense block, say) could quietly break. A dedicated early return
+        // makes that structurally impossible instead of relying on every
+        // future addition to remember to check for it.
+        if (State == SpiderState.Tumbled)
+        {
+            _timer -= deltaTime;
+            if (_timer <= 0f)
+                StartProwling();
+            return;
+        }
+
         // Safety net: if the Bramblekin we're tracking died or vanished by
         // any means since last frame, drop the reference immediately rather
         // than move toward or read a dead target. Only forces the state back
@@ -2733,9 +3113,8 @@ public sealed class WolfSpider
                 StartProwling();
         }
 
-        // --- The Distraction: a pebble impact trumps everything but a meal
-        //     or being too stunned to notice --------------------------------
-        foreach (var impact in (State is SpiderState.Feeding or SpiderState.Tumbled) ? [] : world.Physics.Impacts)
+        // --- The Distraction: a pebble impact trumps everything but a meal ----
+        foreach (var impact in State == SpiderState.Feeding ? [] : world.Physics.Impacts)
         {
             if (GroundMover.HorizontalDistance(Position, impact.Point) <= ImpactHearingRadius)
             {
@@ -2785,11 +3164,7 @@ public sealed class WolfSpider
                     StartProwling();
                 break;
 
-            case SpiderState.Tumbled:
-                _timer -= deltaTime;
-                if (_timer <= 0f)
-                    StartProwling();
-                break;
+            // SpiderState.Tumbled is handled by the early return above.
         }
 
         if (_mover.IsMoving)
@@ -2886,25 +3261,50 @@ public sealed class WolfSpider
         _mover.MoveTowards(dashTarget, PounceSpeed, deltaTime, world, _ => false);
         _mover.Heading = _pounceDirection;
 
-        // The first (live) Bramblekin it touches mid-pounce is caught, and
-        // the spider settles down to eat. Reverse for-loop: World.Kill only
-        // queues the removal now, so Colony never actually changes size
-        // during this walk, but the pattern stays consistent everywhere.
+        // Anything it touches mid-pounce: a Militia unit in range always
+        // wins the check over a Gatherer (it's there to intercept, that's
+        // the point of the Phalanx), even if both would technically overlap
+        // at once. Reverse for-loop: World.Kill only queues the removal now,
+        // so Colony never actually changes size during this walk, but the
+        // pattern stays consistent everywhere.
+        Bramblekin? militiaHit = null;
+        Bramblekin? gathererHit = null;
         for (int i = world.Colony.Count - 1; i >= 0; i--)
         {
             Bramblekin bramblekin = world.Colony[i];
             if (bramblekin.IsDead)
                 continue;
 
-            if (GroundMover.HorizontalDistance(Position, bramblekin.Position) < BodyRadius + Bramblekin.BodyRadius)
+            if (GroundMover.HorizontalDistance(Position, bramblekin.Position) >= BodyRadius + Bramblekin.BodyRadius)
+                continue;
+
+            if (bramblekin.Role == BramblekinRole.Militia)
             {
-                world.Kill(bramblekin);
-                Kills++;
-                _prey = null;
-                _timer = FeedDuration;
-                SetState(SpiderState.Feeding);
-                return;
+                militiaHit = bramblekin;
+                break; // Found the one that matters; no need to keep scanning.
             }
+            gathererHit ??= bramblekin;
+        }
+
+        if (militiaHit is not null)
+        {
+            // Pike Defense: the pounce is blocked, not a kill. The Militia
+            // unit survives; the shove that would have been the kill instead
+            // knocks the spider straight into Tumbled.
+            _prey = null;
+            _timer = TumbledDuration;
+            SetState(SpiderState.Tumbled);
+            return;
+        }
+
+        if (gathererHit is not null)
+        {
+            world.Kill(gathererHit);
+            Kills++;
+            _prey = null;
+            _timer = FeedDuration;
+            SetState(SpiderState.Feeding);
+            return;
         }
 
         _timer -= deltaTime;
@@ -3075,6 +3475,134 @@ public sealed class WolfSpider
         // While staring at an impact, a faint line shows what it is looking at.
         if (State == SpiderState.Investigating && _staring)
             Raylib.DrawLine3D(Position + new Vector3(0, 0.4f, 0), _target + new Vector3(0, 0.05f, 0), new Color(240, 210, 60, 160));
+    }
+}
+
+// =============================================================================
+//  Ambient Prey: the Aphid
+// =============================================================================
+
+/// <summary>
+/// Harmless background wildlife: wanders very slowly, skitters weakly away
+/// from anything that gets too close, and offers no resistance to a Militia
+/// unit that catches it. Not part of the economy on its own — Militia hunting
+/// one turns it into Food Shards for the Gatherers to collect.
+/// </summary>
+public sealed class Aphid
+{
+    /// <summary>Collision/body radius in meters — smaller than a Bramblekin.</summary>
+    public const float BodyRadius = 0.15f;
+
+    /// <summary>Total body height in meters.</summary>
+    public const float BodyHeight = 0.28f;
+
+    /// <summary>How far from the terrain edge it wanders, in meters.</summary>
+    public const float EdgeMargin = 0.4f;
+
+    private const float WanderSpeed = 0.3f;
+    private const float FleeSpeed = 0.5f;
+    private const float PauseDuration = 1.5f;
+
+    /// <summary>A Bramblekin closer than this (m) spooks it into a weak flee.</summary>
+    private const float FleeTriggerRadius = 1.5f;
+
+    /// <summary>How far past the trigger radius it tries to put between itself and the threat.</summary>
+    private const float FleeMargin = 1f;
+
+    private static readonly Color BodyColor = new(95, 165, 70, 255);
+
+    private readonly Random _rng;
+    private readonly GroundMover _mover;
+    private Vector3 _target;
+    private float _pauseTimer;
+
+    /// <summary>Feet position on the ground (y = GroundHeight).</summary>
+    public Vector3 Position => _mover.Position;
+
+    /// <summary>True once caught by a Militia unit. Removal from World.Aphids is deferred to the end of the frame.</summary>
+    public bool IsDead { get; private set; }
+
+    public Aphid(Vector3 position, Random rng)
+    {
+        _rng = rng;
+        _mover = new GroundMover(position, BodyRadius, EdgeMargin, rng);
+        _pauseTimer = (float)rng.NextDouble() * PauseDuration;
+    }
+
+    /// <summary>Marks it caught. Called once, from World.KillAphid.</summary>
+    public void MarkDead() => IsDead = true;
+
+    public void Update(float deltaTime, World world)
+    {
+        if (IsDead)
+            return;
+
+        _mover.Idle();
+
+        Bramblekin? threat = NearestCloseBramblekin(world);
+        if (threat is not null)
+        {
+            // Re-aimed every frame while something is close, same as a
+            // Bramblekin's own Fear Aura response, just much gentler.
+            _target = FleeTarget(threat.Position, world);
+            _mover.MoveTowards(_target, FleeSpeed, deltaTime, world, p => world.Terrain.Contains(p, EdgeMargin));
+            return;
+        }
+
+        if (_pauseTimer > 0f)
+        {
+            _pauseTimer -= deltaTime;
+            if (_pauseTimer <= 0f)
+                _target = world.RandomFreePoint(BodyRadius + 0.05f, EdgeMargin);
+            return;
+        }
+
+        if (_mover.MoveTowards(_target, WanderSpeed, deltaTime, world, p => world.Terrain.Contains(p, EdgeMargin)))
+            _pauseTimer = PauseDuration;
+    }
+
+    private Bramblekin? NearestCloseBramblekin(World world)
+    {
+        Bramblekin? nearest = null;
+        float bestDistance = FleeTriggerRadius;
+        for (int i = world.Colony.Count - 1; i >= 0; i--)
+        {
+            Bramblekin bramblekin = world.Colony[i];
+            if (bramblekin.IsDead)
+                continue;
+
+            float distance = GroundMover.HorizontalDistance(Position, bramblekin.Position);
+            if (distance <= bestDistance)
+            {
+                nearest = bramblekin;
+                bestDistance = distance;
+            }
+        }
+        return nearest;
+    }
+
+    private Vector3 FleeTarget(Vector3 threat, World world)
+    {
+        float dx = Position.X - threat.X;
+        float dz = Position.Z - threat.Z;
+        float angle = dx * dx + dz * dz > 1e-6f
+            ? MathF.Atan2(dz, dx)
+            : (float)(_rng.NextDouble() * MathF.Tau);
+
+        float distance = FleeTriggerRadius + FleeMargin;
+        float half = world.Terrain.Size / 2f - EdgeMargin;
+        return new Vector3(
+            Math.Clamp(threat.X + MathF.Cos(angle) * distance, -half, half),
+            Terrain.GroundHeight,
+            Math.Clamp(threat.Z + MathF.Sin(angle) * distance, -half, half));
+    }
+
+    public void Draw()
+    {
+        var bottom = Position + new Vector3(0, BodyRadius * 0.8f, 0);
+        var top = Position + new Vector3(0, BodyHeight - BodyRadius * 0.8f, 0);
+        Raylib.DrawCapsule(bottom, top, BodyRadius, 6, 3, BodyColor);
+        Raylib.DrawCapsuleWires(bottom, top, BodyRadius, 6, 3, new Color(0, 0, 0, 40));
     }
 }
 
