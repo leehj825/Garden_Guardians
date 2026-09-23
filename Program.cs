@@ -99,58 +99,18 @@ public static class Game
         var input = new MiracleInput();
         var pebbleButton = new UiButton(new Rectangle(20, 20, 220, 50));
         var gustButton = new UiButton(new Rectangle(250, 20, 180, 50));
-        var militiaMinusButton = new UiButton(new Rectangle(20, 80, 50, 50));
-        var militiaPlusButton = new UiButton(new Rectangle(190, 80, 50, 50));
-        var sproutButton = new UiButton(new Rectangle(20, 140, 220, 50));
-        var granaryButton = new UiButton(new Rectangle(250, 140, 260, 50));
-        var wallButton = new UiButton(new Rectangle(520, 140, 220, 50));
-        BuildMode buildMode = BuildMode.None;
 
         // --- Main loop -------------------------------------------------------
         while (!Raylib.WindowShouldClose())
         {
             float deltaTime = MathF.Min(Raylib.GetFrameTime(), MaxDeltaTime);
 
-            // 1) Input: UI gets first pick of a press so that touching a
-            //    button never also starts casting a miracle "through" it. A
-            //    Pebble tap spends Faith and queues a God's Shadow; a Gust
-            //    swipe spends Faith and pushes everything caught in it the
-            //    instant the press is released. The Conscription Slider's
-            //    -/+ buttons, Sprout and the two Build buttons aren't
-            //    miracles — free (or Food-costed), instant, no equip state
-            //    of their own — so they're all checked directly here rather
-            //    than through MiracleInput; consuming the press this way
-            //    (skipping input.Update() for the frame) stops it from also
-            //    being read as a world click. Placement Mode (armed by a
-            //    Build button) then claims the *next* press too: that one's
-            //    a ground click, handled the same way a Pebble tap is.
-            Vector2 mouse = Raylib.GetMousePosition();
-            bool pressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
-            if (pressed && militiaMinusButton.Contains(mouse))
-                world.DecreaseMilitiaTarget();
-            else if (pressed && militiaPlusButton.Contains(mouse))
-                world.IncreaseMilitiaTarget();
-            else if (pressed && sproutButton.Contains(mouse))
-                world.TrySprout();
-            else if (pressed && granaryButton.Contains(mouse))
-                buildMode = buildMode == BuildMode.Granary ? BuildMode.None : BuildMode.Granary;
-            else if (pressed && wallButton.Contains(mouse))
-                buildMode = buildMode == BuildMode.Wall ? BuildMode.None : BuildMode.Wall;
-            else if (pressed && buildMode != BuildMode.None)
-            {
-                // Placement Mode: the next ground click places the Blueprint
-                // and deducts its Food cost, whether or not the raycast
-                // actually lands on the terrain — one click, one attempt.
-                Vector3? groundPoint = MiracleInput.PickGround(camera, world.Terrain, mouse);
-                if (groundPoint is not null)
-                {
-                    BuildingKind kind = buildMode == BuildMode.Granary ? BuildingKind.Granary : BuildingKind.Wall;
-                    world.TryPlaceBlueprint(kind, groundPoint.Value);
-                }
-                buildMode = BuildMode.None;
-            }
-            else
-                input.Update(deltaTime, camera, world, pebbleButton, gustButton);
+            // 1) Input: a pure God Game — the player's only lever on the
+            //    world is a miracle. Conscription, Sprouting and Village
+            //    Building are all the Village Heart's own business now, run
+            //    autonomously inside world.Update() below with no UI of
+            //    their own to intercept a press first.
+            input.Update(deltaTime, camera, world, pebbleButton, gustButton);
 
             // 2) Simulation.
             world.Update(deltaTime);
@@ -162,8 +122,6 @@ public static class Game
             Raylib.BeginMode3D(camera);
             world.Draw();
             input.DrawCursorPreview(camera, world.Terrain);
-            if (buildMode != BuildMode.None)
-                DrawBuildPreview(camera, world, buildMode);
             Raylib.EndMode3D();
 
             // 2D overlay (UI) is drawn after EndMode3D so it sits on top.
@@ -173,13 +131,9 @@ public static class Game
             gustButton.Draw(input.GustButtonLabel,
                             highlighted: input.State is InputState.GustEquipped or InputState.GustDragging,
                             disabled: !input.CanAffordGust(world));
-            DrawConscriptionSlider(militiaMinusButton, militiaPlusButton, world);
-            sproutButton.Draw($"Sprout ({World.FoodPerSprout} Food)", highlighted: false, disabled: world.FoodStored < World.FoodPerSprout);
-            granaryButton.Draw($"Build Granary ({World.GranaryFoodCost} Food)", highlighted: buildMode == BuildMode.Granary, disabled: world.FoodStored < World.GranaryFoodCost);
-            wallButton.Draw($"Build Wall ({World.WallFoodCost} Food)", highlighted: buildMode == BuildMode.Wall, disabled: world.FoodStored < World.WallFoodCost);
             DrawFaithMeter(world.Faith);
             DrawColonyPanel(world);
-            DrawHud(input, world, buildMode);
+            DrawHud(input, world);
 
             Raylib.EndDrawing();
 
@@ -233,32 +187,6 @@ public static class Game
         Raylib.DrawLineEx(new Vector2(tickX, bar.Y - 3), new Vector2(tickX, bar.Y + bar.Height + 3), 2f, PanelInk);
     }
 
-    /// <summary>
-    /// The Conscription Slider, under the miracle buttons: [ - ] N [ + ],
-    /// where N is the Militia Target the Job Manager works toward. The -/+
-    /// buttons are drawn disabled at the 0/population clamp so the player
-    /// can see at a glance when they've hit the limit.
-    /// </summary>
-    private static void DrawConscriptionSlider(UiButton minusButton, UiButton plusButton, World world)
-    {
-        minusButton.Draw("-", highlighted: false, disabled: world.MilitiaTarget <= 0);
-        plusButton.Draw("+", highlighted: false, disabled: world.MilitiaTarget >= world.LivingPopulation);
-
-        const int fontSize = 22;
-        string label = $"Militia: {world.MilitiaTarget}";
-        var labelBounds = new Rectangle(minusButton.Bounds.X + minusButton.Bounds.Width,
-                                        minusButton.Bounds.Y,
-                                        plusButton.Bounds.X - (minusButton.Bounds.X + minusButton.Bounds.Width),
-                                        minusButton.Bounds.Height);
-        Raylib.DrawRectangleRec(labelBounds, new Color(220, 220, 220, 255));
-        Raylib.DrawRectangleLinesEx(labelBounds, 2f, Color.DarkGray);
-        int textWidth = Raylib.MeasureText(label, fontSize);
-        Raylib.DrawText(label,
-                        (int)(labelBounds.X + (labelBounds.Width - textWidth) / 2f),
-                        (int)(labelBounds.Y + (labelBounds.Height - fontSize) / 2f),
-                        fontSize, Color.Black);
-    }
-
     /// <summary>Food (against the storage cap), population, Militia and Morale, top right.</summary>
     private static void DrawColonyPanel(World world)
     {
@@ -281,40 +209,18 @@ public static class Game
         Raylib.DrawText(morale, x, 26 + lineHeight * 2, fontSize, moraleColor);
     }
 
-    /// <summary>What Placement Mode (armed by a Build button) is currently about to place.</summary>
-    private enum BuildMode
-    {
-        None,
-        Granary,
-        Wall,
-    }
-
-    /// <summary>Live aiming feedback while a Build button has armed Placement Mode: a translucent ring at the footprint the next click would place.</summary>
-    private static void DrawBuildPreview(Camera3D camera, World world, BuildMode buildMode)
-    {
-        Vector3? point = MiracleInput.PickGround(camera, world.Terrain, Raylib.GetMousePosition());
-        if (point is null)
-            return;
-
-        float radius = buildMode == BuildMode.Granary ? Building.GranaryRadius : Building.WallWidth / 2f * 1.1f;
-        var p = point.Value + new Vector3(0, 0.02f, 0);
-        Raylib.DrawCircle3D(p, radius, Vector3.UnitX, 90f, new Color(255, 255, 0, 140));
-    }
-
     /// <summary>Small help text and debug counters in the bottom-left corner.</summary>
-    private static void DrawHud(MiracleInput input, World world, BuildMode buildMode)
+    private static void DrawHud(MiracleInput input, World world)
     {
         int Count(BramblekinState state) => world.Colony.Count(b => b.State == state);
 
         int y = Raylib.GetScreenHeight() - 60;
-        string hint = buildMode != BuildMode.None
-            ? $"Click the ground to place the {(buildMode == BuildMode.Granary ? "Granary" : "Bramble-Wall")} blueprint."
-            : input.State switch
+        string hint = input.State switch
         {
             InputState.PebbleEquipped => $"Click the ground to drop the pebble ({MiracleManager.PebbleFaithCost} Faith).",
             InputState.GustEquipped => $"Click and drag across the ground, then release to blow a Gust ({MiracleManager.GustFaithCost} Faith).",
             InputState.GustDragging => "Release to blow the Gust in this direction.",
-            _ => "Crack acorns or forage berries, Sprout new Bramblekin and build a Granary or Wall. Raise the Militia Target to defend the village and hunt aphids — Militia now poke a nearby spider straight into a stun. Low Morale wearies Gatherers; keep it high to build faster.",
+            _ => "A pure God Game: Pebble-Drop and Gust are all you command. The Village Heart runs itself — sprouting, drafting Militia and building Granaries/Walls on its own — while a Gust tumbles a hunting spider and a Pike Defense does too.",
         };
         Raylib.DrawText(hint, 20, y, 20, Color.DarkGray);
         Raylib.DrawText(
@@ -1324,11 +1230,12 @@ public readonly record struct Obstacle(Vector2 Center, float Radius);
 /// acorn, food shards and the colony — and steps it in a fixed order:
 ///
 ///   faith regen -> miracles (shadows, pebble release)
-///   -> physics (+ acorn cracking, spider squishing)
+///   -> physics (+ acorn cracking, spider squishing every frame, Tumbled or not)
 ///   -> shard sliding (from a Gust) -> obstacle list -> shove food out from
 ///   under rocks -> ambient prey -> Bramblekin -> Wolf Spider (may kill
-///   Bramblekin) -> Job Manager (Conscription: nudges Militia headcount
-///   toward the target) -> acorn / spider respawn
+///   Bramblekin) -> spider/Bramble-Wall collision -> the Village Heart's own
+///   autonomous business (Auto-Conscription, War Weariness, Auto-Sprout,
+///   Auto-Construction) -> acorn / spider respawn
 ///
 /// A cast Gust (CastGust) sits outside this per-frame order: it applies its
 /// push to everything caught in its corridor all at once, the instant it's
@@ -1421,6 +1328,21 @@ public sealed class World
     /// <summary>Food Stored spent to place a Bramble-Wall blueprint.</summary>
     public const int WallFoodCost = 5;
 
+    /// <summary>Auto-Construction (Granaries): fraction of the current food cap that triggers placing one.</summary>
+    private const float GranaryTriggerFraction = 0.9f;
+
+    /// <summary>How far (m) from the Village Heart an Auto-Granary may be placed.</summary>
+    private const float GranaryPlacementRadius = 5f;
+
+    /// <summary>Auto-Construction (Walls): a Bramble-Wall is queued every time the population has grown by this many.</summary>
+    private const int PopulationPerWall = 5;
+
+    /// <summary>How far (m) from the Village Heart the Auto-Wall perimeter sits.</summary>
+    private const float WallPerimeterRadius = 8f;
+
+    /// <summary>Angular spacing (radians) between consecutive Auto-Walls around the perimeter — 8 evenly spaced before the ring repeats.</summary>
+    private const float WallPerimeterAngleStep = MathF.Tau / 8f;
+
     /// <summary>Morale cap. Also the starting amount: the colony begins confident.</summary>
     public const float MaxMorale = 100f;
 
@@ -1466,6 +1388,14 @@ public sealed class World
 
     private float _berrySpawnTimer = BerrySpawnInterval;
     private float _aphidRespawnTimer = AphidRespawnDelay;
+
+    // Auto-Construction (Walls): how many population/PopulationPerWall
+    // milestones have been turned into a queued placement so far, how many
+    // of those are still waiting on affordable Food Stored, and where
+    // around the perimeter the next one goes.
+    private int _wallMilestonesQueued;
+    private int _pendingWallPlacements;
+    private float _wallPerimeterAngle;
 
     public Terrain Terrain { get; }
     public PhysicsManager Physics { get; }
@@ -1554,33 +1484,31 @@ public sealed class World
     public int CurrentMilitia => Colony.Count(b => !b.IsDead && b.Role == BramblekinRole.Militia);
 
     /// <summary>
-    /// The Conscription Slider: how many Bramblekin the Job Manager tries to
-    /// keep as Militia. Always clamped to [0, <see cref="LivingPopulation"/>]
-    /// — see <see cref="IncreaseMilitiaTarget"/>/<see cref="DecreaseMilitiaTarget"/>
-    /// and the population-loss safety net in <see cref="UpdateJobManager"/>.
+    /// Auto-Conscription: how many Bramblekin the Job Manager currently
+    /// wants as Militia, recomputed fresh every frame in <see cref="UpdateJobManager"/>
+    /// from <see cref="LivingPopulation"/> — the player has no direct say in
+    /// this any more. Exposed read-only for the HUD.
     /// </summary>
     public int MilitiaTarget { get; private set; }
 
-    public void IncreaseMilitiaTarget() => MilitiaTarget = Math.Min(MilitiaTarget + 1, LivingPopulation);
-
-    public void DecreaseMilitiaTarget() => MilitiaTarget = Math.Max(MilitiaTarget - 1, 0);
+    /// <summary>The Village Heart's Auto-Conscription ratio: one Militia unit for every this-many Gatherers.</summary>
+    private const int GatherersPerMilitia = 3;
 
     /// <summary>
-    /// The Job Manager: each frame, nudges the Militia headcount one step
-    /// toward <see cref="MilitiaTarget"/> — promoting the Gatherer nearest
+    /// The Job Manager: the Village Heart's own autonomous quartermaster.
+    /// Every frame it recomputes <see cref="MilitiaTarget"/> from the
+    /// current population — one Militia per <see cref="GatherersPerMilitia"/>
+    /// Gatherers (population / 4, integer division) — and nudges the actual
+    /// Militia headcount one step toward it: promoting the Gatherer nearest
     /// the Village Heart if under target, or standing down the Militia unit
     /// nearest the Village Heart (pike put away, sent back to Wandering) if
-    /// over. One change per frame is plenty; at 60 fps even a large jump in
-    /// the target closes out in a fraction of a second.
-    ///
-    /// Safety constraint: the target can never sit above the population it's
-    /// drawn from. Re-clamped here every frame (not just when the slider
-    /// itself is touched) so a Wolf Spider kill that drops the population
-    /// below the target is corrected immediately, on the very next frame.
+    /// over. One change per frame is plenty; at 60 fps even a large jump
+    /// (a mass Sprout, or a Wolf Spider kill dropping the population)
+    /// closes out in a fraction of a second, with no player input needed.
     /// </summary>
     private void UpdateJobManager()
     {
-        MilitiaTarget = Math.Min(MilitiaTarget, LivingPopulation);
+        MilitiaTarget = LivingPopulation / (GatherersPerMilitia + 1);
 
         int current = CurrentMilitia;
         if (current < MilitiaTarget)
@@ -1864,8 +1792,22 @@ public sealed class World
             Colony[i].Update(deltaTime, this);
 
         Spider?.Update(deltaTime, this);
+        ResolveSpiderWallCollisions();
         UpdateJobManager();
         UpdateMorale(deltaTime);
+
+        // Auto-Construction gets first claim on Food Stored, checked before
+        // Auto-Sprout: Sprout's own trigger (>= FoodPerSprout) is the lowest
+        // bar of the three, and its while-loop drains anything at or above
+        // that back toward zero every single frame. Left to run first, it
+        // would starve Auto-Construction completely -- Food Stored could
+        // never sit at the Granary's 90%-of-cap threshold, or even hold the
+        // Wall's flat cost, across a frame boundary for Auto-Construction to
+        // ever see it. Checking Construction first still leaves Sprout free
+        // to spend whatever's left over once nothing needs building.
+        UpdateAutoGranary();
+        UpdateAutoWalls();
+        UpdateAutoSprout();
 
         UpdateAcornRespawn(deltaTime);
         UpdateSpiderRespawn(deltaTime);
@@ -2043,10 +1985,11 @@ public sealed class World
     /// A delivered shard leaves the map and adds to the village stores, up to
     /// <see cref="MaxFoodCapacity"/> — food gathered past a full store is
     /// still delivered (the Bramblekin isn't left holding it forever) but
-    /// doesn't raise the count, so there's a real incentive to spend it
-    /// (Sprouting, building) rather than let Gatherers keep piling more up.
-    /// Sprouting a new Bramblekin is a deliberate player action now (see
-    /// <see cref="TrySprout"/>), not automatic.
+    /// doesn't raise the count. The Village Heart itself decides what to do
+    /// with what's banked (Auto-Sprout, Auto-Construction — see <see cref="UpdateAutoSprout"/>/
+    /// <see cref="UpdateAutoGranary"/>/<see cref="UpdateAutoWalls"/>), all
+    /// autonomous; this is a pure God Game, so the player never spends food
+    /// directly.
     ///
     /// This is called from inside a Bramblekin's own Update(), which is
     /// itself inside World's reverse for-loop over Colony — so the shard's
@@ -2060,26 +2003,89 @@ public sealed class World
     }
 
     /// <summary>
-    /// Manual Sprouting: spends <see cref="FoodPerSprout"/> Food Stored to
-    /// sprout one new Bramblekin next to the Village Heart, if there's enough
-    /// stored. Returns false (and spends nothing) otherwise.
+    /// Auto-Sprout: the Village Heart's own reflex, checked every frame in
+    /// <see cref="Update"/>. Whenever Food Stored reaches <see cref="FoodPerSprout"/>
+    /// it spends it and sprouts a new Bramblekin, repeating until there's
+    /// less than a Sprout's worth left banked — no player action involved.
     /// </summary>
-    public bool TrySprout()
+    private void UpdateAutoSprout()
     {
-        if (FoodStored < FoodPerSprout)
-            return false;
+        while (FoodStored >= FoodPerSprout)
+        {
+            FoodStored -= FoodPerSprout;
+            SproutBramblekin();
+        }
+    }
 
-        FoodStored -= FoodPerSprout;
-        SproutBramblekin();
-        return true;
+    /// <summary>
+    /// Auto-Construction (Granaries): once Food Stored reaches <see cref="GranaryTriggerFraction"/>
+    /// of the current cap, the Village Heart places a Granary Blueprint on
+    /// its own, at a random unoccupied spot within <see cref="GranaryPlacementRadius"/>
+    /// meters of itself — checked every frame in <see cref="Update"/>, but
+    /// guarded so at most one Auto-Granary is ever queued at a time.
+    /// </summary>
+    private void UpdateAutoGranary()
+    {
+        if (FoodStored < MaxFoodCapacity * GranaryTriggerFraction)
+            return;
+        if (Blueprints.Any(b => b.Kind == BuildingKind.Granary))
+            return; // Already building one; don't queue a second.
+
+        Vector3? spot = RandomPointNearVillage(GranaryPlacementRadius, Building.GranaryRadius + 0.2f);
+        if (spot is { } point)
+            TryPlaceBlueprint(BuildingKind.Granary, point);
+    }
+
+    /// <summary>
+    /// Auto-Construction (Walls): every <see cref="PopulationPerWall"/> the
+    /// population has grown by (tracked via <see cref="Births"/>, which only
+    /// ever goes up), the Village Heart queues one more Bramble-Wall on a
+    /// circular perimeter <see cref="WallPerimeterRadius"/> meters out,
+    /// spaced <see cref="WallPerimeterAngleStep"/> apart. Checked every frame
+    /// in <see cref="Update"/>; if it can't afford one yet, the attempt (and
+    /// the milestone behind it) just stays queued and retries next frame.
+    /// </summary>
+    private void UpdateAutoWalls()
+    {
+        int milestonesReached = Births / PopulationPerWall;
+        if (milestonesReached > _wallMilestonesQueued)
+        {
+            _pendingWallPlacements += milestonesReached - _wallMilestonesQueued;
+            _wallMilestonesQueued = milestonesReached;
+        }
+
+        if (_pendingWallPlacements <= 0)
+            return;
+
+        Vector3 spot = Village.Center + new Vector3(MathF.Cos(_wallPerimeterAngle), 0, MathF.Sin(_wallPerimeterAngle)) * WallPerimeterRadius;
+        if (TryPlaceBlueprint(BuildingKind.Wall, spot))
+        {
+            _pendingWallPlacements--;
+            _wallPerimeterAngle += WallPerimeterAngleStep;
+        }
+    }
+
+    /// <summary>A random point within <paramref name="maxRadius"/> meters of the Village Heart that isn't blocked. Null if nothing opened up in a handful of tries.</summary>
+    private Vector3? RandomPointNearVillage(float maxRadius, float clearance)
+    {
+        float minRadius = Village.Obstacle.Radius + 0.5f;
+        for (int attempt = 0; attempt < 20; attempt++)
+        {
+            float angle = (float)(Rng.NextDouble() * MathF.Tau);
+            float radius = minRadius + (float)Rng.NextDouble() * MathF.Max(maxRadius - minRadius, 0f);
+            var point = Village.Center + new Vector3(MathF.Cos(angle) * radius, 0, MathF.Sin(angle) * radius);
+            if (!IsBlocked(point, clearance) && Terrain.Contains(point, 0f))
+                return point;
+        }
+        return null;
     }
 
     /// <summary>
     /// Village Building: spends Food Stored to place a Blueprint at
-    /// <paramref name="groundPoint"/> — the start of Placement Mode's next
-    /// click. Returns false (and spends nothing) if there isn't enough Food
-    /// Stored for the kind's cost (<see cref="GranaryFoodCost"/> or
-    /// <see cref="WallFoodCost"/>).
+    /// <paramref name="groundPoint"/> — called by the Village Heart's own
+    /// Auto-Construction (<see cref="UpdateAutoGranary"/>/<see cref="UpdateAutoWalls"/>).
+    /// Returns false (and spends nothing) if there isn't enough Food Stored
+    /// for the kind's cost (<see cref="GranaryFoodCost"/> or <see cref="WallFoodCost"/>).
     /// </summary>
     public bool TryPlaceBlueprint(BuildingKind kind, Vector3 groundPoint)
     {
@@ -2313,7 +2319,11 @@ public sealed class World
     /// <summary>
     /// The high-skill reward: a pebble whose centre lands right on top of the
     /// Wolf Spider crushes it. (A spider staring at a distraction, or
-    /// feeding, stands still — that's the moment to strike.)
+    /// feeding, stands still — that's the moment to strike.) This check runs
+    /// every frame from World.Update() itself, entirely outside the spider's
+    /// own state machine (WolfSpider.Update()) — so it applies no matter what
+    /// the spider is doing, Tumbled included. A stunned spider lying on its
+    /// side is not an invincible one.
     /// </summary>
     private void SquishSpiderOnImpact()
     {
@@ -2322,15 +2332,89 @@ public sealed class World
 
         foreach (var impact in Physics.Impacts)
         {
-            if (GroundMover.HorizontalDistance(impact.Point, Spider.Position) > SquishRadius)
+            if (GroundMover.HorizontalDistance(impact.Point, Spider.Position) <= SquishRadius)
+            {
+                DespawnSpider();
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Lethal Militia Swarm: a third poke landing on an already-Tumbled
+    /// spider (see WolfSpider.TumbleFromPoke, called from a Defending
+    /// Militia unit) kills it outright, the same despawn/respawn-timer path
+    /// as a direct pebble hit.
+    /// </summary>
+    public void KillSpiderBySwarm() => DespawnSpider();
+
+    /// <summary>Removes the spider, leaves a splat where it stood, and starts the respawn timer — shared by a pebble squish and a Militia swarm kill.</summary>
+    private void DespawnSpider()
+    {
+        if (Spider is null)
+            return;
+
+        _splats.Add((Spider.Position, SplatDuration));
+        Spider = null;
+        SpidersCrushed++;
+        SpiderRespawnTimer = SpiderRespawnDelay;
+    }
+
+    /// <summary>
+    /// Wall Collision: an AABB (a completed Bramble-Wall's footprint) vs
+    /// Circle (the spider's body) check, resolved every frame regardless of
+    /// how the spider got there. Unlike the circular obstacle-avoidance it
+    /// steers around day to day (<see cref="ObstaclesForSpider"/>), this
+    /// catches a large single-frame displacement — a Gust knockback, say —
+    /// that could otherwise tunnel it straight through a wall in one jump,
+    /// by always pushing it back out along the axis of least penetration.
+    /// </summary>
+    private void ResolveSpiderWallCollisions()
+    {
+        if (Spider is null)
+            return;
+
+        Vector3 position = Spider.Position;
+        float radius = WolfSpider.BodyRadius;
+
+        foreach (var building in Buildings)
+        {
+            if (building.Kind != BuildingKind.Wall)
                 continue;
 
-            _splats.Add((Spider.Position, SplatDuration));
-            Spider = null;
-            SpidersCrushed++;
-            SpiderRespawnTimer = SpiderRespawnDelay;
-            return;
+            BoundingBox box = building.Bounds;
+            float closestX = Math.Clamp(position.X, box.Min.X, box.Max.X);
+            float closestZ = Math.Clamp(position.Z, box.Min.Z, box.Max.Z);
+            float dx = position.X - closestX;
+            float dz = position.Z - closestZ;
+            float distanceSquared = dx * dx + dz * dz;
+            if (distanceSquared >= radius * radius)
+                continue; // Outside the wall's footprint (grown by the spider's radius): no overlap.
+
+            if (distanceSquared > 1e-6f)
+            {
+                float distance = MathF.Sqrt(distanceSquared);
+                float push = radius - distance;
+                position += new Vector3(dx / distance, 0, dz / distance) * push;
+            }
+            else
+            {
+                // Dead centre — fully inside, with no clear outward
+                // direction from the closest-point test. Push out along
+                // whichever axis has the shallower penetration instead.
+                float centerX = (box.Min.X + box.Max.X) / 2f;
+                float centerZ = (box.Min.Z + box.Max.Z) / 2f;
+                float penetrationX = (box.Max.X - box.Min.X) / 2f + radius - MathF.Abs(position.X - centerX);
+                float penetrationZ = (box.Max.Z - box.Min.Z) / 2f + radius - MathF.Abs(position.Z - centerZ);
+                if (penetrationX < penetrationZ)
+                    position.X += position.X >= centerX ? penetrationX : -penetrationX;
+                else
+                    position.Z += position.Z >= centerZ ? penetrationZ : -penetrationZ;
+            }
         }
+
+        if (position != Spider.Position)
+            Spider.WarpPosition(position);
     }
 
     private void UpdateSpiderRespawn(float deltaTime)
@@ -3344,11 +3428,15 @@ public sealed class Bramblekin
         // Active Militia Combat: close enough to jab it directly, rather than
         // just standing guard and waiting to block a pounce. Forces the
         // spider into Tumbled immediately, on a per-unit cooldown so a
-        // handful of Militia can't spam it into a permanent stun-lock.
+        // handful of Militia can't spam it into a permanent stun-lock. A
+        // third poke landing on an already-Tumbled spider (the Lethal
+        // Militia Swarm) kills it outright.
         if (_pokeCooldown <= 0f && GroundMover.HorizontalDistance(Position, spider.Position) <= PokeRange)
         {
-            spider.TumbleFromPoke();
+            bool lethal = spider.TumbleFromPoke();
             _pokeCooldown = PokeCooldownDuration;
+            if (lethal)
+                world.KillSpiderBySwarm();
         }
 
         _mover.MoveTowards(_target, DefendSpeed, deltaTime, world, p => IsSafeSpot(p, world));
@@ -3581,6 +3669,9 @@ public sealed class WolfSpider
     /// <summary>Bramblekin killed so far.</summary>
     public int Kills { get; private set; }
 
+    /// <summary>Lethal Militia Swarm: how many times a Militia poke has landed while already Tumbled this stun. Reset to 0 whenever it recovers (see <see cref="StartProwling"/>).</summary>
+    public int PokesReceived { get; private set; }
+
     public WolfSpider(Vector3 position, Random rng)
     {
         _rng = rng;
@@ -3588,6 +3679,14 @@ public sealed class WolfSpider
         _target = position;
         _timer = ProwlPauseDuration;
     }
+
+    /// <summary>
+    /// Wall Collision: lets World directly reposition the spider after
+    /// resolving an AABB-vs-circle overlap with a Bramble-Wall
+    /// (World.ResolveSpiderWallCollisions) — a hard correction, not a normal
+    /// step, so it bypasses GroundMover's obstacle/terrain handling entirely.
+    /// </summary>
+    public void WarpPosition(Vector3 position) => _mover.Position = position;
 
     public void Update(float deltaTime, World world)
     {
@@ -3702,21 +3801,32 @@ public sealed class WolfSpider
         }
     }
 
+    /// <summary>Lethal Militia Swarm: this many mid-stun pokes (see <see cref="PokesReceived"/>) kills the spider outright.</summary>
+    public const int LethalPokeCount = 3;
+
     /// <summary>
     /// Active Militia Combat: a Defending Militia unit that closes to poke
     /// range forces an immediate Tumble, same duration as a Gust knockback or
-    /// a Pike Defense block. A no-op while already Tumbled, so a cluster of
-    /// Militia poking on their own cooldowns can't keep re-triggering the
-    /// stun indefinitely once it's already down.
+    /// a Pike Defense block. A poke landing on an already-Tumbled spider
+    /// doesn't restart or extend the stun — it counts toward <see cref="PokesReceived"/>
+    /// instead (the Lethal Militia Swarm), and once that reaches <see cref="LethalPokeCount"/>
+    /// this returns true. WolfSpider doesn't own its own despawn/respawn
+    /// state, so it's the caller's job to actually kill it on a true (see
+    /// World.KillSpiderBySwarm, called from Bramblekin's poke).
     /// </summary>
-    public void TumbleFromPoke()
+    public bool TumbleFromPoke()
     {
         if (State == SpiderState.Tumbled)
-            return;
+        {
+            PokesReceived++;
+            return PokesReceived >= LethalPokeCount;
+        }
 
         _prey = null;
         _timer = TumbledDuration;
+        PokesReceived = 0;
         SetState(SpiderState.Tumbled);
+        return false;
     }
 
     // --- States ---------------------------------------------------------------------
@@ -3880,6 +3990,7 @@ public sealed class WolfSpider
     {
         _prey = null;
         _timer = ProwlPauseDuration;
+        PokesReceived = 0; // A fresh stun (or none) starts the swarm-kill count over.
         SetState(SpiderState.Prowling);
     }
 
