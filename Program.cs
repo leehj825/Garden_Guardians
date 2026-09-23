@@ -1,15 +1,18 @@
 // =============================================================================
 //  Garden Guardians — Phase 1 Touch-Physics Prototype
 // -----------------------------------------------------------------------------
-//  Goal of this prototype (see Garden_Guardians_Roadmap.md, Phase 1 / Task 1):
+//  Goal of this prototype (see Garden_Guardians_Roadmap.md, Phase 1):
 //    * A fixed isometric camera looking down at a patch of backyard "terrain".
-//    * A tiny hand-rolled physics loop (Raylib has no rigidbodies).
+//    * A tiny hand-rolled physics loop (Raylib has no rigidbodies): gravity,
+//      ground contact, and solid pebbles that stack or roll off each other.
 //    * A two-state input model: click the "Equip Pebble" button, then click the
 //      ground to cast the Pebble-Drop miracle at that spot.
 //    * The God's Shadow: a cast pebble is telegraphed by a dark shadow on the
 //      ground for 1.5 s before it actually drops.
-//    * A small colony of Bramblekin that wander the terrain and scurry out of
-//      any God's Shadow at 3x speed (see Garden_Guardians_Design.md).
+//    * A colony of Bramblekin that wander, steer around rocks, and scurry out
+//      of any God's Shadow at 3x speed (see Garden_Guardians_Design.md).
+//    * The first economic loop: crack an Acorn with a pebble, and the
+//      Bramblekin carry the Food Shards back to the Village Heart.
 //
 //  Scale convention: 1 world unit = 1 meter. The terrain is a 20 m x 20 m plane
 //  centred on the origin, and "up" is +Y. Gravity is 9.8 m/s² downwards.
@@ -41,8 +44,8 @@ public enum GamePlatform
 }
 
 /// <summary>
-/// Owns the window and the main loop, and wires the individual systems
-/// (camera, terrain, physics, input, UI) together. Platform-independent.
+/// Owns the window and the main loop: reads input, steps the <see cref="World"/>,
+/// and draws it with the UI on top. Platform-independent.
 /// </summary>
 public static class Game
 {
@@ -80,16 +83,9 @@ public static class Game
 
         // --- Build the world -------------------------------------------------
         var camera = IsometricCamera.Create(target: Vector3.Zero, distance: 30f);
-        var terrain = new Terrain(size: 20f);
-        var physics = new PhysicsManager();
-        var miracles = new MiracleManager();
+        var world = new World(new Terrain(size: 20f), new Random(), ColonySize);
         var input = new MiracleInput();
         var equipButton = new UiButton(new Rectangle(20, 20, 180, 50));
-
-        var rng = new Random();
-        var colony = new List<Bramblekin>();
-        for (int i = 0; i < ColonySize; i++)
-            colony.Add(new Bramblekin(terrain.RandomPoint(rng, Bramblekin.EdgeMargin), rng));
 
         // --- Main loop -------------------------------------------------------
         while (!Raylib.WindowShouldClose())
@@ -99,32 +95,25 @@ public static class Game
             // 1) Input: UI gets first pick of the click so that pressing the
             //    button never also drops a pebble "through" it onto the ground.
             //    A ground click queues a God's Shadow rather than a pebble.
-            input.Update(camera, terrain, miracles, equipButton);
+            input.Update(camera, world.Terrain, world.Miracles, equipButton);
 
-            // 2) Simulation. Miracles first, so a shadow cast this frame is
-            //    already visible to the Bramblekin deciding where to run.
-            miracles.Update(deltaTime, physics);
-            foreach (var bramblekin in colony)
-                bramblekin.Update(deltaTime, terrain, miracles.ActiveShadows);
-            physics.Update(deltaTime);
+            // 2) Simulation.
+            world.Update(deltaTime);
 
             // 3) Rendering.
             Raylib.BeginDrawing();
             Raylib.ClearBackground(new Color(135, 190, 235, 255)); // Sky blue.
 
             Raylib.BeginMode3D(camera);
-            terrain.Draw();
-            miracles.Draw();
-            foreach (var bramblekin in colony)
-                bramblekin.Draw();
-            physics.Draw();
-            input.DrawCursorPreview(camera, terrain);
+            world.Draw();
+            input.DrawCursorPreview(camera, world.Terrain);
             Raylib.EndMode3D();
 
             // 2D overlay (UI) is drawn after EndMode3D so it sits on top.
             equipButton.Draw(input.State == InputState.PebbleEquipped ? "Pebble Equipped" : "Equip Pebble",
                              highlighted: input.State == InputState.PebbleEquipped);
-            DrawHud(input, physics, colony);
+            DrawFoodCounter(world.FoodStored);
+            DrawHud(input, world);
 
             Raylib.EndDrawing();
         }
@@ -132,17 +121,34 @@ public static class Game
         Raylib.CloseWindow();
     }
 
-    /// <summary>Small help text and debug counters in the bottom-left corner.</summary>
-    private static void DrawHud(MiracleInput input, PhysicsManager physics, List<Bramblekin> colony)
+    /// <summary>The global "Food Stored" counter in the top-right corner.</summary>
+    private static void DrawFoodCounter(int foodStored)
     {
-        int fleeing = colony.Count(b => b.State == BramblekinState.Fleeing);
+        const int fontSize = 30;
+        string text = $"Food Stored: {foodStored}";
+        int width = Raylib.MeasureText(text, fontSize);
+        int x = Raylib.GetScreenWidth() - width - 30;
+
+        Raylib.DrawRectangle(x - 12, 18, width + 24, fontSize + 18, new Color(255, 250, 235, 220));
+        Raylib.DrawRectangleLines(x - 12, 18, width + 24, fontSize + 18, new Color(110, 70, 35, 255));
+        Raylib.DrawText(text, x, 27, fontSize, new Color(110, 70, 35, 255));
+    }
+
+    /// <summary>Small help text and debug counters in the bottom-left corner.</summary>
+    private static void DrawHud(MiracleInput input, World world)
+    {
+        int Count(BramblekinState state) => world.Colony.Count(b => b.State == state);
+
         int y = Raylib.GetScreenHeight() - 60;
         string hint = input.State == InputState.PebbleEquipped
             ? "Click the ground to drop the pebble."
-            : "Click 'Equip Pebble', then click the ground.";
+            : "Click 'Equip Pebble', then drop it on the acorn to crack it.";
         Raylib.DrawText(hint, 20, y, 20, Color.DarkGray);
-        Raylib.DrawText($"Pebbles: {physics.Count}   Bramblekin: {colony.Count} ({fleeing} fleeing)   FPS: {Raylib.GetFPS()}",
-                        20, y + 26, 20, Color.DarkGray);
+        Raylib.DrawText(
+            $"Pebbles: {world.Physics.Count}   Bramblekin: {world.Colony.Count} " +
+            $"(gathering {Count(BramblekinState.Gathering)}, returning {Count(BramblekinState.Returning)}, " +
+            $"fleeing {Count(BramblekinState.Fleeing)})   FPS: {Raylib.GetFPS()}",
+            20, y + 26, 20, Color.DarkGray);
     }
 }
 
@@ -266,8 +272,8 @@ public sealed class Terrain
 
 /// <summary>
 /// A minimal rigid body: a sphere with a position, a velocity and a radius.
-/// There is no rotation or inter-object collision yet — just enough to make
-/// things fall and land on the terrain.
+/// No rotation — pebbles slide rather than truly roll — but that is plenty
+/// for stacking, rolling off each other and coming to rest.
 /// </summary>
 public sealed class PhysicsObject
 {
@@ -277,13 +283,18 @@ public sealed class PhysicsObject
     /// <summary>Sphere radius in meters.</summary>
     public float Radius { get; }
 
-    /// <summary>Mass in kilograms. Unused for now; reserved for impact/damage calculations.</summary>
+    /// <summary>Mass in kilograms. Heavier bodies are pushed less in collisions.</summary>
     public float Mass { get; }
+
+    public float InverseMass => 1f / Mass;
 
     public Color Color { get; }
 
-    /// <summary>True once the object has come to rest on the terrain.</summary>
-    public bool IsGrounded { get; private set; }
+    /// <summary>True while the sphere is touching the terrain.</summary>
+    public bool OnGround { get; internal set; }
+
+    /// <summary>True while the sphere is clearly above the ground (falling or perched on something).</summary>
+    public bool IsAirborne => Position.Y - Radius > Terrain.GroundHeight + 0.05f;
 
     public PhysicsObject(Vector3 position, float radius, float mass, Color color)
     {
@@ -294,38 +305,6 @@ public sealed class PhysicsObject
         Color = color;
     }
 
-    /// <summary>
-    /// Advances the object by one time step using semi-implicit Euler
-    /// integration: update velocity from acceleration first, then position
-    /// from the new velocity. This is more stable than plain Euler at no cost.
-    /// </summary>
-    public void Integrate(float deltaTime, float gravity)
-    {
-        if (IsGrounded)
-            return; // Resting objects are frozen until something pushes them.
-
-        Velocity.Y -= gravity * deltaTime;
-        Position += Velocity * deltaTime;
-
-        ResolveGroundCollision();
-    }
-
-    /// <summary>
-    /// Stops the object when it reaches the terrain. We test the *bottom* of
-    /// the sphere (centre minus radius) so it rests on the ground instead of
-    /// sinking halfway into it.
-    /// </summary>
-    private void ResolveGroundCollision()
-    {
-        float bottom = Position.Y - Radius;
-        if (bottom <= Terrain.GroundHeight)
-        {
-            Position.Y = Terrain.GroundHeight + Radius; // Snap onto the surface.
-            Velocity = Vector3.Zero;                     // No bounce (yet).
-            IsGrounded = true;
-        }
-    }
-
     public void Draw()
     {
         Raylib.DrawSphere(Position, Radius, Color);
@@ -333,42 +312,206 @@ public sealed class PhysicsObject
     }
 }
 
+/// <summary>A sphere hitting the ground hard enough to matter (e.g. to crack an acorn).</summary>
+public readonly record struct GroundImpact(PhysicsObject Body, Vector3 Point, float Speed);
+
 /// <summary>
-/// Owns every simulated object and steps them each frame.
+/// Owns every simulated sphere and steps them each frame:
+///
+///   1. Integrate: gravity, then move (semi-implicit Euler).
+///   2. Detect hard ground landings and report them as <see cref="Impacts"/>.
+///   3. Solve contacts a few times over: sphere-vs-sphere, then each sphere
+///      against the ground, static boxes and the terrain edge. Repeating the
+///      pass lets a stack settle: pushing one pair apart can create a new
+///      overlap with a third sphere or the ground, which the next pass fixes.
+///   4. Ground friction, so rocks that rolled off a pile come to rest.
 /// </summary>
 public sealed class PhysicsManager
 {
     /// <summary>Gravitational acceleration in m/s² (Earth, since 1 unit = 1 m).</summary>
     public const float Gravity = 9.8f;
 
-    /// <summary>
-    /// Largest time step we will simulate in one go. If the game hitches
-    /// (window dragged, breakpoint hit) a huge deltaTime could tunnel objects
-    /// straight through the ground; clamping keeps the simulation sane.
-    /// </summary>
-    private const float MaxDeltaTime = 1f / 20f;
+    /// <summary>Contact passes per frame. More is stiffer; 4 is plenty for a handful of pebbles.</summary>
+    private const int SolverIterations = 4;
 
+    /// <summary>Bounciness of sphere-sphere hits (0 = dead stop, 1 = perfectly elastic).</summary>
+    private const float Restitution = 0.2f;
+
+    /// <summary>How quickly horizontal speed bleeds away on the ground, per second.</summary>
+    private const float GroundFriction = 4f;
+
+    /// <summary>Below this horizontal speed (m/s) a grounded sphere is simply stopped.</summary>
+    private const float RestSpeed = 0.05f;
+
+    /// <summary>Landings faster than this (m/s) are reported as impacts.</summary>
+    private const float ImpactSpeed = 3f;
+
+    private readonly float _terrainHalfSize;
     private readonly List<PhysicsObject> _objects = new();
+    private readonly List<BoundingBox> _staticBoxes = new();
+    private readonly List<GroundImpact> _impacts = new();
+
+    public PhysicsManager(Terrain terrain) => _terrainHalfSize = terrain.Size / 2f;
 
     public int Count => _objects.Count;
 
+    public IReadOnlyList<PhysicsObject> Objects => _objects;
+
+    /// <summary>Hard ground landings that happened during the last <see cref="Update"/>.</summary>
+    public IReadOnlyList<GroundImpact> Impacts => _impacts;
+
     public void Add(PhysicsObject obj) => _objects.Add(obj);
+
+    /// <summary>Adds an immovable box (e.g. a building) that spheres collide with.</summary>
+    public void AddStaticBox(BoundingBox box) => _staticBoxes.Add(box);
 
     public void Update(float deltaTime)
     {
-        float dt = MathF.Min(deltaTime, MaxDeltaTime);
+        _impacts.Clear();
+
+        // 1-2) Integrate, then catch first contact with the ground.
         foreach (var obj in _objects)
-            obj.Integrate(dt, Gravity);
+        {
+            obj.Velocity.Y -= Gravity * deltaTime;
+            obj.Position += obj.Velocity * deltaTime;
+
+            bool touching = obj.Position.Y - obj.Radius <= Terrain.GroundHeight;
+            if (touching && !obj.OnGround && -obj.Velocity.Y >= ImpactSpeed)
+            {
+                var point = new Vector3(obj.Position.X, Terrain.GroundHeight, obj.Position.Z);
+                _impacts.Add(new GroundImpact(obj, point, -obj.Velocity.Y));
+            }
+            obj.OnGround = touching;
+        }
+
+        // 3) Contacts.
+        for (int iteration = 0; iteration < SolverIterations; iteration++)
+        {
+            ResolveSphereContacts();
+            foreach (var obj in _objects)
+                ResolveStaticContacts(obj);
+        }
+
+        // 4) Friction.
+        foreach (var obj in _objects)
+        {
+            if (!obj.OnGround)
+                continue;
+
+            float damping = MathF.Max(0f, 1f - GroundFriction * deltaTime);
+            obj.Velocity.X *= damping;
+            obj.Velocity.Z *= damping;
+            if (obj.Velocity.X * obj.Velocity.X + obj.Velocity.Z * obj.Velocity.Z < RestSpeed * RestSpeed)
+            {
+                obj.Velocity.X = 0f;
+                obj.Velocity.Z = 0f;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Rock-to-rock collision. For every overlapping pair: push the two apart
+    /// along the line between their centres (the collision normal) by the
+    /// penetration depth, split by mass, then cancel the velocity with which
+    /// they approach each other along that normal. A pebble landing slightly
+    /// off-centre on another gets a sideways normal and slides off; one landing
+    /// dead on top stays stacked.
+    /// </summary>
+    private void ResolveSphereContacts()
+    {
+        for (int i = 0; i < _objects.Count; i++)
+        {
+            for (int j = i + 1; j < _objects.Count; j++)
+            {
+                PhysicsObject a = _objects[i], b = _objects[j];
+
+                Vector3 delta = b.Position - a.Position;
+                float minDistance = a.Radius + b.Radius;
+                float distanceSquared = delta.LengthSquared();
+                if (distanceSquared >= minDistance * minDistance)
+                    continue;
+
+                float distance = MathF.Sqrt(distanceSquared);
+                // Exactly coincident centres have no direction; separate vertically.
+                Vector3 normal = distance > 1e-5f ? delta / distance : Vector3.UnitY;
+                float penetration = minDistance - distance;
+
+                float totalInverseMass = a.InverseMass + b.InverseMass;
+                a.Position -= normal * (penetration * a.InverseMass / totalInverseMass);
+                b.Position += normal * (penetration * b.InverseMass / totalInverseMass);
+
+                float approachSpeed = Vector3.Dot(b.Velocity - a.Velocity, normal);
+                if (approachSpeed < 0f)
+                {
+                    float impulse = -(1f + Restitution) * approachSpeed / totalInverseMass;
+                    a.Velocity -= normal * (impulse * a.InverseMass);
+                    b.Velocity += normal * (impulse * b.InverseMass);
+                }
+            }
+        }
+    }
+
+    /// <summary>Keeps a sphere above the ground, outside static boxes and on the terrain.</summary>
+    private void ResolveStaticContacts(PhysicsObject obj)
+    {
+        // Ground: rest the bottom of the sphere on the surface.
+        if (obj.Position.Y - obj.Radius <= Terrain.GroundHeight)
+        {
+            obj.Position.Y = Terrain.GroundHeight + obj.Radius;
+            if (obj.Velocity.Y < 0f)
+                obj.Velocity.Y = 0f;
+            obj.OnGround = true;
+        }
+
+        // Static boxes: push out from the closest point on the box.
+        foreach (var box in _staticBoxes)
+        {
+            Vector3 closest = Vector3.Clamp(obj.Position, box.Min, box.Max);
+            Vector3 offset = obj.Position - closest;
+            float distanceSquared = offset.LengthSquared();
+            if (distanceSquared >= obj.Radius * obj.Radius)
+                continue;
+
+            Vector3 normal;
+            if (distanceSquared > 1e-8f)
+            {
+                normal = offset / MathF.Sqrt(distanceSquared);
+                obj.Position = closest + normal * obj.Radius;
+            }
+            else
+            {
+                // Centre inside the box: pop it out on top.
+                normal = Vector3.UnitY;
+                obj.Position.Y = box.Max.Y + obj.Radius;
+            }
+
+            float intoBox = Vector3.Dot(obj.Velocity, normal);
+            if (intoBox < 0f)
+                obj.Velocity -= normal * intoBox;
+        }
+
+        // Terrain edge: keep pebbles on the play area.
+        float limit = _terrainHalfSize - obj.Radius;
+        if (MathF.Abs(obj.Position.X) > limit)
+        {
+            obj.Position.X = Math.Clamp(obj.Position.X, -limit, limit);
+            obj.Velocity.X = 0f;
+        }
+        if (MathF.Abs(obj.Position.Z) > limit)
+        {
+            obj.Position.Z = Math.Clamp(obj.Position.Z, -limit, limit);
+            obj.Velocity.Z = 0f;
+        }
     }
 
     public void Draw()
     {
         foreach (var obj in _objects)
         {
-            // While an object is falling, draw a small dark disc on the ground
-            // under it. It helps judge height from the isometric view (the
+            // While an object is clearly above the ground, draw a small dark
+            // disc under it. It helps judge height from the isometric view (the
             // bigger God's Shadow telegraph is drawn by MiracleManager).
-            if (!obj.IsGrounded)
+            if (obj.IsAirborne)
                 DrawDropShadow(obj);
 
             obj.Draw();
@@ -596,17 +739,383 @@ public sealed class MiracleManager
 }
 
 // =============================================================================
+//  World: everything that lives on the terrain
+// =============================================================================
+
+/// <summary>
+/// A solid circle on the ground that Bramblekin walk around (a resting
+/// pebble, the Village Heart). Coordinates are (x, z).
+/// </summary>
+public readonly record struct Obstacle(Vector2 Center, float Radius);
+
+/// <summary>
+/// Owns the simulation state — terrain, physics, miracles, the village, the
+/// acorn, food shards and the colony — and steps it in a fixed order:
+///
+///   miracles (shadows, pebble release) -> physics (+ acorn cracking)
+///   -> obstacle list -> Bramblekin -> acorn respawn
+/// </summary>
+public sealed class World
+{
+    /// <summary>Seconds after an acorn is cracked before a new one appears.</summary>
+    private const float AcornRespawnDelay = 4f;
+
+    /// <summary>
+    /// How far (beyond touching) a pebble may land from the acorn and still
+    /// crack it — "on or very close to" the acorn.
+    /// </summary>
+    private const float AcornCrackSlack = 0.4f;
+
+    /// <summary>Number of Food Shards a cracked acorn yields.</summary>
+    private const int ShardsPerAcorn = 3;
+
+    private readonly List<Obstacle> _obstacles = new();
+    private float _acornRespawnTimer;
+
+    public Terrain Terrain { get; }
+    public PhysicsManager Physics { get; }
+    public MiracleManager Miracles { get; } = new();
+    public VillageHeart Village { get; }
+    public Acorn? Acorn { get; private set; }
+    public List<FoodShard> FoodShards { get; } = new();
+    public List<Bramblekin> Colony { get; } = new();
+    public Random Rng { get; }
+
+    /// <summary>Food delivered to the Village Heart so far.</summary>
+    public int FoodStored { get; private set; }
+
+    /// <summary>Solid circles Bramblekin must walk around. Rebuilt every frame.</summary>
+    public IReadOnlyList<Obstacle> Obstacles => _obstacles;
+
+    public World(Terrain terrain, Random rng, int colonySize)
+    {
+        Terrain = terrain;
+        Rng = rng;
+        Physics = new PhysicsManager(terrain);
+
+        // The Village Heart sits just off the centre of the garden. It is a
+        // solid box for pebbles and a solid circle for walkers.
+        Village = new VillageHeart(new Vector3(-2f, Terrain.GroundHeight, -2f));
+        Physics.AddStaticBox(Village.Bounds);
+        RebuildObstacles();
+
+        Acorn = new Acorn(RandomAcornSpot());
+
+        for (int i = 0; i < colonySize; i++)
+            Colony.Add(new Bramblekin(RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin), rng));
+    }
+
+    public void Update(float deltaTime)
+    {
+        Miracles.Update(deltaTime, Physics);
+        Physics.Update(deltaTime);
+        CrackAcornOnImpact();
+
+        RebuildObstacles();
+        foreach (var bramblekin in Colony)
+            bramblekin.Update(deltaTime, this);
+
+        UpdateAcornRespawn(deltaTime);
+    }
+
+    public void Draw()
+    {
+        Terrain.Draw();
+        Miracles.Draw();
+        Village.Draw();
+        Acorn?.Draw();
+        foreach (var shard in FoodShards)
+        {
+            if (!shard.IsCarried)
+                shard.Draw(shard.Position);
+        }
+        foreach (var bramblekin in Colony)
+            bramblekin.Draw();
+        Physics.Draw();
+    }
+
+    // --- Queries used by the Bramblekin AI ------------------------------------
+
+    /// <summary>True if a round body of <paramref name="clearance"/> radius at <paramref name="point"/> would overlap an obstacle.</summary>
+    public bool IsBlocked(Vector3 point, float clearance)
+    {
+        var p = new Vector2(point.X, point.Z);
+        foreach (var obstacle in _obstacles)
+        {
+            float reach = obstacle.Radius + clearance;
+            if (Vector2.DistanceSquared(p, obstacle.Center) < reach * reach)
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>The first God's Shadow that a body of <paramref name="bodyRadius"/> at <paramref name="point"/> is under, if any.</summary>
+    public GodShadow? ShadowOver(Vector3 point, float bodyRadius)
+    {
+        foreach (var shadow in Miracles.ActiveShadows)
+        {
+            if (shadow.Overlaps(point, bodyRadius))
+                return shadow;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// A shard can be gathered if nobody is carrying it, no pebble is sitting
+    /// on it, and no God's Shadow is over it (walking in there would be
+    /// suicidal).
+    /// </summary>
+    public bool IsAvailable(FoodShard shard) =>
+        !shard.IsCarried && !IsBlocked(shard.Position, 0f) && ShadowOver(shard.Position, FoodShard.Radius) is null;
+
+    public bool HasAvailableFood => FoodShards.Any(IsAvailable);
+
+    public FoodShard? NearestAvailableShard(Vector3 from)
+    {
+        FoodShard? best = null;
+        float bestDistance = float.MaxValue;
+        foreach (var shard in FoodShards)
+        {
+            if (!IsAvailable(shard))
+                continue;
+
+            float distance = Vector3.DistanceSquared(from, shard.Position);
+            if (distance < bestDistance)
+            {
+                best = shard;
+                bestDistance = distance;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>A delivered shard leaves the map and adds to the village stores.</summary>
+    public void DeliverFood(FoodShard shard)
+    {
+        FoodShards.Remove(shard);
+        FoodStored++;
+    }
+
+    /// <summary>A random point on the terrain that isn't inside an obstacle or under a shadow.</summary>
+    public Vector3 RandomFreePoint(float clearance, float edgeMargin)
+    {
+        Vector3 candidate = Vector3.Zero;
+        for (int attempt = 0; attempt < 30; attempt++)
+        {
+            candidate = Terrain.RandomPoint(Rng, edgeMargin);
+            if (!IsBlocked(candidate, clearance) && ShadowOver(candidate, clearance) is null)
+                return candidate;
+        }
+        return candidate; // Practically unreachable: obstacles cover a tiny fraction of the map.
+    }
+
+    // --- Internals ----------------------------------------------------------------
+
+    /// <summary>
+    /// Collects the solid circles on the ground: the village, plus every
+    /// pebble low enough to block a walker (a pebble still falling from 10 m
+    /// shouldn't make anyone swerve).
+    /// </summary>
+    private void RebuildObstacles()
+    {
+        _obstacles.Clear();
+        _obstacles.Add(Village.Obstacle);
+
+        foreach (var pebble in Physics.Objects)
+        {
+            if (pebble.Position.Y - pebble.Radius < Bramblekin.BodyHeight)
+                _obstacles.Add(new Obstacle(new Vector2(pebble.Position.X, pebble.Position.Z), pebble.Radius));
+        }
+    }
+
+    /// <summary>The Miracle Action: a pebble landing on or right next to the acorn cracks it open.</summary>
+    private void CrackAcornOnImpact()
+    {
+        if (Acorn is null)
+            return;
+
+        foreach (var impact in Physics.Impacts)
+        {
+            float crackDistance = impact.Body.Radius + Acorn.Radius + AcornCrackSlack;
+            float dx = impact.Point.X - Acorn.Position.X;
+            float dz = impact.Point.Z - Acorn.Position.Z;
+            if (dx * dx + dz * dz > crackDistance * crackDistance)
+                continue;
+
+            SpawnFoodShards(Acorn.Position, impact.Body);
+            Acorn = null;
+            _acornRespawnTimer = AcornRespawnDelay;
+            return;
+        }
+    }
+
+    /// <summary>
+    /// Scatters the shards in a ring around the pebble that cracked the acorn,
+    /// just outside it, so none end up buried under the rock. The first shard
+    /// flies out on the acorn's side; the others are spaced evenly round.
+    /// </summary>
+    private void SpawnFoodShards(Vector3 acornPosition, PhysicsObject pebble)
+    {
+        float dx = acornPosition.X - pebble.Position.X;
+        float dz = acornPosition.Z - pebble.Position.Z;
+        float baseAngle = dx * dx + dz * dz > 1e-6f ? MathF.Atan2(dz, dx) : (float)(Rng.NextDouble() * MathF.Tau);
+        float distance = pebble.Radius + FoodShard.Radius + 0.35f;
+
+        for (int i = 0; i < ShardsPerAcorn; i++)
+        {
+            float angle = baseAngle + i * MathF.Tau / ShardsPerAcorn;
+            var position = new Vector3(
+                pebble.Position.X + MathF.Cos(angle) * distance,
+                Terrain.GroundHeight,
+                pebble.Position.Z + MathF.Sin(angle) * distance);
+
+            // Keep shards on the terrain even if the acorn was near an edge.
+            float half = Terrain.Size / 2f - Bramblekin.EdgeMargin;
+            position.X = Math.Clamp(position.X, -half, half);
+            position.Z = Math.Clamp(position.Z, -half, half);
+            FoodShards.Add(new FoodShard(position));
+        }
+    }
+
+    private void UpdateAcornRespawn(float deltaTime)
+    {
+        if (Acorn is not null)
+            return;
+
+        _acornRespawnTimer -= deltaTime;
+        if (_acornRespawnTimer <= 0f)
+            Acorn = new Acorn(RandomAcornSpot());
+    }
+
+    /// <summary>Somewhere open, not hugging the edge, and a fair walk from the village.</summary>
+    private Vector3 RandomAcornSpot()
+    {
+        Vector3 candidate = Vector3.Zero;
+        for (int attempt = 0; attempt < 30; attempt++)
+        {
+            candidate = RandomFreePoint(Acorn.Radius + 0.5f, edgeMargin: 1.5f);
+            if (Vector3.Distance(candidate, Village.Center) > 4f)
+                return candidate;
+        }
+        return candidate;
+    }
+}
+
+// =============================================================================
+//  Economy objects
+// =============================================================================
+
+/// <summary>
+/// The Village Heart: the colony's home and food store. A static brown block
+/// that Bramblekin deliver food to.
+/// </summary>
+public sealed class VillageHeart
+{
+    /// <summary>Footprint edge length, in meters.</summary>
+    public const float Width = 1.6f;
+
+    public const float Height = 1.2f;
+
+    /// <summary>Centre of the footprint on the ground.</summary>
+    public Vector3 Center { get; }
+
+    /// <summary>The solid box pebbles collide with.</summary>
+    public BoundingBox Bounds { get; }
+
+    /// <summary>
+    /// The circle walkers treat as solid. Slightly bigger than the inscribed
+    /// circle so corners are mostly covered without leaving wide gaps at the
+    /// faces.
+    /// </summary>
+    public Obstacle Obstacle => new(new Vector2(Center.X, Center.Z), Width / 2f * 1.2f);
+
+    /// <summary>A returning Bramblekin within this distance of the centre has arrived.</summary>
+    public float DeliveryDistance => Obstacle.Radius + Bramblekin.BodyRadius + 0.2f;
+
+    public VillageHeart(Vector3 center)
+    {
+        Center = center;
+        float half = Width / 2f;
+        Bounds = new BoundingBox(
+            new Vector3(center.X - half, Terrain.GroundHeight, center.Z - half),
+            new Vector3(center.X + half, Terrain.GroundHeight + Height, center.Z + half));
+    }
+
+    public void Draw()
+    {
+        var middle = Center + new Vector3(0, Height / 2f, 0);
+        Raylib.DrawCube(middle, Width, Height, Width, new Color(122, 78, 40, 255));
+        Raylib.DrawCubeWires(middle, Width, Height, Width, new Color(60, 35, 15, 255));
+
+        // A small dark doorway on the camera-facing side so it reads as a home.
+        var door = Center + new Vector3(Width / 2f + 0.01f, 0.3f, 0);
+        Raylib.DrawCube(door, 0.02f, 0.6f, 0.45f, new Color(45, 25, 10, 255));
+    }
+}
+
+/// <summary>
+/// The Acorn puzzle object: too hard for the Bramblekin to open, but a
+/// Pebble-Drop miracle cracks it into Food Shards.
+/// </summary>
+public sealed class Acorn
+{
+    public const float Radius = 0.35f;
+
+    public Vector3 Position { get; }
+
+    public Acorn(Vector3 groundPoint) => Position = groundPoint;
+
+    public void Draw()
+    {
+        var center = Position + new Vector3(0, Radius, 0);
+        Raylib.DrawSphere(center, Radius, new Color(235, 195, 50, 255));
+        Raylib.DrawSphereWires(center, Radius, 8, 8, new Color(120, 90, 20, 90));
+
+        // Brown cap and stalk on top.
+        var capBase = center + new Vector3(0, Radius * 0.55f, 0);
+        Raylib.DrawCylinder(capBase, Radius * 0.75f, Radius * 0.95f, Radius * 0.35f, 12, new Color(115, 75, 35, 255));
+        Raylib.DrawCylinder(capBase + new Vector3(0, Radius * 0.35f, 0), 0.03f, 0.03f, 0.12f, 6, new Color(90, 60, 30, 255));
+    }
+}
+
+/// <summary>A small piece of cracked acorn that a Bramblekin can carry home.</summary>
+public sealed class FoodShard
+{
+    public const float Radius = 0.18f;
+
+    /// <summary>Resting spot on the ground (y = GroundHeight). Ignored while carried.</summary>
+    public Vector3 Position { get; set; }
+
+    /// <summary>True while a Bramblekin is holding it; carried shards are hidden from the map.</summary>
+    public bool IsCarried { get; set; }
+
+    public FoodShard(Vector3 groundPoint) => Position = groundPoint;
+
+    /// <summary>Draws the shard resting on the ground at (or carried above) <paramref name="groundPoint"/>.</summary>
+    public void Draw(Vector3 groundPoint)
+    {
+        Raylib.DrawSphere(groundPoint + new Vector3(0, Radius, 0), Radius, new Color(245, 150, 45, 255));
+    }
+}
+
+// =============================================================================
 //  Creatures: the Bramblekin
 // =============================================================================
 
 /// <summary>What a Bramblekin is currently doing.</summary>
 public enum BramblekinState
 {
-    /// <summary>Walking at a slow, steady pace toward a random wander target.</summary>
+    /// <summary>Wandering: walking at a slow, steady pace toward a random point.</summary>
     Walking,
 
-    /// <summary>Standing still for a moment after arriving somewhere.</summary>
+    /// <summary>Wandering: standing still for a moment after arriving somewhere.</summary>
     Pausing,
+
+    /// <summary>Heading for the nearest available Food Shard.</summary>
+    Gathering,
+
+    /// <summary>Carrying a Food Shard back to the Village Heart.</summary>
+    Returning,
 
     /// <summary>Scurrying out from under a God's Shadow at 3x speed.</summary>
     Fleeing,
@@ -614,13 +1123,18 @@ public enum BramblekinState
 
 /// <summary>
 /// One of the tiny creatures the player protects. The player never controls
-/// them directly; they run a small state machine:
+/// them directly; each runs a small state machine, checked in priority order
+/// every frame:
 ///
-///   Walking --arrive--> Pausing (2 s) --timer--> Walking (new random target)
+///   1. Self-preservation (always wins): standing under a God's Shadow drops
+///      any carried food and sends it Fleeing at 3x speed to the nearest safe
+///      spot. Afterwards it pauses briefly and carries on.
+///   2. Economy: while Food Shards are available, wandering (Walking/Pausing)
+///      is overridden by Gathering -> pick up -> Returning -> deliver.
+///   3. Wandering: Walking to a random free point, Pausing 2 s, repeat.
 ///
-/// and, overriding everything, the self-preservation rule from the design doc:
-/// standing under a God's Shadow sends it Fleeing at 3x speed to the nearest
-/// safe spot, after which it pauses and resumes wandering.
+/// Movement steers around pebbles and the village, and if it ever stops
+/// making progress it takes a short sideways detour.
 /// </summary>
 public sealed class Bramblekin
 {
@@ -633,7 +1147,7 @@ public sealed class Bramblekin
     /// <summary>How long a Bramblekin rests after reaching a target, in seconds.</summary>
     public const float PauseDuration = 2f;
 
-    /// <summary>Body radius in meters (also used for the shadow overlap test).</summary>
+    /// <summary>Collision radius in meters: used against pebbles, the village and shadows.</summary>
     public const float BodyRadius = 0.25f;
 
     /// <summary>Total body height in meters, including the rounded ends.</summary>
@@ -648,17 +1162,44 @@ public sealed class Bramblekin
     /// <summary>Within this distance of a target counts as "arrived".</summary>
     private const float ArriveDistance = 0.05f;
 
+    /// <summary>Within this distance of a shard, it is picked up.</summary>
+    private const float PickupDistance = BodyRadius + FoodShard.Radius + 0.1f;
+
+    /// <summary>How far ahead (m) a walker looks for obstacles in its path.</summary>
+    private const float LookAhead = 1.5f;
+
+    /// <summary>Gap (m) a walker tries to keep between itself and an obstacle while passing it.</summary>
+    private const float AvoidMargin = 0.15f;
+
+    /// <summary>How strongly avoidance bends the heading (1 = 45° at most, higher = sharper).</summary>
+    private const float SteerStrength = 1.5f;
+
+    /// <summary>Progress is checked this often (s); too little movement means we're stuck.</summary>
+    private const float StuckCheckInterval = 1.0f;
+
+    /// <summary>Fraction of the expected distance that must be covered per check to not count as stuck.</summary>
+    private const float StuckProgressFraction = 0.3f;
+
     private static readonly Color CalmColor = new(196, 160, 110, 255);   // Bark brown.
     private static readonly Color PanicColor = new(225, 85, 60, 255);    // Alarm red.
 
     private readonly Random _rng;
     private Vector3 _target;
     private float _pauseTimer;
+    private FoodShard? _carried;
+
+    // Stuck detection: where we were at the last check, and a temporary
+    // sideways waypoint used to get unstuck.
+    private Vector3 _progressAnchor;
+    private float _progressTimer;
+    private Vector3? _detour;
 
     /// <summary>Feet position on the ground (y = GroundHeight).</summary>
     public Vector3 Position { get; private set; }
 
     public BramblekinState State { get; private set; }
+
+    public bool IsCarrying => _carried is not null;
 
     public Bramblekin(Vector3 position, Random rng)
     {
@@ -666,48 +1207,56 @@ public sealed class Bramblekin
         _rng = rng;
 
         // Start mid-pause with a random timer so the colony doesn't move in lockstep.
-        State = BramblekinState.Pausing;
+        SetState(BramblekinState.Pausing);
         _pauseTimer = (float)rng.NextDouble() * PauseDuration;
     }
 
-    public void Update(float deltaTime, Terrain terrain, IReadOnlyList<GodShadow> shadows)
+    public void Update(float deltaTime, World world)
     {
-        // --- Self-preservation override --------------------------------------
-        // Checked before the normal state logic, every frame, so it wins over
-        // whatever the Bramblekin was doing. A fleeing Bramblekin only replans
-        // if its escape point has itself been covered by a newer shadow.
-        GodShadow? threat = FirstOverlapping(Position, shadows);
-        if (threat is not null &&
-            (State != BramblekinState.Fleeing || FirstOverlapping(_target, shadows) is not null))
+        // --- 1. Self-preservation (absolute priority) -------------------------
+        // A fleeing Bramblekin only replans if its escape point has since been
+        // covered by a newer shadow or blocked by a rock.
+        GodShadow? threat = world.ShadowOver(Position, BodyRadius);
+        if (threat is not null && (State != BramblekinState.Fleeing || !IsSafeSpot(_target, world)))
         {
-            _target = FindEscapePoint(threat, terrain, shadows);
-            State = BramblekinState.Fleeing;
+            DropCarried();
+            _target = FindEscapePoint(threat, world);
+            SetState(BramblekinState.Fleeing);
         }
 
-        // --- Normal behaviour -------------------------------------------------
+        // --- 2. Economy overrides wandering -----------------------------------
+        if (State is BramblekinState.Walking or BramblekinState.Pausing && world.HasAvailableFood)
+            SetState(BramblekinState.Gathering);
+
+        // --- 3. Run the current state -----------------------------------------
         switch (State)
         {
             case BramblekinState.Pausing:
                 _pauseTimer -= deltaTime;
                 if (_pauseTimer <= 0f)
-                {
-                    _target = PickWanderTarget(terrain, shadows);
-                    State = BramblekinState.Walking;
-                }
+                    StartWandering(world);
                 break;
 
             case BramblekinState.Walking:
-                // Don't stroll into a spot that has since been marked for a drop.
-                if (FirstOverlapping(_target, shadows) is not null)
-                    _target = PickWanderTarget(terrain, shadows);
+                // Don't stroll into a spot that has since been marked for a drop or covered by a rock.
+                if (!IsSafeSpot(_target, world))
+                    _target = world.RandomFreePoint(BodyRadius + 0.1f, EdgeMargin);
 
-                if (MoveTowards(_target, WalkSpeed * deltaTime))
+                if (MoveTowards(_target, WalkSpeed, deltaTime, world))
                     StartPause();
                 break;
 
+            case BramblekinState.Gathering:
+                UpdateGathering(deltaTime, world);
+                break;
+
+            case BramblekinState.Returning:
+                UpdateReturning(deltaTime, world);
+                break;
+
             case BramblekinState.Fleeing:
-                if (MoveTowards(_target, WalkSpeed * FleeSpeedMultiplier * deltaTime))
-                    StartPause(); // Catch its breath, then go back to wandering.
+                if (MoveTowards(_target, WalkSpeed * FleeSpeedMultiplier, deltaTime, world))
+                    StartPause(); // Catch its breath, then back to work.
                 break;
         }
     }
@@ -722,53 +1271,257 @@ public sealed class Bramblekin
         var top = Position + new Vector3(0, BodyHeight - BodyRadius, 0);
         Raylib.DrawCapsule(bottom, top, BodyRadius, 8, 4, color);
         Raylib.DrawCapsuleWires(bottom, top, BodyRadius, 8, 4, new Color(0, 0, 0, 50));
+
+        // Carried food rides on top of the head.
+        _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
+    }
+
+    // --- Economy states ----------------------------------------------------------
+
+    private void UpdateGathering(float deltaTime, World world)
+    {
+        // Re-pick the nearest shard every frame: another Bramblekin may have
+        // grabbed ours, or a rock or shadow may have made it unreachable.
+        FoodShard? shard = world.NearestAvailableShard(Position);
+        if (shard is null)
+        {
+            StartWandering(world);
+            return;
+        }
+
+        if (HorizontalDistance(Position, shard.Position) <= PickupDistance)
+        {
+            shard.IsCarried = true;
+            _carried = shard;
+            SetState(BramblekinState.Returning);
+            return;
+        }
+
+        MoveTowards(shard.Position, WalkSpeed, deltaTime, world);
+    }
+
+    private void UpdateReturning(float deltaTime, World world)
+    {
+        if (HorizontalDistance(Position, world.Village.Center) <= world.Village.DeliveryDistance)
+        {
+            world.DeliverFood(_carried!);
+            _carried = null;
+
+            if (world.HasAvailableFood)
+                SetState(BramblekinState.Gathering);
+            else
+                StartWandering(world);
+            return;
+        }
+
+        MoveTowards(world.Village.Center, WalkSpeed, deltaTime, world);
+    }
+
+    /// <summary>Puts carried food back on the ground where we stand (it can be gathered again later).</summary>
+    private void DropCarried()
+    {
+        if (_carried is null)
+            return;
+
+        _carried.Position = Position;
+        _carried.IsCarried = false;
+        _carried = null;
+    }
+
+    // --- Wandering ----------------------------------------------------------------
+
+    private void StartWandering(World world)
+    {
+        // No-spawn zones: RandomFreePoint never picks a spot inside a rock,
+        // the village, or a God's Shadow.
+        _target = world.RandomFreePoint(BodyRadius + 0.1f, EdgeMargin);
+        SetState(BramblekinState.Walking);
     }
 
     private void StartPause()
     {
-        State = BramblekinState.Pausing;
+        SetState(BramblekinState.Pausing);
         _pauseTimer = PauseDuration;
     }
 
-    /// <summary>
-    /// Moves along the ground toward <paramref name="target"/> by at most
-    /// <paramref name="maxStep"/> meters. Returns true on arrival.
-    /// </summary>
-    private bool MoveTowards(Vector3 target, float maxStep)
+    private void SetState(BramblekinState state)
     {
-        Vector3 toTarget = target - Position;
-        float distance = toTarget.Length();
-        if (distance <= MathF.Max(maxStep, ArriveDistance))
-        {
-            Position = target;
-            return true;
-        }
-
-        Position += toTarget / distance * maxStep;
-        return false;
+        State = state;
+        _detour = null;
+        _progressTimer = 0f;
+        _progressAnchor = Position;
     }
 
-    /// <summary>A random terrain point that isn't under any shadow.</summary>
-    private Vector3 PickWanderTarget(Terrain terrain, IReadOnlyList<GodShadow> shadows)
+    // --- Movement: steering, collision, unsticking ---------------------------------
+
+    /// <summary>
+    /// Moves toward <paramref name="target"/> at <paramref name="speed"/>,
+    /// steering around obstacles, then pushes the body back out of anything
+    /// it still overlaps. Returns true on arrival.
+    /// </summary>
+    private bool MoveTowards(Vector3 target, float speed, float deltaTime, World world)
     {
-        // A few tries is plenty: shadows cover a tiny fraction of the terrain.
-        Vector3 candidate = Position;
-        for (int attempt = 0; attempt < 10; attempt++)
+        float step = speed * deltaTime;
+        CheckIfStuck(target, step, deltaTime, world);
+
+        // Head for the detour waypoint first, if we're working our way round something.
+        Vector3 goal = _detour ?? target;
+        var position = new Vector2(Position.X, Position.Z);
+        var toGoal = new Vector2(goal.X, goal.Z) - position;
+        float distance = toGoal.Length();
+
+        bool arrived = distance <= MathF.Max(step, ArriveDistance);
+        if (arrived)
         {
-            candidate = terrain.RandomPoint(_rng, EdgeMargin);
-            if (FirstOverlapping(candidate, shadows) is null)
+            position = new Vector2(goal.X, goal.Z);
+        }
+        else
+        {
+            Vector2 heading = Steer(position, toGoal / distance, MathF.Min(distance, LookAhead), goal, world.Obstacles);
+            position += heading * step;
+        }
+
+        Position = new Vector3(position.X, Terrain.GroundHeight, position.Y);
+        PushOutOfObstacles(world);
+        ClampToTerrain(world.Terrain);
+
+        if (arrived && _detour is not null)
+        {
+            _detour = null; // Detour done; resume toward the real target next frame.
+            return false;
+        }
+        return arrived;
+    }
+
+    /// <summary>
+    /// Simple obstacle avoidance. Finds the nearest obstacle whose circle
+    /// (grown by our body radius plus a margin) crosses the straight path
+    /// ahead, and bends the heading away from it. Close to the obstacle the
+    /// sideways push dominates, so the walker slides round its edge instead
+    /// of walking into it; once past, the path is clear and it straightens.
+    /// </summary>
+    private static Vector2 Steer(Vector2 position, Vector2 direction, float lookAhead, Vector3 goal,
+                                 IReadOnlyList<Obstacle> obstacles)
+    {
+        var goal2 = new Vector2(goal.X, goal.Z);
+        Obstacle? nearest = null;
+        Vector2 nearestOffset = Vector2.Zero;
+        float nearestAlong = float.MaxValue;
+
+        foreach (var obstacle in obstacles)
+        {
+            // Never avoid the thing we're walking to (the village when delivering).
+            if (Vector2.DistanceSquared(obstacle.Center, goal2) < 0.01f)
+                continue;
+
+            Vector2 toObstacle = obstacle.Center - position;
+            float along = Vector2.Dot(toObstacle, direction);           // Distance ahead of us.
+            if (along <= 0f || along > lookAhead + obstacle.Radius)
+                continue;                                                // Behind us or too far.
+
+            Vector2 offset = toObstacle - direction * along;             // Sideways offset from our path.
+            float clearance = obstacle.Radius + BodyRadius + AvoidMargin;
+            if (offset.LengthSquared() >= clearance * clearance)
+                continue;                                                // Path passes it cleanly.
+
+            if (along < nearestAlong)
+            {
+                nearest = obstacle;
+                nearestOffset = offset;
+                nearestAlong = along;
+            }
+        }
+
+        if (nearest is null)
+            return direction;
+
+        // Push away from the obstacle's side of the path. Dead-centre hits
+        // have no side, so always go left for consistency.
+        Vector2 away = nearestOffset.LengthSquared() > 1e-6f
+            ? -Vector2.Normalize(nearestOffset)
+            : new Vector2(-direction.Y, direction.X);
+
+        return Vector2.Normalize(direction + away * SteerStrength);
+    }
+
+    /// <summary>Bramblekin-to-rock collision: slide the body back outside any obstacle it overlaps.</summary>
+    private void PushOutOfObstacles(World world)
+    {
+        var position = new Vector2(Position.X, Position.Z);
+        foreach (var obstacle in world.Obstacles)
+        {
+            Vector2 offset = position - obstacle.Center;
+            float minDistance = obstacle.Radius + BodyRadius;
+            float distanceSquared = offset.LengthSquared();
+            if (distanceSquared >= minDistance * minDistance)
+                continue;
+
+            float distance = MathF.Sqrt(distanceSquared);
+            Vector2 normal = distance > 1e-5f ? offset / distance : Vector2.UnitX;
+            position = obstacle.Center + normal * minDistance;
+        }
+        Position = new Vector3(position.X, Terrain.GroundHeight, position.Y);
+    }
+
+    private void ClampToTerrain(Terrain terrain)
+    {
+        float half = terrain.Size / 2f - BodyRadius;
+        Position = new Vector3(
+            Math.Clamp(Position.X, -half, half),
+            Terrain.GroundHeight,
+            Math.Clamp(Position.Z, -half, half));
+    }
+
+    /// <summary>
+    /// Safety net for when steering alone can't get past something (e.g. two
+    /// rocks with a gap narrower than our body). If we covered too little
+    /// ground since the last check, head for a sideways waypoint for a bit.
+    /// </summary>
+    private void CheckIfStuck(Vector3 target, float step, float deltaTime, World world)
+    {
+        _progressTimer += deltaTime;
+        if (_progressTimer < StuckCheckInterval)
+            return;
+
+        float expected = step / deltaTime * StuckCheckInterval;
+        float moved = HorizontalDistance(Position, _progressAnchor);
+        bool nearTarget = HorizontalDistance(Position, target) < 0.5f;
+
+        if (moved < expected * StuckProgressFraction && !nearTarget && _detour is null)
+            _detour = PickDetour(target, world);
+
+        _progressTimer = 0f;
+        _progressAnchor = Position;
+    }
+
+    /// <summary>A free point ~1.5 m to the left or right of the line toward the target.</summary>
+    private Vector3? PickDetour(Vector3 target, World world)
+    {
+        var forward = new Vector2(target.X - Position.X, target.Z - Position.Z);
+        forward = forward.LengthSquared() > 1e-6f ? Vector2.Normalize(forward) : Vector2.UnitX;
+        var left = new Vector2(-forward.Y, forward.X);
+        float firstSide = _rng.Next(2) == 0 ? 1f : -1f;
+
+        foreach (float side in new[] { firstSide, -firstSide })
+        {
+            Vector2 offset = left * side * 1.5f - forward * 0.5f;
+            var candidate = new Vector3(Position.X + offset.X, Terrain.GroundHeight, Position.Z + offset.Y);
+            if (world.Terrain.Contains(candidate, EdgeMargin) && IsSafeSpot(candidate, world))
                 return candidate;
         }
-        return candidate;
+        return null;
     }
+
+    // --- Fleeing ------------------------------------------------------------------
 
     /// <summary>
     /// Picks the closest safe spot just outside <paramref name="threat"/>.
     /// The ideal escape runs straight away from the shadow's centre; if that
-    /// point is off the terrain or under another shadow, it tries directions
-    /// progressively further round the circle, alternating left and right.
+    /// point is off the terrain, under another shadow or inside a rock, it
+    /// tries directions progressively further round the circle, alternating
+    /// left and right.
     /// </summary>
-    private Vector3 FindEscapePoint(GodShadow threat, Terrain terrain, IReadOnlyList<GodShadow> shadows)
+    private Vector3 FindEscapePoint(GodShadow threat, World world)
     {
         float awayX = Position.X - threat.Center.X;
         float awayZ = Position.Z - threat.Center.Z;
@@ -792,28 +1545,29 @@ public sealed class Bramblekin
                     Terrain.GroundHeight,
                     threat.Center.Z + MathF.Sin(angle) * escapeDistance);
 
-                if (terrain.Contains(candidate, EdgeMargin) && FirstOverlapping(candidate, shadows) is null)
+                if (world.Terrain.Contains(candidate, EdgeMargin) && IsSafeSpot(candidate, world))
                     return candidate;
             }
         }
 
         // Boxed in (e.g. overlapping shadows in a corner): run straight away
         // and hope. Clamp so it at least stays on the terrain.
-        float half = terrain.Size / 2f - EdgeMargin;
+        float half = world.Terrain.Size / 2f - EdgeMargin;
         return new Vector3(
             Math.Clamp(threat.Center.X + MathF.Cos(baseAngle) * escapeDistance, -half, half),
             Terrain.GroundHeight,
             Math.Clamp(threat.Center.Z + MathF.Sin(baseAngle) * escapeDistance, -half, half));
     }
 
-    private static GodShadow? FirstOverlapping(Vector3 point, IReadOnlyList<GodShadow> shadows)
+    /// <summary>Not under a shadow and not inside a rock or the village.</summary>
+    private static bool IsSafeSpot(Vector3 point, World world) =>
+        world.ShadowOver(point, BodyRadius) is null && !world.IsBlocked(point, BodyRadius);
+
+    private static float HorizontalDistance(Vector3 a, Vector3 b)
     {
-        foreach (var shadow in shadows)
-        {
-            if (shadow.Overlaps(point, BodyRadius))
-                return shadow;
-        }
-        return null;
+        float dx = a.X - b.X;
+        float dz = a.Z - b.Z;
+        return MathF.Sqrt(dx * dx + dz * dz);
     }
 }
 
