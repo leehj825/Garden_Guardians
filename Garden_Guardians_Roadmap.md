@@ -5,7 +5,7 @@
 *Last updated: 2026-09-23*
 
 ## Progress Snapshot
-The game runs as a Raylib-cs (C#/.NET 8) prototype on desktop and Android. So far it covers the first micro-loop: cast the Pebble-Drop miracle, the Bramblekin get out of the way, and cracked acorns feed the village. A Wolf Spider hunts the workers, and a well-placed pebble distracts it. All game code is in `Program.cs`.
+The game runs as a Raylib-cs (C#/.NET 8) prototype on desktop and Android. So far it covers the first micro-loop: cast the Pebble-Drop miracle, the Bramblekin get out of the way, and cracked acorns feed the village. A Wolf Spider hunts the workers; a well-placed pebble distracts it, and a direct hit crushes it. Food grows the population, and the population powers the Faith that miracles cost. All game code is in `Program.cs`.
 
 ## Phase 0: Engine & Tooling
 *   ✅ **Engine:** Switched to Raylib via Raylib-cs 8.1 (raylib 6.0) on a .NET 8 project. A fixed 45° isometric camera looks down at a 20 m × 20 m terrain, at 1 unit = 1 m.
@@ -31,11 +31,14 @@ The game runs as a Raylib-cs (C#/.NET 8) prototype on desktop and Android. So fa
     *   ✅ States: Prowling, Hunting, Pouncing, Recovering, Investigating and Feeding. It's drawn as a dark two-part body with eight jointed legs, twice a Bramblekin's size, and spawns near an edge.
     *   ✅ Vibration aggro: it feels Gathering or Returning Bramblekin within 7 m, hunts them, and pounces from 2.5 m. The one it catches drops its food and dies. It then feeds for 20 s, which stops one kill from luring the next victim to the dropped food.
     *   ✅ Misdirection: a pebble thud within 12 m interrupts anything except feeding. The spider walks to the impact and stares at it for 3 s.
+    *   ✅ Squishing: a pebble whose centre lands within 0.4 m of the spider crushes it, and a new spider arrives at an edge 45 s later. The skill play is to distract it first, then drop a second pebble while it stares.
     *   ✅ Bramblekin Fear Aura (2 m): drop the food and run directly away at 3x speed. The God's Shadow still takes priority.
 
 ## Phase 2: Economy & UI Infrastructure (The Macro-Loop)
 *   🟡 **Task 1:** Implement the resource gathering loop, storage capacities, and the caloric burn rate system for different unit states.
     *   ✅ First gathering loop: drop a pebble on or near the Acorn to crack it into 3 Food Shards. Bramblekin carry them to the Village Heart, and "Food Stored" counts them. A new acorn appears after 4 s. Rocks shove shards aside instead of burying them.
+    *   ✅ Reproduction (The Sprout): every 5 Food Stored automatically becomes a new Bramblekin next to the Village Heart. There's no population cap.
+    *   ✅ Faith Pool (the miracle economy): up to 100 Faith, refilling at 0.5 × population per second, so every lost Bramblekin also weakens your miracles. A Pebble-Drop costs 30, paid the moment the tap lands on the ground. Below 30 the button is greyed out and shows "Not Enough Faith" when tapped. The HUD shows a Faith meter, Food Stored toward the next sprout, and Population.
     *   ⬜ Storage capacities, caloric burn rates.
 *   ⬜ **Task 2:** Build the UI for the Conscription Slider and the War Weariness/Morale engine.
 *   ⬜ **Task 3:** Create the tech tree/crafting logic for Found-Object Weaponry and the transition from Gatherer AI to Militia AI (Phalanx flocking).
@@ -56,7 +59,6 @@ The game runs as a Raylib-cs (C#/.NET 8) prototype on desktop and Android. So fa
 
 ## Design Doc Mechanics Not Yet Scheduled
 These are in `Garden_Guardians_Design.md` but have no roadmap task yet:
-*   ⬜ **Faith Pool:** miracle costs and regeneration. Right now pebbles are free and limited only by the 25-pebble cap.
 *   ⬜ **Worship Milestones:** unlocking miracles as the village grows.
 *   ⬜ **Friendly fire:** pebbles crushing trapped Bramblekin. They currently dodge, and a pebble never hurts them.
 *   ⬜ **Win/loss conditions:** Extinction, the Village Heart being destroyed, the Ark, and the seasonal timer.

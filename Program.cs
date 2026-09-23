@@ -14,7 +14,10 @@
 //    * The first economic loop: crack an Acorn with a pebble, and the
 //      Bramblekin carry the Food Shards back to the Village Heart.
 //    * The first predator: a Wolf Spider that hunts busy workers by
-//      vibration, and can be distracted by the thud of a dropped pebble.
+//      vibration, and can be distracted by the thud of a dropped pebble —
+//      or crushed by a direct hit.
+//    * The macro-economy: every 5 food sprouts a new Bramblekin, and the
+//      colony's worship refills the Faith that miracles cost.
 //
 //  Scale convention: 1 world unit = 1 meter. The terrain is a 20 m x 20 m plane
 //  centred on the origin, and "up" is +Y. Gravity is 9.8 m/s² downwards.
@@ -88,7 +91,7 @@ public static class Game
         var world = new World(new Terrain(size: 20f), new Random(), ColonySize);
         world.SpawnSpiderNearEdge();
         var input = new MiracleInput();
-        var equipButton = new UiButton(new Rectangle(20, 20, 180, 50));
+        var equipButton = new UiButton(new Rectangle(20, 20, 220, 50));
 
         // --- Main loop -------------------------------------------------------
         while (!Raylib.WindowShouldClose())
@@ -97,8 +100,8 @@ public static class Game
 
             // 1) Input: UI gets first pick of the click so that pressing the
             //    button never also drops a pebble "through" it onto the ground.
-            //    A ground click queues a God's Shadow rather than a pebble.
-            input.Update(camera, world.Terrain, world.Miracles, equipButton);
+            //    A ground click spends Faith and queues a God's Shadow.
+            input.Update(deltaTime, camera, world, equipButton);
 
             // 2) Simulation.
             world.Update(deltaTime);
@@ -113,9 +116,11 @@ public static class Game
             Raylib.EndMode3D();
 
             // 2D overlay (UI) is drawn after EndMode3D so it sits on top.
-            equipButton.Draw(input.State == InputState.PebbleEquipped ? "Pebble Equipped" : "Equip Pebble",
-                             highlighted: input.State == InputState.PebbleEquipped);
-            DrawFoodCounter(world.FoodStored);
+            equipButton.Draw(input.ButtonLabel,
+                             highlighted: input.State == InputState.PebbleEquipped,
+                             disabled: !input.CanAffordPebble(world));
+            DrawFaithMeter(world.Faith);
+            DrawColonyPanel(world);
             DrawHud(input, world);
 
             Raylib.EndDrawing();
@@ -124,17 +129,52 @@ public static class Game
         Raylib.CloseWindow();
     }
 
-    /// <summary>The global "Food Stored" counter in the top-right corner.</summary>
-    private static void DrawFoodCounter(int foodStored)
+    private static readonly Color PanelFill = new(255, 250, 235, 220);
+    private static readonly Color PanelInk = new(110, 70, 35, 255);
+
+    /// <summary>
+    /// The Faith meter, top centre: a bar that fills toward
+    /// <see cref="World.MaxFaith"/>, with a tick at the Pebble-Drop's cost so
+    /// the player can see at a glance whether they can afford a miracle.
+    /// </summary>
+    private static void DrawFaithMeter(float faith)
     {
-        const int fontSize = 30;
-        string text = $"Food Stored: {foodStored}";
-        int width = Raylib.MeasureText(text, fontSize);
+        const int width = 380, height = 56, barHeight = 16;
+        int x = (Raylib.GetScreenWidth() - width) / 2;
+        const int y = 18;
+        bool affordable = faith >= MiracleManager.PebbleFaithCost;
+
+        Raylib.DrawRectangle(x, y, width, height, PanelFill);
+        Raylib.DrawRectangleLines(x, y, width, height, PanelInk);
+
+        string text = $"Faith: {(int)faith} / {(int)World.MaxFaith}";
+        Raylib.DrawText(text, x + 12, y + 6, 24, affordable ? PanelInk : new Color(170, 60, 40, 255));
+
+        // Bar: gold when a pebble is affordable, dull when it isn't.
+        var bar = new Rectangle(x + 12, y + height - barHeight - 8, width - 24, barHeight);
+        Raylib.DrawRectangleRec(bar, new Color(225, 215, 190, 255));
+        var fill = bar with { Width = bar.Width * Math.Clamp(faith / World.MaxFaith, 0f, 1f) };
+        Raylib.DrawRectangleRec(fill, affordable ? new Color(235, 185, 50, 255) : new Color(190, 160, 110, 255));
+        Raylib.DrawRectangleLinesEx(bar, 1f, PanelInk);
+
+        // Cost tick.
+        float tickX = bar.X + bar.Width * (MiracleManager.PebbleFaithCost / World.MaxFaith);
+        Raylib.DrawLineEx(new Vector2(tickX, bar.Y - 3), new Vector2(tickX, bar.Y + bar.Height + 3), 2f, PanelInk);
+    }
+
+    /// <summary>Food and population, top right. Shows progress toward the next sprout.</summary>
+    private static void DrawColonyPanel(World world)
+    {
+        const int fontSize = 24, lineHeight = 30;
+        string food = $"Food Stored: {world.FoodStored} / {World.FoodPerSprout}";
+        string population = $"Population: {world.Colony.Count}";
+        int width = Math.Max(Raylib.MeasureText(food, fontSize), Raylib.MeasureText(population, fontSize));
         int x = Raylib.GetScreenWidth() - width - 30;
 
-        Raylib.DrawRectangle(x - 12, 18, width + 24, fontSize + 18, new Color(255, 250, 235, 220));
-        Raylib.DrawRectangleLines(x - 12, 18, width + 24, fontSize + 18, new Color(110, 70, 35, 255));
-        Raylib.DrawText(text, x, 27, fontSize, new Color(110, 70, 35, 255));
+        Raylib.DrawRectangle(x - 12, 18, width + 24, lineHeight * 2 + 14, PanelFill);
+        Raylib.DrawRectangleLines(x - 12, 18, width + 24, lineHeight * 2 + 14, PanelInk);
+        Raylib.DrawText(food, x, 26, fontSize, PanelInk);
+        Raylib.DrawText(population, x, 26 + lineHeight, fontSize, PanelInk);
     }
 
     /// <summary>Small help text and debug counters in the bottom-left corner.</summary>
@@ -144,16 +184,21 @@ public static class Game
 
         int y = Raylib.GetScreenHeight() - 60;
         string hint = input.State == InputState.PebbleEquipped
-            ? "Click the ground to drop the pebble."
-            : "Crack the acorn with a pebble. A pebble's thud also distracts the spider.";
+            ? $"Click the ground to drop the pebble ({MiracleManager.PebbleFaithCost} Faith)."
+            : "Crack acorns for food. A pebble's thud distracts the spider; a direct hit crushes it.";
         Raylib.DrawText(hint, 20, y, 20, Color.DarkGray);
         Raylib.DrawText(
             $"Pebbles: {world.Physics.Count}   Bramblekin: {world.Colony.Count} " +
             $"(gathering {Count(BramblekinState.Gathering)}, returning {Count(BramblekinState.Returning)}, " +
             $"fleeing {Count(BramblekinState.Fleeing)}, lost {world.Casualties})   " +
-            $"Spider: {world.Spider?.State.ToString() ?? "none"}   FPS: {Raylib.GetFPS()}",
+            $"Spider: {SpiderStatus(world)}   Sprouted: {world.Births}   FPS: {Raylib.GetFPS()}",
             20, y + 26, 20, Color.DarkGray);
     }
+
+    private static string SpiderStatus(World world) =>
+        world.Spider is { } spider
+            ? spider.State.ToString()
+            : $"crushed, returns in {MathF.Ceiling(world.SpiderRespawnTimer)}s";
 }
 
 // =============================================================================
@@ -606,26 +651,54 @@ public enum InputState
 /// </summary>
 public sealed class MiracleInput
 {
+    /// <summary>How long the "Not Enough Faith" message stays on the button, in seconds.</summary>
+    private const float RefusalMessageDuration = 1.5f;
+
+    private float _refusalTimer;
+
     public InputState State { get; private set; } = InputState.Idle;
 
-    /// <summary>
-    /// Processes this frame's click, if any. The UI button is checked first and
-    /// "consumes" the click, so a single click never both equips and drops.
-    /// </summary>
-    public void Update(Camera3D camera, Terrain terrain, MiracleManager miracles, UiButton equipButton)
+    /// <summary>Text for the equip button, including the temporary "Not Enough Faith" refusal.</summary>
+    public string ButtonLabel =>
+        _refusalTimer > 0f ? "Not Enough Faith"
+        : State == InputState.PebbleEquipped ? "Pebble Equipped"
+        : "Equip Pebble";
+
+    public bool CanAffordPebble(World world) => world.Faith >= MiracleManager.PebbleFaithCost;
+
+    /// <summary>Polls the mouse/touch and handles this frame's click, if any.</summary>
+    public void Update(float deltaTime, Camera3D camera, World world, UiButton equipButton)
     {
-        // Raylib maps a primary touch to the left mouse button, so this same
-        // code path will serve touch input on mobile later.
-        if (!Raylib.IsMouseButtonPressed(MouseButton.Left))
-            return;
+        _refusalTimer = MathF.Max(0f, _refusalTimer - deltaTime);
 
-        Vector2 mouse = Raylib.GetMousePosition();
+        // Raylib maps a primary touch to the left mouse button, so the same
+        // code path serves desktop clicks and phone taps.
+        if (Raylib.IsMouseButtonPressed(MouseButton.Left))
+            HandleClick(Raylib.GetMousePosition(), camera, world, equipButton);
+    }
 
+    /// <summary>
+    /// Handles one click/tap at <paramref name="screenPosition"/>. The UI
+    /// button is checked first and "consumes" the click, so a single click
+    /// never both equips and drops.
+    /// </summary>
+    public void HandleClick(Vector2 screenPosition, Camera3D camera, World world, UiButton equipButton)
+    {
         // --- UI layer ------------------------------------------------------
-        if (equipButton.Contains(mouse))
+        if (equipButton.Contains(screenPosition))
         {
-            // Toggle: clicking the button again un-equips the pebble.
-            State = State == InputState.PebbleEquipped ? InputState.Idle : InputState.PebbleEquipped;
+            if (State == InputState.PebbleEquipped)
+            {
+                State = InputState.Idle; // Toggle off (nothing was spent yet).
+            }
+            else if (CanAffordPebble(world))
+            {
+                State = InputState.PebbleEquipped;
+            }
+            else
+            {
+                _refusalTimer = RefusalMessageDuration;
+            }
             return;
         }
 
@@ -633,13 +706,23 @@ public sealed class MiracleInput
         if (State != InputState.PebbleEquipped)
             return;
 
-        Vector3? groundPoint = PickGround(camera, terrain, mouse);
+        Vector3? groundPoint = PickGround(camera, world.Terrain, screenPosition);
         if (groundPoint is null)
-            return; // Clicked the sky or off the edge of the terrain: stay equipped.
+            return; // Clicked the sky or off the edge of the terrain: stay equipped, nothing spent.
+
+        // Pay the moment the raycast lands. Equipping already checked the
+        // cost and Faith only goes down when a miracle is cast, so this
+        // succeeds; the check is a guard, not a gameplay rule.
+        if (!world.TrySpendFaith(MiracleManager.PebbleFaithCost))
+        {
+            State = InputState.Idle;
+            _refusalTimer = RefusalMessageDuration;
+            return;
+        }
 
         // Don't drop yet: cast the God's Shadow first. MiracleManager spawns
         // the pebble when the shadow's timer runs out.
-        miracles.QueuePebbleDrop(groundPoint.Value);
+        world.Miracles.QueuePebbleDrop(groundPoint.Value);
         State = InputState.Idle; // One pebble per equip.
     }
 
@@ -754,6 +837,9 @@ public sealed class MiracleManager
     /// <summary>Pebble mass in kilograms (placeholder for future impact damage).</summary>
     public const float PebbleMass = 2f;
 
+    /// <summary>Faith spent per Pebble-Drop.</summary>
+    public const float PebbleFaithCost = 30f;
+
     /// <summary>
     /// How long a dropped pebble stays in the garden, in seconds, before it
     /// shrinks away. Together with <see cref="PhysicsManager.MaxObjects"/>
@@ -819,9 +905,10 @@ public readonly record struct Obstacle(Vector2 Center, float Radius);
 /// Owns the simulation state — terrain, physics, miracles, the village, the
 /// acorn, food shards and the colony — and steps it in a fixed order:
 ///
-///   miracles (shadows, pebble release) -> physics (+ acorn cracking)
+///   faith regen -> miracles (shadows, pebble release)
+///   -> physics (+ acorn cracking, spider squishing)
 ///   -> obstacle list -> shove food out from under rocks -> Bramblekin
-///   -> Wolf Spider (may kill Bramblekin) -> acorn respawn
+///   -> Wolf Spider (may kill Bramblekin) -> acorn / spider respawn
 /// </summary>
 public sealed class World
 {
@@ -837,7 +924,29 @@ public sealed class World
     /// <summary>Number of Food Shards a cracked acorn yields.</summary>
     private const int ShardsPerAcorn = 3;
 
+    /// <summary>Faith cap. Also the starting amount: the colony begins devout.</summary>
+    public const float MaxFaith = 100f;
+
+    /// <summary>Faith each living Bramblekin generates per second (0.5 x population per second).</summary>
+    public const float FaithPerBramblekinPerSecond = 0.5f;
+
+    /// <summary>Food Stored consumed to sprout one new Bramblekin at the Village Heart.</summary>
+    public const int FoodPerSprout = 5;
+
+    /// <summary>
+    /// A pebble whose centre lands within this distance (m) of the spider's
+    /// centre crushes it. Tight on purpose: a direct hit, not a near miss.
+    /// </summary>
+    public const float SquishRadius = 0.4f;
+
+    /// <summary>Seconds after a spider is crushed before a new one appears at an edge.</summary>
+    public const float SpiderRespawnDelay = 45f;
+
+    /// <summary>How long a crushed spider's splat mark stays on the ground, in seconds.</summary>
+    private const float SplatDuration = 6f;
+
     private readonly List<Obstacle> _obstacles = new();
+    private readonly List<(Vector3 Position, float TimeLeft)> _splats = new();
     private float _acornRespawnTimer;
 
     public Terrain Terrain { get; }
@@ -853,8 +962,20 @@ public sealed class World
     /// <summary>Bramblekin lost to predators so far.</summary>
     public int Casualties { get; private set; }
 
-    /// <summary>Food delivered to the Village Heart so far.</summary>
+    /// <summary>Bramblekin sprouted from stored food so far.</summary>
+    public int Births { get; private set; }
+
+    /// <summary>Food in the village stores, waiting to become the next sprout.</summary>
     public int FoodStored { get; private set; }
+
+    /// <summary>The god's power budget. Miracles spend it; worship refills it.</summary>
+    public float Faith { get; set; } = MaxFaith;
+
+    /// <summary>Seconds until a crushed spider is replaced (only meaningful while <see cref="Spider"/> is null).</summary>
+    public float SpiderRespawnTimer { get; private set; }
+
+    /// <summary>Spiders crushed by direct pebble hits so far.</summary>
+    public int SpidersCrushed { get; private set; }
 
     /// <summary>Solid circles Bramblekin must walk around. Rebuilt every frame.</summary>
     public IReadOnlyList<Obstacle> Obstacles => _obstacles;
@@ -900,11 +1021,26 @@ public sealed class World
             Casualties++;
     }
 
+    /// <summary>Pays for a miracle. Returns false (and spends nothing) if there isn't enough Faith.</summary>
+    public bool TrySpendFaith(float amount)
+    {
+        if (Faith < amount)
+            return false;
+
+        Faith -= amount;
+        return true;
+    }
+
     public void Update(float deltaTime)
     {
+        // Worship: every living Bramblekin feeds the Faith pool, so each
+        // loss weakens the player's miracles as well as the economy.
+        Faith = MathF.Min(MaxFaith, Faith + FaithPerBramblekinPerSecond * Colony.Count * deltaTime);
+
         Miracles.Update(deltaTime, Physics);
         Physics.Update(deltaTime);
         CrackAcornOnImpact();
+        SquishSpiderOnImpact();
 
         RebuildObstacles();
         PushFoodOutOfObstacles();
@@ -913,11 +1049,28 @@ public sealed class World
         Spider?.Update(deltaTime, this);
 
         UpdateAcornRespawn(deltaTime);
+        UpdateSpiderRespawn(deltaTime);
+
+        for (int i = _splats.Count - 1; i >= 0; i--)
+        {
+            var splat = _splats[i];
+            splat.TimeLeft -= deltaTime;
+            if (splat.TimeLeft <= 0f)
+                _splats.RemoveAt(i);
+            else
+                _splats[i] = splat;
+        }
     }
 
     public void Draw()
     {
         Terrain.Draw();
+        foreach (var (position, timeLeft) in _splats)
+        {
+            // A dark stain that fades out.
+            byte alpha = (byte)(200 * Math.Clamp(timeLeft / 2f, 0f, 1f));
+            Raylib.DrawCylinder(position + new Vector3(0, 0.012f, 0), 0.9f, 0.9f, 0.005f, 20, new Color(30, 25, 20, (int)alpha));
+        }
         Miracles.Draw();
         Village.Draw();
         Acorn?.Draw();
@@ -988,11 +1141,45 @@ public sealed class World
         return best;
     }
 
-    /// <summary>A delivered shard leaves the map and adds to the village stores.</summary>
+    /// <summary>
+    /// A delivered shard leaves the map and adds to the village stores.
+    /// Bramblekin are plant-based: every <see cref="FoodPerSprout"/> stored
+    /// food is spent at once to sprout a new one at the Village Heart. There
+    /// is no population cap.
+    /// </summary>
     public void DeliverFood(FoodShard shard)
     {
         FoodShards.Remove(shard);
         FoodStored++;
+
+        while (FoodStored >= FoodPerSprout)
+        {
+            FoodStored -= FoodPerSprout;
+            SproutBramblekin();
+        }
+    }
+
+    /// <summary>Adds a new Bramblekin on a free spot right beside the Village Heart.</summary>
+    private void SproutBramblekin()
+    {
+        float distance = Village.Obstacle.Radius + Bramblekin.BodyRadius + 0.2f;
+        float startAngle = (float)(Rng.NextDouble() * MathF.Tau);
+        Vector3 spot = Village.Center + new Vector3(distance, 0, 0);
+
+        // Try 12 spots round the village; take the first free one.
+        for (int i = 0; i < 12; i++)
+        {
+            float angle = startAngle + i * MathF.Tau / 12;
+            var candidate = Village.Center + new Vector3(MathF.Cos(angle) * distance, 0, MathF.Sin(angle) * distance);
+            if (!IsBlocked(candidate, Bramblekin.BodyRadius) && Terrain.Contains(candidate, Bramblekin.EdgeMargin))
+            {
+                spot = candidate;
+                break;
+            }
+        }
+
+        Colony.Add(new Bramblekin(spot, Rng));
+        Births++;
     }
 
     /// <summary>A random point on the terrain that isn't inside an obstacle or under a shadow.</summary>
@@ -1116,6 +1303,39 @@ public sealed class World
             position.Z = Math.Clamp(position.Z, -half, half);
             FoodShards.Add(new FoodShard(position));
         }
+    }
+
+    /// <summary>
+    /// The high-skill reward: a pebble whose centre lands right on top of the
+    /// Wolf Spider crushes it. (A spider staring at a distraction, or
+    /// feeding, stands still — that's the moment to strike.)
+    /// </summary>
+    private void SquishSpiderOnImpact()
+    {
+        if (Spider is null)
+            return;
+
+        foreach (var impact in Physics.Impacts)
+        {
+            if (GroundMover.HorizontalDistance(impact.Point, Spider.Position) > SquishRadius)
+                continue;
+
+            _splats.Add((Spider.Position, SplatDuration));
+            Spider = null;
+            SpidersCrushed++;
+            SpiderRespawnTimer = SpiderRespawnDelay;
+            return;
+        }
+    }
+
+    private void UpdateSpiderRespawn(float deltaTime)
+    {
+        if (Spider is not null || SpiderRespawnTimer <= 0f)
+            return;
+
+        SpiderRespawnTimer -= deltaTime;
+        if (SpiderRespawnTimer <= 0f)
+            SpawnSpiderNearEdge();
     }
 
     private void UpdateAcornRespawn(float deltaTime)
@@ -2219,11 +2439,12 @@ public sealed class UiButton
 
     public bool Contains(Vector2 point) => Raylib.CheckCollisionPointRec(point, Bounds);
 
-    public void Draw(string label, bool highlighted)
+    public void Draw(string label, bool highlighted, bool disabled = false)
     {
         bool hovered = Contains(Raylib.GetMousePosition());
 
         Color fill = highlighted ? new Color(230, 190, 60, 255)   // Gold when armed.
+                   : disabled ? new Color(185, 175, 170, 255)     // Greyed out when unaffordable.
                    : hovered ? new Color(245, 245, 245, 255)      // Light on hover.
                    : new Color(220, 220, 220, 255);               // Default.
 
@@ -2234,6 +2455,6 @@ public sealed class UiButton
         int textWidth = Raylib.MeasureText(label, FontSize);
         int x = (int)(Bounds.X + (Bounds.Width - textWidth) / 2f);
         int y = (int)(Bounds.Y + (Bounds.Height - FontSize) / 2f);
-        Raylib.DrawText(label, x, y, FontSize, Color.Black);
+        Raylib.DrawText(label, x, y, FontSize, disabled && !highlighted ? new Color(90, 80, 75, 255) : Color.Black);
     }
 }
