@@ -13,6 +13,8 @@
 //      of any God's Shadow at 3x speed (see Garden_Guardians_Design.md).
 //    * The first economic loop: crack an Acorn with a pebble, and the
 //      Bramblekin carry the Food Shards back to the Village Heart.
+//    * The first predator: a Wolf Spider that hunts busy workers by
+//      vibration, and can be distracted by the thud of a dropped pebble.
 //
 //  Scale convention: 1 world unit = 1 meter. The terrain is a 20 m x 20 m plane
 //  centred on the origin, and "up" is +Y. Gravity is 9.8 m/s² downwards.
@@ -84,6 +86,7 @@ public static class Game
         // --- Build the world -------------------------------------------------
         var camera = IsometricCamera.Create(target: Vector3.Zero, distance: 30f);
         var world = new World(new Terrain(size: 20f), new Random(), ColonySize);
+        world.SpawnSpiderNearEdge();
         var input = new MiracleInput();
         var equipButton = new UiButton(new Rectangle(20, 20, 180, 50));
 
@@ -142,12 +145,13 @@ public static class Game
         int y = Raylib.GetScreenHeight() - 60;
         string hint = input.State == InputState.PebbleEquipped
             ? "Click the ground to drop the pebble."
-            : "Click 'Equip Pebble', then drop it on the acorn to crack it.";
+            : "Crack the acorn with a pebble. A pebble's thud also distracts the spider.";
         Raylib.DrawText(hint, 20, y, 20, Color.DarkGray);
         Raylib.DrawText(
             $"Pebbles: {world.Physics.Count}   Bramblekin: {world.Colony.Count} " +
             $"(gathering {Count(BramblekinState.Gathering)}, returning {Count(BramblekinState.Returning)}, " +
-            $"fleeing {Count(BramblekinState.Fleeing)})   FPS: {Raylib.GetFPS()}",
+            $"fleeing {Count(BramblekinState.Fleeing)}, lost {world.Casualties})   " +
+            $"Spider: {world.Spider?.State.ToString() ?? "none"}   FPS: {Raylib.GetFPS()}",
             20, y + 26, 20, Color.DarkGray);
     }
 }
@@ -817,7 +821,7 @@ public readonly record struct Obstacle(Vector2 Center, float Radius);
 ///
 ///   miracles (shadows, pebble release) -> physics (+ acorn cracking)
 ///   -> obstacle list -> shove food out from under rocks -> Bramblekin
-///   -> acorn respawn
+///   -> Wolf Spider (may kill Bramblekin) -> acorn respawn
 /// </summary>
 public sealed class World
 {
@@ -843,7 +847,11 @@ public sealed class World
     public Acorn? Acorn { get; private set; }
     public List<FoodShard> FoodShards { get; } = new();
     public List<Bramblekin> Colony { get; } = new();
+    public WolfSpider? Spider { get; set; }
     public Random Rng { get; }
+
+    /// <summary>Bramblekin lost to predators so far.</summary>
+    public int Casualties { get; private set; }
 
     /// <summary>Food delivered to the Village Heart so far.</summary>
     public int FoodStored { get; private set; }
@@ -869,6 +877,29 @@ public sealed class World
             Colony.Add(new Bramblekin(RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin), rng));
     }
 
+    /// <summary>Spawns a Wolf Spider at a random spot just inside one of the terrain's edges.</summary>
+    public void SpawnSpiderNearEdge()
+    {
+        float inset = Terrain.Size / 2f - 1.5f;
+        float along = (float)(Rng.NextDouble() * 2 - 1) * inset;
+        Vector3 position = Rng.Next(4) switch
+        {
+            0 => new Vector3(-inset, Terrain.GroundHeight, along),
+            1 => new Vector3(inset, Terrain.GroundHeight, along),
+            2 => new Vector3(along, Terrain.GroundHeight, -inset),
+            _ => new Vector3(along, Terrain.GroundHeight, inset),
+        };
+        Spider = new WolfSpider(position, Rng);
+    }
+
+    /// <summary>A Bramblekin caught by a predator: it drops its food and is removed.</summary>
+    public void Kill(Bramblekin bramblekin)
+    {
+        bramblekin.DropCarried();
+        if (Colony.Remove(bramblekin))
+            Casualties++;
+    }
+
     public void Update(float deltaTime)
     {
         Miracles.Update(deltaTime, Physics);
@@ -879,6 +910,7 @@ public sealed class World
         PushFoodOutOfObstacles();
         foreach (var bramblekin in Colony)
             bramblekin.Update(deltaTime, this);
+        Spider?.Update(deltaTime, this);
 
         UpdateAcornRespawn(deltaTime);
     }
@@ -896,6 +928,7 @@ public sealed class World
         }
         foreach (var bramblekin in Colony)
             bramblekin.Draw();
+        Spider?.Draw();
         Physics.Draw();
     }
 
@@ -1207,76 +1240,24 @@ public sealed class FoodShard
 }
 
 // =============================================================================
-//  Creatures: the Bramblekin
+//  Ground movement shared by every creature
 // =============================================================================
 
-/// <summary>What a Bramblekin is currently doing.</summary>
-public enum BramblekinState
-{
-    /// <summary>Wandering: walking at a slow, steady pace toward a random point.</summary>
-    Walking,
-
-    /// <summary>Wandering: standing still for a moment after arriving somewhere.</summary>
-    Pausing,
-
-    /// <summary>Heading for the nearest available Food Shard.</summary>
-    Gathering,
-
-    /// <summary>Carrying a Food Shard back to the Village Heart.</summary>
-    Returning,
-
-    /// <summary>Scurrying out from under a God's Shadow at 3x speed.</summary>
-    Fleeing,
-}
-
 /// <summary>
-/// One of the tiny creatures the player protects. The player never controls
-/// them directly; each runs a small state machine, checked in priority order
-/// every frame:
-///
-///   1. Self-preservation (always wins): standing under a God's Shadow drops
-///      any carried food and sends it Fleeing at 3x speed to the nearest safe
-///      spot. Afterwards it pauses briefly and carries on.
-///   2. Economy: while Food Shards are available, wandering (Walking/Pausing)
-///      is overridden by Gathering -> pick up -> Returning -> deliver.
-///   3. Wandering: Walking to a random free point, Pausing 2 s, repeat.
-///
-/// Movement steers around pebbles and the village, and if it ever stops
-/// making progress it takes a short sideways detour.
+/// Walks a round body across the terrain: steers around obstacles, pushes
+/// itself back out of anything it overlaps, stays on the terrain, and takes a
+/// short sideways detour if it stops making progress. Used by both the
+/// Bramblekin and the Wolf Spider.
 /// </summary>
-public sealed class Bramblekin
+public sealed class GroundMover
 {
-    /// <summary>Normal walking speed in m/s (a slow amble).</summary>
-    public const float WalkSpeed = 1.0f;
-
-    /// <summary>Flee speed as a multiple of <see cref="WalkSpeed"/>.</summary>
-    public const float FleeSpeedMultiplier = 3f;
-
-    /// <summary>How long a Bramblekin rests after reaching a target, in seconds.</summary>
-    public const float PauseDuration = 2f;
-
-    /// <summary>Collision radius in meters: used against pebbles, the village and shadows.</summary>
-    public const float BodyRadius = 0.25f;
-
-    /// <summary>Total body height in meters, including the rounded ends.</summary>
-    public const float BodyHeight = 0.9f;
-
-    /// <summary>How far from the terrain edge targets are kept, in meters.</summary>
-    public const float EdgeMargin = 0.5f;
-
-    /// <summary>Extra clearance beyond the shadow's edge when picking an escape point.</summary>
-    private const float SafetyMargin = 0.5f;
-
     /// <summary>Within this distance of a target counts as "arrived".</summary>
     private const float ArriveDistance = 0.05f;
 
-    /// <summary>Within this distance of a shard, it is picked up.</summary>
-    private const float PickupDistance = BodyRadius + FoodShard.Radius + 0.1f;
-
-    /// <summary>How far ahead (m) a walker looks for obstacles in its path.</summary>
+    /// <summary>How far ahead (m) the walker looks for obstacles in its path.</summary>
     private const float LookAhead = 1.5f;
 
-    /// <summary>Gap (m) a walker tries to keep between itself and an obstacle while passing it.</summary>
+    /// <summary>Gap (m) the walker tries to keep between itself and an obstacle while passing it.</summary>
     private const float AvoidMargin = 0.15f;
 
     /// <summary>How strongly avoidance bends the heading (1 = 45° at most, higher = sharper).</summary>
@@ -1288,189 +1269,53 @@ public sealed class Bramblekin
     /// <summary>Fraction of the expected distance that must be covered per check to not count as stuck.</summary>
     private const float StuckProgressFraction = 0.3f;
 
-    private static readonly Color CalmColor = new(196, 160, 110, 255);   // Bark brown.
-    private static readonly Color PanicColor = new(225, 85, 60, 255);    // Alarm red.
-
     private readonly Random _rng;
-    private Vector3 _target;
-    private float _pauseTimer;
-    private FoodShard? _carried;
-
-    // Stuck detection: where we were at the last check, and a temporary
-    // sideways waypoint used to get unstuck.
+    private readonly float _edgeMargin;
     private Vector3 _progressAnchor;
     private float _progressTimer;
     private Vector3? _detour;
 
     /// <summary>Feet position on the ground (y = GroundHeight).</summary>
-    public Vector3 Position { get; private set; }
+    public Vector3 Position { get; set; }
 
-    public BramblekinState State { get; private set; }
+    /// <summary>Unit (x, z) direction of the last step taken; used for drawing facing.</summary>
+    public Vector2 Heading { get; set; } = Vector2.UnitX;
 
-    public bool IsCarrying => _carried is not null;
+    public float BodyRadius { get; }
 
-    public Bramblekin(Vector3 position, Random rng)
+    /// <summary>True if the body moved this frame (for walk animations).</summary>
+    public bool IsMoving { get; private set; }
+
+    public GroundMover(Vector3 position, float bodyRadius, float edgeMargin, Random rng)
     {
         Position = position;
+        BodyRadius = bodyRadius;
+        _edgeMargin = edgeMargin;
         _rng = rng;
-
-        // Start mid-pause with a random timer so the colony doesn't move in lockstep.
-        SetState(BramblekinState.Pausing);
-        _pauseTimer = (float)rng.NextDouble() * PauseDuration;
+        ResetProgress();
     }
 
-    public void Update(float deltaTime, World world)
+    /// <summary>Forget any detour and restart stuck detection (call on every change of plan).</summary>
+    public void ResetProgress()
     {
-        // --- 1. Self-preservation (absolute priority) -------------------------
-        // A fleeing Bramblekin only replans if its escape point has since been
-        // covered by a newer shadow or blocked by a rock.
-        GodShadow? threat = world.ShadowOver(Position, BodyRadius);
-        if (threat is not null && (State != BramblekinState.Fleeing || !IsSafeSpot(_target, world)))
-        {
-            DropCarried();
-            _target = FindEscapePoint(threat, world);
-            SetState(BramblekinState.Fleeing);
-        }
-
-        // --- 2. Economy overrides wandering -----------------------------------
-        if (State is BramblekinState.Walking or BramblekinState.Pausing && world.HasAvailableFood)
-            SetState(BramblekinState.Gathering);
-
-        // --- 3. Run the current state -----------------------------------------
-        switch (State)
-        {
-            case BramblekinState.Pausing:
-                _pauseTimer -= deltaTime;
-                if (_pauseTimer <= 0f)
-                    StartWandering(world);
-                break;
-
-            case BramblekinState.Walking:
-                // Don't stroll into a spot that has since been marked for a drop or covered by a rock.
-                if (!IsSafeSpot(_target, world))
-                    _target = world.RandomFreePoint(BodyRadius + 0.1f, EdgeMargin);
-
-                if (MoveTowards(_target, WalkSpeed, deltaTime, world))
-                    StartPause();
-                break;
-
-            case BramblekinState.Gathering:
-                UpdateGathering(deltaTime, world);
-                break;
-
-            case BramblekinState.Returning:
-                UpdateReturning(deltaTime, world);
-                break;
-
-            case BramblekinState.Fleeing:
-                if (MoveTowards(_target, WalkSpeed * FleeSpeedMultiplier, deltaTime, world))
-                    StartPause(); // Catch its breath, then back to work.
-                break;
-        }
-    }
-
-    public void Draw()
-    {
-        Color color = State == BramblekinState.Fleeing ? PanicColor : CalmColor;
-
-        // A capsule standing upright: DrawCapsule takes the centres of its two
-        // hemispherical ends, so inset them by the radius.
-        var bottom = Position + new Vector3(0, BodyRadius, 0);
-        var top = Position + new Vector3(0, BodyHeight - BodyRadius, 0);
-        Raylib.DrawCapsule(bottom, top, BodyRadius, 8, 4, color);
-        Raylib.DrawCapsuleWires(bottom, top, BodyRadius, 8, 4, new Color(0, 0, 0, 50));
-
-        // Carried food rides on top of the head.
-        _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
-    }
-
-    // --- Economy states ----------------------------------------------------------
-
-    private void UpdateGathering(float deltaTime, World world)
-    {
-        // Re-pick the nearest shard every frame: another Bramblekin may have
-        // grabbed ours, or a rock or shadow may have made it unreachable.
-        FoodShard? shard = world.NearestAvailableShard(Position);
-        if (shard is null)
-        {
-            StartWandering(world);
-            return;
-        }
-
-        if (HorizontalDistance(Position, shard.Position) <= PickupDistance)
-        {
-            shard.IsCarried = true;
-            _carried = shard;
-            SetState(BramblekinState.Returning);
-            return;
-        }
-
-        MoveTowards(shard.Position, WalkSpeed, deltaTime, world);
-    }
-
-    private void UpdateReturning(float deltaTime, World world)
-    {
-        if (HorizontalDistance(Position, world.Village.Center) <= world.Village.DeliveryDistance)
-        {
-            world.DeliverFood(_carried!);
-            _carried = null;
-
-            if (world.HasAvailableFood)
-                SetState(BramblekinState.Gathering);
-            else
-                StartWandering(world);
-            return;
-        }
-
-        MoveTowards(world.Village.Center, WalkSpeed, deltaTime, world);
-    }
-
-    /// <summary>Puts carried food back on the ground where we stand (it can be gathered again later).</summary>
-    private void DropCarried()
-    {
-        if (_carried is null)
-            return;
-
-        _carried.Position = Position;
-        _carried.IsCarried = false;
-        _carried = null;
-    }
-
-    // --- Wandering ----------------------------------------------------------------
-
-    private void StartWandering(World world)
-    {
-        // No-spawn zones: RandomFreePoint never picks a spot inside a rock,
-        // the village, or a God's Shadow.
-        _target = world.RandomFreePoint(BodyRadius + 0.1f, EdgeMargin);
-        SetState(BramblekinState.Walking);
-    }
-
-    private void StartPause()
-    {
-        SetState(BramblekinState.Pausing);
-        _pauseTimer = PauseDuration;
-    }
-
-    private void SetState(BramblekinState state)
-    {
-        State = state;
         _detour = null;
         _progressTimer = 0f;
         _progressAnchor = Position;
     }
 
-    // --- Movement: steering, collision, unsticking ---------------------------------
+    /// <summary>Marks the body as standing still this frame.</summary>
+    public void Idle() => IsMoving = false;
 
     /// <summary>
     /// Moves toward <paramref name="target"/> at <paramref name="speed"/>,
     /// steering around obstacles, then pushes the body back out of anything
-    /// it still overlaps. Returns true on arrival.
+    /// it still overlaps. <paramref name="isSafeSpot"/> vets detour points.
+    /// Returns true on arrival.
     /// </summary>
-    private bool MoveTowards(Vector3 target, float speed, float deltaTime, World world)
+    public bool MoveTowards(Vector3 target, float speed, float deltaTime, World world, Func<Vector3, bool> isSafeSpot)
     {
         float step = speed * deltaTime;
-        CheckIfStuck(target, step, deltaTime, world);
+        CheckIfStuck(target, step, deltaTime, world, isSafeSpot);
 
         // Head for the detour waypoint first, if we're working our way round something.
         Vector3 goal = _detour ?? target;
@@ -1487,11 +1332,14 @@ public sealed class Bramblekin
         {
             Vector2 heading = Steer(position, toGoal / distance, MathF.Min(distance, LookAhead), goal, world.Obstacles);
             position += heading * step;
+            Heading = heading;
         }
 
+        Vector3 before = Position;
         Position = new Vector3(position.X, Terrain.GroundHeight, position.Y);
-        PushOutOfObstacles(world);
+        PushOutOfObstacles(world.Obstacles);
         ClampToTerrain(world.Terrain);
+        IsMoving = Vector3.DistanceSquared(before, Position) > 1e-8f;
 
         if (arrived && _detour is not null)
         {
@@ -1508,13 +1356,13 @@ public sealed class Bramblekin
     /// sideways push dominates, so the walker slides round its edge instead
     /// of walking into it; once past, the path is clear and it straightens.
     /// </summary>
-    private static Vector2 Steer(Vector2 position, Vector2 direction, float lookAhead, Vector3 goal,
-                                 IReadOnlyList<Obstacle> obstacles)
+    private Vector2 Steer(Vector2 position, Vector2 direction, float lookAhead, Vector3 goal,
+                          IReadOnlyList<Obstacle> obstacles)
     {
         var goal2 = new Vector2(goal.X, goal.Z);
-        Obstacle? nearest = null;
         Vector2 nearestOffset = Vector2.Zero;
         float nearestAlong = float.MaxValue;
+        bool found = false;
 
         foreach (var obstacle in obstacles)
         {
@@ -1534,13 +1382,13 @@ public sealed class Bramblekin
 
             if (along < nearestAlong)
             {
-                nearest = obstacle;
                 nearestOffset = offset;
                 nearestAlong = along;
+                found = true;
             }
         }
 
-        if (nearest is null)
+        if (!found)
             return direction;
 
         // Push away from the obstacle's side of the path. Dead-centre hits
@@ -1552,11 +1400,11 @@ public sealed class Bramblekin
         return Vector2.Normalize(direction + away * SteerStrength);
     }
 
-    /// <summary>Bramblekin-to-rock collision: slide the body back outside any obstacle it overlaps.</summary>
-    private void PushOutOfObstacles(World world)
+    /// <summary>Solid collision: slide the body back outside any obstacle it overlaps.</summary>
+    private void PushOutOfObstacles(IReadOnlyList<Obstacle> obstacles)
     {
         var position = new Vector2(Position.X, Position.Z);
-        foreach (var obstacle in world.Obstacles)
+        foreach (var obstacle in obstacles)
         {
             Vector2 offset = position - obstacle.Center;
             float minDistance = obstacle.Radius + BodyRadius;
@@ -1585,7 +1433,7 @@ public sealed class Bramblekin
     /// rocks with a gap narrower than our body). If we covered too little
     /// ground since the last check, head for a sideways waypoint for a bit.
     /// </summary>
-    private void CheckIfStuck(Vector3 target, float step, float deltaTime, World world)
+    private void CheckIfStuck(Vector3 target, float step, float deltaTime, World world, Func<Vector3, bool> isSafeSpot)
     {
         _progressTimer += deltaTime;
         if (_progressTimer < StuckCheckInterval)
@@ -1596,14 +1444,14 @@ public sealed class Bramblekin
         bool nearTarget = HorizontalDistance(Position, target) < 0.5f;
 
         if (moved < expected * StuckProgressFraction && !nearTarget && _detour is null)
-            _detour = PickDetour(target, world);
+            _detour = PickDetour(target, world, isSafeSpot);
 
         _progressTimer = 0f;
         _progressAnchor = Position;
     }
 
     /// <summary>A free point ~1.5 m to the left or right of the line toward the target.</summary>
-    private Vector3? PickDetour(Vector3 target, World world)
+    private Vector3? PickDetour(Vector3 target, World world, Func<Vector3, bool> isSafeSpot)
     {
         var forward = new Vector2(target.X - Position.X, target.Z - Position.Z);
         forward = forward.LengthSquared() > 1e-6f ? Vector2.Normalize(forward) : Vector2.UnitX;
@@ -1614,32 +1462,312 @@ public sealed class Bramblekin
         {
             Vector2 offset = left * side * 1.5f - forward * 0.5f;
             var candidate = new Vector3(Position.X + offset.X, Terrain.GroundHeight, Position.Z + offset.Y);
-            if (world.Terrain.Contains(candidate, EdgeMargin) && IsSafeSpot(candidate, world))
+            if (world.Terrain.Contains(candidate, _edgeMargin) && isSafeSpot(candidate))
                 return candidate;
         }
         return null;
     }
 
+    public static float HorizontalDistance(Vector3 a, Vector3 b)
+    {
+        float dx = a.X - b.X;
+        float dz = a.Z - b.Z;
+        return MathF.Sqrt(dx * dx + dz * dz);
+    }
+}
+
+// =============================================================================
+//  Creatures: the Bramblekin
+// =============================================================================
+
+/// <summary>What a Bramblekin is currently doing.</summary>
+public enum BramblekinState
+{
+    /// <summary>Wandering: walking at a slow, steady pace toward a random point.</summary>
+    Walking,
+
+    /// <summary>Wandering: standing still for a moment after arriving somewhere.</summary>
+    Pausing,
+
+    /// <summary>Heading for the nearest available Food Shard.</summary>
+    Gathering,
+
+    /// <summary>Carrying a Food Shard back to the Village Heart.</summary>
+    Returning,
+
+    /// <summary>Running at 3x speed from a God's Shadow or a predator.</summary>
+    Fleeing,
+}
+
+/// <summary>
+/// One of the tiny creatures the player protects. The player never controls
+/// them directly; each runs a small state machine, checked in priority order
+/// every frame:
+///
+///   1. God's Shadow (always wins): standing under a shadow drops any carried
+///      food and sends it Fleeing at 3x speed to the nearest safe spot —
+///      even with a spider on its tail.
+///   2. Fear Aura: a Wolf Spider within <see cref="FearRadius"/> also drops
+///      the food and sends it Fleeing directly away from the spider.
+///   3. Economy: while Food Shards are available, wandering (Walking/Pausing)
+///      is overridden by Gathering -> pick up -> Returning -> deliver.
+///   4. Wandering: Walking to a random free point, Pausing 2 s, repeat.
+///
+/// Gathering and Returning Bramblekin shake the ground; that is what the Wolf
+/// Spider hunts by (<see cref="IsVibrating"/>).
+/// </summary>
+public sealed class Bramblekin
+{
+    /// <summary>Normal walking speed in m/s (a slow amble).</summary>
+    public const float WalkSpeed = 1.0f;
+
+    /// <summary>Flee speed as a multiple of <see cref="WalkSpeed"/>.</summary>
+    public const float FleeSpeedMultiplier = 3f;
+
+    /// <summary>How long a Bramblekin rests after reaching a target, in seconds.</summary>
+    public const float PauseDuration = 2f;
+
+    /// <summary>Collision radius in meters: used against pebbles, the village and shadows.</summary>
+    public const float BodyRadius = 0.25f;
+
+    /// <summary>Total body height in meters, including the rounded ends.</summary>
+    public const float BodyHeight = 0.9f;
+
+    /// <summary>How far from the terrain edge targets are kept, in meters.</summary>
+    public const float EdgeMargin = 0.5f;
+
+    /// <summary>
+    /// Fear Aura: a Wolf Spider closer than this (m) sends the Bramblekin
+    /// running. Deliberately a little shorter than the spider's pounce range,
+    /// so a hunting spider gets the jump on distracted workers — which is why
+    /// the player's pebble distraction matters.
+    /// </summary>
+    public const float FearRadius = 2.0f;
+
+    /// <summary>How far past the Fear Aura a frightened Bramblekin aims to run, in meters.</summary>
+    private const float PredatorFleeMargin = 3f;
+
+    /// <summary>Extra clearance beyond the shadow's edge when picking an escape point.</summary>
+    private const float SafetyMargin = 0.5f;
+
+    /// <summary>Within this distance of a shard, it is picked up.</summary>
+    private const float PickupDistance = BodyRadius + FoodShard.Radius + 0.1f;
+
+    private static readonly Color CalmColor = new(196, 160, 110, 255);   // Bark brown.
+    private static readonly Color PanicColor = new(225, 85, 60, 255);    // Alarm red.
+
+    private readonly Random _rng;
+    private readonly GroundMover _mover;
+    private Vector3 _target;
+    private float _pauseTimer;
+    private FoodShard? _carried;
+
+    /// <summary>Feet position on the ground (y = GroundHeight).</summary>
+    public Vector3 Position => _mover.Position;
+
+    public BramblekinState State { get; private set; }
+
+    public bool IsCarrying => _carried is not null;
+
+    /// <summary>Busy workers (gathering or hauling food) make vibrations a Wolf Spider can feel.</summary>
+    public bool IsVibrating => State is BramblekinState.Gathering or BramblekinState.Returning;
+
+    public Bramblekin(Vector3 position, Random rng)
+    {
+        _rng = rng;
+        _mover = new GroundMover(position, BodyRadius, EdgeMargin, rng);
+
+        // Start mid-pause with a random timer so the colony doesn't move in lockstep.
+        SetState(BramblekinState.Pausing);
+        _pauseTimer = (float)rng.NextDouble() * PauseDuration;
+    }
+
+    public void Update(float deltaTime, World world)
+    {
+        _mover.Idle();
+        bool isSafe(Vector3 p) => IsSafeSpot(p, world);
+
+        // --- 1. God's Shadow (absolute priority) ------------------------------
+        // A shadow flight only replans if its escape point has since been
+        // covered by a newer shadow or blocked by a rock.
+        GodShadow? threat = world.ShadowOver(Position, BodyRadius);
+        if (threat is not null)
+        {
+            if (State != BramblekinState.Fleeing || !IsSafeSpot(_target, world))
+            {
+                DropCarried();
+                _target = FindEscapePoint(threat, world);
+                SetState(BramblekinState.Fleeing);
+            }
+        }
+        // --- 2. Fear Aura -----------------------------------------------------
+        // Re-aimed every frame while the spider is close, so the Bramblekin
+        // keeps running straight away from it as it moves.
+        else if (world.Spider is { } spider &&
+                 GroundMover.HorizontalDistance(Position, spider.Position) < FearRadius)
+        {
+            DropCarried();
+            _target = FindPointAwayFrom(spider.Position, world);
+            if (State != BramblekinState.Fleeing)
+                SetState(BramblekinState.Fleeing);
+        }
+
+        // --- 3. Economy overrides wandering -----------------------------------
+        if (State is BramblekinState.Walking or BramblekinState.Pausing && world.HasAvailableFood)
+            SetState(BramblekinState.Gathering);
+
+        // --- 4. Run the current state -----------------------------------------
+        switch (State)
+        {
+            case BramblekinState.Pausing:
+                _pauseTimer -= deltaTime;
+                if (_pauseTimer <= 0f)
+                    StartWandering(world);
+                break;
+
+            case BramblekinState.Walking:
+                // Don't stroll into a spot that has since been marked for a drop or covered by a rock.
+                if (!IsSafeSpot(_target, world))
+                    _target = world.RandomFreePoint(BodyRadius + 0.1f, EdgeMargin);
+
+                if (_mover.MoveTowards(_target, WalkSpeed, deltaTime, world, isSafe))
+                    StartPause();
+                break;
+
+            case BramblekinState.Gathering:
+                UpdateGathering(deltaTime, world);
+                break;
+
+            case BramblekinState.Returning:
+                UpdateReturning(deltaTime, world);
+                break;
+
+            case BramblekinState.Fleeing:
+                if (_mover.MoveTowards(_target, WalkSpeed * FleeSpeedMultiplier, deltaTime, world, isSafe))
+                    StartPause(); // Catch its breath, then back to work.
+                break;
+        }
+    }
+
+    public void Draw()
+    {
+        Color color = State == BramblekinState.Fleeing ? PanicColor : CalmColor;
+
+        // A capsule standing upright: DrawCapsule takes the centres of its two
+        // hemispherical ends, so inset them by the radius.
+        var bottom = Position + new Vector3(0, BodyRadius, 0);
+        var top = Position + new Vector3(0, BodyHeight - BodyRadius, 0);
+        Raylib.DrawCapsule(bottom, top, BodyRadius, 8, 4, color);
+        Raylib.DrawCapsuleWires(bottom, top, BodyRadius, 8, 4, new Color(0, 0, 0, 50));
+
+        // Carried food rides on top of the head.
+        _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
+    }
+
+    /// <summary>Puts carried food back on the ground where we stand (it can be gathered again later).</summary>
+    public void DropCarried()
+    {
+        if (_carried is null)
+            return;
+
+        _carried.Position = Position;
+        _carried.IsCarried = false;
+        _carried = null;
+    }
+
+    // --- Economy states ----------------------------------------------------------
+
+    private void UpdateGathering(float deltaTime, World world)
+    {
+        // Re-pick the nearest shard every frame: another Bramblekin may have
+        // grabbed ours, or a shadow may have made it unreachable.
+        FoodShard? shard = world.NearestAvailableShard(Position);
+        if (shard is null)
+        {
+            StartWandering(world);
+            return;
+        }
+
+        if (GroundMover.HorizontalDistance(Position, shard.Position) <= PickupDistance)
+        {
+            shard.IsCarried = true;
+            _carried = shard;
+            SetState(BramblekinState.Returning);
+            return;
+        }
+
+        _mover.MoveTowards(shard.Position, WalkSpeed, deltaTime, world, p => IsSafeSpot(p, world));
+    }
+
+    private void UpdateReturning(float deltaTime, World world)
+    {
+        if (GroundMover.HorizontalDistance(Position, world.Village.Center) <= world.Village.DeliveryDistance)
+        {
+            world.DeliverFood(_carried!);
+            _carried = null;
+
+            if (world.HasAvailableFood)
+                SetState(BramblekinState.Gathering);
+            else
+                StartWandering(world);
+            return;
+        }
+
+        _mover.MoveTowards(world.Village.Center, WalkSpeed, deltaTime, world, p => IsSafeSpot(p, world));
+    }
+
+    // --- Wandering ----------------------------------------------------------------
+
+    private void StartWandering(World world)
+    {
+        // No-spawn zones: RandomFreePoint never picks a spot inside a rock,
+        // the village, or a God's Shadow.
+        _target = world.RandomFreePoint(BodyRadius + 0.1f, EdgeMargin);
+        SetState(BramblekinState.Walking);
+    }
+
+    private void StartPause()
+    {
+        SetState(BramblekinState.Pausing);
+        _pauseTimer = PauseDuration;
+    }
+
+    private void SetState(BramblekinState state)
+    {
+        State = state;
+        _mover.ResetProgress();
+    }
+
     // --- Fleeing ------------------------------------------------------------------
 
     /// <summary>
-    /// Picks the closest safe spot just outside <paramref name="threat"/>.
-    /// The ideal escape runs straight away from the shadow's centre; if that
-    /// point is off the terrain, under another shadow or inside a rock, it
-    /// tries directions progressively further round the circle, alternating
-    /// left and right.
+    /// Picks the closest safe spot just outside <paramref name="threat"/>:
+    /// straight away from the shadow's centre if possible.
     /// </summary>
-    private Vector3 FindEscapePoint(GodShadow threat, World world)
+    private Vector3 FindEscapePoint(GodShadow threat, World world) =>
+        FindSafePointAround(threat.Center, threat.Radius + BodyRadius + SafetyMargin, world);
+
+    /// <summary>A safe spot directly away from a predator, well outside its Fear Aura.</summary>
+    private Vector3 FindPointAwayFrom(Vector3 predator, World world) =>
+        FindSafePointAround(predator, FearRadius + PredatorFleeMargin, world);
+
+    /// <summary>
+    /// Finds a safe point <paramref name="distance"/> meters from
+    /// <paramref name="danger"/>, ideally straight away from it (the shortest
+    /// escape). If that point is off the terrain, under a shadow or inside a
+    /// rock, it tries directions progressively further round the circle,
+    /// alternating left and right.
+    /// </summary>
+    private Vector3 FindSafePointAround(Vector3 danger, float distance, World world)
     {
-        float awayX = Position.X - threat.Center.X;
-        float awayZ = Position.Z - threat.Center.Z;
+        float awayX = Position.X - danger.X;
+        float awayZ = Position.Z - danger.Z;
 
         // Standing dead centre: any direction is as good as another.
         float baseAngle = awayX * awayX + awayZ * awayZ > 1e-6f
             ? MathF.Atan2(awayZ, awayX)
             : (float)(_rng.NextDouble() * MathF.Tau);
 
-        float escapeDistance = threat.Radius + BodyRadius + SafetyMargin;
         const int steps = 12;                      // 30° increments.
         const float stepAngle = MathF.Tau / steps;
 
@@ -1649,9 +1777,9 @@ public sealed class Bramblekin
             {
                 float angle = baseAngle + side * i * stepAngle;
                 var candidate = new Vector3(
-                    threat.Center.X + MathF.Cos(angle) * escapeDistance,
+                    danger.X + MathF.Cos(angle) * distance,
                     Terrain.GroundHeight,
-                    threat.Center.Z + MathF.Sin(angle) * escapeDistance);
+                    danger.Z + MathF.Sin(angle) * distance);
 
                 if (world.Terrain.Contains(candidate, EdgeMargin) && IsSafeSpot(candidate, world))
                     return candidate;
@@ -1662,20 +1790,417 @@ public sealed class Bramblekin
         // and hope. Clamp so it at least stays on the terrain.
         float half = world.Terrain.Size / 2f - EdgeMargin;
         return new Vector3(
-            Math.Clamp(threat.Center.X + MathF.Cos(baseAngle) * escapeDistance, -half, half),
+            Math.Clamp(danger.X + MathF.Cos(baseAngle) * distance, -half, half),
             Terrain.GroundHeight,
-            Math.Clamp(threat.Center.Z + MathF.Sin(baseAngle) * escapeDistance, -half, half));
+            Math.Clamp(danger.Z + MathF.Sin(baseAngle) * distance, -half, half));
     }
 
     /// <summary>Not under a shadow and not inside a rock or the village.</summary>
     private static bool IsSafeSpot(Vector3 point, World world) =>
         world.ShadowOver(point, BodyRadius) is null && !world.IsBlocked(point, BodyRadius);
+}
 
-    private static float HorizontalDistance(Vector3 a, Vector3 b)
+// =============================================================================
+//  Predators: the Wolf Spider
+// =============================================================================
+
+/// <summary>What the Wolf Spider is currently doing.</summary>
+public enum SpiderState
+{
+    /// <summary>Default: ambling slowly between random points.</summary>
+    Prowling,
+
+    /// <summary>Stalking a Bramblekin whose footsteps it can feel.</summary>
+    Hunting,
+
+    /// <summary>Committed dash at its target; kills any Bramblekin it touches.</summary>
+    Pouncing,
+
+    /// <summary>Getting its legs back under it after a pounce.</summary>
+    Recovering,
+
+    /// <summary>Distracted by a pebble impact: goes to the spot and stares at it.</summary>
+    Investigating,
+
+    /// <summary>Eating a catch: stays put and ignores everything for a while.</summary>
+    Feeding,
+}
+
+/// <summary>
+/// The first predator (Garden_Guardians_Design.md, "The Wolf Spider"). It is
+/// blind in this prototype and hunts purely by vibration:
+///
+///   Prowling --feels a busy worker within VibrationRadius--> Hunting
+///   Hunting --within PounceRange--> Pouncing (dash; touching = kill)
+///   Pouncing --dash over--> Recovering (1 s) --> Hunting or Prowling
+///   Pouncing --caught one--> Feeding (20 s, ignores everything) --> Prowling
+///
+/// Feeding caps how fast it can kill: without it every victim's dropped
+/// food lures the next gatherer in, and the colony dies in a chain.
+///
+/// The player's counter is a pebble: any hard landing within
+/// <see cref="ImpactHearingRadius"/> is a far stronger vibration than a
+/// Bramblekin's footsteps, so the spider instantly abandons whatever it was
+/// doing (even mid-pounce) and goes to investigate the impact, staring at
+/// it for 3 s before resuming its prowl.
+/// </summary>
+public sealed class WolfSpider
+{
+    /// <summary>Collision radius (m) — twice a Bramblekin's.</summary>
+    public const float BodyRadius = Bramblekin.BodyRadius * 2f;
+
+    /// <summary>How far (m) it can feel a gathering/returning Bramblekin's footsteps.</summary>
+    public const float VibrationRadius = 7f;
+
+    /// <summary>How far (m) it can feel a pebble slam into the ground — much further than footsteps.</summary>
+    public const float ImpactHearingRadius = 12f;
+
+    /// <summary>Distance (m) at which a hunting spider launches its pounce.</summary>
+    public const float PounceRange = 2.5f;
+
+    private const float ProwlSpeed = 0.6f;
+    private const float HuntSpeed = 1.5f;      // Faster than a walking Bramblekin, slower than a fleeing one.
+    private const float PounceSpeed = 7f;
+    private const float PounceDuration = 0.45f;
+    private const float RecoverDuration = 1f;
+    private const float ProwlPauseDuration = 1.5f;
+    private const float StareDuration = 3f;
+    private const float FeedDuration = 20f;
+
+    /// <summary>
+    /// Seconds a hunt continues after the target stops vibrating (e.g. it
+    /// panicked and dropped its food) before the spider gives up on it.
+    /// </summary>
+    private const float ChaseMemory = 2f;
+
+    /// <summary>How close (m) to an impact point it goes before staring.</summary>
+    private const float InvestigateStandOff = 1.2f;
+
+    /// <summary>Gives up walking to an impact after this long (s) and just stares from where it is.</summary>
+    private const float InvestigateTravelTimeout = 8f;
+
+    private static readonly Color BodyColor = new(45, 42, 40, 255);
+    private static readonly Color LegColor = new(30, 28, 26, 255);
+
+    private readonly Random _rng;
+    private readonly GroundMover _mover;
+    private Vector3 _target;               // Prowl point, or impact point while investigating.
+    private Bramblekin? _prey;
+    private float _timer;                  // Pause / dash / recover / stare / travel timer, by state.
+    private float _sinceVibration;         // Seconds since the prey last vibrated.
+    private Vector2 _pounceDirection;
+    private bool _staring;
+    private float _walkCycle;              // Leg animation phase.
+
+    public Vector3 Position => _mover.Position;
+
+    public SpiderState State { get; private set; } = SpiderState.Prowling;
+
+    /// <summary>Bramblekin killed so far.</summary>
+    public int Kills { get; private set; }
+
+    public WolfSpider(Vector3 position, Random rng)
     {
-        float dx = a.X - b.X;
-        float dz = a.Z - b.Z;
-        return MathF.Sqrt(dx * dx + dz * dz);
+        _rng = rng;
+        _mover = new GroundMover(position, BodyRadius, edgeMargin: 1f, rng);
+        _target = position;
+        _timer = ProwlPauseDuration;
+    }
+
+    public void Update(float deltaTime, World world)
+    {
+        _mover.Idle();
+
+        // --- The Distraction: a pebble impact trumps everything but a meal ----
+        foreach (var impact in State == SpiderState.Feeding ? [] : world.Physics.Impacts)
+        {
+            if (GroundMover.HorizontalDistance(Position, impact.Point) <= ImpactHearingRadius)
+            {
+                StartInvestigating(impact.Point);
+                break;
+            }
+        }
+
+        switch (State)
+        {
+            case SpiderState.Prowling:
+                // Busy workers give themselves away.
+                if (FindPrey(world) is { } prey)
+                {
+                    StartHunting(prey);
+                    break;
+                }
+                Prowl(deltaTime, world);
+                break;
+
+            case SpiderState.Hunting:
+                Hunt(deltaTime, world);
+                break;
+
+            case SpiderState.Pouncing:
+                Pounce(deltaTime, world);
+                break;
+
+            case SpiderState.Recovering:
+                _timer -= deltaTime;
+                if (_timer <= 0f)
+                {
+                    if (FindPrey(world) is { } next)
+                        StartHunting(next);
+                    else
+                        StartProwling();
+                }
+                break;
+
+            case SpiderState.Investigating:
+                Investigate(deltaTime, world);
+                break;
+
+            case SpiderState.Feeding:
+                _timer -= deltaTime;
+                if (_timer <= 0f)
+                    StartProwling();
+                break;
+        }
+
+        if (_mover.IsMoving)
+            _walkCycle += deltaTime * (State == SpiderState.Pouncing ? 30f : 12f);
+    }
+
+    // --- States ---------------------------------------------------------------------
+
+    private void Prowl(float deltaTime, World world)
+    {
+        // Short pause at each point, then pick another.
+        if (_timer > 0f)
+        {
+            _timer -= deltaTime;
+            if (_timer <= 0f)
+            {
+                _target = world.RandomFreePoint(BodyRadius + 0.1f, 1f);
+                _mover.ResetProgress();
+            }
+            return;
+        }
+
+        if (_mover.MoveTowards(_target, ProwlSpeed, deltaTime, world, p => !world.IsBlocked(p, BodyRadius)))
+            _timer = ProwlPauseDuration;
+    }
+
+    private void Hunt(float deltaTime, World world)
+    {
+        // Keep chasing while the prey is alive, in range, and either still
+        // vibrating or only recently gone quiet. Otherwise switch to another
+        // busy worker if there is one, or give up.
+        if (_prey is null || !world.Colony.Contains(_prey) ||
+            GroundMover.HorizontalDistance(Position, _prey.Position) > VibrationRadius * 1.5f)
+        {
+            _prey = null;
+        }
+        else
+        {
+            _sinceVibration = _prey.IsVibrating ? 0f : _sinceVibration + deltaTime;
+            if (_sinceVibration > ChaseMemory)
+                _prey = null;
+        }
+
+        if (_prey is null)
+        {
+            if (FindPrey(world) is { } other)
+                StartHunting(other);
+            else
+                StartProwling();
+            return;
+        }
+
+        float distance = GroundMover.HorizontalDistance(Position, _prey.Position);
+        if (distance <= PounceRange)
+        {
+            // Commit to a straight dash at where the prey is right now; a
+            // quick Bramblekin can still sidestep it.
+            var toPrey = new Vector2(_prey.Position.X - Position.X, _prey.Position.Z - Position.Z);
+            _pounceDirection = toPrey.LengthSquared() > 1e-6f ? Vector2.Normalize(toPrey) : _mover.Heading;
+            _timer = PounceDuration;
+            SetState(SpiderState.Pouncing);
+            return;
+        }
+
+        _mover.MoveTowards(_prey.Position, HuntSpeed, deltaTime, world, p => !world.IsBlocked(p, BodyRadius));
+    }
+
+    private void Pounce(float deltaTime, World world)
+    {
+        // Dash along the committed direction (still solid against rocks).
+        var dashTarget = Position + new Vector3(_pounceDirection.X, 0, _pounceDirection.Y) * (PounceSpeed * deltaTime + 0.01f);
+        _mover.MoveTowards(dashTarget, PounceSpeed, deltaTime, world, _ => false);
+        _mover.Heading = _pounceDirection;
+
+        // The first Bramblekin it touches mid-pounce is caught, and the
+        // spider settles down to eat.
+        foreach (var bramblekin in world.Colony)
+        {
+            if (GroundMover.HorizontalDistance(Position, bramblekin.Position) < BodyRadius + Bramblekin.BodyRadius)
+            {
+                world.Kill(bramblekin);
+                Kills++;
+                _prey = null;
+                _timer = FeedDuration;
+                SetState(SpiderState.Feeding);
+                return;
+            }
+        }
+
+        _timer -= deltaTime;
+        if (_timer <= 0f)
+        {
+            _timer = RecoverDuration;
+            SetState(SpiderState.Recovering);
+        }
+    }
+
+    private void Investigate(float deltaTime, World world)
+    {
+        if (!_staring)
+        {
+            _timer += deltaTime;
+            bool closeEnough = GroundMover.HorizontalDistance(Position, _target) <= InvestigateStandOff;
+            if (closeEnough || _timer > InvestigateTravelTimeout)
+            {
+                _staring = true;
+                _timer = StareDuration;
+            }
+            else
+            {
+                _mover.MoveTowards(_target, HuntSpeed, deltaTime, world, p => !world.IsBlocked(p, BodyRadius));
+            }
+            return;
+        }
+
+        // Stare: face the impact point and don't move.
+        var toImpact = new Vector2(_target.X - Position.X, _target.Z - Position.Z);
+        if (toImpact.LengthSquared() > 1e-6f)
+            _mover.Heading = Vector2.Normalize(toImpact);
+
+        _timer -= deltaTime;
+        if (_timer <= 0f)
+            StartProwling();
+    }
+
+    // --- Transitions ----------------------------------------------------------------
+
+    private void StartProwling()
+    {
+        _prey = null;
+        _timer = ProwlPauseDuration;
+        SetState(SpiderState.Prowling);
+    }
+
+    private void StartHunting(Bramblekin prey)
+    {
+        _prey = prey;
+        _sinceVibration = 0f;
+        SetState(SpiderState.Hunting);
+    }
+
+    private void StartInvestigating(Vector3 impactPoint)
+    {
+        _prey = null;
+        _target = impactPoint;
+        _staring = false;
+        _timer = 0f;
+        SetState(SpiderState.Investigating);
+    }
+
+    private void SetState(SpiderState state)
+    {
+        State = state;
+        _mover.ResetProgress();
+    }
+
+    /// <summary>The nearest vibrating Bramblekin within <see cref="VibrationRadius"/>, if any.</summary>
+    private Bramblekin? FindPrey(World world)
+    {
+        Bramblekin? best = null;
+        float bestDistance = VibrationRadius;
+        foreach (var bramblekin in world.Colony)
+        {
+            if (!bramblekin.IsVibrating)
+                continue;
+
+            float distance = GroundMover.HorizontalDistance(Position, bramblekin.Position);
+            if (distance <= bestDistance)
+            {
+                best = bramblekin;
+                bestDistance = distance;
+            }
+        }
+        return best;
+    }
+
+    // --- Drawing ----------------------------------------------------------------------
+
+    /// <summary>
+    /// A squat two-part body (big abdomen behind, smaller head in front) with
+    /// eight jointed legs, all drawn in the spider's local frame: +X forward,
+    /// +Z to its right. Eye colour shows its mood: dim when prowling, red when
+    /// hunting, yellow when investigating.
+    /// </summary>
+    public void Draw()
+    {
+        float yawDegrees = -MathF.Atan2(_mover.Heading.Y, _mover.Heading.X) * 180f / MathF.PI;
+
+        Rlgl.PushMatrix();
+        Rlgl.Translatef(Position.X, Position.Y, Position.Z);
+        Rlgl.Rotatef(yawDegrees, 0, 1, 0);
+
+        // Abdomen: a flattened, elongated sphere.
+        Rlgl.PushMatrix();
+        Rlgl.Translatef(-0.28f, 0.34f, 0);
+        Rlgl.Scalef(1.25f, 0.62f, 1f);
+        Raylib.DrawSphere(Vector3.Zero, 0.36f, BodyColor);
+        Rlgl.PopMatrix();
+
+        // Head (cephalothorax).
+        Rlgl.PushMatrix();
+        Rlgl.Translatef(0.2f, 0.3f, 0);
+        Rlgl.Scalef(1.1f, 0.7f, 1f);
+        Raylib.DrawSphere(Vector3.Zero, 0.24f, BodyColor);
+        Rlgl.PopMatrix();
+
+        // Eyes.
+        Color eyeColor = State switch
+        {
+            SpiderState.Hunting or SpiderState.Pouncing => new Color(230, 40, 30, 255),
+            SpiderState.Investigating => new Color(240, 210, 60, 255),
+            _ => new Color(120, 110, 100, 255),
+        };
+        Raylib.DrawSphere(new Vector3(0.43f, 0.38f, -0.08f), 0.045f, eyeColor);
+        Raylib.DrawSphere(new Vector3(0.43f, 0.38f, 0.08f), 0.045f, eyeColor);
+
+        // Legs: four per side, fanning from front to back.
+        float[] attachX = { 0.28f, 0.2f, 0.1f, 0.0f };
+        float[] reachX = { 0.55f, 0.2f, -0.2f, -0.55f };
+        for (int side = -1; side <= 1; side += 2)
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                // Alternate legs lift in turn while walking.
+                float phase = _walkCycle + i * MathF.PI / 2f + (side > 0 ? MathF.PI : 0f);
+                float lift = _mover.IsMoving ? MathF.Max(0f, MathF.Sin(phase)) * 0.12f : 0f;
+
+                var hip = new Vector3(attachX[i], 0.3f, side * 0.16f);
+                var knee = new Vector3(attachX[i] + reachX[i] * 0.55f, 0.62f + lift, side * 0.62f);
+                var foot = new Vector3(attachX[i] + reachX[i], lift * 0.5f, side * 0.95f);
+                Raylib.DrawCylinderEx(hip, knee, 0.045f, 0.035f, 5, LegColor);
+                Raylib.DrawCylinderEx(knee, foot, 0.035f, 0.02f, 5, LegColor);
+            }
+        }
+
+        Rlgl.PopMatrix();
+
+        // While staring at an impact, a faint line shows what it is looking at.
+        if (State == SpiderState.Investigating && _staring)
+            Raylib.DrawLine3D(Position + new Vector3(0, 0.4f, 0), _target + new Vector3(0, 0.05f, 0), new Color(240, 210, 60, 160));
     }
 }
 

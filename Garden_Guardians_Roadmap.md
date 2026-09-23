@@ -5,7 +5,7 @@
 *Last updated: 2026-09-23*
 
 ## Progress Snapshot
-The game runs as a Raylib-cs (C#/.NET 8) prototype on desktop and Android. So far it covers the first micro-loop: cast the Pebble-Drop miracle, the Bramblekin get out of the way, and cracked acorns feed the village. All game code is in `Program.cs`.
+The game runs as a Raylib-cs (C#/.NET 8) prototype on desktop and Android. So far it covers the first micro-loop: cast the Pebble-Drop miracle, the Bramblekin get out of the way, and cracked acorns feed the village. A Wolf Spider hunts the workers, and a well-placed pebble distracts it. All game code is in `Program.cs`.
 
 ## Phase 0: Engine & Tooling
 *   ✅ **Engine:** Switched to Raylib via Raylib-cs 8.1 (raylib 6.0) on a .NET 8 project. A fixed 45° isometric camera looks down at a 20 m × 20 m terrain, at 1 unit = 1 m.
@@ -25,8 +25,13 @@ The game runs as a Raylib-cs (C#/.NET 8) prototype on desktop and Android. So fa
 *   🟡 **Task 3:** Program the "Scurry" AI state machine: idle, gather, fear radius detection, drop payload, and seek cover.
     *   ✅ States: Walking, Pausing, Gathering, Returning and Fleeing, checked in priority order.
     *   ✅ Fear: standing under a God's Shadow overrides everything. The Bramblekin drops any food it carries and flees at 3x speed to the nearest safe spot.
-    *   ⬜ Predator "Fear Aura", seeking `Cover_Small`, "Play Dead".
-*   ⬜ **Task 4:** Create the Wolf Spider prototype to test vibration-based aggro and player misdirection.
+    *   ✅ Predator Fear Aura (from the Wolf Spider).
+    *   ⬜ Seeking `Cover_Small`, "Play Dead".
+*   ✅ **Task 4:** Create the Wolf Spider prototype to test vibration-based aggro and player misdirection.
+    *   ✅ States: Prowling, Hunting, Pouncing, Recovering, Investigating and Feeding. It's drawn as a dark two-part body with eight jointed legs, twice a Bramblekin's size, and spawns near an edge.
+    *   ✅ Vibration aggro: it feels Gathering or Returning Bramblekin within 7 m, hunts them, and pounces from 2.5 m. The one it catches drops its food and dies. It then feeds for 20 s, which stops one kill from luring the next victim to the dropped food.
+    *   ✅ Misdirection: a pebble thud within 12 m interrupts anything except feeding. The spider walks to the impact and stares at it for 3 s.
+    *   ✅ Bramblekin Fear Aura (2 m): drop the food and run directly away at 3x speed. The God's Shadow still takes priority.
 
 ## Phase 2: Economy & UI Infrastructure (The Macro-Loop)
 *   🟡 **Task 1:** Implement the resource gathering loop, storage capacities, and the caloric burn rate system for different unit states.
