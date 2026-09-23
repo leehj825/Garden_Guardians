@@ -126,6 +126,7 @@ public static class Game
 
             // 2D overlay (UI) is drawn after EndMode3D so it sits on top.
             DrawHealthBars(camera, world);
+            DrawFloatingTexts(camera, world);
             pebbleButton.Draw(input.PebbleButtonLabel,
                               highlighted: input.State == InputState.PebbleEquipped,
                               disabled: !input.CanAffordPebble(world));
@@ -183,6 +184,26 @@ public static class Game
         var fill = back with { Width = back.Width * Math.Clamp((float)health / maxHealth, 0f, 1f) };
         Raylib.DrawRectangleRec(fill, Color.Green);
         Raylib.DrawRectangleLinesEx(back, 1f, Color.Black);
+    }
+
+    /// <summary>
+    /// Upkeep/Starvation pop-ups: each rises and fades above the Village
+    /// Heart's projected screen position over its lifetime.
+    /// </summary>
+    private static void DrawFloatingTexts(Camera3D camera, World world)
+    {
+        const int fontSize = 20;
+        foreach (var text in world.FloatingTexts)
+        {
+            float age = World.FloatingTextDuration - text.TimeLeft;
+            Vector3 worldPosition = text.Position + new Vector3(0, VillageHeart.Height + 0.3f + age * 0.6f, 0);
+            Vector2 screen = Raylib.GetWorldToScreen(worldPosition, camera);
+
+            byte alpha = (byte)(255 * Math.Clamp(text.TimeLeft / World.FloatingTextDuration, 0f, 1f));
+            var color = new Color(text.Color.R, text.Color.G, text.Color.B, alpha);
+            int width = Raylib.MeasureText(text.Text, fontSize);
+            Raylib.DrawText(text.Text, (int)(screen.X - width / 2f), (int)screen.Y, fontSize, color);
+        }
     }
 
     /// <summary>
@@ -1360,11 +1381,23 @@ public sealed class World
     /// <summary>Food Stored spent to place a Granary blueprint.</summary>
     public const int GranaryFoodCost = 10;
 
-    /// <summary>Auto-Construction: fraction of the current food cap that triggers placing a Granary.</summary>
-    private const float GranaryTriggerFraction = 0.9f;
-
     /// <summary>How far (m) from the Village Heart an Auto-Granary may be placed.</summary>
     private const float GranaryPlacementRadius = 5f;
+
+    /// <summary>Food Stored spent to place a Spore Patch blueprint.</summary>
+    public const int SporePatchFoodCost = 15;
+
+    /// <summary>Population needed before the Village Heart will build a Spore Patch.</summary>
+    public const int SporePatchPopulationThreshold = 15;
+
+    /// <summary>How far (m) from the Village Heart a Spore Patch may be placed — kept close, near the village's centre.</summary>
+    private const float SporePatchPlacementRadius = 2.5f;
+
+    /// <summary>How often (seconds) the Village Heart pays its Upkeep food tax.</summary>
+    private const float UpkeepInterval = 15f;
+
+    /// <summary>How long (seconds) a floating text pop-up (Upkeep, Starvation) stays on screen.</summary>
+    public const float FloatingTextDuration = 1.5f;
 
     /// <summary>Morale cap. Also the starting amount: the colony begins confident.</summary>
     public const float MaxMorale = 100f;
@@ -1392,7 +1425,9 @@ public sealed class World
 
     private readonly List<Obstacle> _obstacles = new();
     private readonly List<(Vector3 Position, float TimeLeft)> _splats = new();
+    private readonly List<(Vector3 Position, string Text, Color Color, float TimeLeft)> _floatingTexts = new();
     private float _acornRespawnTimer;
+    private float _upkeepTimer = UpkeepInterval;
 
     // Deferred creation/destruction. Nothing below is added to or removed
     // from Colony/FoodShards while any part of the frame might still be
@@ -1462,6 +1497,9 @@ public sealed class World
 
     /// <summary>Solid circles every walker (Bramblekin, Aphids, the Wolf Spider) must steer around. Rebuilt every frame.</summary>
     public IReadOnlyList<Obstacle> Obstacles => _obstacles;
+
+    /// <summary>Floating text pop-ups (Upkeep paid, Starvation) still fading out above the Village Heart.</summary>
+    public IReadOnlyList<(Vector3 Position, string Text, Color Color, float TimeLeft)> FloatingTexts => _floatingTexts;
 
     public World(Terrain terrain, Random rng, int colonySize)
     {
@@ -1802,17 +1840,30 @@ public sealed class World
         UpdateJobManager();
         UpdateMorale(deltaTime);
 
-        // Auto-Construction gets first claim on Food Stored, checked before
+        // Upkeep is the survival tax: it gets first claim on Food Stored,
+        // ahead of anything discretionary, and can cost a Bramblekin its
+        // life if the village can't pay it.
+        UpdateUpkeep(deltaTime);
+
+        // Auto-Construction gets next claim on Food Stored, checked before
         // Auto-Sprout: Sprout's own trigger (>= FoodPerSprout) is the lowest
         // bar of the two, and its while-loop drains anything at or above
         // that back toward zero every single frame. Left to run first, it
         // would starve Auto-Construction completely -- Food Stored could
-        // never sit at the Granary's 90%-of-cap threshold across a frame
-        // boundary for it to ever see it. Checking Construction first still
-        // leaves Sprout free to spend whatever's left over once nothing
-        // needs building.
+        // never sit at a Blueprint's cost across a frame boundary for it to
+        // ever see it. Checking Construction first still leaves Sprout free
+        // to spend whatever's left over once nothing needs building.
+        //
+        // The Smarter Economy: Auto-Sprout and the Auto-Granary are two
+        // halves of the same Population-vs-MaxFoodCapacity comparison (see
+        // UpdateAutoSprout's Growth Phase and UpdateAutoGranary's Saving
+        // Phase), so between them the village is always either growing or
+        // banking toward more room to grow. The Spore Patch is a one-time,
+        // population-gated addition on top of that cycle.
+        UpdateAutoSporePatch();
         UpdateAutoGranary();
         UpdateAutoSprout();
+        UpdateSporePatchIncome(deltaTime);
 
         UpdateAcornRespawn(deltaTime);
         UpdateSpiderRespawn(deltaTime);
@@ -1827,6 +1878,16 @@ public sealed class World
                 _splats.RemoveAt(i);
             else
                 _splats[i] = splat;
+        }
+
+        for (int i = _floatingTexts.Count - 1; i >= 0; i--)
+        {
+            var text = _floatingTexts[i];
+            text.TimeLeft -= deltaTime;
+            if (text.TimeLeft <= 0f)
+                _floatingTexts.RemoveAt(i);
+            else
+                _floatingTexts[i] = text;
         }
     }
 
@@ -2004,13 +2065,19 @@ public sealed class World
     }
 
     /// <summary>
-    /// Auto-Sprout: the Village Heart's own reflex, checked every frame in
-    /// <see cref="Update"/>. Whenever Food Stored reaches <see cref="FoodPerSprout"/>
-    /// it spends it and sprouts a new Bramblekin, repeating until there's
-    /// less than a Sprout's worth left banked — no player action involved.
+    /// Auto-Sprout — the Growth Phase: whenever Population is still below
+    /// MaxFoodCapacity, the Village Heart spends Food Stored on new
+    /// Bramblekin as soon as it reaches <see cref="FoodPerSprout"/>,
+    /// repeating until there's less than a Sprout's worth left banked. Once
+    /// Population catches up to the food cap, sprouting is disabled outright
+    /// (see <see cref="UpdateAutoGranary"/>'s Saving Phase) — no player
+    /// action involved either way.
     /// </summary>
     private void UpdateAutoSprout()
     {
+        if (LivingPopulation >= MaxFoodCapacity)
+            return; // Saving Phase: the village has outgrown its food cap; sprouting is off.
+
         while (FoodStored >= FoodPerSprout)
         {
             FoodStored -= FoodPerSprout;
@@ -2019,23 +2086,102 @@ public sealed class World
     }
 
     /// <summary>
-    /// Auto-Construction (Granaries): once Food Stored reaches <see cref="GranaryTriggerFraction"/>
-    /// of the current cap, the Village Heart places a Granary Blueprint on
-    /// its own, at a random unoccupied spot within <see cref="GranaryPlacementRadius"/>
-    /// meters of itself — checked every frame in <see cref="Update"/>, but
+    /// Auto-Construction (Granaries) — the Saving Phase, the other half of
+    /// the Smarter Economy's Population-vs-MaxFoodCapacity comparison:
+    /// once Population reaches MaxFoodCapacity, Auto-Sprout shuts off and
+    /// the Village Heart instead hoards Food Stored until it can afford
+    /// <see cref="GranaryFoodCost"/>, then places a Granary Blueprint on its
+    /// own, at a random unoccupied spot within <see cref="GranaryPlacementRadius"/>
+    /// meters of itself. Completing it permanently raises MaxFoodCapacity
+    /// (see <see cref="CompleteBlueprint"/>), which naturally reopens the
+    /// Growth Phase. Checked every frame in <see cref="Update"/>, but
     /// guarded so at most one Auto-Granary is ever queued at a time.
     /// </summary>
     private void UpdateAutoGranary()
     {
-        if (FoodStored < MaxFoodCapacity * GranaryTriggerFraction)
-            return;
-        if (Blueprints.Count > 0)
+        if (LivingPopulation < MaxFoodCapacity)
+            return; // Growth Phase: no need to save for a Granary yet.
+        if (Blueprints.Any(b => b.Kind == BuildingKind.Granary))
             return; // Already building one; don't queue a second.
+        if (FoodStored < GranaryFoodCost)
+            return; // Saving Phase: still hoarding.
 
         Vector3? spot = RandomPointNearVillage(GranaryPlacementRadius, Building.GranaryRadius + 0.2f);
         if (spot is { } point)
-            TryPlaceBlueprint(point);
+            TryPlaceBlueprint(point, BuildingKind.Granary);
     }
+
+    /// <summary>
+    /// Auto-Construction (Spore Patch): a one-time build. Once Population
+    /// reaches <see cref="SporePatchPopulationThreshold"/> and the village
+    /// doesn't already have a Spore Patch (finished or under construction),
+    /// the Village Heart hoards Food Stored until it can afford
+    /// <see cref="SporePatchFoodCost"/>, then places a Spore Patch Blueprint
+    /// close to its own centre. Never queued a second time once one exists.
+    /// </summary>
+    private void UpdateAutoSporePatch()
+    {
+        if (LivingPopulation < SporePatchPopulationThreshold)
+            return;
+        if (Buildings.Any(b => b.Kind == BuildingKind.SporePatch) || Blueprints.Any(b => b.Kind == BuildingKind.SporePatch))
+            return; // Already have one, finished or in progress.
+        if (FoodStored < SporePatchFoodCost)
+            return; // Still hoarding.
+
+        Vector3? spot = RandomPointNearVillage(SporePatchPlacementRadius, Building.SporePatchRadius + 0.2f);
+        if (spot is { } point)
+            TryPlaceBlueprint(point, BuildingKind.SporePatch);
+    }
+
+    /// <summary>
+    /// Passive Income: every finished Spore Patch spawns a Berry (Food
+    /// Shard) directly on top of itself every <see cref="Building.SporePatchInterval"/>
+    /// seconds, for Gatherers to pick up and deliver like any other food.
+    /// </summary>
+    private void UpdateSporePatchIncome(float deltaTime)
+    {
+        for (int i = Buildings.Count - 1; i >= 0; i--)
+        {
+            Building building = Buildings[i];
+            if (building.TickSporeTimer(deltaTime))
+                _pendingShardSpawns.Add(new FoodShard(building.Position, FoodShardKind.Berry));
+        }
+    }
+
+    /// <summary>
+    /// Upkeep — a true survival economy. Every <see cref="UpkeepInterval"/>
+    /// seconds the Village Heart pays a food tax of Math.Max(1, Population/5).
+    /// If Food Stored can cover it, the cost is deducted and a "-X Food"
+    /// pop-up appears above the Village Heart. If it can't, Food Stored is
+    /// drained to zero outright and one Bramblekin — a Gatherer if there is
+    /// one, a Militia unit otherwise — dies of starvation on the spot, with
+    /// a red "Starving!" pop-up.
+    /// </summary>
+    private void UpdateUpkeep(float deltaTime)
+    {
+        _upkeepTimer -= deltaTime;
+        if (_upkeepTimer > 0f)
+            return;
+        _upkeepTimer += UpkeepInterval;
+
+        int cost = Math.Max(1, LivingPopulation / 5);
+        if (FoodStored >= cost)
+        {
+            FoodStored -= cost;
+            QueueFloatingText(Village.Center, $"-{cost} Food", Color.White);
+            return;
+        }
+
+        FoodStored = 0;
+        Bramblekin? victim = NearestByRole(BramblekinRole.Gatherer) ?? NearestByRole(BramblekinRole.Militia);
+        if (victim is { } v)
+            Kill(v);
+        QueueFloatingText(Village.Center, "Starving!", new Color(220, 30, 30, 255));
+    }
+
+    /// <summary>Queues a floating text pop-up (see <see cref="FloatingTexts"/>) at a world position.</summary>
+    private void QueueFloatingText(Vector3 position, string text, Color color) =>
+        _floatingTexts.Add((position, text, color, FloatingTextDuration));
 
     /// <summary>A random point within <paramref name="maxRadius"/> meters of the Village Heart that isn't blocked. Null if nothing opened up in a handful of tries.</summary>
     private Vector3? RandomPointNearVillage(float maxRadius, float clearance)
@@ -2053,18 +2199,20 @@ public sealed class World
     }
 
     /// <summary>
-    /// Village Building: spends <see cref="GranaryFoodCost"/> Food Stored to
-    /// place a Granary Blueprint at <paramref name="groundPoint"/> — called
-    /// by the Village Heart's own Auto-Construction (<see cref="UpdateAutoGranary"/>).
+    /// Village Building: spends the Blueprint kind's Food cost (<see cref="GranaryFoodCost"/>
+    /// or <see cref="SporePatchFoodCost"/>) to place a Blueprint at
+    /// <paramref name="groundPoint"/> — called by the Village Heart's own
+    /// Auto-Construction (<see cref="UpdateAutoGranary"/>/<see cref="UpdateAutoSporePatch"/>).
     /// Returns false (and spends nothing) if there isn't enough Food Stored.
     /// </summary>
-    public bool TryPlaceBlueprint(Vector3 groundPoint)
+    public bool TryPlaceBlueprint(Vector3 groundPoint, BuildingKind kind = BuildingKind.Granary)
     {
-        if (FoodStored < GranaryFoodCost)
+        int cost = kind == BuildingKind.Granary ? GranaryFoodCost : SporePatchFoodCost;
+        if (FoodStored < cost)
             return false;
 
-        FoodStored -= GranaryFoodCost;
-        Blueprints.Add(new Blueprint(groundPoint));
+        FoodStored -= cost;
+        Blueprints.Add(new Blueprint(groundPoint, kind));
         return true;
     }
 
@@ -2091,8 +2239,10 @@ public sealed class World
 
     /// <summary>
     /// Finishes a Blueprint once a Builder's Construction Progress reaches
-    /// its requirement: removes the site, adds the completed Building, and
-    /// permanently raises <see cref="MaxFoodCapacity"/>. Called from inside
+    /// its requirement: removes the site and adds the completed Building. A
+    /// finished Granary permanently raises <see cref="MaxFoodCapacity"/>; a
+    /// finished Spore Patch raises nothing but starts its own passive-income
+    /// timer (see <see cref="UpdateSporePatchIncome"/>). Called from inside
     /// a Bramblekin's own Update() (itself inside World's reverse for-loop
     /// over Colony), but mutates Blueprints/Buildings directly rather than
     /// through a pending queue: nothing else iterates either list while the
@@ -2102,8 +2252,9 @@ public sealed class World
     public void CompleteBlueprint(Blueprint blueprint)
     {
         Blueprints.Remove(blueprint);
-        Buildings.Add(new Building(blueprint.Position));
-        MaxFoodCapacity += GranaryFoodBonus;
+        Buildings.Add(new Building(blueprint.Position, blueprint.Kind));
+        if (blueprint.Kind == BuildingKind.Granary)
+            MaxFoodCapacity += GranaryFoodBonus;
     }
 
     /// <summary>Queues a new Bramblekin on a free spot right beside the Village Heart.</summary>
@@ -2478,41 +2629,105 @@ public sealed class FoodShard
 //  Village Building
 // =============================================================================
 
-/// <summary>A finished piece of Village Building: a Granary, which permanently raises the food cap.</summary>
+/// <summary>Which kind of Village Building a <see cref="Blueprint"/>/<see cref="Building"/> is.</summary>
+public enum BuildingKind
+{
+    /// <summary>Permanently raises <see cref="World.MaxFoodCapacity"/> by <see cref="World.GranaryFoodBonus"/>.</summary>
+    Granary,
+
+    /// <summary>Passive Income: spawns a Berry on top of itself every <see cref="Building.SporePatchInterval"/> seconds.</summary>
+    SporePatch,
+}
+
+/// <summary>
+/// A finished piece of Village Building: either a Granary (permanently
+/// raises the food cap) or a Spore Patch (a flat mushroom bed that spawns
+/// Berries on a timer — see <see cref="TickSporeTimer"/>).
+/// </summary>
 public sealed class Building
 {
     public const float GranaryRadius = 0.7f;
     public const float GranaryHeight = 1.1f;
 
+    public const float SporePatchRadius = 1.0f;
+    private const float SporePatchHeight = 0.05f;
+
+    /// <summary>Seconds between each Berry a finished Spore Patch spawns on top of itself.</summary>
+    public const float SporePatchInterval = 10f;
+
+    public BuildingKind Kind { get; }
     public Vector3 Position { get; }
 
-    public Building(Vector3 position) => Position = position;
+    /// <summary>Counts down to the next Berry. Only meaningful for a Spore Patch.</summary>
+    private float _sporeTimer = SporePatchInterval;
+
+    public Building(Vector3 position, BuildingKind kind = BuildingKind.Granary)
+    {
+        Position = position;
+        Kind = kind;
+    }
+
+    /// <summary>
+    /// A Spore Patch's passive-income clock: counts down by
+    /// <paramref name="deltaTime"/> and, once it reaches zero, resets and
+    /// returns true so <see cref="World"/> can spawn a Berry on top of it.
+    /// Always false for a Granary.
+    /// </summary>
+    public bool TickSporeTimer(float deltaTime)
+    {
+        if (Kind != BuildingKind.SporePatch)
+            return false;
+
+        _sporeTimer -= deltaTime;
+        if (_sporeTimer > 0f)
+            return false;
+
+        _sporeTimer += SporePatchInterval;
+        return true;
+    }
 
     public void Draw()
     {
-        var center = Position + new Vector3(0, GranaryHeight / 2f, 0);
-        Raylib.DrawCylinder(center, GranaryRadius, GranaryRadius, GranaryHeight, 16, new Color(180, 140, 70, 255));
-        Raylib.DrawCylinderWires(center, GranaryRadius, GranaryRadius, GranaryHeight, 16, new Color(90, 65, 30, 255));
+        if (Kind == BuildingKind.Granary)
+        {
+            var center = Position + new Vector3(0, GranaryHeight / 2f, 0);
+            Raylib.DrawCylinder(center, GranaryRadius, GranaryRadius, GranaryHeight, 16, new Color(180, 140, 70, 255));
+            Raylib.DrawCylinderWires(center, GranaryRadius, GranaryRadius, GranaryHeight, 16, new Color(90, 65, 30, 255));
+            return;
+        }
+
+        // Spore Patch: a flat green/brown mushroom bed, barely raised off the ground.
+        var patchCenter = Position + new Vector3(0, SporePatchHeight / 2f, 0);
+        Raylib.DrawCylinder(patchCenter, SporePatchRadius, SporePatchRadius, SporePatchHeight, 20, new Color(95, 130, 55, 255));
+        Raylib.DrawCylinderWires(patchCenter, SporePatchRadius, SporePatchRadius, SporePatchHeight, 20, new Color(70, 55, 30, 255));
     }
 }
 
 /// <summary>
-/// A Granary site under construction: placed for Food Stored via
+/// A Building site under construction: placed for Food Stored via
 /// <see cref="World.TryPlaceBlueprint"/>, then worked on by idle Gatherers
 /// (the Builder AI, <see cref="Bramblekin"/>'s Building state) until its
 /// Construction Progress reaches <see cref="ProgressRequired"/>, at which
-/// point <see cref="World.CompleteBlueprint"/> turns it into a <see cref="Building"/>.
+/// point <see cref="World.CompleteBlueprint"/> turns it into a <see cref="Building"/>
+/// of the same <see cref="Kind"/>.
 /// </summary>
 public sealed class Blueprint
 {
-    public const float ProgressRequired = 10f;
+    public BuildingKind Kind { get; }
+
+    /// <summary>Construction Progress needed to finish — 10 for a Granary, 15 for a Spore Patch.</summary>
+    public float ProgressRequired => Kind == BuildingKind.Granary ? 10f : 15f;
 
     public Vector3 Position { get; }
     public float Progress { get; private set; }
 
     public bool IsComplete => Progress >= ProgressRequired;
 
-    public Blueprint(Vector3 position) => Position = position;
+    public Blueprint(Vector3 position, BuildingKind kind = BuildingKind.Granary)
+    {
+        Position = position;
+        Kind = kind;
+    }
 
     public void AddProgress(float amount) => Progress = MathF.Min(Progress + amount, ProgressRequired);
 
@@ -2523,10 +2738,15 @@ public sealed class Blueprint
         var fill = new Color(255, 255, 255, 90);
         var wire = new Color(210, 200, 70, 200);
 
-        var wireCenter = Position + new Vector3(0, Building.GranaryHeight / 2f, 0);
-        Raylib.DrawCylinderWires(wireCenter, Building.GranaryRadius, Building.GranaryRadius, Building.GranaryHeight, 16, wire);
-        float height = Building.GranaryHeight * t;
-        Raylib.DrawCylinder(Position + new Vector3(0, height / 2f, 0), Building.GranaryRadius, Building.GranaryRadius, height, 16, fill);
+        float radius = Kind == BuildingKind.Granary ? Building.GranaryRadius : Building.SporePatchRadius;
+        // A Spore Patch is nearly flat when finished, but a full-height wireframe (like a Granary's)
+        // still reads clearly as "a site under construction" while it fills in.
+        float fullHeight = Kind == BuildingKind.Granary ? Building.GranaryHeight : 0.3f;
+
+        var wireCenter = Position + new Vector3(0, fullHeight / 2f, 0);
+        Raylib.DrawCylinderWires(wireCenter, radius, radius, fullHeight, 16, wire);
+        float height = fullHeight * t;
+        Raylib.DrawCylinder(Position + new Vector3(0, height / 2f, 0), radius, radius, height, 16, fill);
     }
 }
 
