@@ -79,7 +79,7 @@ public static class Game
     /// </summary>
     private const float MaxDeltaTime = 1f / 20f;
 
-    /// <summary>Debug Time Scale: the speeds the corner button cycles through, 1x back round to 1x.</summary>
+    /// <summary>Debug Time Scale: the speeds the corner +/- buttons step through, clamped at either end.</summary>
     private static readonly float[] TimeScaleSteps = { 1f, 2f, 5f, 10f, 100f };
 
     /// <summary>
@@ -115,7 +115,8 @@ public static class Game
         var touchCamera = new TouchCameraController();
         var pebbleButton = new UiButton(new Rectangle(20, 20, 220, 50));
         var gustButton = new UiButton(new Rectangle(250, 20, 180, 50));
-        var timeScaleButton = new UiButton(new Rectangle(20, 80, 160, 44));
+        var speedDownButton = new UiButton(new Rectangle(20, 80, 50, 44));
+        var speedUpButton = new UiButton(new Rectangle(130, 80, 50, 44));
 
         // --- Main loop -------------------------------------------------------
         while (!Raylib.WindowShouldClose())
@@ -132,10 +133,14 @@ public static class Game
             //    Building are all the Village Heart's own business now, run
             //    autonomously inside world.Update() below with no UI of
             //    their own to intercept a press first. The Debug Time Scale
-            //    button is checked first and, if hit, swallows the click so
-            //    it never also lands as a ground click/miracle cast.
-            if (Raylib.IsMouseButtonPressed(MouseButton.Left) && timeScaleButton.Contains(Raylib.GetMousePosition()))
-                CycleTimeScale();
+            //    +/- buttons are checked first and, if hit, swallow the click
+            //    so it never also lands as a ground click/miracle cast.
+            bool mousePressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
+            Vector2 mousePosition = Raylib.GetMousePosition();
+            if (mousePressed && speedDownButton.Contains(mousePosition))
+                DecreaseTimeScale();
+            else if (mousePressed && speedUpButton.Contains(mousePosition))
+                IncreaseTimeScale();
             else
                 input.Update(rawDeltaTime, camera, world, pebbleButton, gustButton);
 
@@ -164,7 +169,9 @@ public static class Game
             gustButton.Draw(input.GustButtonLabel,
                             highlighted: input.State is InputState.GustEquipped or InputState.GustDragging,
                             disabled: !input.CanAffordGust(world));
-            timeScaleButton.Draw($"Speed: {(int)_timeScale}x", highlighted: _timeScale != 1f);
+            speedDownButton.Draw("-", highlighted: false, disabled: _timeScale <= TimeScaleSteps[0]);
+            DrawSpeedLabel();
+            speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
             DrawFaithMeter(world.Faith);
             DrawColonyPanel(world);
             DrawHud(input, world);
@@ -181,11 +188,31 @@ public static class Game
         Raylib.CloseWindow();
     }
 
-    /// <summary>Debug Time Scale: advances to the next speed in <see cref="TimeScaleSteps"/>, wrapping back to 1x.</summary>
-    private static void CycleTimeScale()
+    /// <summary>Debug Time Scale: steps down to the previous speed in <see cref="TimeScaleSteps"/>, clamped at 1x.</summary>
+    private static void DecreaseTimeScale()
     {
         int index = Array.IndexOf(TimeScaleSteps, _timeScale);
-        _timeScale = TimeScaleSteps[(index + 1) % TimeScaleSteps.Length];
+        _timeScale = TimeScaleSteps[Math.Max(0, index - 1)];
+    }
+
+    /// <summary>Debug Time Scale: steps up to the next speed in <see cref="TimeScaleSteps"/>, clamped at the fastest.</summary>
+    private static void IncreaseTimeScale()
+    {
+        int index = Array.IndexOf(TimeScaleSteps, _timeScale);
+        _timeScale = TimeScaleSteps[Math.Min(TimeScaleSteps.Length - 1, index + 1)];
+    }
+
+    /// <summary>The current speed ("5x"), on a small panel in the gap between the +/- buttons — gold once sped up, same as an armed miracle button.</summary>
+    private static void DrawSpeedLabel()
+    {
+        const int fontSize = 22, x = 70, width = 60, y = 80, height = 44;
+        Raylib.DrawRectangle(x, y, width, height, PanelFill);
+        Raylib.DrawRectangleLines(x, y, width, height, PanelInk);
+
+        string text = $"{(int)_timeScale}x";
+        int textWidth = Raylib.MeasureText(text, fontSize);
+        Color color = _timeScale != 1f ? new Color(230, 190, 60, 255) : PanelInk;
+        Raylib.DrawText(text, x + (width - textWidth) / 2, y + (height - fontSize) / 2, fontSize, color);
     }
 
     private static readonly Color PanelFill = new(255, 250, 235, 220);
