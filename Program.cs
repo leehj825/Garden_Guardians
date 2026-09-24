@@ -1492,8 +1492,15 @@ public sealed class World
     /// <summary>Seconds between checks that top the Acorn population back up to <see cref="MaxAcorns"/>.</summary>
     private const float AcornSpawnInterval = 6f;
 
-    /// <summary>Most Acorns allowed on the map at once — richly populated across the full 60x60 map rather than one at a time.</summary>
-    private const int MaxAcorns = 5;
+    /// <summary>Most Acorns allowed on the map at once, per faction — richly populated across the full 60x60 map rather than one at a time.</summary>
+    private const int MaxAcornsPerFaction = 5;
+
+    /// <summary>
+    /// Dynamic Ecosystem Scaling: the map-wide Acorn cap grows with the number of
+    /// active <see cref="Villages"/> so a 5-faction map isn't starved by a cap sized
+    /// for one colony. Never scales below a single faction's worth.
+    /// </summary>
+    private int MaxAcorns => MaxAcornsPerFaction * Math.Max(1, Villages.Count);
 
     /// <summary>How many Acorns the map starts with.</summary>
     private const int InitialAcorns = 2;
@@ -1563,8 +1570,15 @@ public sealed class World
     /// <summary>How often a wild Berry appears, in seconds — fast enough to richly populate the whole 60x60 map.</summary>
     public const float BerrySpawnInterval = 3f;
 
-    /// <summary>Most Berries allowed on the map (loose or carried) at once.</summary>
-    public const int MaxBerries = 18;
+    /// <summary>Most Berries allowed on the map (loose or carried) at once, per faction.</summary>
+    public const int MaxBerriesPerFaction = 18;
+
+    /// <summary>
+    /// Dynamic Ecosystem Scaling: the map-wide Berry cap grows with the number of
+    /// active <see cref="Villages"/> so a 5-faction map isn't starved by a cap sized
+    /// for one colony. Never scales below a single faction's worth.
+    /// </summary>
+    public int MaxBerries => MaxBerriesPerFaction * Math.Max(1, Villages.Count);
 
     /// <summary>Aphid population the world tries to maintain, spread across the whole map.</summary>
     public const int MaxAphids = 12;
@@ -1609,11 +1623,29 @@ public sealed class World
     /// The 20-Meter Territory Rule: Militia never target a hostile (Aphid or
     /// Wolf Spider) further than this from their own Village Heart, and
     /// Gatherers prefer unclaimed food within this radius before looking
-    /// anywhere else on the map (see <see cref="NearestAvailableShard"/>).
+    /// anywhere else on the map (see <see cref="NearestAvailableShard"/>) —
+    /// unless that Village Heart is starving (see <see cref="DesperationFoodThreshold"/>).
     /// Deliberately a distinct, larger radius than <see cref="VillageHeart.TerritoryRadius"/>'s
     /// 15 m visual ring.
     /// </summary>
     public const float TerritoryTargetingRadius = 20f;
+
+    /// <summary>
+    /// Desperation Mode: once a Village Heart's Food Stored drops below
+    /// this, its Gatherers stop preferring food within <see cref="TerritoryTargetingRadius"/>
+    /// and instead track the nearest unclaimed food anywhere on the map —
+    /// starving is worse than a long walk home.
+    /// </summary>
+    public const int DesperationFoodThreshold = 5;
+
+    /// <summary>
+    /// Dibs failsafe: a Food Shard claimed but not actually picked up within
+    /// this many seconds of game time has its claim force-released, so a
+    /// claimant that's stuck, jittering at high Debug Time Scale, or
+    /// otherwise never closes the distance can't lock it away from everyone
+    /// else forever. See <see cref="UpdateFoodClaimTimeouts"/>.
+    /// </summary>
+    public const float FoodClaimTimeoutSeconds = 15f;
 
     /// <summary>The Schism: a Village Heart is Overcrowded once its Population reaches its MaxFoodCapacity — 40 at the 3-Granary cap.</summary>
     public const int SchismFoodReserve = 30;
@@ -2068,6 +2100,30 @@ public sealed class World
         }
     }
 
+    /// <summary>
+    /// Timeout Failsafe against the "dibs" deadlock: a claimed Food Shard whose
+    /// claimant never actually closes the distance (stuck, jittering, or
+    /// otherwise stalled) would otherwise lock that shard out of the pool
+    /// forever. Ticking <see cref="FoodShard.ClaimTimer"/> here and force-
+    /// releasing it past <see cref="FoodClaimTimeoutSeconds"/> guarantees
+    /// someone else can always eventually grab it.
+    /// </summary>
+    private void UpdateFoodClaimTimeouts(float deltaTime)
+    {
+        foreach (FoodShard shard in FoodShards)
+        {
+            if (shard.ClaimedBy is null)
+                continue;
+
+            shard.ClaimTimer += deltaTime;
+            if (shard.ClaimTimer >= FoodClaimTimeoutSeconds)
+            {
+                shard.ClaimedBy = null;
+                shard.ClaimTimer = 0f;
+            }
+        }
+    }
+
     public void Update(float deltaTime)
     {
         // Worship: every living Bramblekin feeds the Faith pool, so each
@@ -2085,6 +2141,7 @@ public sealed class World
         SquishSpiderOnImpact();
 
         UpdateShardPhysics(deltaTime);
+        UpdateFoodClaimTimeouts(deltaTime);
         RebuildObstacles();
         PushFoodOutOfObstacles();
 
@@ -2364,6 +2421,10 @@ public sealed class World
         FoodShard? bestAny = null;
         float bestAnyDistance = float.MaxValue;
         float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
+        // Desperation Mode: a starving village can't afford to wait for local food that
+        // may not exist, so we skip the local-preference logic entirely and just grab
+        // whatever's nearest anywhere on the map.
+        bool desperate = home is not null && home.FoodStored < DesperationFoodThreshold;
 
         for (int i = FoodShards.Count - 1; i >= 0; i--)
         {
@@ -2378,13 +2439,13 @@ public sealed class World
                 bestAnyDistance = distance;
             }
 
-            if (home is not null && distance < bestLocalDistance && Vector3.DistanceSquared(shard.Position, home.Center) <= territoryRadiusSquared)
+            if (!desperate && home is not null && distance < bestLocalDistance && Vector3.DistanceSquared(shard.Position, home.Center) <= territoryRadiusSquared)
             {
                 bestLocal = shard;
                 bestLocalDistance = distance;
             }
         }
-        return bestLocal ?? bestAny;
+        return desperate ? bestAny : (bestLocal ?? bestAny);
     }
 
     /// <summary>
@@ -3405,9 +3466,17 @@ public sealed class FoodShard
     /// Dibs: the one Bramblekin currently pursuing this shard, if any — see
     /// <see cref="World.IsAvailable(FoodShard, Bramblekin)"/>. Only
     /// meaningful while that Bramblekin's own State is actually Gathering;
-    /// it's released (see Bramblekin.SetState) the moment that stops being true.
+    /// it's released (see Bramblekin.SetState) the moment that stops being
+    /// true — and, as a failsafe against a claimant that's stuck, jittering,
+    /// or otherwise never actually closes the distance, it's also force-
+    /// released after <see cref="World.FoodClaimTimeoutSeconds"/> of game
+    /// time (see <see cref="ClaimTimer"/> and <see cref="World.Update"/>'s
+    /// timeout sweep) so nobody else is ever locked out forever.
     /// </summary>
     public Bramblekin? ClaimedBy { get; set; }
+
+    /// <summary>Seconds since <see cref="ClaimedBy"/> was last set. Reset to 0 on every new claim; ticked and enforced by World.</summary>
+    public float ClaimTimer { get; set; }
 
     public FoodShard(Vector3 groundPoint, FoodShardKind kind = FoodShardKind.Cracked)
     {
@@ -3508,8 +3577,8 @@ public sealed class Building
     public const float SporePatchRadius = 1.0f;
     private const float SporePatchHeight = 0.05f;
 
-    /// <summary>Seconds between each Berry a finished Spore Patch spawns on top of itself.</summary>
-    public const float SporePatchInterval = 10f;
+    /// <summary>Seconds between each Berry a finished Spore Patch spawns on top of itself. Buffed to help baseline survival for 5-faction maps.</summary>
+    public const float SporePatchInterval = 5f;
 
     public BuildingKind Kind { get; }
     public Vector3 Position { get; }
@@ -3637,8 +3706,17 @@ public sealed class Blueprint
 /// </summary>
 public sealed class GroundMover
 {
-    /// <summary>Within this distance of a target counts as "arrived".</summary>
-    private const float ArriveDistance = 0.05f;
+    /// <summary>
+    /// Within this distance of a target counts as "arrived" — snapping
+    /// exactly onto it rather than taking one more tiny step. Loosened from
+    /// a hair-trigger 0.05 m so a walker settles cleanly instead of
+    /// endlessly re-approaching by a few centimeters at a time (e.g. after
+    /// PushOutOfObstacles nudges it back off a goal sitting right at an
+    /// obstacle's edge) — the "smoothed arrival" half of the High-Speed
+    /// Physics fix, alongside the callers' own more forgiving pickup/contact
+    /// radii.
+    /// </summary>
+    private const float ArriveDistance = 0.15f;
 
     /// <summary>How far ahead (m) the walker looks for obstacles in its path.</summary>
     private const float LookAhead = 1.5f;
@@ -4007,14 +4085,21 @@ public sealed class Bramblekin
     /// <summary>Extra clearance beyond the shadow's edge when picking an escape point.</summary>
     private const float SafetyMargin = 0.5f;
 
-    /// <summary>Within this distance of a shard, it is picked up.</summary>
-    private const float PickupDistance = BodyRadius + FoodShard.Radius + 0.1f;
+    /// <summary>
+    /// Within this distance of a shard, it is picked up. Forgiving on
+    /// purpose (well beyond BodyRadius + FoodShard.Radius' exact-touch
+    /// distance): at a high Debug Time Scale a claimant can be a whole
+    /// tick's movement away from dead-center and still needs to register as
+    /// "close enough", or it jitters past the target forever without ever
+    /// satisfying a tighter check.
+    /// </summary>
+    private const float PickupDistance = 0.8f;
 
-    /// <summary>Within this distance of a Spider Fang, it is picked up.</summary>
-    private const float FangPickupDistance = BodyRadius + SpiderFang.Radius + 0.1f;
+    /// <summary>Within this distance of a Spider Fang, it is picked up — see <see cref="PickupDistance"/>'s High-Speed Physics note.</summary>
+    private const float FangPickupDistance = 0.8f;
 
-    /// <summary>Within this distance of a Chitin piece, it is picked up.</summary>
-    private const float ChitinPickupDistance = BodyRadius + Chitin.Radius + 0.1f;
+    /// <summary>Within this distance of a Chitin piece, it is picked up — see <see cref="PickupDistance"/>'s High-Speed Physics note.</summary>
+    private const float ChitinPickupDistance = 0.8f;
 
     /// <summary>The Schism: within this distance of its Migration Target, a Pioneer has arrived.</summary>
     private const float MigrationArriveDistance = BodyRadius + 0.2f;
@@ -4035,7 +4120,10 @@ public sealed class Bramblekin
     /// Extra reach (m) beyond a Blueprint's own footprint radius and the
     /// Builder's body radius — the two must actually be able to
     /// intersect/touch, not just get within some flat distance of its
-    /// centre regardless of how big the site itself is.
+    /// centre regardless of how big the site itself is. Combined with even
+    /// the smallest Blueprint's own footprint, the total contact distance
+    /// already comes out well past the High-Speed Physics floor (see
+    /// <see cref="PickupDistance"/>'s note), so it needs no bump of its own.
     /// </summary>
     private const float BuildContactMargin = 0.3f;
 
@@ -4545,7 +4633,10 @@ public sealed class Bramblekin
             ReleaseFoodClaim();
             _claimedShard = shard;
             if (shard is not null)
+            {
                 shard.ClaimedBy = this;
+                shard.ClaimTimer = 0f;
+            }
         }
 
         if (shard is null)
