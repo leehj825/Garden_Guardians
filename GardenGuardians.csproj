@@ -1,0 +1,75 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ===================================================================
+       Shared settings (desktop + Android)
+       =================================================================== -->
+  <PropertyGroup>
+    <!-- Desktop (net8.0) is the day-to-day prototyping target; Android is
+         built by CI. Pass -p:DesktopOnly=true to skip Android on machines
+         that don't have the 'android' workload installed. -->
+    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <TargetFrameworks Condition="'$(DesktopOnly)' == 'true'">net8.0</TargetFrameworks>
+
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>GardenGuardians</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' != 'net8.0-android'">
+    <PackageReference Include="Raylib-cs" Version="8.1.0" />
+  </ItemGroup>
+
+  <!-- On Android, take only the managed bindings. The package's native
+       binaries are desktop builds, and NuGet treats android-x64 as a kind of
+       linux-x64, so without ExcludeAssets the glibc linux-x64 libraylib.so
+       would be packed into the APK instead of our NDK build (see below). -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-android'">
+    <PackageReference Include="Raylib-cs" Version="8.1.0" ExcludeAssets="native" />
+  </ItemGroup>
+
+  <!-- ===================================================================
+       Android-only settings
+       =================================================================== -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-android'">
+    <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
+    <ApplicationId>com.gardenguardians.game</ApplicationId>
+    <ApplicationTitle>Garden Guardians</ApplicationTitle>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
+    <AndroidManifest>Platforms/Android/AndroidManifest.xml</AndroidManifest>
+
+    <!-- Always produce a sideloadable .apk (Release would default to .aab). -->
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+
+    <!-- Only the ABIs build-raylib.sh compiles libraylib.so for: real phones
+         (arm64) and the x86_64 emulator. -->
+    <RuntimeIdentifiers>android-arm64;android-x64</RuntimeIdentifiers>
+
+    <!-- MainActivity passes a C# function pointer to native code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!-- Android entry point (MainActivity) is only compiled for Android. -->
+  <ItemGroup Condition="'$(TargetFramework)' != 'net8.0-android'">
+    <Compile Remove="Platforms/Android/**" />
+  </ItemGroup>
+
+  <!-- Raylib-cs P/Invokes into "raylib", which Android resolves as
+       libraylib.so. The NuGet package has no Android build, so
+       Platforms/Android/build-raylib.sh compiles one per ABI into
+       Platforms/Android/libs/<abi>/ (the ABI is inferred from the folder). -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-android'">
+    <AndroidNativeLibrary Include="Platforms/Android/libs/arm64-v8a/libraylib.so" />
+    <AndroidNativeLibrary Include="Platforms/Android/libs/x86_64/libraylib.so" />
+  </ItemGroup>
+
+  <!-- Without libraylib.so the APK would build fine and crash on launch, so
+       stop the build early with instructions instead. -->
+  <Target Name="EnsureAndroidRaylib" BeforeTargets="BeforeBuild"
+          Condition="'$(TargetFramework)' == 'net8.0-android'">
+    <Error Condition="!Exists('%(AndroidNativeLibrary.FullPath)')"
+           Text="Missing native raylib for Android: %(AndroidNativeLibrary.Identity). Run Platforms/Android/build-raylib.sh first (requires the Android NDK)." />
+  </Target>
+
+</Project>
