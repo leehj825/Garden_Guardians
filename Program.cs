@@ -95,7 +95,7 @@ public static class Game
         // --- Build the world -------------------------------------------------
         var camera = IsometricCamera.Create(target: Vector3.Zero, distance: 30f);
         var world = new World(new Terrain(size: 60f), new Random(), ColonySize);
-        world.SpawnSpiderNearEdge();
+        world.SpawnSpiderNearVillage();
         var input = new MiracleInput();
         var touchCamera = new TouchCameraController();
         var pebbleButton = new UiButton(new Rectangle(20, 20, 220, 50));
@@ -339,12 +339,15 @@ public static class IsometricCamera
 }
 
 /// <summary>
-/// Mobile camera controls layered on top of the fixed isometric view:
-/// a one-finger drag pans the camera across the terrain's X/Z plane, and a
-/// two-finger pinch moves it closer to or further from its Target. Both
-/// gestures translate <see cref="Camera3D.Position"/> and
-/// <see cref="Camera3D.Target"/> together, so the viewing angle never
-/// changes — only where it's centred and how far back it sits.
+/// Mobile camera controls layered on top of the fixed isometric view. A
+/// single finger is reserved entirely for World interaction — UI clicks and
+/// Miracle targeting (tapping Pebble-Drop, dragging out a Gust) — and never
+/// moves the camera. Only a two-finger gesture drives the camera: the
+/// midpoint's drag pans it across the terrain's X/Z plane, and the pinch
+/// distance's change moves it closer to or further from its Target. Both
+/// translate <see cref="Camera3D.Position"/> and <see cref="Camera3D.Target"/>
+/// together, so the viewing angle never changes — only where it's centred
+/// and how far back it sits.
 /// </summary>
 public sealed class TouchCameraController
 {
@@ -360,47 +363,43 @@ public sealed class TouchCameraController
     /// <summary>Keeps the Target from panning off the playable terrain, in meters from its edge.</summary>
     private const float PanEdgeMargin = 5f;
 
-    private Vector2 _previousTouch;
+    private Vector2 _previousMidpoint;
     private float _previousPinchDistance;
-    private bool _isPanning;
-    private bool _isPinching;
+    private bool _isTwoFingerGesture;
 
     public void Update(ref Camera3D camera, float worldHalfSize)
     {
         int touchCount = Raylib.GetTouchPointCount();
 
-        if (touchCount == 1)
-        {
-            Vector2 touch = Raylib.GetTouchPosition(0);
-            if (_isPanning)
-                Pan(ref camera, touch - _previousTouch);
-            _previousTouch = touch;
-            _isPanning = true;
-        }
-        else
-        {
-            _isPanning = false;
-        }
-
+        // Two fingers only: a single touch belongs entirely to MiracleInput
+        // (UI buttons, Pebble-Drop taps, Gust drags) and must never also pan
+        // the camera underneath it.
         if (touchCount == 2)
         {
             Vector2 first = Raylib.GetTouchPosition(0);
             Vector2 second = Raylib.GetTouchPosition(1);
+            Vector2 midpoint = (first + second) / 2f;
             float distance = Vector2.Distance(first, second);
-            if (_isPinching)
+
+            if (_isTwoFingerGesture)
+            {
+                Pan(ref camera, midpoint - _previousMidpoint);
                 Zoom(ref camera, distance - _previousPinchDistance);
+            }
+
+            _previousMidpoint = midpoint;
             _previousPinchDistance = distance;
-            _isPinching = true;
+            _isTwoFingerGesture = true;
         }
         else
         {
-            _isPinching = false;
+            _isTwoFingerGesture = false;
         }
 
         ClampTargetToWorld(ref camera, worldHalfSize);
     }
 
-    /// <summary>Translates Position and Target together across the ground plane, following the finger.</summary>
+    /// <summary>Translates Position and Target together across the ground plane, following the two-finger midpoint.</summary>
     private static void Pan(ref Camera3D camera, Vector2 screenDelta)
     {
         if (screenDelta == Vector2.Zero)
@@ -1739,18 +1738,21 @@ public sealed class World
         return nearest;
     }
 
-    /// <summary>Spawns a Wolf Spider at a random spot just inside one of the terrain's edges.</summary>
-    public void SpawnSpiderNearEdge()
+    /// <summary>How far (m) from a Village Heart's centre the Wolf Spider spawns — just outside its <see cref="VillageHeart.TerritoryRadius"/> Territory Ring, so it threatens that faction right away instead of prowling the empty wilderness out at the map's edge.</summary>
+    private const float SpiderSpawnDistanceFromVillage = 20f;
+
+    /// <summary>Spawns a Wolf Spider just outside a random faction's Territory Ring.</summary>
+    public void SpawnSpiderNearVillage()
     {
-        float inset = Terrain.Size / 2f - 1.5f;
-        float along = (float)(Rng.NextDouble() * 2 - 1) * inset;
-        Vector3 position = Rng.Next(4) switch
-        {
-            0 => new Vector3(-inset, Terrain.GroundHeight, along),
-            1 => new Vector3(inset, Terrain.GroundHeight, along),
-            2 => new Vector3(along, Terrain.GroundHeight, -inset),
-            _ => new Vector3(along, Terrain.GroundHeight, inset),
-        };
+        Vector3 center = RandomVillage()?.Center ?? Vector3.Zero;
+        float angle = (float)(Rng.NextDouble() * MathF.Tau);
+        var position = center + new Vector3(MathF.Cos(angle) * SpiderSpawnDistanceFromVillage, 0, MathF.Sin(angle) * SpiderSpawnDistanceFromVillage);
+
+        // Keep it on the actual playable terrain even if that pushed it past the edge.
+        float half = Terrain.Size / 2f - 1.5f;
+        position.X = Math.Clamp(position.X, -half, half);
+        position.Z = Math.Clamp(position.Z, -half, half);
+
         Spider = new WolfSpider(position, Rng);
     }
 
@@ -1896,7 +1898,7 @@ public sealed class World
         if (berries >= MaxBerries)
             return;
 
-        Vector3 spot = RandomFreePoint(FoodShard.Radius + 0.3f, edgeMargin: 1f);
+        Vector3 spot = RandomTerritorySpot(FoodShard.Radius + 0.3f, edgeMargin: 1f);
         _pendingShardSpawns.Add(new FoodShard(spot, FoodShardKind.Berry));
     }
 
@@ -2431,6 +2433,32 @@ public sealed class World
         return null;
     }
 
+    /// <summary>A uniformly random faction Village Heart, if any exist.</summary>
+    private VillageHeart? RandomVillage() => Villages.Count == 0 ? null : Villages[Rng.Next(Villages.Count)];
+
+    /// <summary>
+    /// Territory Resource Spawning: a random open point inside a random
+    /// faction's Territory Ring (<see cref="VillageHeart.TerritoryRadius"/>),
+    /// rather than anywhere across the whole map — the Acorn and wild Berries
+    /// both spawn this way (see <see cref="RandomAcornSpot"/>/<see cref="UpdateBerrySpawn"/>)
+    /// so every faction has a local food supply and Gatherers aren't
+    /// commuting the length of a 60x60 m map before Upkeep starves them.
+    /// Falls back to anywhere open on the map on the rare chance no
+    /// territory has room.
+    /// </summary>
+    private Vector3 RandomTerritorySpot(float clearance, float edgeMargin)
+    {
+        for (int attempt = 0; attempt < 10; attempt++)
+        {
+            if (RandomVillage() is not { } village)
+                break;
+            if (RandomPointNearVillage(village, VillageHeart.TerritoryRadius, clearance) is { } point)
+                return point;
+        }
+
+        return RandomFreePoint(clearance, edgeMargin);
+    }
+
     /// <summary>
     /// Village Building: spends the Blueprint kind's Food cost (<see cref="GranaryFoodCost"/>
     /// or <see cref="SporePatchFoodCost"/>) to place a Blueprint owned by
@@ -2720,7 +2748,7 @@ public sealed class World
 
         SpiderRespawnTimer -= deltaTime;
         if (SpiderRespawnTimer <= 0f)
-            SpawnSpiderNearEdge();
+            SpawnSpiderNearVillage();
     }
 
     private void UpdateAcornRespawn(float deltaTime)
@@ -2733,18 +2761,8 @@ public sealed class World
             Acorn = new Acorn(RandomAcornSpot());
     }
 
-    /// <summary>Somewhere open, not hugging the edge, and a fair walk from the village.</summary>
-    private Vector3 RandomAcornSpot()
-    {
-        Vector3 candidate = Vector3.Zero;
-        for (int attempt = 0; attempt < 30; attempt++)
-        {
-            candidate = RandomFreePoint(Acorn.Radius + 0.5f, edgeMargin: 1.5f);
-            if (Villages.All(v => Vector3.Distance(candidate, v.Center) > 4f))
-                return candidate;
-        }
-        return candidate;
-    }
+    /// <summary>Somewhere open inside a random faction's Territory Ring, not on top of its Village Heart — see <see cref="RandomTerritorySpot"/>.</summary>
+    private Vector3 RandomAcornSpot() => RandomTerritorySpot(Acorn.Radius + 0.5f, edgeMargin: 1.5f);
 }
 
 // =============================================================================
@@ -3445,8 +3463,8 @@ public enum BramblekinRole
 /// </summary>
 public sealed class Bramblekin
 {
-    /// <summary>Normal walking speed in m/s (a slow amble).</summary>
-    public const float WalkSpeed = 1.0f;
+    /// <summary>Normal walking speed in m/s. Buffed 50% over the original slow amble so Bramblekin can cross the larger 60x60 m map before Upkeep starves them.</summary>
+    public const float WalkSpeed = 1.5f;
 
     /// <summary>Flee speed as a multiple of <see cref="WalkSpeed"/>.</summary>
     public const float FleeSpeedMultiplier = 3f;
