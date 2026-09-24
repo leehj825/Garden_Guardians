@@ -1384,11 +1384,14 @@ public sealed class World
     /// <summary>How far (m) from the Village Heart an Auto-Granary may be placed.</summary>
     private const float GranaryPlacementRadius = 5f;
 
+    /// <summary>The most Granaries the Village Heart will ever build on its own — caps MaxFoodCapacity at 10 + 3*10 = 40.</summary>
+    public const int MaxGranaries = 3;
+
     /// <summary>Food Stored spent to place a Spore Patch blueprint.</summary>
-    public const int SporePatchFoodCost = 15;
+    public const int SporePatchFoodCost = 10;
 
     /// <summary>Population needed before the Village Heart will build a Spore Patch.</summary>
-    public const int SporePatchPopulationThreshold = 15;
+    public const int SporePatchPopulationThreshold = 12;
 
     /// <summary>How far (m) from the Village Heart a Spore Patch may be placed — kept close, near the village's centre.</summary>
     private const float SporePatchPlacementRadius = 2.5f;
@@ -1398,6 +1401,9 @@ public sealed class World
 
     /// <summary>How long (seconds) a floating text pop-up (Upkeep, Starvation) stays on screen.</summary>
     public const float FloatingTextDuration = 1.5f;
+
+    /// <summary>Found-Object Weaponry: Spider Fangs the Village Heart needs banked before the Fang Pikes upgrade unlocks.</summary>
+    public const int FangsNeededForUpgrade = 2;
 
     /// <summary>Morale cap. Also the starting amount: the colony begins confident.</summary>
     public const float MaxMorale = 100f;
@@ -1441,6 +1447,8 @@ public sealed class World
     private readonly List<FoodShard> _pendingShardRemovals = new();
     private readonly List<Aphid> _pendingAphidSpawns = new();
     private readonly List<Aphid> _pendingAphidRemovals = new();
+    private readonly List<SpiderFang> _pendingFangSpawns = new();
+    private readonly List<SpiderFang> _pendingFangRemovals = new();
 
     private float _berrySpawnTimer = BerrySpawnInterval;
     private float _aphidRespawnTimer = AphidRespawnDelay;
@@ -1455,6 +1463,20 @@ public sealed class World
     public List<Aphid> Aphids { get; } = new();
     public WolfSpider? Spider { get; set; }
     public Random Rng { get; }
+
+    /// <summary>Spider Fangs dropped by a dead Wolf Spider, waiting to be scavenged back to the Village Heart.</summary>
+    public List<SpiderFang> Fangs { get; } = new();
+
+    /// <summary>Fangs delivered to the Village Heart so far.</summary>
+    public int FangsCollected { get; private set; }
+
+    /// <summary>
+    /// Found-Object Weaponry: true once <see cref="FangsCollected"/> reaches
+    /// <see cref="FangsNeededForUpgrade"/> — from then on every Militia
+    /// unit's Poke hits harder and their pike renders as a Spider Fang
+    /// instead of a Rose-Thorn (see <see cref="Bramblekin.Draw"/>).
+    /// </summary>
+    public bool FangPikesUnlocked { get; private set; }
 
     /// <summary>Under-construction sites; a Blueprint becomes a <see cref="Building"/> once its Construction Progress is complete.</summary>
     public List<Blueprint> Blueprints { get; } = new();
@@ -1937,6 +1959,19 @@ public sealed class World
             Aphids.AddRange(_pendingAphidSpawns);
             _pendingAphidSpawns.Clear();
         }
+
+        if (_pendingFangRemovals.Count > 0)
+        {
+            for (int i = _pendingFangRemovals.Count - 1; i >= 0; i--)
+                Fangs.Remove(_pendingFangRemovals[i]);
+            _pendingFangRemovals.Clear();
+        }
+
+        if (_pendingFangSpawns.Count > 0)
+        {
+            Fangs.AddRange(_pendingFangSpawns);
+            _pendingFangSpawns.Clear();
+        }
     }
 
     public void Draw()
@@ -1965,6 +2000,13 @@ public sealed class World
                 shard.Draw(shard.Position);
         }
 
+        for (int i = Fangs.Count - 1; i >= 0; i--)
+        {
+            SpiderFang fang = Fangs[i];
+            if (!fang.IsCarried)
+                fang.Draw(fang.Position);
+        }
+
         // Same reverse-for/skip-dead pattern as the Colony loop below.
         for (int i = Aphids.Count - 1; i >= 0; i--)
         {
@@ -1978,7 +2020,7 @@ public sealed class World
         for (int i = Colony.Count - 1; i >= 0; i--)
         {
             if (!Colony[i].IsDead)
-                Colony[i].Draw();
+                Colony[i].Draw(FangPikesUnlocked);
         }
 
         Spider?.Draw();
@@ -2064,6 +2106,56 @@ public sealed class World
         FoodStored = Math.Min(FoodStored + 1, MaxFoodCapacity);
     }
 
+    /// <summary>A Fang can be gathered if nobody is carrying it and no God's Shadow is over it — same rule as a Food Shard.</summary>
+    public bool IsAvailable(SpiderFang fang) =>
+        !fang.IsCarried && !IsBlocked(fang.Position, 0f) && ShadowOver(fang.Position, SpiderFang.Radius) is null;
+
+    public bool HasAvailableFang => Fangs.Any(IsAvailable);
+
+    /// <summary>The nearest available Spider Fang to <paramref name="from"/>, if any — Scavenger Priority always checks this before a Food Shard.</summary>
+    public SpiderFang? NearestAvailableFang(Vector3 from)
+    {
+        SpiderFang? best = null;
+        float bestDistance = float.MaxValue;
+        for (int i = Fangs.Count - 1; i >= 0; i--)
+        {
+            SpiderFang fang = Fangs[i];
+            if (!IsAvailable(fang))
+                continue;
+
+            float distance = Vector3.DistanceSquared(from, fang.Position);
+            if (distance < bestDistance)
+            {
+                best = fang;
+                bestDistance = distance;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Found-Object Weaponry: a delivered Fang leaves the map and counts
+    /// toward <see cref="FangsCollected"/>. The moment that reaches
+    /// <see cref="FangsNeededForUpgrade"/>, the Fang Pikes upgrade unlocks
+    /// once and for all (every current and future Militia unit's Poke hits
+    /// harder from then on — see <see cref="Bramblekin.PokeDamage"/>) and a
+    /// floating "Upgrade Unlocked: Fang Pikes!" pop-up appears over the
+    /// Village Heart. Called from inside a Bramblekin's own Update(), so the
+    /// Fang's removal is queued rather than applied to Fangs directly here.
+    /// </summary>
+    public void DeliverFang(SpiderFang fang)
+    {
+        if (!_pendingFangRemovals.Contains(fang))
+            _pendingFangRemovals.Add(fang);
+        FangsCollected++;
+
+        if (!FangPikesUnlocked && FangsCollected >= FangsNeededForUpgrade)
+        {
+            FangPikesUnlocked = true;
+            QueueFloatingText(Village.Center, "Upgrade Unlocked: Fang Pikes!", new Color(230, 230, 240, 255));
+        }
+    }
+
     /// <summary>
     /// Auto-Sprout — the Growth Phase: whenever Population is still below
     /// MaxFoodCapacity, the Village Heart spends Food Stored on new
@@ -2095,10 +2187,14 @@ public sealed class World
     /// meters of itself. Completing it permanently raises MaxFoodCapacity
     /// (see <see cref="CompleteBlueprint"/>), which naturally reopens the
     /// Growth Phase. Checked every frame in <see cref="Update"/>, but
-    /// guarded so at most one Auto-Granary is ever queued at a time.
+    /// guarded so at most one Auto-Granary is ever queued at a time, and
+    /// capped at <see cref="MaxGranaries"/> total so the village can't spam
+    /// Granaries forever — once it hits the cap, this simply stops firing.
     /// </summary>
     private void UpdateAutoGranary()
     {
+        if (Buildings.Count(b => b.Kind == BuildingKind.Granary) >= MaxGranaries)
+            return; // Capped: never queue a 4th Granary.
         if (LivingPopulation < MaxFoodCapacity)
             return; // Growth Phase: no need to save for a Granary yet.
         if (Blueprints.Any(b => b.Kind == BuildingKind.Granary))
@@ -2113,16 +2209,19 @@ public sealed class World
 
     /// <summary>
     /// Auto-Construction (Spore Patch): a one-time build. Once Population
-    /// reaches <see cref="SporePatchPopulationThreshold"/> and the village
-    /// doesn't already have a Spore Patch (finished or under construction),
-    /// the Village Heart hoards Food Stored until it can afford
-    /// <see cref="SporePatchFoodCost"/>, then places a Spore Patch Blueprint
-    /// close to its own centre. Never queued a second time once one exists.
+    /// reaches <see cref="SporePatchPopulationThreshold"/>, at least one
+    /// Granary already exists, and the village doesn't already have a Spore
+    /// Patch (finished or under construction), the Village Heart hoards
+    /// Food Stored until it can afford <see cref="SporePatchFoodCost"/>,
+    /// then places a Spore Patch Blueprint close to its own centre. Never
+    /// queued a second time once one exists.
     /// </summary>
     private void UpdateAutoSporePatch()
     {
         if (LivingPopulation < SporePatchPopulationThreshold)
             return;
+        if (!Buildings.Any(b => b.Kind == BuildingKind.Granary))
+            return; // Needs at least one Granary up first.
         if (Buildings.Any(b => b.Kind == BuildingKind.SporePatch) || Blueprints.Any(b => b.Kind == BuildingKind.SporePatch))
             return; // Already have one, finished or in progress.
         if (FoodStored < SporePatchFoodCost)
@@ -2457,13 +2556,19 @@ public sealed class World
             DespawnSpider();
     }
 
-    /// <summary>Removes the spider, leaves a splat where it stood, and starts the respawn timer — shared by a pebble squish and a Health-based kill.</summary>
+    /// <summary>
+    /// Removes the spider, leaves a splat where it stood, drops a Spider
+    /// Fang (Found-Object Weaponry's raw material — see <see cref="DeliverFang"/>)
+    /// right where it died, and starts the respawn timer — shared by a
+    /// pebble squish and a Health-based kill, so every death drops one.
+    /// </summary>
     private void DespawnSpider()
     {
         if (Spider is null)
             return;
 
         _splats.Add((Spider.Position, SplatDuration));
+        _pendingFangSpawns.Add(new SpiderFang(Spider.Position));
         Spider = null;
         SpidersCrushed++;
         SpiderRespawnTimer = SpiderRespawnDelay;
@@ -2622,6 +2727,44 @@ public sealed class FoodShard
     {
         Color color = Kind == FoodShardKind.Berry ? new Color(210, 40, 45, 255) : new Color(245, 150, 45, 255);
         Raylib.DrawSphere(groundPoint + new Vector3(0, Radius, 0), Radius, color);
+    }
+}
+
+/// <summary>
+/// Found-Object Weaponry's raw material: dropped where the Wolf Spider dies
+/// (see <see cref="World.DespawnSpider"/>), for any Gatherer to scavenge —
+/// ahead of ordinary food, per Scavenger Priority — and carry back to the
+/// Village Heart (<see cref="World.DeliverFang"/>). Once enough are banked,
+/// the Fang Pikes upgrade unlocks for the whole Militia.
+/// </summary>
+public sealed class SpiderFang
+{
+    public const float Radius = 0.16f;
+
+    /// <summary>Resting spot on the ground (y = GroundHeight). Ignored while carried.</summary>
+    public Vector3 Position { get; set; }
+
+    /// <summary>True while a Bramblekin is holding it; carried fangs are hidden from the map.</summary>
+    public bool IsCarried { get; set; }
+
+    public SpiderFang(Vector3 groundPoint) => Position = groundPoint;
+
+    /// <summary>Draws a small white/silver triangle standing on the ground at (or carried above) <paramref name="groundPoint"/>.</summary>
+    public void Draw(Vector3 groundPoint)
+    {
+        var fill = new Color(235, 235, 240, 255);
+        var edge = new Color(150, 150, 160, 255);
+
+        var tip = groundPoint + new Vector3(0, Radius * 2f, 0);
+        var baseLeft = groundPoint + new Vector3(-Radius * 0.5f, 0, 0);
+        var baseRight = groundPoint + new Vector3(Radius * 0.5f, 0, 0);
+
+        // Both winding orders, so it reads as a solid fang from any angle.
+        Raylib.DrawTriangle3D(baseLeft, tip, baseRight, fill);
+        Raylib.DrawTriangle3D(baseRight, tip, baseLeft, fill);
+        Raylib.DrawLine3D(baseLeft, tip, edge);
+        Raylib.DrawLine3D(tip, baseRight, edge);
+        Raylib.DrawLine3D(baseRight, baseLeft, edge);
     }
 }
 
@@ -3111,6 +3254,9 @@ public sealed class Bramblekin
     /// <summary>Within this distance of a shard, it is picked up.</summary>
     private const float PickupDistance = BodyRadius + FoodShard.Radius + 0.1f;
 
+    /// <summary>Within this distance of a Spider Fang, it is picked up.</summary>
+    private const float FangPickupDistance = BodyRadius + SpiderFang.Radius + 0.1f;
+
     /// <summary>Militia charge speed while Defending — faster than a gathering amble, short of a full panicked flee.</summary>
     private const float DefendSpeed = WalkSpeed * 1.5f;
 
@@ -3137,13 +3283,21 @@ public sealed class Bramblekin
     /// <summary>Cooldown (s) between pokes — rapid, so Militia can wail on a spider (especially a Tumbled one) quickly.</summary>
     private const float PokeCooldownDuration = 1.0f;
 
-    /// <summary>Damage a Militia poke deals to the Wolf Spider.</summary>
+    /// <summary>
+    /// Damage a Militia poke deals to the Wolf Spider — boosted by Found-
+    /// Object Weaponry once the Fang Pikes upgrade unlocks (see
+    /// <see cref="World.FangPikesUnlocked"/>). Applies to every current and
+    /// future Militia unit alike: it's a live world-state check, not
+    /// anything stored per-unit.
+    /// </summary>
     private const int PokeDamage = 15;
+    private const int UpgradedPokeDamage = 30;
 
     private static readonly Color CalmColor = new(196, 160, 110, 255);   // Bark brown.
     private static readonly Color PanicColor = new(225, 85, 60, 255);    // Alarm red.
     private static readonly Color MilitiaColor = new(150, 130, 95, 255); // A shade duller than a Gatherer — worn, armed.
     private static readonly Color PikeColor = new(120, 55, 40, 255);     // Rose-thorn brown-red.
+    private static readonly Color FangPikeColor = new(235, 235, 240, 255); // Spider Fang: bright white/silver.
 
     private readonly Random _rng;
     private readonly GroundMover _mover;
@@ -3151,6 +3305,7 @@ public sealed class Bramblekin
     private float _pauseTimer;
     private float _pokeCooldown;
     private FoodShard? _carried;
+    private SpiderFang? _carriedFang;
 
     /// <summary>Feet position on the ground (y = GroundHeight).</summary>
     public Vector3 Position => _mover.Position;
@@ -3160,7 +3315,7 @@ public sealed class Bramblekin
     /// <summary>Gatherer by default; the Job Manager promotes/demotes it to track the player's Militia Target.</summary>
     public BramblekinRole Role { get; private set; } = BramblekinRole.Gatherer;
 
-    public bool IsCarrying => _carried is not null;
+    public bool IsCarrying => _carried is not null || _carriedFang is not null;
 
     /// <summary>
     /// True once this Bramblekin has been caught by a predator. A dead
@@ -3317,8 +3472,12 @@ public sealed class Bramblekin
         if (Role == BramblekinRole.Gatherer && State is BramblekinState.Walking or BramblekinState.Pausing && world.HasIncompleteBlueprint)
             SetState(BramblekinState.Building);
 
-        // --- 3b. Economy overrides wandering (Gatherers only) -------------------
-        if (Role == BramblekinRole.Gatherer && State is BramblekinState.Walking or BramblekinState.Pausing && world.HasAvailableFood)
+        // --- 3b. Economy overrides wandering (Gatherers only) -- a Spider
+        // Fang counts too (Scavenger Priority picks it over ordinary food
+        // inside UpdateGathering itself), so a Fang lying around with no
+        // other food on the map still pulls an idle Gatherer in.
+        if (Role == BramblekinRole.Gatherer && State is BramblekinState.Walking or BramblekinState.Pausing &&
+            (world.HasAvailableFood || world.HasAvailableFang))
             SetState(BramblekinState.Gathering);
 
         // --- 3c. Militia hunts Aphids when it has no spider to fight -----------
@@ -3381,7 +3540,12 @@ public sealed class Bramblekin
     private float EffectiveWalkSpeed(World world) =>
         Role == BramblekinRole.Gatherer && world.GatherersAreWeary ? WalkSpeed * World.WearySpeedMultiplier : WalkSpeed;
 
-    public void Draw()
+    /// <param name="fangPikesUnlocked">
+    /// See <see cref="World.FangPikesUnlocked"/> — recolors every Militia
+    /// unit's pike from Rose-Thorn brown to Spider Fang white/silver once
+    /// Found-Object Weaponry has unlocked.
+    /// </param>
+    public void Draw(bool fangPikesUnlocked)
     {
         Color color = State == BramblekinState.Fleeing ? PanicColor
                     : Role == BramblekinRole.Militia ? MilitiaColor
@@ -3394,30 +3558,41 @@ public sealed class Bramblekin
         Raylib.DrawCapsule(bottom, top, BodyRadius, 8, 4, color);
         Raylib.DrawCapsuleWires(bottom, top, BodyRadius, 8, 4, new Color(0, 0, 0, 50));
 
-        // Militia carry a Rose-Thorn Pike: a small brown line held out front,
-        // angled up, so they read as armed even at a glance.
+        // Militia carry a pike: a small line held out front, angled up, so
+        // they read as armed even at a glance -- Rose-Thorn brown normally,
+        // or a bright white/silver Spider Fang once Found-Object Weaponry
+        // has unlocked.
         if (Role == BramblekinRole.Militia)
         {
+            Color pikeColor = fangPikesUnlocked ? FangPikeColor : PikeColor;
             Vector2 facing = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;
             var grip = Position + new Vector3(0, BodyHeight * 0.6f, 0);
             var tip = grip + new Vector3(facing.X, 0.55f, facing.Y) * 0.6f;
-            Raylib.DrawLine3D(grip, tip, PikeColor);
-            Raylib.DrawSphere(tip, 0.025f, PikeColor);
+            Raylib.DrawLine3D(grip, tip, pikeColor);
+            Raylib.DrawSphere(tip, 0.025f, pikeColor);
         }
 
-        // Carried food rides on top of the head.
+        // Carried food/Fang rides on top of the head.
         _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
+        _carriedFang?.Draw(Position + new Vector3(0, BodyHeight, 0));
     }
 
-    /// <summary>Puts carried food back on the ground where we stand (it can be gathered again later).</summary>
+    /// <summary>Puts carried food/Fang back on the ground where we stand (it can be gathered again later).</summary>
     public void DropCarried()
     {
-        if (_carried is null)
-            return;
+        if (_carried is not null)
+        {
+            _carried.Position = Position;
+            _carried.IsCarried = false;
+            _carried = null;
+        }
 
-        _carried.Position = Position;
-        _carried.IsCarried = false;
-        _carried = null;
+        if (_carriedFang is not null)
+        {
+            _carriedFang.Position = Position;
+            _carriedFang.IsCarried = false;
+            _carriedFang = null;
+        }
     }
 
     /// <summary>
@@ -3438,8 +3613,24 @@ public sealed class Bramblekin
 
     private void UpdateGathering(float deltaTime, World world)
     {
-        // Re-pick the nearest shard every frame: another Bramblekin may have
+        // Scavenger Priority: a Spider Fang always wins over ordinary food.
+        // Re-pick the nearest one every frame: another Bramblekin may have
         // grabbed ours, or a shadow may have made it unreachable.
+        SpiderFang? fang = world.NearestAvailableFang(Position);
+        if (fang is not null)
+        {
+            if (GroundMover.HorizontalDistance(Position, fang.Position) <= FangPickupDistance)
+            {
+                fang.IsCarried = true;
+                _carriedFang = fang;
+                SetState(BramblekinState.Returning);
+                return;
+            }
+
+            _mover.MoveTowards(fang.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+            return;
+        }
+
         FoodShard? shard = world.NearestAvailableShard(Position);
         if (shard is null)
         {
@@ -3462,8 +3653,16 @@ public sealed class Bramblekin
     {
         if (GroundMover.HorizontalDistance(Position, world.Village.Center) <= world.Village.DeliveryDistance)
         {
-            world.DeliverFood(_carried!);
-            _carried = null;
+            if (_carriedFang is { } fang)
+            {
+                world.DeliverFang(fang);
+                _carriedFang = null;
+            }
+            else
+            {
+                world.DeliverFood(_carried!);
+                _carried = null;
+            }
 
             // Always go back through Walking rather than jumping straight
             // to Gathering here: that used to let a Gatherer loop
@@ -3529,14 +3728,15 @@ public sealed class Bramblekin
         _target = ComputeInterceptPoint(spider, world);
 
         // Sustained Combat: close enough to jab it directly, dealing
-        // PokeDamage. A fast, per-unit cooldown lets Militia wail on it
+        // PokeDamage (boosted to UpgradedPokeDamage once Fang Pikes has
+        // unlocked). A fast, per-unit cooldown lets Militia wail on it
         // rapidly, especially a Tumbled spider that can't fight back. This
         // is pure Health damage -- it never touches the spider's State, so
         // it can't wake a Tumbled spider early (see the hard lock in
         // WolfSpider.Update()).
         if (_pokeCooldown <= 0f && GroundMover.HorizontalDistance(Position, spider.Position) <= PokeRange)
         {
-            world.DamageSpider(PokeDamage);
+            world.DamageSpider(world.FangPikesUnlocked ? UpgradedPokeDamage : PokeDamage);
             _pokeCooldown = PokeCooldownDuration;
         }
 
