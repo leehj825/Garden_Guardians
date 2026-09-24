@@ -1528,6 +1528,16 @@ public sealed class World
     /// <summary>How many are Militia right now (the Job Manager works to make this match <see cref="MilitiaTarget"/>).</summary>
     public int CurrentMilitia => Colony.Count(b => !b.IsDead && b.Role == BramblekinRole.Militia);
 
+    /// <summary>Living Gatherers (the only role that ever builds).</summary>
+    public int LivingGatherers => Colony.Count(b => !b.IsDead && b.Role == BramblekinRole.Gatherer);
+
+    /// <summary>
+    /// Living Gatherers currently in the Building state — checked against
+    /// <see cref="LivingGatherers"/> each frame so at least half of them
+    /// prioritize an incomplete Blueprint over Gathering (see <see cref="Bramblekin.Update"/>).
+    /// </summary>
+    public int GatherersBuilding => Colony.Count(b => !b.IsDead && b.Role == BramblekinRole.Gatherer && b.State == BramblekinState.Building);
+
     /// <summary>
     /// Auto-Conscription: how many Bramblekin the Job Manager currently
     /// wants as Militia, recomputed fresh every frame in <see cref="UpdateJobManager"/>
@@ -2667,6 +2677,9 @@ public sealed class Building
         Kind = kind;
     }
 
+    /// <summary>The footprint radius (m) a Blueprint/Building of this kind actually occupies on the ground.</summary>
+    public static float RadiusFor(BuildingKind kind) => kind == BuildingKind.Granary ? GranaryRadius : SporePatchRadius;
+
     /// <summary>
     /// A Spore Patch's passive-income clock: counts down by
     /// <paramref name="deltaTime"/> and, once it reaches zero, resets and
@@ -2738,7 +2751,7 @@ public sealed class Blueprint
         var fill = new Color(255, 255, 255, 90);
         var wire = new Color(210, 200, 70, 200);
 
-        float radius = Kind == BuildingKind.Granary ? Building.GranaryRadius : Building.SporePatchRadius;
+        float radius = Building.RadiusFor(Kind);
         // A Spore Patch is nearly flat when finished, but a full-height wireframe (like a Granary's)
         // still reads clearly as "a site under construction" while it fills in.
         float fullHeight = Kind == BuildingKind.Granary ? Building.GranaryHeight : 0.3f;
@@ -3120,8 +3133,13 @@ public sealed class Bramblekin
     /// <summary>Within this distance of an Aphid, it is caught.</summary>
     private const float HuntContactDistance = BodyRadius + Aphid.BodyRadius + 0.05f;
 
-    /// <summary>Within this distance of a Blueprint, a Builder is close enough to work it.</summary>
-    private const float BuildContactDistance = BodyRadius + 1.0f;
+    /// <summary>
+    /// Extra reach (m) beyond a Blueprint's own footprint radius and the
+    /// Builder's body radius — the two must actually be able to
+    /// intersect/touch, not just get within some flat distance of its
+    /// centre regardless of how big the site itself is.
+    /// </summary>
+    private const float BuildContactMargin = 0.3f;
 
     /// <summary>Sustained Combat: within this distance of the Wolf Spider, a Defending Militia unit pokes it instead of just closing in.</summary>
     private const float PokeRange = 1.5f;
@@ -3215,11 +3233,15 @@ public sealed class Bramblekin
     /// <summary>
     /// Conscription: reclassifies this Bramblekin as Militia (called by
     /// World's Job Manager as it works the colony toward the player's
-    /// Militia Target). Drops anything carried and, if it was mid-Gathering
-    /// or mid-Returning (a Gatherer-only errand), immediately breaks that off
-    /// with a short pause rather than let it finish one last delivery — the
-    /// transition is meant to be immediate. The priority chain re-decides
-    /// what to do next (defend, hunt, or wander) on the very next Update().
+    /// Militia Target). Drops anything carried and, if it was mid-Gathering,
+    /// mid-Returning or mid-Building (all Gatherer-only errands), immediately
+    /// breaks that off with a short pause rather than let it finish one last
+    /// delivery or Blueprint — the transition is meant to be immediate.
+    /// Without this, a promoted Builder would otherwise keep running
+    /// UpdateBuilding as a Militia unit forever (nothing else ever reclaims
+    /// a Bramblekin stuck in the Building state), never actually fighting.
+    /// The priority chain re-decides what to do next (defend, hunt, or
+    /// wander) on the very next Update().
     /// </summary>
     public void PromoteToMilitia()
     {
@@ -3228,7 +3250,7 @@ public sealed class Bramblekin
 
         Role = BramblekinRole.Militia;
         DropCarried();
-        if (State is BramblekinState.Gathering or BramblekinState.Returning)
+        if (State is BramblekinState.Gathering or BramblekinState.Returning or BramblekinState.Building)
             StartPause();
     }
 
@@ -3295,15 +3317,29 @@ public sealed class Bramblekin
                 SetState(BramblekinState.Fleeing);
         }
 
-        // --- 3. Economy overrides wandering (Gatherers only) -------------------
+        // --- 3. Village Building (Gatherers only), elevated priority: a
+        // Blueprint needing hands beats Gathering for at least half of the
+        // colony's living Gatherers, so construction actually progresses
+        // even with Berries (or any other food) constantly available to
+        // pull everyone into Gathering instead. Checked before economy
+        // below on purpose — once a Gatherer here is set to Building, it's
+        // no longer "Walking or Pausing", so the Gathering check right
+        // after can no longer steal it back this frame.
+        if (Role == BramblekinRole.Gatherer && State is BramblekinState.Walking or BramblekinState.Pausing &&
+            world.HasIncompleteBlueprint && world.GatherersBuilding * 2 < world.LivingGatherers)
+            SetState(BramblekinState.Building);
+
+        // --- 3b. Economy overrides wandering (Gatherers only) -------------------
         if (Role == BramblekinRole.Gatherer && State is BramblekinState.Walking or BramblekinState.Pausing && world.HasAvailableFood)
             SetState(BramblekinState.Gathering);
 
-        // --- 3b. Militia hunts Aphids when it has no spider to fight -----------
+        // --- 3c. Militia hunts Aphids when it has no spider to fight -----------
         if (Role == BramblekinRole.Militia && State is BramblekinState.Walking or BramblekinState.Pausing && world.HasHuntableAphid)
             SetState(BramblekinState.Hunting);
 
-        // --- 3c. Village Building (Gatherers only): a Blueprint needs hands when there's no food waiting ---
+        // --- 3d. Village Building (Gatherers only), fallback: still send an
+        // otherwise-idle Gatherer (no food waiting either) to a Blueprint,
+        // even past the half-quota above.
         if (Role == BramblekinRole.Gatherer && State is BramblekinState.Walking or BramblekinState.Pausing && world.HasIncompleteBlueprint)
             SetState(BramblekinState.Building);
 
@@ -3447,14 +3483,16 @@ public sealed class Bramblekin
             world.DeliverFood(_carried!);
             _carried = null;
 
-            // Defensive: PromoteToMilitia() already breaks a Gatherer errand
-            // off immediately, so this path is Gatherer-only in practice —
-            // but a mid-delivery promotion should never be able to walk a
-            // freshly drafted Militia unit straight back into Gathering.
-            if (Role == BramblekinRole.Gatherer && world.HasAvailableFood)
-                SetState(BramblekinState.Gathering);
-            else
-                StartWandering(world);
+            // Always go back through Walking rather than jumping straight
+            // to Gathering here: that used to let a Gatherer loop
+            // Gathering <-> Returning forever as long as any food was on
+            // the map, permanently bypassing Update()'s priority chain (and
+            // with it, the elevated Building-over-Gathering quota below) —
+            // a Blueprint could never win it back. Walking/Pausing are both
+            // re-evaluated by that chain every frame, so this costs at most
+            // one frame before the right next job (Building or Gathering)
+            // is picked.
+            StartWandering(world);
             return;
         }
 
@@ -3474,7 +3512,8 @@ public sealed class Bramblekin
             return;
         }
 
-        if (GroundMover.HorizontalDistance(Position, blueprint.Position) <= BuildContactDistance)
+        float contactDistance = BodyRadius + Building.RadiusFor(blueprint.Kind) + BuildContactMargin;
+        if (GroundMover.HorizontalDistance(Position, blueprint.Position) <= contactDistance)
         {
             float rate = world.BuildersAreInspired ? World.HighMoraleBuildMultiplier : 1f;
             blueprint.AddProgress(rate * deltaTime);
@@ -3483,6 +3522,10 @@ public sealed class Bramblekin
             return;
         }
 
+        // Blueprints/Buildings are never added to World.Obstacles (see
+        // RebuildObstacles), so obstacle avoidance can't steer a Builder
+        // away from the site it's trying to reach or push it back out once
+        // it's standing on/inside the footprint above.
         _mover.MoveTowards(blueprint.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
     }
 
