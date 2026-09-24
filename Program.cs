@@ -309,27 +309,52 @@ public static class Game
         Raylib.DrawLineEx(new Vector2(tickX, bar.Y - 3), new Vector2(tickX, bar.Y + bar.Height + 3), 2f, PanelInk);
     }
 
-    /// <summary>Food (against the storage cap), population, Militia and Morale, top right.</summary>
+    /// <summary>
+    /// Contextual Faction UI: Food (against the storage cap), Population,
+    /// Militia and Morale for whichever single faction <see cref="World.SelectedFactionID"/>
+    /// currently points at (tap a Village Heart to switch — see
+    /// <see cref="World.TrySelectFactionAt"/>), top right. No longer a
+    /// global aggregate across every faction on the map.
+    /// </summary>
     private static void DrawColonyPanel(World world)
     {
+        VillageHeart? village = world.SelectedVillage;
+        if (village is null)
+            return; // No faction founded yet.
+
         const int fontSize = 24, lineHeight = 30;
-        int militia = world.Colony.Count(b => !b.IsDead && b.Role == BramblekinRole.Militia);
-        string food = $"Food Stored: {world.Village.FoodStored} / {world.Village.MaxFoodCapacity}";
-        string population = $"Population: {world.Colony.Count}   Militia: {militia}";
-        string morale = $"Morale: {(int)world.Village.Morale}%" +
-                         (world.Village.GatherersAreWeary ? " (Weary)" : world.Village.BuildersAreInspired ? " (Inspired)" : "");
+        int militia = world.Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
+        string food = $"Food Stored: {village.FoodStored} / {village.MaxFoodCapacity}";
+        string population = $"Population: {village.Population}   Militia: {militia}";
+        string morale = $"Morale: {(int)village.Morale}%" +
+                         (village.GatherersAreWeary ? " (Weary)" : village.BuildersAreInspired ? " (Inspired)" : "");
         int width = Math.Max(Raylib.MeasureText(food, fontSize), Math.Max(Raylib.MeasureText(population, fontSize), Raylib.MeasureText(morale, fontSize)));
         int x = Raylib.GetScreenWidth() - width - 30;
 
-        Raylib.DrawRectangle(x - 12, 18, width + 24, lineHeight * 3 + 14, PanelFill);
-        Raylib.DrawRectangleLines(x - 12, 18, width + 24, lineHeight * 3 + 14, PanelInk);
-        Raylib.DrawText(food, x, 26, fontSize, PanelInk);
-        Raylib.DrawText(population, x, 26 + lineHeight, fontSize, PanelInk);
-        Color moraleColor = world.Village.GatherersAreWeary ? new Color(170, 60, 40, 255)
-                           : world.Village.BuildersAreInspired ? new Color(60, 130, 70, 255)
-                           : PanelInk;
+        // Color Coding: the panel itself is tinted toward the selected
+        // faction's own colour (blended with the usual parchment fill/ink
+        // rather than replacing them outright, so the text stays legible
+        // whatever the faction's hue) so the player always knows who
+        // they're inspecting at a glance.
+        Color fill = BlendToward(PanelFill, village.FactionColor, 0.4f);
+        Color ink = BlendToward(PanelInk, village.FactionColor, 0.4f);
+
+        Raylib.DrawRectangle(x - 12, 18, width + 24, lineHeight * 3 + 14, fill);
+        Raylib.DrawRectangleLines(x - 12, 18, width + 24, lineHeight * 3 + 14, ink);
+        Raylib.DrawText(food, x, 26, fontSize, ink);
+        Raylib.DrawText(population, x, 26 + lineHeight, fontSize, ink);
+        Color moraleColor = village.GatherersAreWeary ? new Color(170, 60, 40, 255)
+                           : village.BuildersAreInspired ? new Color(60, 130, 70, 255)
+                           : ink;
         Raylib.DrawText(morale, x, 26 + lineHeight * 2, fontSize, moraleColor);
     }
+
+    /// <summary>Blends <paramref name="baseColor"/> toward <paramref name="tint"/> by <paramref name="amount"/> (0 = unchanged, 1 = fully tint), keeping <paramref name="baseColor"/>'s own alpha.</summary>
+    private static Color BlendToward(Color baseColor, Color tint, float amount) => new(
+        (byte)Math.Clamp(baseColor.R + (tint.R - baseColor.R) * amount, 0, 255),
+        (byte)Math.Clamp(baseColor.G + (tint.G - baseColor.G) * amount, 0, 255),
+        (byte)Math.Clamp(baseColor.B + (tint.B - baseColor.B) * amount, 0, 255),
+        baseColor.A);
 
     /// <summary>Small help text and debug counters in the bottom-left corner.</summary>
     private static void DrawHud(MiracleInput input, World world)
@@ -1049,6 +1074,13 @@ public sealed class MiracleInput
             return;
         }
 
+        // --- Contextual Faction UI: a tap on or very near a Village Heart
+        // inspects that faction, regardless of what's equipped below --
+        // this is a separate concern from casting a miracle, so it never
+        // returns early or consumes the tap.
+        if (PickGround(camera, world.Terrain, screenPosition) is { } tapGround)
+            world.TrySelectFactionAt(tapGround);
+
         // --- World layer ---------------------------------------------------
         switch (State)
         {
@@ -1738,6 +1770,48 @@ public sealed class World
     /// <summary>The original Village Heart (Faction 0) — a convenience for the many single-village call sites (HUD, the Wolf Spider's threat model) that aren't faction-aware yet.</summary>
     public VillageHeart Village => Villages[0];
 
+    /// <summary>
+    /// Contextual Faction UI: which faction the top-right panel currently
+    /// inspects. Defaults to Faction 0 — the original Village Heart — so
+    /// the panel reads the same as before on a fresh game. Changed by
+    /// <see cref="TrySelectFactionAt"/> whenever the player taps on or near
+    /// a Village Heart.
+    /// </summary>
+    public int SelectedFactionID { get; set; }
+
+    /// <summary>The Village Heart <see cref="SelectedFactionID"/> currently points at, if that faction still exists (a Village Heart is never removed once founded, so in practice this is always non-null once the game has started).</summary>
+    public VillageHeart? SelectedVillage => VillageFor(SelectedFactionID);
+
+    /// <summary>How near a tap has to land to a Village Heart's centre to select its faction — generous, well beyond the 1.6m footprint, since it's meant to catch an imprecise finger tap.</summary>
+    public const float FactionSelectionRadius = 2.5f;
+
+    /// <summary>
+    /// Contextual Faction UI: a single tap on or very near a Village
+    /// Heart's footprint switches <see cref="SelectedFactionID"/> to that
+    /// faction. Independent of whatever miracle (if any) is equipped —
+    /// tapping a heart while a Pebble is armed still drops it right there
+    /// afterward. A miss (too far from every Village Heart) leaves the
+    /// current selection alone.
+    /// </summary>
+    public void TrySelectFactionAt(Vector3 groundPoint)
+    {
+        VillageHeart? nearest = null;
+        float bestDistanceSquared = FactionSelectionRadius * FactionSelectionRadius;
+
+        foreach (VillageHeart village in Villages)
+        {
+            float distanceSquared = Vector3.DistanceSquared(groundPoint, village.Center);
+            if (distanceSquared <= bestDistanceSquared)
+            {
+                nearest = village;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+
+        if (nearest is not null)
+            SelectedFactionID = nearest.FactionID;
+    }
+
     /// <summary>Every Acorn currently on the map — richly populated (see <see cref="MaxAcorns"/>) rather than one at a time.</summary>
     public List<Acorn> Acorns { get; } = new();
 
@@ -2016,6 +2090,64 @@ public sealed class World
     }
 
     /// <summary>
+    /// Border Wars + the 20-Meter Territory Rule: the nearest living
+    /// Bramblekin (Gatherer or Militia, any faction but <paramref name="defender"/>'s
+    /// own) currently within <paramref name="home"/>'s territory ring — an
+    /// intruder for <paramref name="defender"/>'s Militia to run down. Recomputed
+    /// fresh every frame from <see cref="Update"/>'s state-machine priority chain,
+    /// same as the Wolf Spider and Aphid checks, so a Defending Militia keeps
+    /// re-picking as intruders come and go.
+    /// </summary>
+    public Bramblekin? NearestEnemyBramblekinInTerritory(Bramblekin defender, VillageHeart home)
+    {
+        Bramblekin? nearest = null;
+        float bestDistanceSquared = float.MaxValue;
+        float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
+
+        for (int i = Colony.Count - 1; i >= 0; i--)
+        {
+            Bramblekin enemy = Colony[i];
+            if (enemy.IsDead || enemy.FactionID == defender.FactionID)
+                continue;
+
+            float distanceSquared = Vector3.DistanceSquared(enemy.Position, home.Center);
+            if (distanceSquared > territoryRadiusSquared || distanceSquared >= bestDistanceSquared)
+                continue;
+
+            nearest = enemy;
+            bestDistanceSquared = distanceSquared;
+        }
+        return nearest;
+    }
+
+    /// <summary>
+    /// Border Wars: a rival Bramblekin killed by a Militia poke (as opposed
+    /// to the Wolf Spider or starvation) leaves behind whatever Individual
+    /// Equipment it died holding — Spoils of War — rather than simply
+    /// perishing with it as <see cref="Bramblekin.MarkDead"/> otherwise
+    /// documents. Its Food Shard (if any) is already dropped generically by
+    /// <see cref="Kill"/>/MarkDead; this only adds the Fang Pike/Chitin
+    /// Mallet on top, since a plain predator or hunger death still doesn't
+    /// leave those behind.
+    /// </summary>
+    public void KillByBramblekin(Bramblekin victim)
+    {
+        if (victim.IsDead)
+            return;
+
+        bool hadFang = victim.HasFangPike;
+        bool hadChitin = victim.HasChitinMallet;
+        Vector3 spot = victim.Position;
+
+        Kill(victim);
+
+        if (hadFang)
+            _pendingFangSpawns.Add(new SpiderFang(spot));
+        else if (hadChitin)
+            _pendingChitinSpawns.Add(new Chitin(spot));
+    }
+
+    /// <summary>
     /// Militia Hunting: an Aphid caught by a Militia unit. Marked dead and
     /// its removal queued, exactly like a killed Bramblekin, and it drops
     /// <see cref="AphidFoodShardYield"/> Food Shards where it stood for the
@@ -2139,6 +2271,7 @@ public sealed class World
         Physics.Update(deltaTime);
         CrackAcornOnImpact();
         SquishSpiderOnImpact();
+        SquishBramblekinOnImpact();
 
         UpdateShardPhysics(deltaTime);
         UpdateFoodClaimTimeouts(deltaTime);
@@ -3141,6 +3274,30 @@ public sealed class World
             {
                 DespawnSpider();
                 return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Miracle Allegiance: a pebble whose centre lands within
+    /// <see cref="SquishRadius"/> of a living Bramblekin — any faction,
+    /// Gatherer or Militia alike — squishes it outright, same as a direct
+    /// hit on the Wolf Spider. Gives the player a way to personally
+    /// intervene in a Border War (or just thin out an overcrowded faction)
+    /// rather than only ever helping colonies along.
+    /// </summary>
+    private void SquishBramblekinOnImpact()
+    {
+        if (Physics.Impacts.Count == 0)
+            return;
+
+        foreach (var impact in Physics.Impacts)
+        {
+            for (int i = Colony.Count - 1; i >= 0; i--)
+            {
+                Bramblekin bramblekin = Colony[i];
+                if (!bramblekin.IsDead && GroundMover.HorizontalDistance(impact.Point, bramblekin.Position) <= SquishRadius)
+                    Kill(bramblekin);
             }
         }
     }
@@ -4165,6 +4322,16 @@ public sealed class Bramblekin
     private Aphid? _claimedAphid;
     private Acorn? _claimedAcorn;
 
+    /// <summary>
+    /// Border Wars: the rival Bramblekin this Militia unit is currently
+    /// chasing down while Defending, when there's no Wolf Spider in
+    /// territory to prioritize instead. Re-picked every frame in
+    /// <see cref="UpdateDefending"/>, same spirit as <see cref="_claimedAphid"/>
+    /// — not a Dibs claim (multiple defenders can pile onto the same
+    /// intruder), just a per-unit "who am I fighting right now" reference.
+    /// </summary>
+    private Bramblekin? _combatTarget;
+
     /// <summary>The Schism: set the instant this Bramblekin becomes a Pioneer (see <see cref="BecomePioneer"/>), cleared the instant it stops Migrating (see <see cref="UpdateMigrating"/>).</summary>
     private Migration? _migration;
 
@@ -4240,14 +4407,26 @@ public sealed class Bramblekin
     /// brings it to 0, dies via <see cref="World.Kill"/> (the usual
     /// drop-food/Casualties/Morale/deferred-removal path).
     /// </summary>
-    public void TakeDamage(int amount, World world)
+    /// <summary>
+    /// <paramref name="fromBramblekin"/>: Border Wars — a killing blow dealt
+    /// by another Bramblekin's Poke (rather than the Wolf Spider's Bite)
+    /// goes through <see cref="World.KillByBramblekin"/> instead of the
+    /// plain <see cref="World.Kill"/>, so Spoils of War can leave its
+    /// equipment behind.
+    /// </summary>
+    public void TakeDamage(int amount, World world, bool fromBramblekin = false)
     {
         if (IsDead)
             return;
 
         Health = Math.Max(0, Health - amount);
         if (Health <= 0)
-            world.Kill(this);
+        {
+            if (fromBramblekin)
+                world.KillByBramblekin(this);
+            else
+                world.Kill(this);
+        }
     }
 
     /// <summary>
@@ -4390,7 +4569,24 @@ public sealed class Bramblekin
         else if (Role == BramblekinRole.Militia && world.Spider is { } spider && home is not null &&
                  GroundMover.HorizontalDistance(spider.Position, home.Center) <= World.TerritoryTargetingRadius)
         {
+            _combatTarget = null;
             _target = ComputeInterceptPoint(spider, home);
+            if (State != BramblekinState.Defending)
+            {
+                DropCarried();
+                SetState(BramblekinState.Defending);
+            }
+        }
+        // --- 2b. Border Wars: with no Wolf Spider to answer, a faction's
+        // Militia still has to answer a rival Bramblekin (Gatherer or
+        // Militia) trespassing within their own Village Heart's territory
+        // ring. Same absolute priority tier and the same Defending state as
+        // the spider fight above — see UpdateDefending for the actual chase/poke.
+        else if (Role == BramblekinRole.Militia && home is not null &&
+                 world.NearestEnemyBramblekinInTerritory(this, home) is { } enemy)
+        {
+            _combatTarget = enemy;
+            _target = enemy.Position;
             if (State != BramblekinState.Defending)
             {
                 DropCarried();
@@ -4726,31 +4922,58 @@ public sealed class Bramblekin
 
     private void UpdateDefending(float deltaTime, World world, VillageHeart? home)
     {
-        // The spider is gone (crushed, or its own Health ran out), or it's
-        // wandered back out of the 20-Meter Territory Rule: stand down.
-        if (world.Spider is not { } spider || home is null ||
-            GroundMover.HorizontalDistance(spider.Position, home.Center) > World.TerritoryTargetingRadius)
+        bool spiderInTerritory = home is not null && world.Spider is { } spiderCheck &&
+                                  GroundMover.HorizontalDistance(spiderCheck.Position, home.Center) <= World.TerritoryTargetingRadius;
+
+        if (home is not null && spiderInTerritory)
         {
-            StartWandering(world);
+            _combatTarget = null;
+            WolfSpider spider = world.Spider!;
+            _target = ComputeInterceptPoint(spider, home);
+
+            // Sustained Combat: close enough to jab it directly, dealing
+            // PokeDamage (boosted to UpgradedPokeDamage once this specific
+            // unit's own Fang Pike is equipped). A fast, per-unit cooldown lets
+            // Militia wail on it rapidly, especially a Tumbled spider that can't
+            // fight back. This is pure Health damage -- it never touches the
+            // spider's State, so it can't wake a Tumbled spider early (see the
+            // hard lock in WolfSpider.Update()).
+            if (_pokeCooldown <= 0f && GroundMover.HorizontalDistance(Position, spider.Position) <= PokeRange)
+            {
+                world.DamageSpider(HasFangPike ? UpgradedPokeDamage : PokeDamage);
+                _pokeCooldown = PokeCooldownDuration;
+            }
+
+            _mover.MoveTowards(_target, DefendSpeed, deltaTime, world, p => IsSafeSpot(p, world));
             return;
         }
 
-        _target = ComputeInterceptPoint(spider, home);
-
-        // Sustained Combat: close enough to jab it directly, dealing
-        // PokeDamage (boosted to UpgradedPokeDamage once this specific
-        // unit's own Fang Pike is equipped). A fast, per-unit cooldown lets
-        // Militia wail on it rapidly, especially a Tumbled spider that can't
-        // fight back. This is pure Health damage -- it never touches the
-        // spider's State, so it can't wake a Tumbled spider early (see the
-        // hard lock in WolfSpider.Update()).
-        if (_pokeCooldown <= 0f && GroundMover.HorizontalDistance(Position, spider.Position) <= PokeRange)
+        // Border Wars: no Wolf Spider threat in territory right now, so chase
+        // down the rival intruder instead, as long as it's still alive and
+        // still within the territory ring. Re-checked every frame since the
+        // enemy may flee, die to someone else, or simply wander back out.
+        if (home is not null && _combatTarget is { IsDead: false } enemy &&
+            GroundMover.HorizontalDistance(enemy.Position, home.Center) <= World.TerritoryTargetingRadius)
         {
-            world.DamageSpider(HasFangPike ? UpgradedPokeDamage : PokeDamage);
-            _pokeCooldown = PokeCooldownDuration;
+            _target = enemy.Position;
+
+            // Same Sustained Combat mechanics as the spider fight above, just
+            // aimed at a rival Bramblekin's own Health instead of the
+            // spider's — Spoils of War (see World.KillByBramblekin) applies
+            // only on the killing blow here, never on a plain spider Poke.
+            if (_pokeCooldown <= 0f && GroundMover.HorizontalDistance(Position, enemy.Position) <= PokeRange)
+            {
+                enemy.TakeDamage(HasFangPike ? UpgradedPokeDamage : PokeDamage, world, fromBramblekin: true);
+                _pokeCooldown = PokeCooldownDuration;
+            }
+
+            _mover.MoveTowards(_target, DefendSpeed, deltaTime, world, p => IsSafeSpot(p, world));
+            return;
         }
 
-        _mover.MoveTowards(_target, DefendSpeed, deltaTime, world, p => IsSafeSpot(p, world));
+        // Nothing left to fight: stand down.
+        _combatTarget = null;
+        StartWandering(world);
     }
 
     /// <summary>
