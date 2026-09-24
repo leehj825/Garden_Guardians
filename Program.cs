@@ -1528,16 +1528,6 @@ public sealed class World
     /// <summary>How many are Militia right now (the Job Manager works to make this match <see cref="MilitiaTarget"/>).</summary>
     public int CurrentMilitia => Colony.Count(b => !b.IsDead && b.Role == BramblekinRole.Militia);
 
-    /// <summary>Living Gatherers (the only role that ever builds).</summary>
-    public int LivingGatherers => Colony.Count(b => !b.IsDead && b.Role == BramblekinRole.Gatherer);
-
-    /// <summary>
-    /// Living Gatherers currently in the Building state — checked against
-    /// <see cref="LivingGatherers"/> each frame so at least half of them
-    /// prioritize an incomplete Blueprint over Gathering (see <see cref="Bramblekin.Update"/>).
-    /// </summary>
-    public int GatherersBuilding => Colony.Count(b => !b.IsDead && b.Role == BramblekinRole.Gatherer && b.State == BramblekinState.Building);
-
     /// <summary>
     /// Auto-Conscription: how many Bramblekin the Job Manager currently
     /// wants as Militia, recomputed fresh every frame in <see cref="UpdateJobManager"/>
@@ -3317,16 +3307,14 @@ public sealed class Bramblekin
                 SetState(BramblekinState.Fleeing);
         }
 
-        // --- 3. Village Building (Gatherers only), elevated priority: a
-        // Blueprint needing hands beats Gathering for at least half of the
-        // colony's living Gatherers, so construction actually progresses
-        // even with Berries (or any other food) constantly available to
-        // pull everyone into Gathering instead. Checked before economy
-        // below on purpose — once a Gatherer here is set to Building, it's
-        // no longer "Walking or Pausing", so the Gathering check right
-        // after can no longer steal it back this frame.
-        if (Role == BramblekinRole.Gatherer && State is BramblekinState.Walking or BramblekinState.Pausing &&
-            world.HasIncompleteBlueprint && world.GatherersBuilding * 2 < world.LivingGatherers)
+        // --- 3. Village Building (Gatherers only), elevated priority: an
+        // incomplete Blueprint always beats Gathering, full stop — checked
+        // before economy below on purpose. Once a Gatherer here is set to
+        // Building, it's no longer "Walking or Pausing", so the Gathering
+        // check right after can no longer steal it back this frame, and it
+        // won't gather again (ignoring nearby food/Berries entirely) until
+        // the site is finished and there's nothing left to build.
+        if (Role == BramblekinRole.Gatherer && State is BramblekinState.Walking or BramblekinState.Pausing && world.HasIncompleteBlueprint)
             SetState(BramblekinState.Building);
 
         // --- 3b. Economy overrides wandering (Gatherers only) -------------------
@@ -3336,12 +3324,6 @@ public sealed class Bramblekin
         // --- 3c. Militia hunts Aphids when it has no spider to fight -----------
         if (Role == BramblekinRole.Militia && State is BramblekinState.Walking or BramblekinState.Pausing && world.HasHuntableAphid)
             SetState(BramblekinState.Hunting);
-
-        // --- 3d. Village Building (Gatherers only), fallback: still send an
-        // otherwise-idle Gatherer (no food waiting either) to a Blueprint,
-        // even past the half-quota above.
-        if (Role == BramblekinRole.Gatherer && State is BramblekinState.Walking or BramblekinState.Pausing && world.HasIncompleteBlueprint)
-            SetState(BramblekinState.Building);
 
         // --- 4. Run the current state -------------------------------------------
         switch (State)
@@ -3763,13 +3745,13 @@ public sealed class WolfSpider
     public const float TumbledDuration = 4f;
 
     /// <summary>Hit points out of <see cref="MaxHealth"/>.</summary>
-    public const int MaxHealth = 100;
+    public const int MaxHealth = 50;
 
     /// <summary>Sustained Combat: how close a Militia unit must be for the spider to Bite it.</summary>
     private const float BiteRange = 1.5f;
 
     /// <summary>Bite damage dealt to the nearest Militia unit in range.</summary>
-    private const int BiteDamage = 15;
+    private const int BiteDamage = 10;
 
     /// <summary>Cooldown (s) between Bites.</summary>
     private const float BiteCooldownDuration = 1.5f;
