@@ -1588,6 +1588,33 @@ public sealed class World
     /// </summary>
     public const float TerritoryTargetingRadius = 20f;
 
+    /// <summary>The Schism: a Village Heart is Overcrowded once its Population reaches its MaxFoodCapacity — 40 at the 3-Granary cap.</summary>
+    public const int SchismFoodReserve = 30;
+
+    /// <summary>Food Stored a Schism costs its origin Village Heart, and the new Village Heart's starting Food Stored.</summary>
+    public const int SchismMigrationCost = 15;
+
+    /// <summary>Gatherers among the 4 Pioneers a Schism sends off.</summary>
+    private const int PioneerGathererCount = 3;
+
+    /// <summary>Militia among the 4 Pioneers a Schism sends off.</summary>
+    private const int PioneerMilitiaCount = 1;
+
+    /// <summary>How far (m) a Migration Target must be from every existing Village Heart.</summary>
+    private const float MinMigrationDistance = 30f;
+
+    /// <summary>The palette a new Schism faction's colour is drawn from, cycling once all four are in use.</summary>
+    private static readonly Color[] SchismFactionColors =
+    {
+        new(60, 120, 220, 255),  // Blue
+        new(225, 195, 55, 255),  // Yellow
+        new(205, 60, 55, 255),   // Red
+        new(150, 80, 195, 255),  // Purple
+    };
+
+    /// <summary>The next Schism's FactionID. Starts at 1 — Faction 0 is the original Village Heart.</summary>
+    private int _nextSchismFactionId = 1;
+
     /// <summary>Morale cap. Also the starting amount: the colony begins confident.</summary>
     public const float MaxMorale = 100f;
 
@@ -2089,6 +2116,10 @@ public sealed class World
             UpdateAutoSporePatch(village);
             UpdateAutoGranary(village);
             UpdateAutoSprout(village);
+
+            // The Schism: an overcrowded, well-stocked Village Heart spins
+            // off a new faction of its own rather than just capping out.
+            UpdateSchism(village);
         }
         UpdateSporePatchIncome(deltaTime);
 
@@ -2499,6 +2530,108 @@ public sealed class World
         Vector3? spot = RandomPointNearVillage(village, SporePatchPlacementRadius, Building.SporePatchRadius + 0.2f);
         if (spot is { } point)
             TryPlaceBlueprint(village, point, BuildingKind.SporePatch);
+    }
+
+    /// <summary>
+    /// The Schism: once a Village Heart is both Overcrowded (Population at
+    /// or beyond its MaxFoodCapacity — capped at 40 by <see cref="MaxGranaries"/>)
+    /// and has a healthy Food Stored reserve, it spends
+    /// <see cref="SchismMigrationCost"/> of that reserve sending 4 Pioneers
+    /// (<see cref="PioneerGathererCount"/> Gatherers, <see cref="PioneerMilitiaCount"/>
+    /// Militia) off to found a brand new faction elsewhere on the map — see
+    /// <see cref="Bramblekin.BecomePioneer"/> and <see cref="FoundVillage"/>.
+    /// Guarded by <see cref="VillageHeart.HasActiveMigration"/> so only one
+    /// Migration is ever in flight per origin at a time.
+    /// </summary>
+    private void UpdateSchism(VillageHeart village)
+    {
+        if (village.HasActiveMigration)
+            return;
+        if (village.Population < village.MaxFoodCapacity)
+            return;
+        if (village.FoodStored < SchismFoodReserve)
+            return;
+
+        // Round up 3 idle-enough Gatherers and 1 Militia unit of this
+        // faction to serve as Pioneers. If the village doesn't have enough
+        // of either on hand yet (e.g. right after a costly battle), simply
+        // try again next frame rather than forcing an incomplete migration.
+        var pioneers = new List<Bramblekin>(PioneerGathererCount + PioneerMilitiaCount);
+        int gathererCount = 0, militiaCount = 0;
+        for (int i = Colony.Count - 1; i >= 0; i--)
+        {
+            if (gathererCount >= PioneerGathererCount && militiaCount >= PioneerMilitiaCount)
+                break;
+
+            Bramblekin bramblekin = Colony[i];
+            if (bramblekin.IsDead || bramblekin.FactionID != village.FactionID)
+                continue;
+
+            if (bramblekin.Role == BramblekinRole.Gatherer && gathererCount < PioneerGathererCount)
+            {
+                pioneers.Add(bramblekin);
+                gathererCount++;
+            }
+            else if (bramblekin.Role == BramblekinRole.Militia && militiaCount < PioneerMilitiaCount)
+            {
+                pioneers.Add(bramblekin);
+                militiaCount++;
+            }
+        }
+
+        if (gathererCount < PioneerGathererCount || militiaCount < PioneerMilitiaCount)
+            return;
+
+        village.FoodStored -= SchismMigrationCost;
+        village.HasActiveMigration = true;
+
+        int newFactionId = _nextSchismFactionId++;
+        Color newFactionColor = SchismFactionColors[(newFactionId - 1) % SchismFactionColors.Length];
+        var migration = new Migration(newFactionId, newFactionColor, RandomMigrationTarget(), village, pioneers.Count);
+
+        foreach (var pioneer in pioneers)
+            pioneer.BecomePioneer(migration);
+    }
+
+    /// <summary>A random point at least <see cref="MinMigrationDistance"/> meters from every existing Village Heart — a Schism's destination.</summary>
+    private Vector3 RandomMigrationTarget()
+    {
+        Vector3 candidate = Vector3.Zero;
+        for (int attempt = 0; attempt < 30; attempt++)
+        {
+            candidate = Terrain.RandomPoint(Rng, margin: 2f);
+            if (Villages.All(v => Vector3.Distance(candidate, v.Center) >= MinMigrationDistance))
+                return candidate;
+        }
+        return candidate; // Fallback: the map's too crowded for a clean gap — found it wherever the last attempt landed.
+    }
+
+    /// <summary>
+    /// The Schism's payoff: founds a brand new Village Heart at
+    /// <paramref name="migration"/>'s Target, seeded with
+    /// <see cref="SchismMigrationCost"/> Food Stored, and immediately starts
+    /// running its own autonomous economy loop alongside every other entry
+    /// in <see cref="Villages"/>. Marks the Migration founded so every
+    /// Pioneer bound to it — not just the one that triggered this — drops
+    /// Migrating for good on its very next Update() (see
+    /// <see cref="Bramblekin.UpdateMigrating"/>), and clears the origin's
+    /// <see cref="VillageHeart.HasActiveMigration"/> so it's free to schism
+    /// again once it re-crowds.
+    /// </summary>
+    public VillageHeart FoundVillage(Migration migration)
+    {
+        var village = new VillageHeart(migration.Target, migration.NewFactionID, migration.NewFactionColor)
+        {
+            FoodStored = SchismMigrationCost,
+            UpkeepTimer = UpkeepInterval,
+        };
+        Villages.Add(village);
+        Physics.AddStaticBox(village.Bounds);
+        RebuildObstacles();
+
+        migration.MarkFounded();
+        migration.Origin.HasActiveMigration = false;
+        return village;
     }
 
     /// <summary>
@@ -3055,6 +3188,9 @@ public sealed class VillageHeart
     /// <summary>Counts down to this faction's next Upkeep tax. Internal bookkeeping for <see cref="World"/>.</summary>
     internal float UpkeepTimer { get; set; }
 
+    /// <summary>The Schism: true while 4 Pioneers of this faction are already out founding a new Village Heart — guards against queuing a second Migration before the first lands.</summary>
+    public bool HasActiveMigration { get; internal set; }
+
     /// <summary>Below <see cref="World.WearyMoraleThreshold"/>: this faction's Gatherers walk at <see cref="World.WearySpeedMultiplier"/> speed.</summary>
     public bool GatherersAreWeary => Morale < World.WearyMoraleThreshold;
 
@@ -3109,6 +3245,48 @@ public sealed class VillageHeart
             Raylib.DrawLine3D(previous, next, ringColor);
             previous = next;
         }
+    }
+}
+
+/// <summary>
+/// The Schism: bookkeeping shared by the 4 Pioneers of one migration, so
+/// the moment any one of them reaches <see cref="Target"/> and founds the
+/// new Village Heart (<see cref="World.FoundVillage"/>), every Pioneer
+/// bound to it — not just the one that arrived — drops its Migrating state
+/// on its very next Update() (see <see cref="Bramblekin.UpdateMigrating"/>).
+/// </summary>
+public sealed class Migration
+{
+    public int NewFactionID { get; }
+    public Color NewFactionColor { get; }
+    public Vector3 Target { get; }
+
+    /// <summary>The overcrowded Village Heart this Migration set out from — whose <see cref="VillageHeart.HasActiveMigration"/> clears once this Migration is founded or abandoned.</summary>
+    public VillageHeart Origin { get; }
+
+    /// <summary>True once a Pioneer has reached <see cref="Target"/> and founded the new Village Heart.</summary>
+    public bool Founded { get; private set; }
+
+    /// <summary>Pioneers still alive and travelling. If this reaches zero before the Migration is Founded, it's abandoned so the origin can try again.</summary>
+    private int _pioneersRemaining;
+
+    public Migration(int newFactionId, Color newFactionColor, Vector3 target, VillageHeart origin, int pioneerCount)
+    {
+        NewFactionID = newFactionId;
+        NewFactionColor = newFactionColor;
+        Target = target;
+        Origin = origin;
+        _pioneersRemaining = pioneerCount;
+    }
+
+    public void MarkFounded() => Founded = true;
+
+    /// <summary>A Pioneer bound to this Migration died before reaching Target. Abandons the Migration (freeing the origin to try again) once none are left.</summary>
+    public void PioneerLost()
+    {
+        _pioneersRemaining = Math.Max(0, _pioneersRemaining - 1);
+        if (_pioneersRemaining == 0 && !Founded)
+            Origin.HasActiveMigration = false;
     }
 }
 
@@ -3710,6 +3888,16 @@ public enum BramblekinState
     /// <see cref="Bramblekin.UpdateEquipping"/>.
     /// </summary>
     Equipping,
+
+    /// <summary>
+    /// The Schism: a Pioneer, forced into this state the instant it's
+    /// chosen (see <see cref="Bramblekin.BecomePioneer"/>) and overriding
+    /// every other priority — it ignores food, blueprints and enemies alike
+    /// and paths straight for its Migration's Target until it (or another
+    /// Pioneer bound to the same Migration) founds the new Village Heart.
+    /// See <see cref="Bramblekin.UpdateMigrating"/>.
+    /// </summary>
+    Migrating,
 }
 
 /// <summary>A Bramblekin's class: an ordinary worker, or a drafted defender.</summary>
@@ -3801,6 +3989,9 @@ public sealed class Bramblekin
     /// <summary>Within this distance of a Chitin piece, it is picked up.</summary>
     private const float ChitinPickupDistance = BodyRadius + Chitin.Radius + 0.1f;
 
+    /// <summary>The Schism: within this distance of its Migration Target, a Pioneer has arrived.</summary>
+    private const float MigrationArriveDistance = BodyRadius + 0.2f;
+
     /// <summary>Militia charge speed while Defending — faster than a gathering amble, short of a full panicked flee.</summary>
     private const float DefendSpeed = WalkSpeed * 1.5f;
 
@@ -3859,6 +4050,9 @@ public sealed class Bramblekin
     private Aphid? _claimedAphid;
     private Acorn? _claimedAcorn;
 
+    /// <summary>The Schism: set the instant this Bramblekin becomes a Pioneer (see <see cref="BecomePioneer"/>), cleared the instant it stops Migrating (see <see cref="UpdateMigrating"/>).</summary>
+    private Migration? _migration;
+
     /// <summary>Feet position on the ground (y = GroundHeight).</summary>
     public Vector3 Position => _mover.Position;
 
@@ -3902,11 +4096,17 @@ public sealed class Bramblekin
 
     public const int MaxHealth = 30;
 
-    /// <summary>Which tribe this Bramblekin belongs to — determines which Village Heart it gathers/builds for (see <see cref="World.VillageFor"/>).</summary>
-    public int FactionID { get; }
+    /// <summary>
+    /// Which tribe this Bramblekin belongs to — determines which Village
+    /// Heart it gathers/builds for (see <see cref="World.VillageFor"/>).
+    /// Private set: the Schism reassigns this the instant a Bramblekin
+    /// becomes a Pioneer (see <see cref="BecomePioneer"/>), well before its
+    /// new Village Heart even exists.
+    /// </summary>
+    public int FactionID { get; private set; }
 
     /// <summary>Its faction's colour, blended faintly into its body (see <see cref="Draw"/>) so tribes read apart at a glance.</summary>
-    public Color FactionColor { get; }
+    public Color FactionColor { get; private set; }
 
     public Bramblekin(Vector3 position, Random rng, int factionId, Color factionColor)
     {
@@ -3955,6 +4155,13 @@ public sealed class Bramblekin
         ReleaseFoodClaim();
         ReleaseAphidClaim();
         ReleaseAcornClaim();
+
+        // The Schism: a Pioneer lost en route. Tells its Migration so the
+        // origin's HasActiveMigration eventually clears if all 4 are lost
+        // before any of them founds the new Village Heart.
+        _migration?.PioneerLost();
+        _migration = null;
+
         IsDead = true;
     }
 
@@ -3999,6 +4206,29 @@ public sealed class Bramblekin
         StartWandering(world);
     }
 
+    /// <summary>
+    /// The Schism: this Bramblekin is one of the 4 Pioneers a Village Heart
+    /// just sent off. Immediately switches its Faction (and, with it, its
+    /// visual tint — see <see cref="Draw"/>) to the new one, drops anything
+    /// it was carrying or claiming, and forces it into Migrating, where it
+    /// stays — ignoring food, blueprints and enemies alike — until it or
+    /// another Pioneer bound to the same <see cref="Migration"/> founds the
+    /// new Village Heart (see <see cref="UpdateMigrating"/>).
+    /// </summary>
+    public void BecomePioneer(Migration migration)
+    {
+        DropCarried();
+        ReleaseFoodClaim();
+        ReleaseAphidClaim();
+        ReleaseAcornClaim();
+
+        FactionID = migration.NewFactionID;
+        FactionColor = migration.NewFactionColor;
+        _migration = migration;
+        _target = migration.Target;
+        SetState(BramblekinState.Migrating);
+    }
+
     public void Update(float deltaTime, World world)
     {
         if (IsDead)
@@ -4007,6 +4237,17 @@ public sealed class Bramblekin
         _mover.Idle();
         if (_pokeCooldown > 0f)
             _pokeCooldown -= deltaTime;
+
+        // --- 0. The Schism (absolute priority, above even God's Shadow):
+        // a Pioneer ignores food, blueprints and enemies alike and paths
+        // straight for its Migration's Target. Nothing else in this method
+        // runs while Migrating — see UpdateMigrating.
+        if (State == BramblekinState.Migrating)
+        {
+            UpdateMigrating(deltaTime, world);
+            return;
+        }
+
         bool isSafe(Vector3 p) => IsSafeSpot(p, world);
 
         VillageHeart? home = world.VillageFor(FactionID);
@@ -4497,6 +4738,46 @@ public sealed class Bramblekin
         }
 
         _mover.MoveTowards(chitin.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+    }
+
+    // --- The Schism -------------------------------------------------------------------
+
+    /// <summary>
+    /// A Pioneer's entire world while Migrating: path straight for its
+    /// Migration's Target, oblivious to food, blueprints, the Wolf Spider
+    /// and God's Shadow alike (see the hard lock at the top of Update()).
+    /// The moment ANY Pioneer bound to the same Migration founds the new
+    /// Village Heart — not just this one — it drops Migrating for good on
+    /// this check and reverts to ordinary AI; since its FactionID already
+    /// matches that Village Heart, the very next priority-chain evaluation
+    /// has it defending, gathering or building for it like any other unit.
+    /// </summary>
+    private void UpdateMigrating(float deltaTime, World world)
+    {
+        if (_migration is not { } migration)
+        {
+            // Defensive: BecomePioneer always sets this, but don't strand a
+            // Bramblekin in Migrating forever if it somehow didn't.
+            StartWandering(world);
+            return;
+        }
+
+        if (migration.Founded)
+        {
+            _migration = null;
+            StartWandering(world);
+            return;
+        }
+
+        if (GroundMover.HorizontalDistance(Position, migration.Target) <= MigrationArriveDistance)
+        {
+            world.FoundVillage(migration);
+            _migration = null;
+            StartWandering(world);
+            return;
+        }
+
+        _mover.MoveTowards(migration.Target, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
     }
 
     // --- Wandering ----------------------------------------------------------------
