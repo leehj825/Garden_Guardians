@@ -335,9 +335,14 @@ public static class Game
         string population = $"Population: {village.Population}   Militia: {militia}";
         string morale = $"Morale: {(int)village.Morale}%" +
                          (village.GatherersAreWeary ? " (Weary)" : village.BuildersAreInspired ? " (Inspired)" : "");
+        // Tycoon Economy: Amber tacked onto this same panel, in Color.GOLD
+        // so the tribe's banked wealth stands out from the survival stats
+        // above it at a glance.
+        string amber = $"| Amber: {village.AmberStored}";
         int width = Math.Max(Raylib.MeasureText(header, fontSize),
                     Math.Max(Raylib.MeasureText(food, fontSize),
-                    Math.Max(Raylib.MeasureText(population, fontSize), Raylib.MeasureText(morale, fontSize))));
+                    Math.Max(Raylib.MeasureText(population, fontSize),
+                    Math.Max(Raylib.MeasureText(morale, fontSize), Raylib.MeasureText(amber, fontSize)))));
         int x = Raylib.GetScreenWidth() - width - 30;
 
         // Color Coding: the panel itself is tinted toward the selected
@@ -348,8 +353,8 @@ public static class Game
         Color fill = BlendToward(PanelFill, village.FactionColor, 0.4f);
         Color ink = BlendToward(PanelInk, village.FactionColor, 0.4f);
 
-        Raylib.DrawRectangle(x - 12, 18, width + 24, lineHeight * 4 + 14, fill);
-        Raylib.DrawRectangleLines(x - 12, 18, width + 24, lineHeight * 4 + 14, ink);
+        Raylib.DrawRectangle(x - 12, 18, width + 24, lineHeight * 5 + 14, fill);
+        Raylib.DrawRectangleLines(x - 12, 18, width + 24, lineHeight * 5 + 14, ink);
         Raylib.DrawText(header, x, 26, fontSize, ink);
         Raylib.DrawText(food, x, 26 + lineHeight, fontSize, ink);
         Raylib.DrawText(population, x, 26 + lineHeight * 2, fontSize, ink);
@@ -357,6 +362,7 @@ public static class Game
                            : village.BuildersAreInspired ? new Color(60, 130, 70, 255)
                            : ink;
         Raylib.DrawText(morale, x, 26 + lineHeight * 3, fontSize, moraleColor);
+        Raylib.DrawText(amber, x, 26 + lineHeight * 4, fontSize, new Color(255, 203, 0, 255));
     }
 
     /// <summary>
@@ -1733,6 +1739,27 @@ public sealed class World
     /// <summary>How far (m) from the Village Heart a Spore Farm may be placed — kept close, near the village's centre.</summary>
     private const float SporeFarmPlacementRadius = 5f;
 
+    /// <summary>Tycoon Economy: seconds between each Amber spawn attempt — scarce on purpose, far slower than Berries or Acorns.</summary>
+    public const float AmberSpawnInterval = 20f;
+
+    /// <summary>Tycoon Economy: the most Amber allowed on the map (loose or carried) at once, map-wide rather than per faction — Amber stays scarce even as the map fills with tribes.</summary>
+    public const int MaxAmberOnMap = 3;
+
+    /// <summary>Population needed before a Village Heart will queue a Trading Post — see <see cref="World.UpdateAutoTradingPost"/>.</summary>
+    public const int TradingPostPopulationThreshold = 15;
+
+    /// <summary>Amber Stored spent to queue a Trading Post blueprint.</summary>
+    public const int TradingPostAmberCost = 5;
+
+    /// <summary>How far (m) from the Village Heart an Auto-Trading-Post may be placed.</summary>
+    private const float TradingPostPlacementRadius = 5f;
+
+    /// <summary>Emergency Food Import: Amber spent per import.</summary>
+    public const int EmergencyImportAmberCost = 1;
+
+    /// <summary>Emergency Food Import: Food Stored gained per import.</summary>
+    public const int EmergencyImportFoodGain = 5;
+
     /// <summary>How often (seconds) the Village Heart pays its Upkeep food tax.</summary>
     private const float UpkeepInterval = 15f;
 
@@ -1848,6 +1875,7 @@ public sealed class World
     private readonly List<(Vector3 Position, float TimeLeft)> _splats = new();
     private readonly List<(Vector3 Position, string Text, Color Color, float TimeLeft)> _floatingTexts = new();
     private float _acornSpawnTimer = AcornSpawnInterval;
+    private float _amberSpawnTimer = AmberSpawnInterval;
 
     // Deferred creation/destruction. Nothing below is added to or removed
     // from Colony/FoodShards while any part of the frame might still be
@@ -1859,6 +1887,7 @@ public sealed class World
     private readonly List<Bramblekin> _pendingBramblekinRemovals = new();
     private readonly List<FoodShard> _pendingShardSpawns = new();
     private readonly List<FoodShard> _pendingShardRemovals = new();
+    private readonly List<AmberNode> _pendingAmberRemovals = new();
     private readonly List<Aphid> _pendingAphidSpawns = new();
     private readonly List<Aphid> _pendingAphidRemovals = new();
     private readonly List<SpiderFang> _pendingFangSpawns = new();
@@ -1938,6 +1967,9 @@ public sealed class World
 
     /// <summary>Every Acorn currently on the map — richly populated (see <see cref="MaxAcorns"/>) rather than one at a time.</summary>
     public List<Acorn> Acorns { get; } = new();
+
+    /// <summary>Tycoon Economy: every loose Amber currently on the map — scarce on purpose, capped map-wide at <see cref="MaxAmberOnMap"/>.</summary>
+    public List<AmberNode> AmberNodes { get; } = new();
 
     public List<FoodShard> FoodShards { get; } = new();
     public List<Bramblekin> Colony { get; } = new();
@@ -2699,6 +2731,20 @@ public sealed class World
                 shard.ClaimTimer = 0f;
             }
         }
+
+        // Same Dibs failsafe, applied to Amber.
+        foreach (AmberNode amber in AmberNodes)
+        {
+            if (amber.ClaimedBy is null)
+                continue;
+
+            amber.ClaimTimer += deltaTime;
+            if (amber.ClaimTimer >= FoodClaimTimeoutSeconds)
+            {
+                amber.ClaimedBy = null;
+                amber.ClaimTimer = 0f;
+            }
+        }
     }
 
     public void Update(float deltaTime)
@@ -2823,6 +2869,7 @@ public sealed class World
             // population-gated addition on top of that cycle.
             UpdateAutoSporeFarm(village);
             UpdateAutoGranary(village);
+            UpdateAutoTradingPost(village);
             UpdateAutoSprout(village);
 
             // The Schism: an overcrowded, well-stocked Village Heart spins
@@ -2832,6 +2879,7 @@ public sealed class World
         UpdateSporeFarmIncome(deltaTime);
 
         UpdateAcornSpawn(deltaTime);
+        UpdateAmberSpawn(deltaTime);
         UpdateSpiderRespawn(deltaTime);
         UpdateBerrySpawn(deltaTime);
         UpdateAphidRespawn(deltaTime);
@@ -2891,6 +2939,13 @@ public sealed class World
             _pendingShardSpawns.Clear();
         }
 
+        if (_pendingAmberRemovals.Count > 0)
+        {
+            for (int i = _pendingAmberRemovals.Count - 1; i >= 0; i--)
+                AmberNodes.Remove(_pendingAmberRemovals[i]);
+            _pendingAmberRemovals.Clear();
+        }
+
         if (_pendingAphidRemovals.Count > 0)
         {
             for (int i = _pendingAphidRemovals.Count - 1; i >= 0; i--)
@@ -2947,6 +3002,13 @@ public sealed class World
 
         for (int i = Acorns.Count - 1; i >= 0; i--)
             Acorns[i].Draw();
+
+        for (int i = AmberNodes.Count - 1; i >= 0; i--)
+        {
+            AmberNode amber = AmberNodes[i];
+            if (!amber.IsCarried)
+                amber.Draw(amber.Position);
+        }
 
         for (int i = Buildings.Count - 1; i >= 0; i--)
             Buildings[i].Draw();
@@ -3130,6 +3192,61 @@ public sealed class World
         village.FoodStored = Math.Min(village.FoodStored + 1, village.MaxFoodCapacity);
     }
 
+    /// <summary>Tycoon Economy Dibs: same rules as <see cref="IsAvailable(FoodShard, Bramblekin)"/> — nobody carrying it, unclaimed (or claimed by <paramref name="claimant"/>) and clear of any God's Shadow.</summary>
+    public bool IsAvailable(AmberNode amber, Bramblekin claimant) =>
+        !amber.IsCarried
+        && (amber.ClaimedBy is null || amber.ClaimedBy == claimant)
+        && !IsBlocked(amber.Position, 0f)
+        && ShadowOver(amber.Position, AmberNode.Radius) is null;
+
+    /// <summary>
+    /// Tycoon Economy: Safe Gathering (The Danger Penalty, see
+    /// <see cref="ForeignTerritoryPenaltyFor"/>) + Maximum Search Radius
+    /// (see <see cref="MaxGatherSearchRadius"/>), sorted by distance — the
+    /// nearest available Amber to <paramref name="from"/>, or null if
+    /// nothing qualifies within reach. Amber is map-wide scarce rather than
+    /// territory-seeded, so unlike <see cref="NearestAvailableShard"/> there
+    /// is no separate "prefer local territory" pass — just the one
+    /// danger-adjusted nearest-wins search.
+    /// </summary>
+    public AmberNode? NearestAvailableAmber(Vector3 from, Bramblekin claimant)
+    {
+        AmberNode? best = null;
+        float bestDistance = float.MaxValue;
+        for (int i = AmberNodes.Count - 1; i >= 0; i--)
+        {
+            AmberNode amber = AmberNodes[i];
+            if (!IsAvailable(amber, claimant))
+                continue;
+
+            float rawDistance = Vector3.Distance(from, amber.Position);
+            if (rawDistance > MaxGatherSearchRadius)
+                continue; // Maximum Search Radius: never even evaluated.
+
+            float distance = rawDistance + ForeignTerritoryPenaltyFor(amber.Position, claimant.FactionID);
+            if (distance < bestDistance)
+            {
+                best = amber;
+                bestDistance = distance;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// A delivered Amber leaves the map and adds to <paramref name="village"/>'s
+    /// banked wealth (<see cref="VillageHeart.AmberStored"/>), uncapped —
+    /// same deferred-removal pattern as <see cref="DeliverFood"/>, since
+    /// this is called from inside a Bramblekin's own Update(), itself
+    /// inside World's reverse for-loop over Colony.
+    /// </summary>
+    public void DeliverAmber(AmberNode amber, VillageHeart village)
+    {
+        if (!_pendingAmberRemovals.Contains(amber))
+            _pendingAmberRemovals.Add(amber);
+        village.AmberStored++;
+    }
+
     /// <summary>A Fang can be picked up if no God's Shadow is over it — it's never carried or claimed, just touched and gone.</summary>
     public bool IsAvailable(SpiderFang fang) => !IsBlocked(fang.Position, 0f) && ShadowOver(fang.Position, SpiderFang.Radius) is null;
 
@@ -3277,6 +3394,59 @@ public sealed class World
         Vector3? spot = RandomPointNearVillage(village, SporeFarmPlacementRadius, Building.SporeFarmRadius + 0.2f);
         if (spot is { } point)
             TryPlaceBlueprint(village, point, BuildingKind.SporeFarm);
+    }
+
+    /// <summary>
+    /// Auto-Construction (Trading Post) — The Blueprint Trigger: once a
+    /// Village Heart's Population reaches <see cref="TradingPostPopulationThreshold"/>
+    /// and it has banked at least <see cref="TradingPostAmberCost"/> Amber,
+    /// and it doesn't already have a Trading Post (built or queued), it
+    /// spends the Amber and places a Trading Post Blueprint near its own
+    /// centre. Gatherers pick it up and build it exactly like a Granary or
+    /// Spore Farm — <see cref="NearestIncompleteBlueprintFor"/> doesn't
+    /// discriminate by <see cref="BuildingKind"/>.
+    /// </summary>
+    private void UpdateAutoTradingPost(VillageHeart village)
+    {
+        if (village.Population < TradingPostPopulationThreshold)
+            return;
+        if (village.AmberStored < TradingPostAmberCost)
+            return;
+        if (Buildings.Any(b => b.Kind == BuildingKind.TradingPost && b.FactionID == village.FactionID) ||
+            Blueprints.Any(b => b.Kind == BuildingKind.TradingPost && b.FactionID == village.FactionID))
+            return; // Already have one, finished or in progress.
+
+        Vector3? spot = RandomPointNearVillage(village, TradingPostPlacementRadius, Building.TradingPostRadius + 0.2f);
+        if (spot is not { } point)
+            return;
+
+        village.AmberStored -= TradingPostAmberCost;
+        Blueprints.Add(new Blueprint(point, BuildingKind.TradingPost, village.FactionID, village.FactionColor));
+    }
+
+    /// <summary>
+    /// Emergency Food Import: once a Trading Post is fully built, it
+    /// unlocks automated trading — called from <see cref="UpdateUpkeep"/>
+    /// the instant a village's Upkeep tax comes due while it's sitting on
+    /// zero Food Stored (a Bramblekin is about to starve). If it has at
+    /// least <see cref="EmergencyImportAmberCost"/> Amber banked, the
+    /// Trading Post deducts it and instantly adds <see cref="EmergencyImportFoodGain"/>
+    /// Food Stored, with a floating "Trade: -1 Amber / +5 Food" alert above
+    /// the Trading Post itself so the autonomous economy saving the tribe
+    /// is visible. A no-op if the faction has no finished Trading Post, or
+    /// no Amber left to spend.
+    /// </summary>
+    private void TryEmergencyFoodImport(VillageHeart village)
+    {
+        Building? tradingPost = Buildings.FirstOrDefault(b => b.Kind == BuildingKind.TradingPost && b.FactionID == village.FactionID);
+        if (tradingPost is null)
+            return;
+        if (village.AmberStored < EmergencyImportAmberCost)
+            return;
+
+        village.AmberStored -= EmergencyImportAmberCost;
+        village.FoodStored = Math.Min(village.FoodStored + EmergencyImportFoodGain, village.MaxFoodCapacity);
+        QueueFloatingText(tradingPost.Position, $"Trade: -{EmergencyImportAmberCost} Amber / +{EmergencyImportFoodGain} Food", new Color(255, 203, 0, 255));
     }
 
     /// <summary>
@@ -3491,6 +3661,11 @@ public sealed class World
     /// drained to zero outright and one Bramblekin — a Gatherer if there is
     /// one, a Militia unit otherwise — dies of starvation on the spot, with
     /// a red "Starving!" pop-up.
+    ///
+    /// Emergency Food Import: right as this tax comes due, a Trading Post
+    /// gets first crack at a village sitting on zero Food Stored — see
+    /// <see cref="TryEmergencyFoodImport"/> — before the tax (and, if that
+    /// still isn't enough, starvation) is even computed.
     /// </summary>
     private void UpdateUpkeep(VillageHeart village, float deltaTime)
     {
@@ -3498,6 +3673,9 @@ public sealed class World
         if (village.UpkeepTimer > 0f)
             return;
         village.UpkeepTimer += UpkeepInterval;
+
+        if (village.FoodStored == 0)
+            TryEmergencyFoodImport(village);
 
         int cost = Math.Max(1, village.Population / 8);
         if (village.FoodStored >= cost)
@@ -3980,6 +4158,26 @@ public sealed class World
 
     /// <summary>Somewhere open inside a random faction's Territory Ring, not on top of its Village Heart — see <see cref="RandomTerritorySpot"/>.</summary>
     private Vector3 RandomAcornSpot() => RandomTerritorySpot(Acorn.Radius + 0.5f, edgeMargin: 1.5f);
+
+    /// <summary>
+    /// Tycoon Economy: tops the map-wide Amber population back up to
+    /// <see cref="MaxAmberOnMap"/> every <see cref="AmberSpawnInterval"/>
+    /// seconds — kept scarce (at most 3 on the map at once) and spread
+    /// anywhere valid on the map rather than confined to any one faction's
+    /// territory, same pattern as Acorns and Berries otherwise.
+    /// </summary>
+    private void UpdateAmberSpawn(float deltaTime)
+    {
+        _amberSpawnTimer -= deltaTime;
+        if (_amberSpawnTimer > 0f)
+            return;
+        _amberSpawnTimer = AmberSpawnInterval;
+
+        if (AmberNodes.Count >= MaxAmberOnMap)
+            return;
+
+        AmberNodes.Add(new AmberNode(RandomFreePoint(AmberNode.Radius + 0.5f, edgeMargin: 1.5f)));
+    }
 }
 
 // =============================================================================
@@ -4052,6 +4250,17 @@ public sealed class VillageHeart
 
     /// <summary>Food in this faction's stores, waiting to become the next sprout.</summary>
     public int FoodStored { get; internal set; }
+
+    /// <summary>
+    /// Tycoon Economy: this faction's banked wealth, delivered by Gatherers
+    /// carrying home an <see cref="AmberNode"/> once <see cref="FoodStored"/>
+    /// already covers survival (Maslow's Hierarchy — see
+    /// <see cref="Bramblekin.UpdateGathering"/>). Spent on the Trading Post
+    /// blueprint and Emergency Food Imports (see <see cref="World.UpdateAutoTradingPost"/>/
+    /// <see cref="World.TryEmergencyFoodImport"/>) rather than anything the
+    /// player spends directly.
+    /// </summary>
+    public int AmberStored { get; set; } = 0;
 
     /// <summary>
     /// This faction's food storage cap. Starts at <see cref="World.BaseMaxFoodCapacity"/>
@@ -4287,6 +4496,51 @@ public sealed class Acorn
     }
 }
 
+/// <summary>
+/// Tycoon Economy: a rare, wealth-only resource — scarce on the map (see
+/// <see cref="World.MaxAmberOnMap"/>/<see cref="World.AmberSpawnInterval"/>)
+/// and pursued by a Gatherer only once its home Village Heart's
+/// <see cref="VillageHeart.FoodStored"/> already covers survival — Maslow's
+/// Hierarchy, see <see cref="Bramblekin.UpdateGathering"/>. Carried straight
+/// home like a wild Berry, no cracking involved. Drawn as a golden gem
+/// (two stacked cones) rather than Acorn's sphere-and-cap, so the two
+/// never read as the same thing at a glance.
+/// </summary>
+public sealed class AmberNode
+{
+    public const float Radius = 0.22f;
+
+    /// <summary>Resting spot on the ground (y = GroundHeight). Ignored while carried.</summary>
+    public Vector3 Position { get; set; }
+
+    /// <summary>True while a Bramblekin is holding it; carried Amber is hidden from the map, same as a carried Food Shard.</summary>
+    public bool IsCarried { get; set; }
+
+    /// <summary>
+    /// Dibs: the one Gatherer currently pursuing this Amber, if any — same
+    /// claim/timeout pattern as <see cref="FoodShard.ClaimedBy"/>/<see cref="FoodShard.ClaimTimer"/>,
+    /// enforced by <see cref="World"/>.
+    /// </summary>
+    public Bramblekin? ClaimedBy { get; set; }
+
+    /// <summary>Seconds since <see cref="ClaimedBy"/> was last set. Reset to 0 on every new claim; ticked and enforced by World.</summary>
+    public float ClaimTimer { get; set; }
+
+    public AmberNode(Vector3 groundPoint) => Position = groundPoint;
+
+    /// <summary>Draws the gem resting on the ground at (or carried above) <paramref name="groundPoint"/>.</summary>
+    public void Draw(Vector3 groundPoint)
+    {
+        var gold = new Color(255, 203, 0, 255);
+        var edge = new Color(150, 110, 0, 200);
+        Vector3 mid = groundPoint + new Vector3(0, Radius, 0);
+        Raylib.DrawCylinder(groundPoint, 0f, Radius, Radius, 4, gold);
+        Raylib.DrawCylinder(mid, Radius, 0f, Radius, 4, gold);
+        Raylib.DrawCylinderWires(groundPoint, 0f, Radius, Radius, 4, edge);
+        Raylib.DrawCylinderWires(mid, Radius, 0f, Radius, 4, edge);
+    }
+}
+
 /// <summary>Where a Food Shard came from — purely cosmetic, it's worth the same 1 food either way.</summary>
 public enum FoodShardKind
 {
@@ -4418,6 +4672,9 @@ public enum BuildingKind
 
     /// <summary>Passive Income: spawns a Berry on top of itself every <see cref="Building.SporeFarmInterval"/> seconds.</summary>
     SporeFarm,
+
+    /// <summary>Tycoon Economy: once built, unlocks the Emergency Food Import (see <see cref="World.TryEmergencyFoodImport"/>).</summary>
+    TradingPost,
 }
 
 /// <summary>
@@ -4436,6 +4693,10 @@ public sealed class Building
 
     /// <summary>Seconds between each Berry a finished Spore Farm spawns on top of itself — fast enough that a large tribe's Gatherers have a safe, internal food loop and never need to cross the map for every Berry.</summary>
     public const float SporeFarmInterval = 2.5f;
+
+    /// <summary>Tycoon Economy: the Trading Post's footprint — a square structure, distinct from the two round buildings.</summary>
+    public const float TradingPostRadius = 0.9f;
+    private const float TradingPostHeight = 1.3f;
 
     public BuildingKind Kind { get; }
     public Vector3 Position { get; }
@@ -4458,7 +4719,12 @@ public sealed class Building
     }
 
     /// <summary>The footprint radius (m) a Blueprint/Building of this kind actually occupies on the ground.</summary>
-    public static float RadiusFor(BuildingKind kind) => kind == BuildingKind.Granary ? GranaryRadius : SporeFarmRadius;
+    public static float RadiusFor(BuildingKind kind) => kind switch
+    {
+        BuildingKind.Granary => GranaryRadius,
+        BuildingKind.TradingPost => TradingPostRadius,
+        _ => SporeFarmRadius,
+    };
 
     /// <summary>
     /// A Spore Farm's passive-income clock: counts down by
@@ -4489,6 +4755,19 @@ public sealed class Building
             return;
         }
 
+        if (Kind == BuildingKind.TradingPost)
+        {
+            // A brown square structure with a Color.GOLD center — the
+            // Tycoon Economy's landmark, deliberately square so it reads
+            // apart from the two round buildings at a glance.
+            var goldCube = new Color(255, 203, 0, 255);
+            var postCenter = Position + new Vector3(0, TradingPostHeight / 2f, 0);
+            Raylib.DrawCube(postCenter, TradingPostRadius * 2f, TradingPostHeight, TradingPostRadius * 2f, new Color(120, 80, 45, 255));
+            Raylib.DrawCubeWires(postCenter, TradingPostRadius * 2f, TradingPostHeight, TradingPostRadius * 2f, new Color(65, 40, 20, 255));
+            Raylib.DrawCube(postCenter, TradingPostRadius * 0.9f, TradingPostHeight * 0.9f, TradingPostRadius * 0.9f, goldCube);
+            return;
+        }
+
         // Spore Farm: a large, saturated Dark Green disc, deliberately far
         // enough from the grass-green ground plane's own hue (86, 150, 60)
         // that it reads as an obvious landmark at a glance rather than
@@ -4511,8 +4790,13 @@ public sealed class Blueprint
 {
     public BuildingKind Kind { get; }
 
-    /// <summary>Construction Progress needed to finish — 10 for a Granary, 15 for a Spore Farm.</summary>
-    public float ProgressRequired => Kind == BuildingKind.Granary ? 10f : 15f;
+    /// <summary>Construction Progress needed to finish — 10 for a Granary, 15 for a Spore Farm, 20 for a Trading Post.</summary>
+    public float ProgressRequired => Kind switch
+    {
+        BuildingKind.Granary => 10f,
+        BuildingKind.TradingPost => 20f,
+        _ => 15f,
+    };
 
     public Vector3 Position { get; }
     public float Progress { get; private set; }
@@ -5073,6 +5357,7 @@ public sealed class Bramblekin
     private float _pauseTimer;
     private float _pokeCooldown;
     private FoodShard? _carried;
+    private AmberNode? _carriedAmber;
 
     /// <summary>
     /// Thievery: the foreign Village Heart this Gatherer is currently
@@ -5096,6 +5381,7 @@ public sealed class Bramblekin
     private FoodShard? _claimedShard;
     private Aphid? _claimedAphid;
     private Acorn? _claimedAcorn;
+    private AmberNode? _claimedAmber;
 
     /// <summary>
     /// The Bramblekin this Militia unit is currently chasing down while
@@ -5132,7 +5418,7 @@ public sealed class Bramblekin
     /// <summary>Gatherer by default; the Job Manager promotes/demotes it to track the player's Militia Target.</summary>
     public BramblekinRole Role { get; private set; } = BramblekinRole.Gatherer;
 
-    public bool IsCarrying => _carried is not null;
+    public bool IsCarrying => _carried is not null || _carriedAmber is not null;
 
     /// <summary>
     /// Individual Equipment: true once this specific Militia unit has
@@ -5240,6 +5526,7 @@ public sealed class Bramblekin
         ReleaseFoodClaim();
         ReleaseAphidClaim();
         ReleaseAcornClaim();
+        ReleaseAmberClaim();
 
         // The Schism: a Pioneer lost en route. Tells its Migration so the
         // origin's HasActiveMigration eventually clears if all 4 are lost
@@ -5315,6 +5602,7 @@ public sealed class Bramblekin
         ReleaseFoodClaim();
         ReleaseAphidClaim();
         ReleaseAcornClaim();
+        ReleaseAmberClaim();
 
         FactionID = migration.NewFactionID;
         FactionColor = migration.NewFactionColor;
@@ -5642,8 +5930,9 @@ public sealed class Bramblekin
             Raylib.DrawCube(headCenter, 0.12f, 0.12f, 0.12f, MalletHeadColor);
         }
 
-        // Carried food rides on top of the head.
+        // Carried food (or Amber) rides on top of the head.
         _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
+        _carriedAmber?.Draw(Position + new Vector3(0, BodyHeight, 0));
     }
 
     /// <summary>Unit Colors: blends a faint dash of <see cref="FactionColor"/> into a base body color, so tribes read apart without drowning out State/Role's own colour cues.</summary>
@@ -5654,7 +5943,7 @@ public sealed class Bramblekin
         return new Color(Mix(baseColor.R, FactionColor.R), Mix(baseColor.G, FactionColor.G), Mix(baseColor.B, FactionColor.B), baseColor.A);
     }
 
-    /// <summary>Puts carried food back on the ground where we stand (it can be gathered again later). Thievery: also clears <see cref="TrespassingAgainst"/> — the flag only ever applies while the stolen goods are still in hand.</summary>
+    /// <summary>Puts carried food (or Amber) back on the ground where we stand (it can be gathered again later). Thievery: also clears <see cref="TrespassingAgainst"/> — the flag only ever applies while the stolen goods are still in hand.</summary>
     public void DropCarried()
     {
         if (_carried is not null)
@@ -5662,6 +5951,14 @@ public sealed class Bramblekin
             _carried.Position = Position;
             _carried.IsCarried = false;
             _carried = null;
+            TrespassingAgainst = null;
+        }
+
+        if (_carriedAmber is not null)
+        {
+            _carriedAmber.Position = Position;
+            _carriedAmber.IsCarried = false;
+            _carriedAmber = null;
             TrespassingAgainst = null;
         }
     }
@@ -5672,6 +5969,14 @@ public sealed class Bramblekin
         if (_claimedShard is not null && _claimedShard.ClaimedBy == this)
             _claimedShard.ClaimedBy = null;
         _claimedShard = null;
+    }
+
+    /// <summary>Tycoon Economy Dibs: releases this Gatherer's claim on its current Amber target, if any.</summary>
+    private void ReleaseAmberClaim()
+    {
+        if (_claimedAmber is not null && _claimedAmber.ClaimedBy == this)
+            _claimedAmber.ClaimedBy = null;
+        _claimedAmber = null;
     }
 
     /// <summary>Dibs: releases this Bramblekin's claim on its current Aphid target, if any.</summary>
@@ -5763,6 +6068,45 @@ public sealed class Bramblekin
             SetState(BramblekinState.Cracking);
             return;
         }
+
+        // Tycoon Economy — Maslow's Hierarchy: a well-fed village's
+        // Gatherers chase Amber (wealth) ahead of wild food; a hungry one
+        // ignores Amber completely and falls straight through to the Food
+        // Shard logic below. Same Safe Gathering (Danger Penalty) and
+        // Maximum Search Radius rules as any other target — see
+        // World.NearestAvailableAmber.
+        bool wellFed = home is not null && home.FoodStored >= home.MaxFoodCapacity / 2;
+        AmberNode? amber = wellFed ? world.NearestAvailableAmber(Position, this) : null;
+        if (amber is not null)
+        {
+            if (amber != _claimedAmber)
+            {
+                ReleaseAmberClaim();
+                _claimedAmber = amber;
+                amber.ClaimedBy = this;
+                amber.ClaimTimer = 0f;
+            }
+
+            if (GroundMover.HorizontalDistance(Position, amber.Position) <= PickupDistance)
+            {
+                amber.IsCarried = true;
+                amber.ClaimedBy = null;
+                _claimedAmber = null;
+                _carriedAmber = amber;
+
+                // Same Thievery rule as a stolen Food Shard: an Amber node
+                // sitting inside a rival's 20m border flags us as a caught
+                // trespasser the instant we pick it up.
+                TrespassingAgainst = world.ForeignTerritoryContaining(amber.Position, FactionID);
+
+                SetState(BramblekinState.Returning);
+                return;
+            }
+
+            _mover.MoveTowards(amber.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+            return;
+        }
+        ReleaseAmberClaim(); // Not well-fed, or nothing to chase — don't leave a stale claim behind.
 
         FoodShard? shard = world.NearestAvailableShard(Position, this, home);
         if (shard != _claimedShard)
@@ -5858,8 +6202,16 @@ public sealed class Bramblekin
 
         if (GroundMover.HorizontalDistance(Position, home.Center) <= home.DeliveryDistance)
         {
-            world.DeliverFood(_carried!, home);
-            _carried = null;
+            if (_carriedAmber is not null)
+            {
+                world.DeliverAmber(_carriedAmber, home);
+                _carriedAmber = null;
+            }
+            else
+            {
+                world.DeliverFood(_carried!, home);
+                _carried = null;
+            }
             TrespassingAgainst = null; // Got away with it — the theft is over either way.
 
             // Always go back through Walking rather than jumping straight
@@ -6268,7 +6620,10 @@ public sealed class Bramblekin
     private void SetState(BramblekinState state)
     {
         if (state != BramblekinState.Gathering)
+        {
             ReleaseFoodClaim();
+            ReleaseAmberClaim();
+        }
         if (state != BramblekinState.Gathering && state != BramblekinState.Cracking)
             ReleaseAcornClaim();
         if (state != BramblekinState.Hunting)
