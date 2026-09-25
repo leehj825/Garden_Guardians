@@ -79,6 +79,21 @@ public static class Game
     /// </summary>
     private const float MaxDeltaTime = 1f / 20f;
 
+    /// <summary>Debug Time Scale: the speeds the corner +/- buttons step through, clamped at either end.</summary>
+    private static readonly float[] TimeScaleSteps = { 1f, 2f, 5f, 10f, 100f };
+
+    /// <summary>
+    /// Debug Time Scale. Rather than feeding World.Update() an oversized
+    /// deltaTime at high multiples (which would let pebbles tunnel through
+    /// the ground and walkers skip past obstacles in a single giant physics
+    /// step), the main loop below instead calls World.Update() this many
+    /// times per rendered frame, each with its own normal, clamped
+    /// deltaTime — every timer, cooldown and movement speed inside it ends
+    /// up advancing exactly TimeScale times faster in wall-clock terms,
+    /// without ever destabilizing the physics.
+    /// </summary>
+    private static float _timeScale = 1f;
+
     public static void Run(GamePlatform platform)
     {
         if (platform == GamePlatform.Desktop)
@@ -94,26 +109,47 @@ public static class Game
 
         // --- Build the world -------------------------------------------------
         var camera = IsometricCamera.Create(target: Vector3.Zero, distance: 30f);
-        var world = new World(new Terrain(size: 20f), new Random(), ColonySize);
-        world.SpawnSpiderNearEdge();
+        var world = new World(new Terrain(size: 60f), new Random(), ColonySize);
+        world.SpawnSpiderNearVillage();
         var input = new MiracleInput();
+        var touchCamera = new TouchCameraController();
         var pebbleButton = new UiButton(new Rectangle(20, 20, 220, 50));
         var gustButton = new UiButton(new Rectangle(250, 20, 180, 50));
+        var speedDownButton = new UiButton(new Rectangle(20, 80, 50, 44));
+        var speedUpButton = new UiButton(new Rectangle(130, 80, 50, 44));
 
         // --- Main loop -------------------------------------------------------
         while (!Raylib.WindowShouldClose())
         {
-            float deltaTime = MathF.Min(Raylib.GetFrameTime(), MaxDeltaTime);
+            float rawDeltaTime = MathF.Min(Raylib.GetFrameTime(), MaxDeltaTime);
+
+            // 0) Mobile camera: one-finger drag pans, two-finger pinch zooms.
+            //    Runs before the miracle input below so the rest of the frame
+            //    sees an already-settled camera.
+            touchCamera.Update(ref camera, world.Terrain.Size / 2f);
 
             // 1) Input: a pure God Game — the player's only lever on the
             //    world is a miracle. Conscription, Sprouting and Village
             //    Building are all the Village Heart's own business now, run
             //    autonomously inside world.Update() below with no UI of
-            //    their own to intercept a press first.
-            input.Update(deltaTime, camera, world, pebbleButton, gustButton);
+            //    their own to intercept a press first. The Debug Time Scale
+            //    +/- buttons are checked first and, if hit, swallow the click
+            //    so it never also lands as a ground click/miracle cast.
+            bool mousePressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
+            Vector2 mousePosition = Raylib.GetMousePosition();
+            if (mousePressed && speedDownButton.Contains(mousePosition))
+                DecreaseTimeScale();
+            else if (mousePressed && speedUpButton.Contains(mousePosition))
+                IncreaseTimeScale();
+            else
+                input.Update(rawDeltaTime, camera, world, pebbleButton, gustButton);
 
-            // 2) Simulation.
-            world.Update(deltaTime);
+            // 2) Simulation: TimeScale runs World.Update() several times per
+            //    rendered frame (see _timeScale's own doc comment) rather
+            //    than scaling deltaTime itself.
+            int simulationSteps = Math.Max(1, (int)MathF.Round(_timeScale));
+            for (int step = 0; step < simulationSteps; step++)
+                world.Update(rawDeltaTime);
 
             // 3) Rendering.
             Raylib.BeginDrawing();
@@ -133,8 +169,12 @@ public static class Game
             gustButton.Draw(input.GustButtonLabel,
                             highlighted: input.State is InputState.GustEquipped or InputState.GustDragging,
                             disabled: !input.CanAffordGust(world));
+            speedDownButton.Draw("-", highlighted: false, disabled: _timeScale <= TimeScaleSteps[0]);
+            DrawSpeedLabel();
+            speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
             DrawFaithMeter(world.Faith);
             DrawColonyPanel(world);
+            DrawGenesisPrompt(world);
             DrawHud(input, world);
 
             Raylib.EndDrawing();
@@ -147,6 +187,33 @@ public static class Game
         }
 
         Raylib.CloseWindow();
+    }
+
+    /// <summary>Debug Time Scale: steps down to the previous speed in <see cref="TimeScaleSteps"/>, clamped at 1x.</summary>
+    private static void DecreaseTimeScale()
+    {
+        int index = Array.IndexOf(TimeScaleSteps, _timeScale);
+        _timeScale = TimeScaleSteps[Math.Max(0, index - 1)];
+    }
+
+    /// <summary>Debug Time Scale: steps up to the next speed in <see cref="TimeScaleSteps"/>, clamped at the fastest.</summary>
+    private static void IncreaseTimeScale()
+    {
+        int index = Array.IndexOf(TimeScaleSteps, _timeScale);
+        _timeScale = TimeScaleSteps[Math.Min(TimeScaleSteps.Length - 1, index + 1)];
+    }
+
+    /// <summary>The current speed ("5x"), on a small panel in the gap between the +/- buttons — gold once sped up, same as an armed miracle button.</summary>
+    private static void DrawSpeedLabel()
+    {
+        const int fontSize = 22, x = 70, width = 60, y = 80, height = 44;
+        Raylib.DrawRectangle(x, y, width, height, PanelFill);
+        Raylib.DrawRectangleLines(x, y, width, height, PanelInk);
+
+        string text = $"{(int)_timeScale}x";
+        int textWidth = Raylib.MeasureText(text, fontSize);
+        Color color = _timeScale != 1f ? new Color(230, 190, 60, 255) : PanelInk;
+        Raylib.DrawText(text, x + (width - textWidth) / 2, y + (height - fontSize) / 2, fontSize, color);
     }
 
     private static readonly Color PanelFill = new(255, 250, 235, 220);
@@ -169,6 +236,11 @@ public static class Game
 
         if (world.Spider is { } spider)
             DrawHealthBar(camera, spider.Position + new Vector3(0, WolfSpider.BodyRadius * 2f + 0.3f, 0), spider.Health, WolfSpider.MaxHealth);
+
+        // Base Razing: a Village Heart under attack shows its own bar too,
+        // same hidden-until-damaged rule as everything else here.
+        foreach (VillageHeart village in world.Villages)
+            DrawHealthBar(camera, village.Center + new Vector3(0, VillageHeart.Height + 0.3f, 0), village.Health, VillageHeart.MaxHealth);
     }
 
     /// <summary>A small red-background/green-fill bar at <paramref name="worldPosition"/>'s projected screen point.</summary>
@@ -243,27 +315,103 @@ public static class Game
         Raylib.DrawLineEx(new Vector2(tickX, bar.Y - 3), new Vector2(tickX, bar.Y + bar.Height + 3), 2f, PanelInk);
     }
 
-    /// <summary>Food (against the storage cap), population, Militia and Morale, top right.</summary>
+    /// <summary>
+    /// Contextual Faction UI: Food (against the storage cap), Population,
+    /// Militia and Morale for whichever single faction <see cref="World.SelectedFactionID"/>
+    /// currently points at (tap a Village Heart to switch — see
+    /// <see cref="World.TrySelectFactionAt"/>), top right. No longer a
+    /// global aggregate across every faction on the map.
+    /// </summary>
     private static void DrawColonyPanel(World world)
     {
+        VillageHeart? village = world.SelectedVillage;
+        if (village is null)
+            return; // No faction founded yet.
+
         const int fontSize = 24, lineHeight = 30;
-        int militia = world.Colony.Count(b => !b.IsDead && b.Role == BramblekinRole.Militia);
-        string food = $"Food Stored: {world.FoodStored} / {world.MaxFoodCapacity}";
-        string population = $"Population: {world.Colony.Count}   Militia: {militia}";
-        string morale = $"Morale: {(int)world.Morale}%" +
-                         (world.GatherersAreWeary ? " (Weary)" : world.BuildersAreInspired ? " (Inspired)" : "");
-        int width = Math.Max(Raylib.MeasureText(food, fontSize), Math.Max(Raylib.MeasureText(population, fontSize), Raylib.MeasureText(morale, fontSize)));
+        int militia = world.Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
+        string header = $"{FactionColorName(village.FactionColor)} Faction ({village.Trait})";
+        string food = $"Food Stored: {village.FoodStored} / {village.MaxFoodCapacity}";
+        string population = $"Population: {village.Population}   Militia: {militia}";
+        string morale = $"Morale: {(int)village.Morale}%" +
+                         (village.GatherersAreWeary ? " (Weary)" : village.BuildersAreInspired ? " (Inspired)" : "");
+        int width = Math.Max(Raylib.MeasureText(header, fontSize),
+                    Math.Max(Raylib.MeasureText(food, fontSize),
+                    Math.Max(Raylib.MeasureText(population, fontSize), Raylib.MeasureText(morale, fontSize))));
         int x = Raylib.GetScreenWidth() - width - 30;
 
-        Raylib.DrawRectangle(x - 12, 18, width + 24, lineHeight * 3 + 14, PanelFill);
-        Raylib.DrawRectangleLines(x - 12, 18, width + 24, lineHeight * 3 + 14, PanelInk);
-        Raylib.DrawText(food, x, 26, fontSize, PanelInk);
-        Raylib.DrawText(population, x, 26 + lineHeight, fontSize, PanelInk);
-        Color moraleColor = world.GatherersAreWeary ? new Color(170, 60, 40, 255)
-                           : world.BuildersAreInspired ? new Color(60, 130, 70, 255)
-                           : PanelInk;
-        Raylib.DrawText(morale, x, 26 + lineHeight * 2, fontSize, moraleColor);
+        // Color Coding: the panel itself is tinted toward the selected
+        // faction's own colour (blended with the usual parchment fill/ink
+        // rather than replacing them outright, so the text stays legible
+        // whatever the faction's hue) so the player always knows who
+        // they're inspecting at a glance.
+        Color fill = BlendToward(PanelFill, village.FactionColor, 0.4f);
+        Color ink = BlendToward(PanelInk, village.FactionColor, 0.4f);
+
+        Raylib.DrawRectangle(x - 12, 18, width + 24, lineHeight * 4 + 14, fill);
+        Raylib.DrawRectangleLines(x - 12, 18, width + 24, lineHeight * 4 + 14, ink);
+        Raylib.DrawText(header, x, 26, fontSize, ink);
+        Raylib.DrawText(food, x, 26 + lineHeight, fontSize, ink);
+        Raylib.DrawText(population, x, 26 + lineHeight * 2, fontSize, ink);
+        Color moraleColor = village.GatherersAreWeary ? new Color(170, 60, 40, 255)
+                           : village.BuildersAreInspired ? new Color(60, 130, 70, 255)
+                           : ink;
+        Raylib.DrawText(morale, x, 26 + lineHeight * 3, fontSize, moraleColor);
     }
+
+    /// <summary>
+    /// Genesis: once <see cref="World.IsWorldExtinct"/>, blinks a large
+    /// center-screen prompt (twice a second, driven off <see cref="Raylib.GetTime"/>
+    /// so it needs no state of its own) telling the player to tap anywhere
+    /// to reseed the world. The actual tap handling lives in
+    /// <see cref="MiracleInput.HandlePress"/>/TryGenesis.
+    /// </summary>
+    private static void DrawGenesisPrompt(World world)
+    {
+        if (!world.IsWorldExtinct)
+            return;
+        if ((int)(Raylib.GetTime() * 2) % 2 != 0)
+            return; // Blink: visible for half of every second.
+
+        const int titleSize = 44, subtitleSize = 28;
+        string title = "World Dead.";
+        string subtitle = $"Tap anywhere to Seed new Life (Cost: {(int)MiracleManager.GenesisFaithCost} Faith)";
+        int titleWidth = Raylib.MeasureText(title, titleSize);
+        int subtitleWidth = Raylib.MeasureText(subtitle, subtitleSize);
+        int centerX = Raylib.GetScreenWidth() / 2;
+        int centerY = Raylib.GetScreenHeight() / 2;
+
+        var color = new Color(200, 40, 40, 255);
+        Raylib.DrawText(title, centerX - titleWidth / 2, centerY - titleSize, titleSize, color);
+        Raylib.DrawText(subtitle, centerX - subtitleWidth / 2, centerY + 8, subtitleSize, color);
+    }
+
+    /// <summary>
+    /// Faction Personalities: a human-readable name for a faction's colour
+    /// — the original Village Heart's green, or one of the four Schism
+    /// palette colours (see <see cref="World.SchismFactionColors"/> — kept
+    /// in sync with it by hand, since it's a display-only lookup) — for the
+    /// panel header ("Blue Faction (Militaristic)"). Falls back to the
+    /// FactionID if a colour somehow doesn't match (never expected in
+    /// practice, since every Village Heart's colour comes from one of these
+    /// two sources).
+    /// </summary>
+    private static string FactionColorName(Color color) => color switch
+    {
+        { R: 40, G: 180, B: 90 } => "Green",
+        { R: 60, G: 120, B: 220 } => "Blue",
+        { R: 225, G: 195, B: 55 } => "Yellow",
+        { R: 205, G: 60, B: 55 } => "Red",
+        { R: 150, G: 80, B: 195 } => "Purple",
+        _ => "Unknown",
+    };
+
+    /// <summary>Blends <paramref name="baseColor"/> toward <paramref name="tint"/> by <paramref name="amount"/> (0 = unchanged, 1 = fully tint), keeping <paramref name="baseColor"/>'s own alpha.</summary>
+    private static Color BlendToward(Color baseColor, Color tint, float amount) => new(
+        (byte)Math.Clamp(baseColor.R + (tint.R - baseColor.R) * amount, 0, 255),
+        (byte)Math.Clamp(baseColor.G + (tint.G - baseColor.G) * amount, 0, 255),
+        (byte)Math.Clamp(baseColor.B + (tint.B - baseColor.B) * amount, 0, 255),
+        baseColor.A);
 
     /// <summary>Small help text and debug counters in the bottom-left corner.</summary>
     private static void DrawHud(MiracleInput input, World world)
@@ -283,7 +431,7 @@ public static class Game
             $"Pebbles: {world.Physics.Count}   Bramblekin: {world.Colony.Count} " +
             $"(gathering {Count(BramblekinState.Gathering)}, returning {Count(BramblekinState.Returning)}, " +
             $"fleeing {Count(BramblekinState.Fleeing)}, defending {Count(BramblekinState.Defending)}, " +
-            $"hunting {Count(BramblekinState.Hunting)}, lost {world.Casualties})   " +
+            $"hunting {Count(BramblekinState.Hunting)}, raiding {Count(BramblekinState.Raiding)}, lost {world.Casualties})   " +
             $"Aphids: {world.Aphids.Count(a => !a.IsDead)}   " +
             $"Spider: {SpiderStatus(world)}   Sprouted: {world.Births}   FPS: {Raylib.GetFPS()}",
             20, y + 26, 20, Color.DarkGray);
@@ -329,6 +477,130 @@ public static class IsometricCamera
             FovY = 45f,                                   // Degrees, vertical.
             Projection = CameraProjection.Perspective,
         };
+    }
+}
+
+/// <summary>
+/// Mobile camera controls layered on top of the fixed isometric view. A
+/// single finger is reserved entirely for World interaction — UI clicks and
+/// Miracle targeting (tapping Pebble-Drop, dragging out a Gust) — and never
+/// moves the camera. Only a two-finger gesture drives the camera: the
+/// midpoint's drag pans it across the terrain's X/Z plane, and the pinch
+/// distance's change moves it closer to or further from its Target. Both
+/// translate <see cref="Camera3D.Position"/> and <see cref="Camera3D.Target"/>
+/// together, so the viewing angle never changes — only where it's centred
+/// and how far back it sits.
+/// </summary>
+public sealed class TouchCameraController
+{
+    /// <summary>Closest the camera may zoom in, in meters from its Target.</summary>
+    private const float MinZoomDistance = 8f;
+
+    /// <summary>Furthest the camera may zoom out, in meters from its Target.</summary>
+    private const float MaxZoomDistance = 45f;
+
+    /// <summary>How many meters of pinch-distance change it takes to move the camera one meter.</summary>
+    private const float PinchZoomSensitivity = 0.05f;
+
+    /// <summary>Keeps the Target from panning off the playable terrain, in meters from its edge.</summary>
+    private const float PanEdgeMargin = 5f;
+
+    private Vector2 _previousMidpoint;
+    private float _previousPinchDistance;
+    private bool _isTwoFingerGesture;
+
+    public void Update(ref Camera3D camera, float worldHalfSize)
+    {
+        int touchCount = Raylib.GetTouchPointCount();
+
+        // Two fingers only: a single touch belongs entirely to MiracleInput
+        // (UI buttons, Pebble-Drop taps, Gust drags) and must never also pan
+        // the camera underneath it.
+        if (touchCount == 2)
+        {
+            Vector2 first = Raylib.GetTouchPosition(0);
+            Vector2 second = Raylib.GetTouchPosition(1);
+            Vector2 midpoint = (first + second) / 2f;
+            float distance = Vector2.Distance(first, second);
+
+            if (_isTwoFingerGesture)
+            {
+                Pan(ref camera, midpoint - _previousMidpoint);
+                Zoom(ref camera, distance - _previousPinchDistance);
+            }
+
+            _previousMidpoint = midpoint;
+            _previousPinchDistance = distance;
+            _isTwoFingerGesture = true;
+        }
+        else
+        {
+            _isTwoFingerGesture = false;
+        }
+
+        ClampTargetToWorld(ref camera, worldHalfSize);
+    }
+
+    /// <summary>Translates Position and Target together across the ground plane, following the two-finger midpoint.</summary>
+    private static void Pan(ref Camera3D camera, Vector2 screenDelta)
+    {
+        if (screenDelta == Vector2.Zero)
+            return;
+
+        Vector3 forward = Vector3.Normalize(camera.Target - camera.Position);
+        Vector3 right = Vector3.Normalize(Vector3.Cross(forward, camera.Up));
+
+        // Flatten both basis vectors onto the X/Z plane: dragging the finger
+        // should slide the camera across the terrain, not up into the sky.
+        var forwardXZ = new Vector3(forward.X, 0, forward.Z);
+        var rightXZ = new Vector3(right.X, 0, right.Z);
+        if (forwardXZ.LengthSquared() > 1e-6f) forwardXZ = Vector3.Normalize(forwardXZ);
+        if (rightXZ.LengthSquared() > 1e-6f) rightXZ = Vector3.Normalize(rightXZ);
+
+        // Scale by how far back the camera is sitting, so a pinch-zoomed-out
+        // view (which shows more ground per pixel) still pans at a matching
+        // on-screen speed instead of feeling sluggish.
+        float distance = Vector3.Distance(camera.Position, camera.Target);
+        float metersPerPixel = distance * 0.0016f;
+
+        // Dragging a finger right/up should slide the world the same way
+        // under it, which means moving the camera left/back.
+        Vector3 worldDelta = (-rightXZ * screenDelta.X + forwardXZ * screenDelta.Y) * metersPerPixel;
+        camera.Position += worldDelta;
+        camera.Target += worldDelta;
+    }
+
+    /// <summary>Moves Position along the Target->Position axis: fingers spreading apart zooms in.</summary>
+    private static void Zoom(ref Camera3D camera, float pinchDistanceDelta)
+    {
+        if (pinchDistanceDelta == 0f)
+            return;
+
+        Vector3 offset = camera.Position - camera.Target;
+        float distance = offset.Length();
+        if (distance < 1e-4f)
+            return;
+
+        Vector3 direction = offset / distance;
+        float newDistance = Math.Clamp(distance - pinchDistanceDelta * PinchZoomSensitivity, MinZoomDistance, MaxZoomDistance);
+        camera.Position = camera.Target + direction * newDistance;
+    }
+
+    /// <summary>Keeps the camera's Target from drifting off the playable terrain.</summary>
+    private static void ClampTargetToWorld(ref Camera3D camera, float worldHalfSize)
+    {
+        float limit = worldHalfSize + PanEdgeMargin;
+        var clampedTarget = new Vector3(
+            Math.Clamp(camera.Target.X, -limit, limit),
+            camera.Target.Y,
+            Math.Clamp(camera.Target.Z, -limit, limit));
+
+        Vector3 correction = clampedTarget - camera.Target;
+        if (correction == Vector3.Zero)
+            return;
+
+        camera.Target += correction;
+        camera.Position += correction;
     }
 }
 
@@ -836,6 +1108,17 @@ public sealed class MiracleInput
     /// </summary>
     public void HandlePress(Vector2 screenPosition, Camera3D camera, World world, UiButton pebbleButton, UiButton gustButton)
     {
+        // --- Genesis: the world is dead (every Village Heart gone) --
+        // nothing below matters with nobody left to gather, build or fight,
+        // so a tap anywhere on the ground reseeds it instead (Faith
+        // allowing) rather than falling through to the usual miracle/UI
+        // handling.
+        if (world.IsWorldExtinct)
+        {
+            TryGenesis(screenPosition, camera, world);
+            return;
+        }
+
         // --- UI layer ------------------------------------------------------
         if (pebbleButton.Contains(screenPosition))
         {
@@ -859,6 +1142,13 @@ public sealed class MiracleInput
             return;
         }
 
+        // --- Contextual Faction UI: a tap on or very near a Village Heart
+        // inspects that faction, regardless of what's equipped below --
+        // this is a separate concern from casting a miracle, so it never
+        // returns early or consumes the tap.
+        if (PickGround(camera, world.Terrain, screenPosition) is { } tapGround)
+            world.TrySelectFactionAt(tapGround);
+
         // --- World layer ---------------------------------------------------
         switch (State)
         {
@@ -877,6 +1167,27 @@ public sealed class MiracleInput
                 }
                 break;
         }
+    }
+
+    /// <summary>
+    /// Genesis: raycasts the tap onto the terrain and, if it lands and the
+    /// player can afford <see cref="MiracleManager.GenesisFaithCost"/>
+    /// Faith, spends it and reseeds the world right there. A tap that
+    /// misses the terrain, or lands without enough Faith banked, is simply
+    /// ignored — the blinking prompt (<see cref="Game.DrawGenesisPrompt"/>)
+    /// stays up and the player just tries again once Faith regenerates.
+    /// </summary>
+    private void TryGenesis(Vector2 screenPosition, Camera3D camera, World world)
+    {
+        if (world.Faith < MiracleManager.GenesisFaithCost)
+            return;
+
+        Vector3? groundPoint = PickGround(camera, world.Terrain, screenPosition);
+        if (groundPoint is null)
+            return;
+
+        world.TrySpendFaith(MiracleManager.GenesisFaithCost);
+        world.Genesis(groundPoint.Value);
     }
 
     /// <summary>Raycasts the tap onto the terrain and, if it lands, spends Faith and casts the Pebble-Drop.</summary>
@@ -1170,6 +1481,9 @@ public sealed class MiracleManager
     /// <summary>Faith spent per Gust.</summary>
     public const float GustFaithCost = 10f;
 
+    /// <summary>Genesis: Faith spent to reseed the world from total extinction — see <see cref="World.Genesis"/>.</summary>
+    public const float GenesisFaithCost = 50f;
+
     /// <summary>How long the wind-streak visual plays for, in seconds.</summary>
     public const float GustVisualDuration = 1f;
 
@@ -1299,14 +1613,34 @@ public readonly record struct Obstacle(Vector2 Center, float Radius);
 /// </summary>
 public sealed class World
 {
-    /// <summary>Seconds after an acorn is cracked before a new one appears.</summary>
-    private const float AcornRespawnDelay = 4f;
+    /// <summary>Seconds between checks that top the Acorn population back up to <see cref="MaxAcorns"/>.</summary>
+    private const float AcornSpawnInterval = 6f;
+
+    /// <summary>Most Acorns allowed on the map at once, per faction — richly populated across the full 60x60 map rather than one at a time.</summary>
+    private const int MaxAcornsPerFaction = 5;
+
+    /// <summary>
+    /// Dynamic Ecosystem Scaling: the map-wide Acorn cap grows with the number of
+    /// active <see cref="Villages"/> so a 5-faction map isn't starved by a cap sized
+    /// for one colony. Never scales below a single faction's worth.
+    /// </summary>
+    private int MaxAcorns => MaxAcornsPerFaction * Math.Max(1, Villages.Count);
+
+    /// <summary>How many Acorns the map starts with.</summary>
+    private const int InitialAcorns = 2;
 
     /// <summary>
     /// How far (beyond touching) a pebble may land from the acorn and still
     /// crack it — "on or very close to" the acorn.
     /// </summary>
     private const float AcornCrackSlack = 0.4f;
+
+    /// <summary>
+    /// Cooperative Acorn Cracking: extra reach (m) beyond a Chitin-Mallet
+    /// Gatherer's body radius and the Acorn's own radius — three of them
+    /// must actually be touching it, not just nearby, for it to shatter.
+    /// </summary>
+    public const float AcornCoopContactMargin = 0.3f;
 
     /// <summary>
     /// Number of Food Shards a cracked acorn yields. High-yield: the reward
@@ -1357,17 +1691,24 @@ public sealed class World
     /// <summary>One-time knockback (m) the Wolf Spider gets from a Gust.</summary>
     public const float SpiderGustKnockback = 3f;
 
-    /// <summary>How often a wild Berry appears, in seconds.</summary>
-    public const float BerrySpawnInterval = 8f;
+    /// <summary>How often a wild Berry appears, in seconds — fast enough to richly populate the whole 60x60 map.</summary>
+    public const float BerrySpawnInterval = 3f;
 
-    /// <summary>Most Berries allowed on the map (loose or carried) at once.</summary>
-    public const int MaxBerries = 5;
+    /// <summary>Most Berries allowed on the map (loose or carried) at once, per faction.</summary>
+    public const int MaxBerriesPerFaction = 18;
 
-    /// <summary>Aphid population the world tries to maintain.</summary>
-    public const int MaxAphids = 3;
+    /// <summary>
+    /// Dynamic Ecosystem Scaling: the map-wide Berry cap grows with the number of
+    /// active <see cref="Villages"/> so a 5-faction map isn't starved by a cap sized
+    /// for one colony. Never scales below a single faction's worth.
+    /// </summary>
+    public int MaxBerries => MaxBerriesPerFaction * Math.Max(1, Villages.Count);
+
+    /// <summary>Aphid population the world tries to maintain, spread across the whole map.</summary>
+    public const int MaxAphids = 12;
 
     /// <summary>Seconds between checks that top the Aphid population back up after a loss.</summary>
-    public const float AphidRespawnDelay = 12f;
+    public const float AphidRespawnDelay = 5f;
 
     /// <summary>Food Shards a Militia-hunted Aphid drops.</summary>
     private const int AphidFoodShardYield = 2;
@@ -1402,8 +1743,65 @@ public sealed class World
     /// <summary>How long (seconds) a floating text pop-up (Upkeep, Starvation) stays on screen.</summary>
     public const float FloatingTextDuration = 1.5f;
 
-    /// <summary>Found-Object Weaponry: Spider Fangs the Village Heart needs banked before the Fang Pikes upgrade unlocks.</summary>
-    public const int FangsNeededForUpgrade = 2;
+    /// <summary>
+    /// The 20-Meter Territory Rule: Militia never target a hostile (Aphid or
+    /// Wolf Spider) further than this from their own Village Heart, and
+    /// Gatherers prefer unclaimed food within this radius before looking
+    /// anywhere else on the map (see <see cref="NearestAvailableShard"/>) —
+    /// unless that Village Heart is starving (see <see cref="DesperationFoodThreshold"/>).
+    /// Deliberately a distinct, larger radius than <see cref="VillageHeart.TerritoryRadius"/>'s
+    /// 15 m visual ring.
+    /// </summary>
+    public const float TerritoryTargetingRadius = 20f;
+
+    /// <summary>
+    /// Base Defense Aggro: any foreign Bramblekin caught within this
+    /// distance of a Village Heart's own centre — much tighter than the
+    /// full <see cref="TerritoryTargetingRadius"/> ring — is treated as an
+    /// immediate, lethal threat regardless of any existing peace or Truce,
+    /// instantly triggering a Blood Feud. This close to the Heart itself,
+    /// there's no such thing as an innocent bystander — see
+    /// <see cref="NearestForeignBramblekinNearHeart"/>.
+    /// </summary>
+    public const float BaseDefenseAggroRadius = 5f;
+
+    /// <summary>
+    /// Desperation Mode: once a Village Heart's Food Stored drops below
+    /// this, its Gatherers stop preferring food within <see cref="TerritoryTargetingRadius"/>
+    /// and instead track the nearest unclaimed food anywhere on the map —
+    /// starving is worse than a long walk home.
+    /// </summary>
+    public const int DesperationFoodThreshold = 5;
+
+    /// <summary>
+    /// Dibs failsafe: a Food Shard claimed but not actually picked up within
+    /// this many seconds of game time has its claim force-released, so a
+    /// claimant that's stuck, jittering at high Debug Time Scale, or
+    /// otherwise never closes the distance can't lock it away from everyone
+    /// else forever. See <see cref="UpdateFoodClaimTimeouts"/>.
+    /// </summary>
+    public const float FoodClaimTimeoutSeconds = 15f;
+
+    /// <summary>The Schism: a Village Heart is Overcrowded once its Population reaches its MaxFoodCapacity — 40 at the 3-Granary cap.</summary>
+    public const int SchismFoodReserve = 30;
+
+    /// <summary>The Blood Feud: how long (s) a declared war lasts before peace is automatically restored — see <see cref="DeclareBloodFeud"/>.</summary>
+    public const float BloodFeudDurationSeconds = 120f;
+
+    /// <summary>How far (m) a Migration Target must be from every existing Village Heart.</summary>
+    private const float MinMigrationDistance = 30f;
+
+    /// <summary>The palette a new Schism faction's colour is drawn from, cycling once all four are in use.</summary>
+    private static readonly Color[] SchismFactionColors =
+    {
+        new(60, 120, 220, 255),  // Blue
+        new(225, 195, 55, 255),  // Yellow
+        new(205, 60, 55, 255),   // Red
+        new(150, 80, 195, 255),  // Purple
+    };
+
+    /// <summary>The next Schism's FactionID. Starts at 1 — Faction 0 is the original Village Heart.</summary>
+    private int _nextSchismFactionId = 1;
 
     /// <summary>Morale cap. Also the starting amount: the colony begins confident.</summary>
     public const float MaxMorale = 100f;
@@ -1432,8 +1830,7 @@ public sealed class World
     private readonly List<Obstacle> _obstacles = new();
     private readonly List<(Vector3 Position, float TimeLeft)> _splats = new();
     private readonly List<(Vector3 Position, string Text, Color Color, float TimeLeft)> _floatingTexts = new();
-    private float _acornRespawnTimer;
-    private float _upkeepTimer = UpkeepInterval;
+    private float _acornSpawnTimer = AcornSpawnInterval;
 
     // Deferred creation/destruction. Nothing below is added to or removed
     // from Colony/FoodShards while any part of the frame might still be
@@ -1449,6 +1846,8 @@ public sealed class World
     private readonly List<Aphid> _pendingAphidRemovals = new();
     private readonly List<SpiderFang> _pendingFangSpawns = new();
     private readonly List<SpiderFang> _pendingFangRemovals = new();
+    private readonly List<Chitin> _pendingChitinSpawns = new();
+    private readonly List<Chitin> _pendingChitinRemovals = new();
 
     private float _berrySpawnTimer = BerrySpawnInterval;
     private float _aphidRespawnTimer = AphidRespawnDelay;
@@ -1456,27 +1855,93 @@ public sealed class World
     public Terrain Terrain { get; }
     public PhysicsManager Physics { get; }
     public MiracleManager Miracles { get; } = new();
-    public VillageHeart Village { get; }
-    public Acorn? Acorn { get; private set; }
+
+    /// <summary>
+    /// Every faction's Village Heart. Phase 3 prep: the world still starts
+    /// with exactly one (Faction 0, green — see <see cref="Village"/>), but
+    /// the economy loop below already runs independently per entry so a
+    /// splinter faction can simply be appended to this list later.
+    /// </summary>
+    public List<VillageHeart> Villages { get; } = new();
+
+    /// <summary>The original Village Heart (Faction 0) — a convenience for the many single-village call sites (HUD, the Wolf Spider's threat model) that aren't faction-aware yet.</summary>
+    public VillageHeart Village => Villages[0];
+
+    /// <summary>
+    /// Contextual Faction UI: which faction the top-right panel currently
+    /// inspects. Defaults to Faction 0 — the original Village Heart — so
+    /// the panel reads the same as before on a fresh game. Changed by
+    /// <see cref="TrySelectFactionAt"/> whenever the player taps on or near
+    /// a Village Heart.
+    /// </summary>
+    public int SelectedFactionID { get; set; }
+
+    /// <summary>The Village Heart <see cref="SelectedFactionID"/> currently points at, if that faction still exists (null once it's been razed — see <see cref="DestroyVillageHeart"/> — or, transiently, right after Genesis reseeds Faction 0 from total extinction).</summary>
+    public VillageHeart? SelectedVillage => VillageFor(SelectedFactionID);
+
+    /// <summary>How near a tap has to land to a Village Heart's centre to select its faction — generous, well beyond the 1.6m footprint, since it's meant to catch an imprecise finger tap.</summary>
+    public const float FactionSelectionRadius = 2.5f;
+
+    /// <summary>
+    /// Genesis: true once every Village Heart is gone — a dead end no
+    /// autonomous system (Auto-Sprout, the Job Manager, anything) can ever
+    /// climb out of on its own. See <see cref="MiracleInput"/>'s tap
+    /// handling (which reseeds Faction 0 via <see cref="Genesis"/> once the
+    /// player can afford it) and <see cref="Game.DrawGenesisPrompt"/> for
+    /// what happens while this holds.
+    /// </summary>
+    public bool IsWorldExtinct => Villages.Count == 0;
+
+    /// <summary>
+    /// Contextual Faction UI: a single tap on or very near a Village
+    /// Heart's footprint switches <see cref="SelectedFactionID"/> to that
+    /// faction. Independent of whatever miracle (if any) is equipped —
+    /// tapping a heart while a Pebble is armed still drops it right there
+    /// afterward. A miss (too far from every Village Heart) leaves the
+    /// current selection alone.
+    /// </summary>
+    public void TrySelectFactionAt(Vector3 groundPoint)
+    {
+        VillageHeart? nearest = null;
+        float bestDistanceSquared = FactionSelectionRadius * FactionSelectionRadius;
+
+        foreach (VillageHeart village in Villages)
+        {
+            float distanceSquared = Vector3.DistanceSquared(groundPoint, village.Center);
+            if (distanceSquared <= bestDistanceSquared)
+            {
+                nearest = village;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+
+        if (nearest is not null)
+            SelectedFactionID = nearest.FactionID;
+    }
+
+    /// <summary>Every Acorn currently on the map — richly populated (see <see cref="MaxAcorns"/>) rather than one at a time.</summary>
+    public List<Acorn> Acorns { get; } = new();
+
     public List<FoodShard> FoodShards { get; } = new();
     public List<Bramblekin> Colony { get; } = new();
     public List<Aphid> Aphids { get; } = new();
     public WolfSpider? Spider { get; set; }
     public Random Rng { get; }
 
-    /// <summary>Spider Fangs dropped by a dead Wolf Spider, waiting to be scavenged back to the Village Heart.</summary>
+    /// <summary>
+    /// Spider Fangs dropped by a dead Wolf Spider. Individual Equipment:
+    /// an un-upgraded Militia unit that touches one instantly equips
+    /// <see cref="Bramblekin.HasFangPike"/> and it despawns — no carrying
+    /// it home, no village-wide unlock.
+    /// </summary>
     public List<SpiderFang> Fangs { get; } = new();
 
-    /// <summary>Fangs delivered to the Village Heart so far.</summary>
-    public int FangsCollected { get; private set; }
-
     /// <summary>
-    /// Found-Object Weaponry: true once <see cref="FangsCollected"/> reaches
-    /// <see cref="FangsNeededForUpgrade"/> — from then on every Militia
-    /// unit's Poke hits harder and their pike renders as a Spider Fang
-    /// instead of a Rose-Thorn (see <see cref="Bramblekin.Draw"/>).
+    /// Chitin dropped by a dead Wolf Spider alongside its Fang. Individual
+    /// Equipment: an un-upgraded Gatherer that touches one instantly equips
+    /// <see cref="Bramblekin.HasChitinMallet"/> and it despawns.
     /// </summary>
-    public bool FangPikesUnlocked { get; private set; }
+    public List<Chitin> Chitins { get; } = new();
 
     /// <summary>Under-construction sites; a Blueprint becomes a <see cref="Building"/> once its Construction Progress is complete.</summary>
     public List<Blueprint> Blueprints { get; } = new();
@@ -1490,9 +1955,6 @@ public sealed class World
     /// <summary>Bramblekin sprouted from stored food so far.</summary>
     public int Births { get; private set; }
 
-    /// <summary>Food in the village stores, waiting to become the next sprout.</summary>
-    public int FoodStored { get; private set; }
-
     /// <summary>The god's power budget. Miracles spend it; worship refills it.</summary>
     public float Faith { get; set; } = MaxFaith;
 
@@ -1501,21 +1963,6 @@ public sealed class World
 
     /// <summary>Spiders crushed by direct pebble hits so far.</summary>
     public int SpidersCrushed { get; private set; }
-
-    /// <summary>
-    /// The Village Heart's food storage cap. Starts at <see cref="BaseMaxFoodCapacity"/>
-    /// and rises permanently by <see cref="GranaryFoodBonus"/> for each completed Granary.
-    /// </summary>
-    public int MaxFoodCapacity { get; private set; } = BaseMaxFoodCapacity;
-
-    /// <summary>War Weariness: the colony's morale, drained by casualties and an actively hunting spider, recovered by calm.</summary>
-    public float Morale { get; private set; } = MaxMorale;
-
-    /// <summary>Below <see cref="WearyMoraleThreshold"/>: Gatherers walk at <see cref="WearySpeedMultiplier"/> speed.</summary>
-    public bool GatherersAreWeary => Morale < WearyMoraleThreshold;
-
-    /// <summary>Above <see cref="HighMoraleThreshold"/>: Builders work at <see cref="HighMoraleBuildMultiplier"/> speed.</summary>
-    public bool BuildersAreInspired => Morale > HighMoraleThreshold;
 
     /// <summary>Solid circles every walker (Bramblekin, Aphids, the Wolf Spider) must steer around. Rebuilt every frame.</summary>
     public IReadOnlyList<Obstacle> Obstacles => _obstacles;
@@ -1529,59 +1976,67 @@ public sealed class World
         Rng = rng;
         Physics = new PhysicsManager(terrain);
 
-        // The Village Heart sits just off the centre of the garden. It is a
-        // solid box for pebbles and a solid circle for walkers.
-        Village = new VillageHeart(new Vector3(-2f, Terrain.GroundHeight, -2f));
-        Physics.AddStaticBox(Village.Bounds);
+        // The original Village Heart: Faction 0, green — sits just off the
+        // centre of the garden. It is a solid box for pebbles and a solid
+        // circle for walkers, same as any faction that joins it later.
+        var villageHeart = new VillageHeart(new Vector3(-2f, Terrain.GroundHeight, -2f), factionId: 0, factionColor: new Color(40, 180, 90, 255), rng);
+        villageHeart.UpkeepTimer = UpkeepInterval;
+        Villages.Add(villageHeart);
+        foreach (var village in Villages)
+            Physics.AddStaticBox(village.Bounds);
         RebuildObstacles();
 
-        Acorn = new Acorn(RandomAcornSpot());
+        for (int i = 0; i < InitialAcorns; i++)
+            Acorns.Add(new Acorn(RandomAcornSpot()));
 
         for (int i = 0; i < colonySize; i++)
-            Colony.Add(new Bramblekin(RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin), rng));
+            Colony.Add(new Bramblekin(RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin), rng, villageHeart.FactionID, villageHeart.FactionColor));
 
         for (int i = 0; i < MaxAphids; i++)
             Aphids.Add(new Aphid(RandomFreePoint(Aphid.BodyRadius, Aphid.EdgeMargin), rng));
     }
 
-    /// <summary>Living Bramblekin, Militia and Gatherer alike.</summary>
-    public int LivingPopulation => Colony.Count(b => !b.IsDead);
-
-    /// <summary>How many are Militia right now (the Job Manager works to make this match <see cref="MilitiaTarget"/>).</summary>
-    public int CurrentMilitia => Colony.Count(b => !b.IsDead && b.Role == BramblekinRole.Militia);
-
-    /// <summary>
-    /// Auto-Conscription: how many Bramblekin the Job Manager currently
-    /// wants as Militia, recomputed fresh every frame in <see cref="UpdateJobManager"/>
-    /// from <see cref="LivingPopulation"/> — the player has no direct say in
-    /// this any more. Exposed read-only for the HUD.
-    /// </summary>
-    public int MilitiaTarget { get; private set; }
+    /// <summary>The Village Heart whose Faction matches <paramref name="factionId"/>, if any.</summary>
+    public VillageHeart? VillageFor(int factionId) => Villages.FirstOrDefault(v => v.FactionID == factionId);
 
     /// <summary>The Village Heart's Auto-Conscription ratio: one Militia unit for every this-many Gatherers.</summary>
-    private const int GatherersPerMilitia = 3;
+    /// <summary>
+    /// Faction Personalities: the Population divisor for a Village Heart's
+    /// Auto-Conscription target, per its fixed-for-life <see cref="FactionTrait"/>
+    /// — Militaristic wants a Militia unit for every 2 Gatherers (Population / 3),
+    /// Agrarian for every 5 (Population / 6), Balanced for every 3 (Population / 4).
+    /// </summary>
+    private static int MilitiaTargetDivisorFor(FactionTrait trait) => trait switch
+    {
+        FactionTrait.Militaristic => 3,
+        FactionTrait.Agrarian => 6,
+        _ => 4,
+    };
 
     /// <summary>
-    /// The Job Manager: the Village Heart's own autonomous quartermaster.
-    /// Every frame it recomputes <see cref="MilitiaTarget"/> from the
-    /// current population — one Militia per <see cref="GatherersPerMilitia"/>
-    /// Gatherers (population / 4, integer division) — and nudges the actual
-    /// Militia headcount one step toward it: promoting the Gatherer nearest
-    /// the Village Heart if under target, or standing down the Militia unit
-    /// nearest the Village Heart (pike put away, sent back to Wandering) if
-    /// over. One change per frame is plenty; at 60 fps even a large jump
-    /// (a mass Sprout, or a Wolf Spider kill dropping the population)
-    /// closes out in a fraction of a second, with no player input needed.
+    /// The Job Manager: each Village Heart's own autonomous quartermaster.
+    /// Every frame it recomputes its own faction's Population — strictly
+    /// its own FactionID's living Bramblekin, never any other faction's —
+    /// and <see cref="VillageHeart.MilitiaTarget"/> per its own
+    /// <see cref="FactionTrait"/> (see <see cref="MilitiaTargetDivisorFor"/>),
+    /// and nudges its actual Militia headcount one step toward it: promoting
+    /// the nearest same-faction Gatherer if under target, or standing down
+    /// the nearest same-faction Militia unit (pike put away, sent back to
+    /// Wandering) if over. One change per frame is plenty; at 60 fps even a
+    /// large jump (a mass Sprout, or a Wolf Spider kill dropping the
+    /// population) closes out in a fraction of a second, with no player
+    /// input needed.
     /// </summary>
-    private void UpdateJobManager()
+    private void UpdateJobManager(VillageHeart village)
     {
-        MilitiaTarget = LivingPopulation / (GatherersPerMilitia + 1);
+        village.Population = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID);
+        village.MilitiaTarget = village.Population / MilitiaTargetDivisorFor(village.Trait);
 
-        int current = CurrentMilitia;
-        if (current < MilitiaTarget)
-            NearestByRole(BramblekinRole.Gatherer)?.PromoteToMilitia();
-        else if (current > MilitiaTarget)
-            NearestByRole(BramblekinRole.Militia)?.DemoteToGatherer(this);
+        int current = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
+        if (current < village.MilitiaTarget)
+            NearestByRole(village, BramblekinRole.Gatherer)?.PromoteToMilitia();
+        else if (current > village.MilitiaTarget)
+            NearestByRole(village, BramblekinRole.Militia)?.DemoteToGatherer(this);
     }
 
     /// <summary>
@@ -1592,26 +2047,26 @@ public sealed class World
     /// and recovers at <see cref="MoraleRecoveryPerSecond"/> the rest of the
     /// time. A kill drains it separately and immediately, in <see cref="Kill"/>.
     /// </summary>
-    private void UpdateMorale(float deltaTime)
+    private void UpdateMorale(VillageHeart village, float deltaTime)
     {
         bool terrorized = Spider is { State: SpiderState.Hunting or SpiderState.Pouncing };
-        Morale = terrorized
-            ? MathF.Max(0f, Morale - MoraleLossPerSecondTerrorized * deltaTime)
-            : MathF.Min(MaxMorale, Morale + MoraleRecoveryPerSecond * deltaTime);
+        village.Morale = terrorized
+            ? MathF.Max(0f, village.Morale - MoraleLossPerSecondTerrorized * deltaTime)
+            : MathF.Min(MaxMorale, village.Morale + MoraleRecoveryPerSecond * deltaTime);
     }
 
-    /// <summary>The living Bramblekin of <paramref name="role"/> nearest the Village Heart, if any.</summary>
-    private Bramblekin? NearestByRole(BramblekinRole role)
+    /// <summary>The living Bramblekin of <paramref name="role"/> and <paramref name="village"/>'s Faction nearest that Village Heart, if any.</summary>
+    private Bramblekin? NearestByRole(VillageHeart village, BramblekinRole role)
     {
         Bramblekin? nearest = null;
         float bestDistanceSquared = float.MaxValue;
         for (int i = Colony.Count - 1; i >= 0; i--)
         {
             Bramblekin bramblekin = Colony[i];
-            if (bramblekin.IsDead || bramblekin.Role != role)
+            if (bramblekin.IsDead || bramblekin.Role != role || bramblekin.FactionID != village.FactionID)
                 continue;
 
-            float distanceSquared = Vector3.DistanceSquared(bramblekin.Position, Village.Center);
+            float distanceSquared = Vector3.DistanceSquared(bramblekin.Position, village.Center);
             if (distanceSquared < bestDistanceSquared)
             {
                 bestDistanceSquared = distanceSquared;
@@ -1621,18 +2076,21 @@ public sealed class World
         return nearest;
     }
 
-    /// <summary>Spawns a Wolf Spider at a random spot just inside one of the terrain's edges.</summary>
-    public void SpawnSpiderNearEdge()
+    /// <summary>Closest (m) a Wolf Spider may spawn to any Village Heart — organic roaming: it starts out in the wilderness and only closes in on a village if it happens to wander within earshot (<see cref="WolfSpider.VibrationRadius"/>) of a Bramblekin, rather than beginning right on a faction's doorstep.</summary>
+    private const float MinSpiderSpawnDistanceFromVillage = 25f;
+
+    /// <summary>Spawns a Wolf Spider at a uniformly random spot on the map, at least <see cref="MinSpiderSpawnDistanceFromVillage"/> meters from every Village Heart.</summary>
+    public void SpawnSpiderNearVillage()
     {
-        float inset = Terrain.Size / 2f - 1.5f;
-        float along = (float)(Rng.NextDouble() * 2 - 1) * inset;
-        Vector3 position = Rng.Next(4) switch
+        Vector3 position = Vector3.Zero;
+        for (int attempt = 0; attempt < 30; attempt++)
         {
-            0 => new Vector3(-inset, Terrain.GroundHeight, along),
-            1 => new Vector3(inset, Terrain.GroundHeight, along),
-            2 => new Vector3(along, Terrain.GroundHeight, -inset),
-            _ => new Vector3(along, Terrain.GroundHeight, inset),
-        };
+            position = Terrain.RandomPoint(Rng, margin: 1.5f);
+            if (Villages.All(v => Vector3.Distance(position, v.Center) >= MinSpiderSpawnDistanceFromVillage) &&
+                !IsBlocked(position, WolfSpider.BodyRadius))
+                break;
+        }
+
         Spider = new WolfSpider(position, Rng);
     }
 
@@ -1651,7 +2109,10 @@ public sealed class World
         bramblekin.MarkDead();
         _pendingBramblekinRemovals.Add(bramblekin);
         Casualties++;
-        Morale = MathF.Max(0f, Morale - MoraleLossPerKill);
+
+        VillageHeart? home = VillageFor(bramblekin.FactionID);
+        if (home is not null)
+            home.Morale = MathF.Max(0f, home.Morale - MoraleLossPerKill);
     }
 
     /// <summary>Pays for a miracle. Returns false (and spends nothing) if there isn't enough Faith.</summary>
@@ -1713,18 +2174,28 @@ public sealed class World
         return perpendicular.LengthSquared() <= GustCorridorHalfWidth * GustCorridorHalfWidth;
     }
 
-    /// <summary>Whether a Militia unit currently has anything to hunt.</summary>
-    public bool HasHuntableAphid => Aphids.Any(a => !a.IsDead);
+    /// <summary>The 20-Meter Territory Rule: whether <paramref name="claimant"/>'s Militia has anything huntable within <see cref="TerritoryTargetingRadius"/> of <paramref name="home"/>.</summary>
+    public bool HasHuntableAphidNearVillage(Bramblekin claimant, VillageHeart home) => NearestLiveAphidNearVillage(claimant.Position, claimant, home) is not null;
 
-    /// <summary>The nearest still-live Aphid to <paramref name="from"/>, if any.</summary>
-    public Aphid? NearestLiveAphid(Vector3 from)
+    /// <summary>
+    /// The 20-Meter Territory Rule + Dibs: the nearest still-live, unclaimed
+    /// (or already claimed by <paramref name="claimant"/>) Aphid to
+    /// <paramref name="from"/>, considering only ones within
+    /// <see cref="TerritoryTargetingRadius"/> of <paramref name="home"/> — a
+    /// hard boundary, unlike a Gatherer's food search, which falls back to
+    /// the wider map. Militia simply have nothing to hunt beyond it.
+    /// </summary>
+    public Aphid? NearestLiveAphidNearVillage(Vector3 from, Bramblekin claimant, VillageHeart home)
     {
         Aphid? nearest = null;
         float bestDistanceSquared = float.MaxValue;
+        float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
         for (int i = Aphids.Count - 1; i >= 0; i--)
         {
             Aphid aphid = Aphids[i];
-            if (aphid.IsDead)
+            if (aphid.IsDead || (aphid.ClaimedBy is not null && aphid.ClaimedBy != claimant))
+                continue;
+            if (Vector3.DistanceSquared(aphid.Position, home.Center) > territoryRadiusSquared)
                 continue;
 
             float distanceSquared = Vector3.DistanceSquared(from, aphid.Position);
@@ -1735,6 +2206,318 @@ public sealed class World
             }
         }
         return nearest;
+    }
+
+    /// <summary>
+    /// The Blood Feud: declares (or refreshes) mutual war between
+    /// <paramref name="factionA"/> and <paramref name="factionB"/> for
+    /// <see cref="BloodFeudDurationSeconds"/> — both sides' <see cref="VillageHeart.HostileFactions"/>
+    /// get the other's FactionID, so Militia on either side treat the
+    /// other as a lethal attack-on-sight enemy within the territory ring,
+    /// not just the side that was wronged. A no-op for a faction with no
+    /// Village Heart left (a homeless refugee has nobody left to declare
+    /// war on its behalf). Called from <see cref="Bramblekin.TakeDamage"/>
+    /// the instant one faction lands a damaging hit on another, and from
+    /// the Warning Shove resolution when the caught trespasser turns out
+    /// to be an armed Militia unit rather than an unarmed thief.
+    /// </summary>
+    public void DeclareBloodFeud(int factionA, int factionB)
+    {
+        if (factionA == factionB)
+            return;
+
+        if (VillageFor(factionA) is { } villageA)
+            villageA.HostileFactions[factionB] = BloodFeudDurationSeconds;
+        if (VillageFor(factionB) is { } villageB)
+            villageB.HostileFactions[factionA] = BloodFeudDurationSeconds;
+    }
+
+    /// <summary>
+    /// The 'Enemy of My Enemy' Protocol: whether the Wolf Spider is
+    /// actively a threat (Hunting or Pouncing, not just ambling through or
+    /// feeding) within <see cref="TerritoryTargetingRadius"/> of
+    /// <paramref name="home"/>. While true, that faction's Militia calls a
+    /// truce on every rival faction — see the guards on Blood Feud Border
+    /// Wars and Base Razing in <see cref="Bramblekin.Update"/> — so the
+    /// whole tribe can throw itself at the common enemy instead of a
+    /// neighbour. Apex Priority (a Militia unit always Defends against any
+    /// spider merely present in the ring, whatever its state) is the
+    /// separate, broader rule already enforced by that same priority
+    /// chain's ordering; this is the narrower, additional gate
+    /// specifically on the Border Wars/Base Razing side of it.
+    /// </summary>
+    public bool IsSpiderActivelyThreateningTerritory(VillageHeart? home) =>
+        home is not null && Spider is { State: SpiderState.Hunting or SpiderState.Pouncing } spider &&
+        GroundMover.HorizontalDistance(spider.Position, home.Center) <= TerritoryTargetingRadius;
+
+    /// <summary>
+    /// Base Defense Aggro: the nearest living foreign Bramblekin within
+    /// <see cref="BaseDefenseAggroRadius"/> of <paramref name="home"/>'s own
+    /// centre — checked regardless of any existing Truce or Blood Feud
+    /// status, since a unit standing this close is already effectively
+    /// attacking the base (this is exactly how Base Razing raiders end up
+    /// crowding around a Heart). Finding one is what actually triggers the
+    /// Blood Feud in the first place (see the priority chain in
+    /// <see cref="Bramblekin.Update"/>) — this method itself never mutates
+    /// anything.
+    /// </summary>
+    public Bramblekin? NearestForeignBramblekinNearHeart(VillageHeart home)
+    {
+        Bramblekin? nearest = null;
+        float bestDistanceSquared = BaseDefenseAggroRadius * BaseDefenseAggroRadius;
+
+        for (int i = Colony.Count - 1; i >= 0; i--)
+        {
+            Bramblekin intruder = Colony[i];
+            if (intruder.IsDead || intruder.FactionID == home.FactionID)
+                continue;
+
+            float distanceSquared = Vector3.DistanceSquared(intruder.Position, home.Center);
+            if (distanceSquared > bestDistanceSquared)
+                continue;
+
+            nearest = intruder;
+            bestDistanceSquared = distanceSquared;
+        }
+        return nearest;
+    }
+
+    /// <summary>
+    /// Thievery: the nearest OTHER faction's Village Heart whose territory
+    /// ring physically contains <paramref name="position"/>, if any —
+    /// checked the instant a Gatherer (any faction but
+    /// <paramref name="ownFactionId"/>'s own) picks up a Food Shard, to
+    /// catch it stealing from someone else's border. See
+    /// <see cref="Bramblekin.TrespassingAgainst"/>.
+    /// </summary>
+    public VillageHeart? ForeignTerritoryContaining(Vector3 position, int ownFactionId)
+    {
+        VillageHeart? nearest = null;
+        float bestDistanceSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
+
+        foreach (VillageHeart village in Villages)
+        {
+            if (village.FactionID == ownFactionId)
+                continue;
+
+            float distanceSquared = Vector3.DistanceSquared(position, village.Center);
+            if (distanceSquared > bestDistanceSquared)
+                continue;
+
+            nearest = village;
+            bestDistanceSquared = distanceSquared;
+        }
+        return nearest;
+    }
+
+    /// <summary>
+    /// Thievery: the nearest living Bramblekin currently flagged as
+    /// trespassing specifically against <paramref name="home"/> (see
+    /// <see cref="Bramblekin.TrespassingAgainst"/>, set the instant a
+    /// Gatherer picks up food sitting inside a foreign territory) that's
+    /// still within the territory ring — a surgical, single-target
+    /// response. Unlike a Blood Feud, this never touches the wider
+    /// relationship between the two factions unless the confrontation
+    /// itself escalates one (see <see cref="Bramblekin.UpdateDefending"/>).
+    /// </summary>
+    public Bramblekin? NearestTrespasserInTerritory(VillageHeart home)
+    {
+        Bramblekin? nearest = null;
+        float bestDistanceSquared = float.MaxValue;
+        float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
+
+        for (int i = Colony.Count - 1; i >= 0; i--)
+        {
+            Bramblekin trespasser = Colony[i];
+            if (trespasser.IsDead || trespasser.TrespassingAgainst != home)
+                continue;
+
+            float distanceSquared = Vector3.DistanceSquared(trespasser.Position, home.Center);
+            if (distanceSquared > territoryRadiusSquared || distanceSquared >= bestDistanceSquared)
+                continue;
+
+            nearest = trespasser;
+            bestDistanceSquared = distanceSquared;
+        }
+        return nearest;
+    }
+
+    /// <summary>
+    /// Base Razing: whether any living Bramblekin of a faction
+    /// <paramref name="ownFactionId"/>'s own Village Heart currently has a
+    /// Blood Feud with is within <paramref name="radius"/> of
+    /// <paramref name="position"/> — a live threat always outranks Raiding
+    /// an empty-looking enemy Village Heart, so a Militia unit checks this
+    /// before (and while) committing to one. Default Peace: a faction with
+    /// no declared Blood Feud is never counted as a threat here at all.
+    /// </summary>
+    public bool HasLivingHostileBramblekinNear(Vector3 position, int ownFactionId, float radius)
+    {
+        VillageHeart? home = VillageFor(ownFactionId);
+        if (home is null || home.HostileFactions.Count == 0)
+            return false;
+
+        float radiusSquared = radius * radius;
+        for (int i = Colony.Count - 1; i >= 0; i--)
+        {
+            Bramblekin enemy = Colony[i];
+            if (enemy.IsDead || !home.HostileFactions.ContainsKey(enemy.FactionID))
+                continue;
+            if (Vector3.DistanceSquared(enemy.Position, position) <= radiusSquared)
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Blood Feud Border Wars + the 20-Meter Territory Rule: the nearest
+    /// living Bramblekin (Gatherer or Militia) of a faction
+    /// <paramref name="home"/> is currently at declared war with (see
+    /// <see cref="VillageHeart.HostileFactions"/>), currently within
+    /// <paramref name="home"/>'s territory ring — an attack-on-sight
+    /// intruder for its Militia to run down. Default Peace: any other
+    /// faction's Bramblekin is completely ignored here, full stop —
+    /// there's no war to fight yet. Recomputed fresh every frame from
+    /// <see cref="Update"/>'s state-machine priority chain, same as the
+    /// Wolf Spider and Aphid checks, so a Defending Militia keeps
+    /// re-picking as intruders come and go.
+    /// </summary>
+    public Bramblekin? NearestHostileBramblekinInTerritory(VillageHeart home)
+    {
+        if (home.HostileFactions.Count == 0)
+            return null;
+
+        Bramblekin? nearest = null;
+        float bestDistanceSquared = float.MaxValue;
+        float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
+
+        for (int i = Colony.Count - 1; i >= 0; i--)
+        {
+            Bramblekin enemy = Colony[i];
+            if (enemy.IsDead || !home.HostileFactions.ContainsKey(enemy.FactionID))
+                continue;
+
+            float distanceSquared = Vector3.DistanceSquared(enemy.Position, home.Center);
+            if (distanceSquared > territoryRadiusSquared || distanceSquared >= bestDistanceSquared)
+                continue;
+
+            nearest = enemy;
+            bestDistanceSquared = distanceSquared;
+        }
+        return nearest;
+    }
+
+    /// <summary>
+    /// Border Wars: a rival Bramblekin killed by a Militia poke (as opposed
+    /// to the Wolf Spider or starvation) leaves behind whatever Individual
+    /// Equipment it died holding — Spoils of War — rather than simply
+    /// perishing with it as <see cref="Bramblekin.MarkDead"/> otherwise
+    /// documents. Its Food Shard (if any) is already dropped generically by
+    /// <see cref="Kill"/>/MarkDead; this only adds the Fang Pike/Chitin
+    /// Mallet on top, since a plain predator or hunger death still doesn't
+    /// leave those behind.
+    /// </summary>
+    public void KillByBramblekin(Bramblekin victim)
+    {
+        if (victim.IsDead)
+            return;
+
+        bool hadFang = victim.HasFangPike;
+        bool hadChitin = victim.HasChitinMallet;
+        Vector3 spot = victim.Position;
+
+        Kill(victim);
+
+        if (hadFang)
+            _pendingFangSpawns.Add(new SpiderFang(spot));
+        else if (hadChitin)
+            _pendingChitinSpawns.Add(new Chitin(spot));
+    }
+
+    /// <summary>
+    /// Blood Feud Base Razing: the nearest Village Heart <paramref name="ownFactionId"/>'s
+    /// own faction is currently at declared war with, within
+    /// <paramref name="radius"/> of <paramref name="from"/> — an
+    /// opportunistic raid target for a Militia unit that's wandered near a
+    /// rival base, not the home-centered 20-Meter Territory Rule used for
+    /// defense. Default Peace: any faction not in <see cref="VillageHeart.HostileFactions"/>
+    /// is never a valid Raiding target, full stop.
+    /// </summary>
+    public VillageHeart? NearestHostileVillageHeartInRange(Vector3 from, int ownFactionId, float radius)
+    {
+        VillageHeart? home = VillageFor(ownFactionId);
+        if (home is null || home.HostileFactions.Count == 0)
+            return null;
+
+        VillageHeart? nearest = null;
+        float bestDistanceSquared = radius * radius;
+
+        foreach (VillageHeart village in Villages)
+        {
+            if (!home.HostileFactions.ContainsKey(village.FactionID))
+                continue;
+
+            float distanceSquared = Vector3.DistanceSquared(from, village.Center);
+            if (distanceSquared > bestDistanceSquared)
+                continue;
+
+            nearest = village;
+            bestDistanceSquared = distanceSquared;
+        }
+        return nearest;
+    }
+
+    /// <summary>
+    /// Base Razing: applies Militia poke damage to an enemy Village Heart
+    /// and, if that brings its Health to 0, conquers it outright — see
+    /// <see cref="DestroyVillageHeart"/>. Visual Damage Feedback: a floating
+    /// "-N" pop-up on top of the Heart's own red damage flash (see
+    /// <see cref="VillageHeart.TakeDamage"/>) confirms the hit actually
+    /// landed, for debugging Base Razing.
+    /// </summary>
+    public void DamageVillageHeart(VillageHeart village, int amount)
+    {
+        village.TakeDamage(amount);
+        QueueFloatingText(village.Center, $"-{amount}", new Color(220, 30, 30, 255));
+        if (village.Health <= 0)
+            DestroyVillageHeart(village);
+    }
+
+    /// <summary>Loose Food Shards a razed Village Heart shatters into for the victors to claim.</summary>
+    private const int VillageHeartLootShardCount = 10;
+
+    /// <summary>
+    /// Base Razing: a Village Heart reduced to 0 Health is conquered —
+    /// removed from <see cref="Villages"/> outright (same direct-mutation
+    /// pattern as <see cref="CompleteBlueprint"/>'s Blueprints.Remove; this
+    /// only ever runs from within the Colony loop, well before Villages is
+    /// next enumerated this frame, so there's no concurrent-modification
+    /// risk), taking every Granary, Spore Patch and Blueprint sharing its
+    /// FactionID down with it, and shattering into <see cref="VillageHeartLootShardCount"/>
+    /// loose Food Shards scattered around its footprint. Its own Colony
+    /// survives as suddenly homeless refugees — <see cref="VillageFor"/>
+    /// simply returns null for them from here on.
+    /// </summary>
+    private void DestroyVillageHeart(VillageHeart village)
+    {
+        if (!Villages.Remove(village))
+            return; // Already razed this frame by another poke landing the same instant.
+
+        Buildings.RemoveAll(b => b.FactionID == village.FactionID);
+        Blueprints.RemoveAll(b => b.FactionID == village.FactionID);
+
+        float half = Terrain.Size / 2f - Bramblekin.EdgeMargin;
+        for (int i = 0; i < VillageHeartLootShardCount; i++)
+        {
+            float angle = (float)(Rng.NextDouble() * MathF.Tau);
+            float distance = 0.5f + (float)Rng.NextDouble() * 1.5f;
+            var position = village.Center + new Vector3(MathF.Cos(angle), 0, MathF.Sin(angle)) * distance;
+            position.X = Math.Clamp(position.X, -half, half);
+            position.Z = Math.Clamp(position.Z, -half, half);
+            _pendingShardSpawns.Add(new FoodShard(position));
+        }
+
+        _splats.Add((village.Center, SplatDuration));
     }
 
     /// <summary>
@@ -1775,7 +2558,7 @@ public sealed class World
         if (berries >= MaxBerries)
             return;
 
-        Vector3 spot = RandomFreePoint(FoodShard.Radius + 0.3f, edgeMargin: 1f);
+        Vector3 spot = RandomTerritorySpot(FoodShard.Radius + 0.3f, edgeMargin: 1f);
         _pendingShardSpawns.Add(new FoodShard(spot, FoodShardKind.Berry));
     }
 
@@ -1822,6 +2605,30 @@ public sealed class World
         }
     }
 
+    /// <summary>
+    /// Timeout Failsafe against the "dibs" deadlock: a claimed Food Shard whose
+    /// claimant never actually closes the distance (stuck, jittering, or
+    /// otherwise stalled) would otherwise lock that shard out of the pool
+    /// forever. Ticking <see cref="FoodShard.ClaimTimer"/> here and force-
+    /// releasing it past <see cref="FoodClaimTimeoutSeconds"/> guarantees
+    /// someone else can always eventually grab it.
+    /// </summary>
+    private void UpdateFoodClaimTimeouts(float deltaTime)
+    {
+        foreach (FoodShard shard in FoodShards)
+        {
+            if (shard.ClaimedBy is null)
+                continue;
+
+            shard.ClaimTimer += deltaTime;
+            if (shard.ClaimTimer >= FoodClaimTimeoutSeconds)
+            {
+                shard.ClaimedBy = null;
+                shard.ClaimTimer = 0f;
+            }
+        }
+    }
+
     public void Update(float deltaTime)
     {
         // Worship: every living Bramblekin feeds the Faith pool, so each
@@ -1837,8 +2644,10 @@ public sealed class World
         Physics.Update(deltaTime);
         CrackAcornOnImpact();
         SquishSpiderOnImpact();
+        SquishBramblekinOnImpact();
 
         UpdateShardPhysics(deltaTime);
+        UpdateFoodClaimTimeouts(deltaTime);
         RebuildObstacles();
         PushFoodOutOfObstacles();
 
@@ -1858,36 +2667,89 @@ public sealed class World
         for (int i = Colony.Count - 1; i >= 0; i--)
             Colony[i].Update(deltaTime, this);
 
+        // Cooperative Acorn Cracking: checked once here, after the Colony
+        // loop has moved everyone this frame, so a claiming Gatherer's
+        // Position is fully up to date before the three-way touch check.
+        UpdateAcornCoopCrack();
+
         Spider?.Update(deltaTime, this);
-        UpdateJobManager();
-        UpdateMorale(deltaTime);
 
-        // Upkeep is the survival tax: it gets first claim on Food Stored,
-        // ahead of anything discretionary, and can cost a Bramblekin its
-        // life if the village can't pay it.
-        UpdateUpkeep(deltaTime);
+        // The Simulation Loop: every faction's Village Heart runs its own
+        // Auto-Conscription, War Weariness, Upkeep and Auto-Construction
+        // entirely off its own Population/FoodStored/MaxFoodCapacity/Morale
+        // — one faction starving or booming never touches another's.
+        foreach (var village in Villages)
+        {
+            UpdateJobManager(village);
+            UpdateMorale(village, deltaTime);
+            village.DamageFlashTimer = MathF.Max(0f, village.DamageFlashTimer - deltaTime);
 
-        // Auto-Construction gets next claim on Food Stored, checked before
-        // Auto-Sprout: Sprout's own trigger (>= FoodPerSprout) is the lowest
-        // bar of the two, and its while-loop drains anything at or above
-        // that back toward zero every single frame. Left to run first, it
-        // would starve Auto-Construction completely -- Food Stored could
-        // never sit at a Blueprint's cost across a frame boundary for it to
-        // ever see it. Checking Construction first still leaves Sprout free
-        // to spend whatever's left over once nothing needs building.
-        //
-        // The Smarter Economy: Auto-Sprout and the Auto-Granary are two
-        // halves of the same Population-vs-MaxFoodCapacity comparison (see
-        // UpdateAutoSprout's Growth Phase and UpdateAutoGranary's Saving
-        // Phase), so between them the village is always either growing or
-        // banking toward more room to grow. The Spore Patch is a one-time,
-        // population-gated addition on top of that cycle.
-        UpdateAutoSporePatch();
-        UpdateAutoGranary();
-        UpdateAutoSprout();
+            // The Blood Feud: every declared war's timer counts down toward
+            // 0 regardless of anything else this Village Heart is doing;
+            // peace is restored automatically the instant one runs out.
+            // World.Update() is itself called once per Debug Time Scale
+            // substep with a real (clamped) frame time rather than a
+            // scaled-up deltaTime (see Program's simulation loop), so
+            // ticking down by this method's own deltaTime already runs
+            // these timers out faster at a higher Time Scale exactly like
+            // every other timer here (UpkeepTimer, ClaimTimer, ...) -- a
+            // literal GetFrameTime() * TimeScale here would double up with
+            // that substep multiplication and run every feud out far too
+            // fast at anything above 1x.
+            if (village.HostileFactions.Count > 0)
+            {
+                foreach (int factionId in village.HostileFactions.Keys.ToList())
+                {
+                    float remaining = village.HostileFactions[factionId] - deltaTime;
+                    if (remaining <= 0f)
+                        village.HostileFactions.Remove(factionId);
+                    else
+                        village.HostileFactions[factionId] = remaining;
+                }
+            }
+
+            // Extinction: nobody left, and not even enough Food Stored to
+            // Auto-Sprout a single replacement -- this faction is done.
+            // Stops functioning entirely: no Upkeep, no Auto-Anything. It
+            // still stands (and can still be found and razed) until then.
+            if (village.IsExtinct)
+                continue;
+
+            // Upkeep is the survival tax: it gets first claim on Food Stored,
+            // ahead of anything discretionary, and can cost a Bramblekin its
+            // life if the village can't pay it. Bypassed entirely once
+            // Population hits 0 -- there's no one left to tax, even for a
+            // village that isn't (yet) Extinct because it's still sitting on
+            // enough Food Stored to Auto-Sprout its way back.
+            if (village.Population > 0)
+                UpdateUpkeep(village, deltaTime);
+
+            // Auto-Construction gets next claim on Food Stored, checked before
+            // Auto-Sprout: Sprout's own trigger (>= FoodPerSprout) is the lowest
+            // bar of the two, and its while-loop drains anything at or above
+            // that back toward zero every single frame. Left to run first, it
+            // would starve Auto-Construction completely -- Food Stored could
+            // never sit at a Blueprint's cost across a frame boundary for it to
+            // ever see it. Checking Construction first still leaves Sprout free
+            // to spend whatever's left over once nothing needs building.
+            //
+            // The Smarter Economy: Auto-Sprout and the Auto-Granary are two
+            // halves of the same Population-vs-MaxFoodCapacity comparison (see
+            // UpdateAutoSprout's Growth Phase and UpdateAutoGranary's Saving
+            // Phase), so between them the village is always either growing or
+            // banking toward more room to grow. The Spore Patch is a one-time,
+            // population-gated addition on top of that cycle.
+            UpdateAutoSporePatch(village);
+            UpdateAutoGranary(village);
+            UpdateAutoSprout(village);
+
+            // The Schism: an overcrowded, well-stocked Village Heart spins
+            // off a new faction of its own rather than just capping out.
+            UpdateSchism(village);
+        }
         UpdateSporePatchIncome(deltaTime);
 
-        UpdateAcornRespawn(deltaTime);
+        UpdateAcornSpawn(deltaTime);
         UpdateSpiderRespawn(deltaTime);
         UpdateBerrySpawn(deltaTime);
         UpdateAphidRespawn(deltaTime);
@@ -1972,6 +2834,19 @@ public sealed class World
             Fangs.AddRange(_pendingFangSpawns);
             _pendingFangSpawns.Clear();
         }
+
+        if (_pendingChitinRemovals.Count > 0)
+        {
+            for (int i = _pendingChitinRemovals.Count - 1; i >= 0; i--)
+                Chitins.Remove(_pendingChitinRemovals[i]);
+            _pendingChitinRemovals.Clear();
+        }
+
+        if (_pendingChitinSpawns.Count > 0)
+        {
+            Chitins.AddRange(_pendingChitinSpawns);
+            _pendingChitinSpawns.Clear();
+        }
     }
 
     public void Draw()
@@ -1985,8 +2860,11 @@ public sealed class World
             Raylib.DrawCylinder(position + new Vector3(0, 0.012f, 0), 0.9f, 0.9f, 0.005f, 20, new Color(30, 25, 20, (int)alpha));
         }
         Miracles.Draw();
-        Village.Draw();
-        Acorn?.Draw();
+        for (int i = Villages.Count - 1; i >= 0; i--)
+            Villages[i].Draw();
+
+        for (int i = Acorns.Count - 1; i >= 0; i--)
+            Acorns[i].Draw();
 
         for (int i = Buildings.Count - 1; i >= 0; i--)
             Buildings[i].Draw();
@@ -2001,11 +2879,10 @@ public sealed class World
         }
 
         for (int i = Fangs.Count - 1; i >= 0; i--)
-        {
-            SpiderFang fang = Fangs[i];
-            if (!fang.IsCarried)
-                fang.Draw(fang.Position);
-        }
+            Fangs[i].Draw();
+
+        for (int i = Chitins.Count - 1; i >= 0; i--)
+            Chitins[i].Draw();
 
         // Same reverse-for/skip-dead pattern as the Colony loop below.
         for (int i = Aphids.Count - 1; i >= 0; i--)
@@ -2020,7 +2897,7 @@ public sealed class World
         for (int i = Colony.Count - 1; i >= 0; i--)
         {
             if (!Colony[i].IsDead)
-                Colony[i].Draw(FangPikesUnlocked);
+                Colony[i].Draw();
         }
 
         Spider?.Draw();
@@ -2056,63 +2933,92 @@ public sealed class World
     }
 
     /// <summary>
-    /// A shard can be gathered if nobody is carrying it and no God's Shadow
-    /// is over it (walking in there would be suicidal). Rocks never cover
-    /// shards — they shove them aside — but the blocked check stays as a
-    /// safety net for a shard wedged somewhere unreachable.
+    /// Dibs: a shard can be gathered if nobody is carrying it, it isn't
+    /// claimed by a different Bramblekin actively pursuing it (see
+    /// <see cref="FoodShard.ClaimedBy"/>), and no God's Shadow is over it
+    /// (walking in there would be suicidal). Rocks never cover shards — they
+    /// shove them aside — but the blocked check stays as a safety net for a
+    /// shard wedged somewhere unreachable.
     /// </summary>
-    public bool IsAvailable(FoodShard shard) =>
-        !shard.IsCarried && !IsBlocked(shard.Position, 0f) && ShadowOver(shard.Position, FoodShard.Radius) is null;
+    public bool IsAvailable(FoodShard shard, Bramblekin claimant) =>
+        !shard.IsCarried
+        && (shard.ClaimedBy is null || shard.ClaimedBy == claimant)
+        && !IsBlocked(shard.Position, 0f)
+        && ShadowOver(shard.Position, FoodShard.Radius) is null;
 
-    public bool HasAvailableFood => FoodShards.Any(IsAvailable);
+    /// <summary>The 20-Meter Territory Rule: whether <paramref name="claimant"/> has anything to gather, preferring <paramref name="home"/>'s territory but falling back to the wider map.</summary>
+    public bool HasAvailableFoodFor(Bramblekin claimant, VillageHeart? home) => NearestAvailableShard(claimant.Position, claimant, home) is not null;
 
-    public FoodShard? NearestAvailableShard(Vector3 from)
+    /// <summary>
+    /// The 20-Meter Territory Rule + Dibs, sorted by distance: among
+    /// unclaimed (or self-claimed) shards within <see cref="TerritoryTargetingRadius"/>
+    /// of <paramref name="home"/>, the nearest one to <paramref name="from"/>.
+    /// Only if none qualify locally does this fall back to the nearest
+    /// anywhere on the map — a Gatherer always prefers its own doorstep.
+    /// </summary>
+    public FoodShard? NearestAvailableShard(Vector3 from, Bramblekin claimant, VillageHeart? home)
     {
-        FoodShard? best = null;
-        float bestDistance = float.MaxValue;
+        FoodShard? bestLocal = null;
+        float bestLocalDistance = float.MaxValue;
+        FoodShard? bestAny = null;
+        float bestAnyDistance = float.MaxValue;
+        float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
+        // Desperation Mode: a starving village can't afford to wait for local food that
+        // may not exist, so we skip the local-preference logic entirely and just grab
+        // whatever's nearest anywhere on the map.
+        bool desperate = home is not null && home.FoodStored < DesperationFoodThreshold;
+
         for (int i = FoodShards.Count - 1; i >= 0; i--)
         {
             FoodShard shard = FoodShards[i];
-            if (!IsAvailable(shard))
+            if (!IsAvailable(shard, claimant))
                 continue;
 
             float distance = Vector3.DistanceSquared(from, shard.Position);
-            if (distance < bestDistance)
+            if (distance < bestAnyDistance)
             {
-                best = shard;
-                bestDistance = distance;
+                bestAny = shard;
+                bestAnyDistance = distance;
+            }
+
+            if (!desperate && home is not null && distance < bestLocalDistance && Vector3.DistanceSquared(shard.Position, home.Center) <= territoryRadiusSquared)
+            {
+                bestLocal = shard;
+                bestLocalDistance = distance;
             }
         }
-        return best;
+        return desperate ? bestAny : (bestLocal ?? bestAny);
     }
 
     /// <summary>
-    /// A delivered shard leaves the map and adds to the village stores, up to
-    /// <see cref="MaxFoodCapacity"/> — food gathered past a full store is
-    /// still delivered (the Bramblekin isn't left holding it forever) but
-    /// doesn't raise the count. The Village Heart itself decides what to do
-    /// with what's banked (Auto-Sprout, Auto-Construction — see <see cref="UpdateAutoSprout"/>/
-    /// <see cref="UpdateAutoGranary"/>), all autonomous; this is a pure God
-    /// Game, so the player never spends food directly.
+    /// A delivered shard leaves the map and adds to <paramref name="village"/>'s
+    /// own stores, up to its <see cref="VillageHeart.MaxFoodCapacity"/> —
+    /// food gathered past a full store is still delivered (the Bramblekin
+    /// isn't left holding it forever) but doesn't raise the count. AI
+    /// Faction Loyalty: a Gatherer always delivers to its own faction's
+    /// Village Heart (see <see cref="Bramblekin.FactionID"/>), which then
+    /// decides what to do with what's banked (Auto-Sprout, Auto-Construction
+    /// — see <see cref="UpdateAutoSprout"/>/<see cref="UpdateAutoGranary"/>),
+    /// all autonomous; this is a pure God Game, so the player never spends
+    /// food directly.
     ///
     /// This is called from inside a Bramblekin's own Update(), which is
     /// itself inside World's reverse for-loop over Colony — so the shard's
     /// removal is queued, never applied to FoodShards directly here.
     /// </summary>
-    public void DeliverFood(FoodShard shard)
+    public void DeliverFood(FoodShard shard, VillageHeart village)
     {
         if (!_pendingShardRemovals.Contains(shard))
             _pendingShardRemovals.Add(shard);
-        FoodStored = Math.Min(FoodStored + 1, MaxFoodCapacity);
+        village.FoodStored = Math.Min(village.FoodStored + 1, village.MaxFoodCapacity);
     }
 
-    /// <summary>A Fang can be gathered if nobody is carrying it and no God's Shadow is over it — same rule as a Food Shard.</summary>
-    public bool IsAvailable(SpiderFang fang) =>
-        !fang.IsCarried && !IsBlocked(fang.Position, 0f) && ShadowOver(fang.Position, SpiderFang.Radius) is null;
+    /// <summary>A Fang can be picked up if no God's Shadow is over it — it's never carried or claimed, just touched and gone.</summary>
+    public bool IsAvailable(SpiderFang fang) => !IsBlocked(fang.Position, 0f) && ShadowOver(fang.Position, SpiderFang.Radius) is null;
 
     public bool HasAvailableFang => Fangs.Any(IsAvailable);
 
-    /// <summary>The nearest available Spider Fang to <paramref name="from"/>, if any — Scavenger Priority always checks this before a Food Shard.</summary>
+    /// <summary>The nearest available Spider Fang to <paramref name="from"/>, if any.</summary>
     public SpiderFang? NearestAvailableFang(Vector3 from)
     {
         SpiderFang? best = null;
@@ -2134,26 +3040,49 @@ public sealed class World
     }
 
     /// <summary>
-    /// Found-Object Weaponry: a delivered Fang leaves the map and counts
-    /// toward <see cref="FangsCollected"/>. The moment that reaches
-    /// <see cref="FangsNeededForUpgrade"/>, the Fang Pikes upgrade unlocks
-    /// once and for all (every current and future Militia unit's Poke hits
-    /// harder from then on — see <see cref="Bramblekin.PokeDamage"/>) and a
-    /// floating "Upgrade Unlocked: Fang Pikes!" pop-up appears over the
-    /// Village Heart. Called from inside a Bramblekin's own Update(), so the
-    /// Fang's removal is queued rather than applied to Fangs directly here.
+    /// Individual Equipment: touching a Spider Fang consumes it outright —
+    /// no carrying it home, no village-wide unlock. Called from inside a
+    /// Bramblekin's own Update(), so the Fang's removal is queued rather
+    /// than applied to <see cref="Fangs"/> directly here; the caller sets
+    /// its own <see cref="Bramblekin.HasFangPike"/>.
     /// </summary>
-    public void DeliverFang(SpiderFang fang)
+    public void ConsumeFang(SpiderFang fang)
     {
         if (!_pendingFangRemovals.Contains(fang))
             _pendingFangRemovals.Add(fang);
-        FangsCollected++;
+    }
 
-        if (!FangPikesUnlocked && FangsCollected >= FangsNeededForUpgrade)
+    /// <summary>A Chitin piece can be picked up if no God's Shadow is over it — same rule as a Fang.</summary>
+    public bool IsAvailable(Chitin chitin) => !IsBlocked(chitin.Position, 0f) && ShadowOver(chitin.Position, Chitin.Radius) is null;
+
+    public bool HasAvailableChitin => Chitins.Any(IsAvailable);
+
+    /// <summary>The nearest available Chitin piece to <paramref name="from"/>, if any.</summary>
+    public Chitin? NearestAvailableChitin(Vector3 from)
+    {
+        Chitin? best = null;
+        float bestDistance = float.MaxValue;
+        for (int i = Chitins.Count - 1; i >= 0; i--)
         {
-            FangPikesUnlocked = true;
-            QueueFloatingText(Village.Center, "Upgrade Unlocked: Fang Pikes!", new Color(230, 230, 240, 255));
+            Chitin chitin = Chitins[i];
+            if (!IsAvailable(chitin))
+                continue;
+
+            float distance = Vector3.DistanceSquared(from, chitin.Position);
+            if (distance < bestDistance)
+            {
+                best = chitin;
+                bestDistance = distance;
+            }
         }
+        return best;
+    }
+
+    /// <summary>Individual Equipment: touching a Chitin piece consumes it outright — see <see cref="ConsumeFang"/>. The caller sets its own <see cref="Bramblekin.HasChitinMallet"/>.</summary>
+    public void ConsumeChitin(Chitin chitin)
+    {
+        if (!_pendingChitinRemovals.Contains(chitin))
+            _pendingChitinRemovals.Add(chitin);
     }
 
     /// <summary>
@@ -2165,15 +3094,15 @@ public sealed class World
     /// (see <see cref="UpdateAutoGranary"/>'s Saving Phase) — no player
     /// action involved either way.
     /// </summary>
-    private void UpdateAutoSprout()
+    private void UpdateAutoSprout(VillageHeart village)
     {
-        if (LivingPopulation >= MaxFoodCapacity)
+        if (village.Population >= village.MaxFoodCapacity)
             return; // Saving Phase: the village has outgrown its food cap; sprouting is off.
 
-        while (FoodStored >= FoodPerSprout)
+        while (village.FoodStored >= FoodPerSprout)
         {
-            FoodStored -= FoodPerSprout;
-            SproutBramblekin();
+            village.FoodStored -= FoodPerSprout;
+            SproutBramblekin(village);
         }
     }
 
@@ -2191,20 +3120,20 @@ public sealed class World
     /// capped at <see cref="MaxGranaries"/> total so the village can't spam
     /// Granaries forever — once it hits the cap, this simply stops firing.
     /// </summary>
-    private void UpdateAutoGranary()
+    private void UpdateAutoGranary(VillageHeart village)
     {
-        if (Buildings.Count(b => b.Kind == BuildingKind.Granary) >= MaxGranaries)
+        if (Buildings.Count(b => b.Kind == BuildingKind.Granary && b.FactionID == village.FactionID) >= MaxGranaries)
             return; // Capped: never queue a 4th Granary.
-        if (LivingPopulation < MaxFoodCapacity)
+        if (village.Population < village.MaxFoodCapacity)
             return; // Growth Phase: no need to save for a Granary yet.
-        if (Blueprints.Any(b => b.Kind == BuildingKind.Granary))
+        if (Blueprints.Any(b => b.Kind == BuildingKind.Granary && b.FactionID == village.FactionID))
             return; // Already building one; don't queue a second.
-        if (FoodStored < GranaryFoodCost)
+        if (village.FoodStored < GranaryFoodCost)
             return; // Saving Phase: still hoarding.
 
-        Vector3? spot = RandomPointNearVillage(GranaryPlacementRadius, Building.GranaryRadius + 0.2f);
+        Vector3? spot = RandomPointNearVillage(village, GranaryPlacementRadius, Building.GranaryRadius + 0.2f);
         if (spot is { } point)
-            TryPlaceBlueprint(point, BuildingKind.Granary);
+            TryPlaceBlueprint(village, point, BuildingKind.Granary);
     }
 
     /// <summary>
@@ -2216,20 +3145,168 @@ public sealed class World
     /// then places a Spore Patch Blueprint close to its own centre. Never
     /// queued a second time once one exists.
     /// </summary>
-    private void UpdateAutoSporePatch()
+    private void UpdateAutoSporePatch(VillageHeart village)
     {
-        if (LivingPopulation < SporePatchPopulationThreshold)
+        if (village.Population < SporePatchPopulationThreshold)
             return;
-        if (!Buildings.Any(b => b.Kind == BuildingKind.Granary))
+        if (!Buildings.Any(b => b.Kind == BuildingKind.Granary && b.FactionID == village.FactionID))
             return; // Needs at least one Granary up first.
-        if (Buildings.Any(b => b.Kind == BuildingKind.SporePatch) || Blueprints.Any(b => b.Kind == BuildingKind.SporePatch))
+        if (Buildings.Any(b => b.Kind == BuildingKind.SporePatch && b.FactionID == village.FactionID) ||
+            Blueprints.Any(b => b.Kind == BuildingKind.SporePatch && b.FactionID == village.FactionID))
             return; // Already have one, finished or in progress.
-        if (FoodStored < SporePatchFoodCost)
+        if (village.FoodStored < SporePatchFoodCost)
             return; // Still hoarding.
 
-        Vector3? spot = RandomPointNearVillage(SporePatchPlacementRadius, Building.SporePatchRadius + 0.2f);
+        Vector3? spot = RandomPointNearVillage(village, SporePatchPlacementRadius, Building.SporePatchRadius + 0.2f);
         if (spot is { } point)
-            TryPlaceBlueprint(point, BuildingKind.SporePatch);
+            TryPlaceBlueprint(village, point, BuildingKind.SporePatch);
+    }
+
+    /// <summary>
+    /// The True Schism: once a Village Heart is both Overcrowded (Population
+    /// at or beyond its MaxFoodCapacity — capped at 40 by <see cref="MaxGranaries"/>)
+    /// and has a healthy Food Stored reserve, it splits in two rather than
+    /// budding off a token handful: half its current Gatherers and half its
+    /// current Militia (rounded down, same ratio as the parent, so a
+    /// heavily militarized tribe doesn't send off a defenseless splinter)
+    /// depart as Pioneers, taking half the parent's Food Stored with them,
+    /// to found a brand new faction elsewhere on the map — see
+    /// <see cref="Bramblekin.BecomePioneer"/> and <see cref="FoundVillage"/>.
+    /// A fresh splinter this size is no longer easy prey, and Default Peace
+    /// (<see cref="VillageHeart.HostileFactions"/>) means it starts out at
+    /// peace with the parent it just split from automatically — no
+    /// separate grace-period timer needed any more. Guarded by
+    /// <see cref="VillageHeart.HasActiveMigration"/> so only one Migration
+    /// is ever in flight per origin at a time.
+    /// </summary>
+    private void UpdateSchism(VillageHeart village)
+    {
+        if (village.HasActiveMigration)
+            return;
+        if (village.Population < village.MaxFoodCapacity)
+            return;
+        if (village.FoodStored < SchismFoodReserve)
+            return;
+
+        int totalGatherers = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Gatherer);
+        int totalMilitia = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
+        int pioneerGatherers = totalGatherers / 2;
+        int pioneerMilitia = totalMilitia / 2;
+        if (pioneerGatherers + pioneerMilitia < 1)
+            return; // Too small a population to split yet.
+
+        var pioneers = new List<Bramblekin>(pioneerGatherers + pioneerMilitia);
+        int gathererCount = 0, militiaCount = 0;
+        for (int i = Colony.Count - 1; i >= 0; i--)
+        {
+            if (gathererCount >= pioneerGatherers && militiaCount >= pioneerMilitia)
+                break;
+
+            Bramblekin bramblekin = Colony[i];
+            if (bramblekin.IsDead || bramblekin.FactionID != village.FactionID)
+                continue;
+
+            if (bramblekin.Role == BramblekinRole.Gatherer && gathererCount < pioneerGatherers)
+            {
+                pioneers.Add(bramblekin);
+                gathererCount++;
+            }
+            else if (bramblekin.Role == BramblekinRole.Militia && militiaCount < pioneerMilitia)
+            {
+                pioneers.Add(bramblekin);
+                militiaCount++;
+            }
+        }
+
+        if (gathererCount < pioneerGatherers || militiaCount < pioneerMilitia)
+            return; // Someone died mid-count; try again next frame.
+
+        int foodGiven = village.FoodStored / 2;
+        village.FoodStored -= foodGiven;
+        village.HasActiveMigration = true;
+
+        int newFactionId = _nextSchismFactionId++;
+        Color newFactionColor = SchismFactionColors[(newFactionId - 1) % SchismFactionColors.Length];
+        var migration = new Migration(newFactionId, newFactionColor, RandomMigrationTarget(), village, pioneers.Count, foodGiven);
+
+        foreach (var pioneer in pioneers)
+            pioneer.BecomePioneer(migration);
+    }
+
+    /// <summary>A random point at least <see cref="MinMigrationDistance"/> meters from every existing Village Heart — a Schism's destination.</summary>
+    private Vector3 RandomMigrationTarget()
+    {
+        Vector3 candidate = Vector3.Zero;
+        for (int attempt = 0; attempt < 30; attempt++)
+        {
+            candidate = Terrain.RandomPoint(Rng, margin: 2f);
+            if (Villages.All(v => Vector3.Distance(candidate, v.Center) >= MinMigrationDistance))
+                return candidate;
+        }
+        return candidate; // Fallback: the map's too crowded for a clean gap — found it wherever the last attempt landed.
+    }
+
+    /// <summary>
+    /// The True Schism's payoff: founds a brand new Village Heart at
+    /// <paramref name="migration"/>'s Target, seeded with
+    /// <see cref="Migration.FoodAmount"/> Food Stored (half of the parent's
+    /// own, at the moment it split), then immediately starts running its
+    /// own autonomous economy loop alongside every other entry in
+    /// <see cref="Villages"/>. Default Peace means it starts out at peace
+    /// with every other faction, the parent it split from included — no
+    /// separate grace period needed. Marks the Migration founded so every
+    /// Pioneer bound to it — not just the one that triggered this — drops
+    /// Migrating for good on its very next Update() (see <see cref="Bramblekin.UpdateMigrating"/>),
+    /// and clears the origin's <see cref="VillageHeart.HasActiveMigration"/>
+    /// so it's free to schism again once it re-crowds.
+    /// </summary>
+    public VillageHeart FoundVillage(Migration migration)
+    {
+        var village = new VillageHeart(migration.Target, migration.NewFactionID, migration.NewFactionColor, Rng)
+        {
+            FoodStored = migration.FoodAmount,
+            UpkeepTimer = UpkeepInterval,
+        };
+        Villages.Add(village);
+        Physics.AddStaticBox(village.Bounds);
+        RebuildObstacles();
+
+        migration.MarkFounded();
+        migration.Origin.HasActiveMigration = false;
+        return village;
+    }
+
+    /// <summary>Gatherers Genesis instantly spawns beside the new Village Heart, so the economy can restart immediately.</summary>
+    private const int GenesisGathererCount = 2;
+
+    /// <summary>How far (m) from the new Village Heart's centre a Genesis Gatherer may land.</summary>
+    private const float GenesisSpawnRadius = 3f;
+
+    /// <summary>
+    /// Genesis: the player's one lever to recover from total extinction —
+    /// every Village Heart gone means no Job Manager, no Auto-Sprout,
+    /// nothing left to run the game's economy on its own (see the
+    /// Extinction check in <see cref="Update"/>). Instantly founds a brand
+    /// new Faction 0 (green) Village Heart at <paramref name="groundPoint"/>,
+    /// with <see cref="GenesisGathererCount"/> Gatherers spawned right
+    /// beside it so it isn't left standing empty. Called from
+    /// <see cref="MiracleInput"/>'s tap handling once it's confirmed the
+    /// world is dead and the player can afford <see cref="MiracleManager.GenesisFaithCost"/>
+    /// Faith.
+    /// </summary>
+    public void Genesis(Vector3 groundPoint)
+    {
+        var village = new VillageHeart(groundPoint, factionId: 0, factionColor: new Color(40, 180, 90, 255), Rng);
+        Villages.Add(village);
+        Physics.AddStaticBox(village.Bounds);
+        RebuildObstacles();
+
+        for (int i = 0; i < GenesisGathererCount; i++)
+        {
+            Vector3 spot = RandomPointNearVillage(village, GenesisSpawnRadius, Bramblekin.BodyRadius + 0.1f)
+                           ?? RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin);
+            Colony.Add(new Bramblekin(spot, Rng, village.FactionID, village.FactionColor));
+        }
     }
 
     /// <summary>
@@ -2256,76 +3333,105 @@ public sealed class World
     /// one, a Militia unit otherwise — dies of starvation on the spot, with
     /// a red "Starving!" pop-up.
     /// </summary>
-    private void UpdateUpkeep(float deltaTime)
+    private void UpdateUpkeep(VillageHeart village, float deltaTime)
     {
-        _upkeepTimer -= deltaTime;
-        if (_upkeepTimer > 0f)
+        village.UpkeepTimer -= deltaTime;
+        if (village.UpkeepTimer > 0f)
             return;
-        _upkeepTimer += UpkeepInterval;
+        village.UpkeepTimer += UpkeepInterval;
 
-        int cost = Math.Max(1, LivingPopulation / 5);
-        if (FoodStored >= cost)
+        int cost = Math.Max(1, village.Population / 8);
+        if (village.FoodStored >= cost)
         {
-            FoodStored -= cost;
-            QueueFloatingText(Village.Center, $"-{cost} Food", Color.White);
+            village.FoodStored -= cost;
+            QueueFloatingText(village.Center, $"-{cost} Food", Color.White);
             return;
         }
 
-        FoodStored = 0;
-        Bramblekin? victim = NearestByRole(BramblekinRole.Gatherer) ?? NearestByRole(BramblekinRole.Militia);
+        village.FoodStored = 0;
+        Bramblekin? victim = NearestByRole(village, BramblekinRole.Gatherer) ?? NearestByRole(village, BramblekinRole.Militia);
         if (victim is { } v)
             Kill(v);
-        QueueFloatingText(Village.Center, "Starving!", new Color(220, 30, 30, 255));
+        QueueFloatingText(village.Center, "Starving!", new Color(220, 30, 30, 255));
     }
 
     /// <summary>Queues a floating text pop-up (see <see cref="FloatingTexts"/>) at a world position.</summary>
     private void QueueFloatingText(Vector3 position, string text, Color color) =>
         _floatingTexts.Add((position, text, color, FloatingTextDuration));
 
-    /// <summary>A random point within <paramref name="maxRadius"/> meters of the Village Heart that isn't blocked. Null if nothing opened up in a handful of tries.</summary>
-    private Vector3? RandomPointNearVillage(float maxRadius, float clearance)
+    /// <summary>A random point within <paramref name="maxRadius"/> meters of <paramref name="village"/> that isn't blocked. Null if nothing opened up in a handful of tries.</summary>
+    private Vector3? RandomPointNearVillage(VillageHeart village, float maxRadius, float clearance)
     {
-        float minRadius = Village.Obstacle.Radius + 0.5f;
+        float minRadius = village.Obstacle.Radius + 0.5f;
         for (int attempt = 0; attempt < 20; attempt++)
         {
             float angle = (float)(Rng.NextDouble() * MathF.Tau);
             float radius = minRadius + (float)Rng.NextDouble() * MathF.Max(maxRadius - minRadius, 0f);
-            var point = Village.Center + new Vector3(MathF.Cos(angle) * radius, 0, MathF.Sin(angle) * radius);
+            var point = village.Center + new Vector3(MathF.Cos(angle) * radius, 0, MathF.Sin(angle) * radius);
             if (!IsBlocked(point, clearance) && Terrain.Contains(point, 0f))
                 return point;
         }
         return null;
     }
 
+    /// <summary>A uniformly random faction Village Heart, if any exist.</summary>
+    private VillageHeart? RandomVillage() => Villages.Count == 0 ? null : Villages[Rng.Next(Villages.Count)];
+
+    /// <summary>
+    /// Territory Resource Spawning: a random open point inside a random
+    /// faction's Territory Ring (<see cref="VillageHeart.TerritoryRadius"/>),
+    /// rather than anywhere across the whole map — the Acorn and wild Berries
+    /// both spawn this way (see <see cref="RandomAcornSpot"/>/<see cref="UpdateBerrySpawn"/>)
+    /// so every faction has a local food supply and Gatherers aren't
+    /// commuting the length of a 60x60 m map before Upkeep starves them.
+    /// Falls back to anywhere open on the map on the rare chance no
+    /// territory has room.
+    /// </summary>
+    private Vector3 RandomTerritorySpot(float clearance, float edgeMargin)
+    {
+        for (int attempt = 0; attempt < 10; attempt++)
+        {
+            if (RandomVillage() is not { } village)
+                break;
+            if (RandomPointNearVillage(village, VillageHeart.TerritoryRadius, clearance) is { } point)
+                return point;
+        }
+
+        return RandomFreePoint(clearance, edgeMargin);
+    }
+
     /// <summary>
     /// Village Building: spends the Blueprint kind's Food cost (<see cref="GranaryFoodCost"/>
-    /// or <see cref="SporePatchFoodCost"/>) to place a Blueprint at
-    /// <paramref name="groundPoint"/> — called by the Village Heart's own
-    /// Auto-Construction (<see cref="UpdateAutoGranary"/>/<see cref="UpdateAutoSporePatch"/>).
+    /// or <see cref="SporePatchFoodCost"/>) to place a Blueprint owned by
+    /// <paramref name="village"/>'s Faction at <paramref name="groundPoint"/>
+    /// — called by the Village Heart's own Auto-Construction (<see cref="UpdateAutoGranary"/>/<see cref="UpdateAutoSporePatch"/>).
     /// Returns false (and spends nothing) if there isn't enough Food Stored.
     /// </summary>
-    public bool TryPlaceBlueprint(Vector3 groundPoint, BuildingKind kind = BuildingKind.Granary)
+    public bool TryPlaceBlueprint(VillageHeart village, Vector3 groundPoint, BuildingKind kind = BuildingKind.Granary)
     {
         int cost = kind == BuildingKind.Granary ? GranaryFoodCost : SporePatchFoodCost;
-        if (FoodStored < cost)
+        if (village.FoodStored < cost)
             return false;
 
-        FoodStored -= cost;
-        Blueprints.Add(new Blueprint(groundPoint, kind));
+        village.FoodStored -= cost;
+        Blueprints.Add(new Blueprint(groundPoint, kind, village.FactionID, village.FactionColor));
         return true;
     }
 
-    /// <summary>Whether any Blueprint on the map still needs Builder hands.</summary>
-    public bool HasIncompleteBlueprint => Blueprints.Count > 0;
+    /// <summary>Whether any Blueprint belonging to <paramref name="factionId"/> still needs Builder hands.</summary>
+    public bool HasIncompleteBlueprintFor(int factionId) => Blueprints.Any(b => b.FactionID == factionId);
 
-    /// <summary>The nearest Blueprint to <paramref name="from"/>, if any.</summary>
-    public Blueprint? NearestIncompleteBlueprint(Vector3 from)
+    /// <summary>The nearest Blueprint belonging to <paramref name="factionId"/> to <paramref name="from"/>, if any — AI Faction Loyalty: a Builder only ever works its own faction's sites.</summary>
+    public Blueprint? NearestIncompleteBlueprintFor(Vector3 from, int factionId)
     {
         Blueprint? best = null;
         float bestDistance = float.MaxValue;
         for (int i = Blueprints.Count - 1; i >= 0; i--)
         {
             Blueprint blueprint = Blueprints[i];
+            if (blueprint.FactionID != factionId)
+                continue;
+
             float distance = Vector3.DistanceSquared(from, blueprint.Position);
             if (distance < bestDistance)
             {
@@ -2338,11 +3444,12 @@ public sealed class World
 
     /// <summary>
     /// Finishes a Blueprint once a Builder's Construction Progress reaches
-    /// its requirement: removes the site and adds the completed Building. A
-    /// finished Granary permanently raises <see cref="MaxFoodCapacity"/>; a
-    /// finished Spore Patch raises nothing but starts its own passive-income
-    /// timer (see <see cref="UpdateSporePatchIncome"/>). Called from inside
-    /// a Bramblekin's own Update() (itself inside World's reverse for-loop
+    /// its requirement: removes the site and adds the completed Building,
+    /// carrying over the Blueprint's Faction. A finished Granary permanently
+    /// raises its owning Village Heart's MaxFoodCapacity; a finished Spore
+    /// Patch raises nothing but starts its own passive-income timer (see
+    /// <see cref="UpdateSporePatchIncome"/>). Called from inside a
+    /// Bramblekin's own Update() (itself inside World's reverse for-loop
     /// over Colony), but mutates Blueprints/Buildings directly rather than
     /// through a pending queue: nothing else iterates either list while the
     /// Colony loop is running, so — unlike Colony/FoodShards/Aphids — there's
@@ -2351,23 +3458,23 @@ public sealed class World
     public void CompleteBlueprint(Blueprint blueprint)
     {
         Blueprints.Remove(blueprint);
-        Buildings.Add(new Building(blueprint.Position, blueprint.Kind));
-        if (blueprint.Kind == BuildingKind.Granary)
-            MaxFoodCapacity += GranaryFoodBonus;
+        Buildings.Add(new Building(blueprint.Position, blueprint.Kind, blueprint.FactionID, blueprint.FactionColor));
+        if (blueprint.Kind == BuildingKind.Granary && VillageFor(blueprint.FactionID) is { } owner)
+            owner.MaxFoodCapacity += GranaryFoodBonus;
     }
 
-    /// <summary>Queues a new Bramblekin on a free spot right beside the Village Heart.</summary>
-    private void SproutBramblekin()
+    /// <summary>Queues a new Bramblekin of <paramref name="village"/>'s Faction on a free spot right beside it.</summary>
+    private void SproutBramblekin(VillageHeart village)
     {
-        float distance = Village.Obstacle.Radius + Bramblekin.BodyRadius + 0.2f;
+        float distance = village.Obstacle.Radius + Bramblekin.BodyRadius + 0.2f;
         float startAngle = (float)(Rng.NextDouble() * MathF.Tau);
-        Vector3 spot = Village.Center + new Vector3(distance, 0, 0);
+        Vector3 spot = village.Center + new Vector3(distance, 0, 0);
 
         // Try 12 spots round the village; take the first free one.
         for (int i = 0; i < 12; i++)
         {
             float angle = startAngle + i * MathF.Tau / 12;
-            var candidate = Village.Center + new Vector3(MathF.Cos(angle) * distance, 0, MathF.Sin(angle) * distance);
+            var candidate = village.Center + new Vector3(MathF.Cos(angle) * distance, 0, MathF.Sin(angle) * distance);
             if (!IsBlocked(candidate, Bramblekin.BodyRadius) && Terrain.Contains(candidate, Bramblekin.EdgeMargin))
             {
                 spot = candidate;
@@ -2375,7 +3482,7 @@ public sealed class World
             }
         }
 
-        _pendingBramblekinSpawns.Add(new Bramblekin(spot, Rng));
+        _pendingBramblekinSpawns.Add(new Bramblekin(spot, Rng, village.FactionID, village.FactionColor));
         Births++;
     }
 
@@ -2405,7 +3512,8 @@ public sealed class World
     private void RebuildObstacles()
     {
         _obstacles.Clear();
-        _obstacles.Add(Village.Obstacle);
+        foreach (var village in Villages)
+            _obstacles.Add(village.Obstacle);
 
         for (int i = Physics.Objects.Count - 1; i >= 0; i--)
         {
@@ -2463,24 +3571,109 @@ public sealed class World
         }
     }
 
-    /// <summary>The Miracle Action: a pebble landing on or right next to the acorn cracks it open.</summary>
+    /// <summary>The Miracle Action: a pebble landing on or right next to any Acorn on the map cracks it open.</summary>
     private void CrackAcornOnImpact()
     {
-        if (Acorn is null)
+        if (Acorns.Count == 0 || Physics.Impacts.Count == 0)
             return;
 
-        foreach (var impact in Physics.Impacts)
+        for (int i = Acorns.Count - 1; i >= 0; i--)
         {
-            float crackDistance = impact.Body.Radius + Acorn.Radius + AcornCrackSlack;
-            float dx = impact.Point.X - Acorn.Position.X;
-            float dz = impact.Point.Z - Acorn.Position.Z;
-            if (dx * dx + dz * dz > crackDistance * crackDistance)
+            Acorn acorn = Acorns[i];
+            foreach (var impact in Physics.Impacts)
+            {
+                float crackDistance = impact.Body.Radius + Acorn.Radius + AcornCrackSlack;
+                float dx = impact.Point.X - acorn.Position.X;
+                float dz = impact.Point.Z - acorn.Position.Z;
+                if (dx * dx + dz * dz > crackDistance * crackDistance)
+                    continue;
+
+                SpawnFoodShards(acorn.Position, impact.Body);
+                Acorns.RemoveAt(i);
+                break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Cooperative Acorn Cracking: the nearest Acorn <paramref name="gatherer"/>
+    /// (a Chitin-Mallet Gatherer) either already holds a claim on or can
+    /// still claim a free slot on — <see cref="Acorn.MaxClaimants"/> may work
+    /// the same Acorn at once. Sorted by distance like any other target.
+    /// </summary>
+    public Acorn? NearestClaimableAcorn(Vector3 from, Bramblekin gatherer)
+    {
+        Acorn? best = null;
+        float bestDistance = float.MaxValue;
+        for (int i = Acorns.Count - 1; i >= 0; i--)
+        {
+            Acorn acorn = Acorns[i];
+            if (!acorn.IsClaimedBy(gatherer) && acorn.Claimants.Count >= Acorn.MaxClaimants)
                 continue;
 
-            SpawnFoodShards(Acorn.Position, impact.Body);
-            Acorn = null;
-            _acornRespawnTimer = AcornRespawnDelay;
-            return;
+            float distance = Vector3.DistanceSquared(from, acorn.Position);
+            if (distance < bestDistance)
+            {
+                best = acorn;
+                bestDistance = distance;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Cooperative Acorn Cracking: once <see cref="Acorn.MaxClaimants"/>
+    /// Chitin-Mallet Gatherers are all actually touching the same Acorn, it
+    /// shatters into <see cref="ShardsPerAcorn"/> Food Shards scattered
+    /// around it. Checked once a frame, after the Colony loop has moved
+    /// everyone, so every claimant's Position is current.
+    /// </summary>
+    private void UpdateAcornCoopCrack()
+    {
+        float contactDistance = Bramblekin.BodyRadius + Acorn.Radius + AcornCoopContactMargin;
+
+        for (int i = Acorns.Count - 1; i >= 0; i--)
+        {
+            Acorn acorn = Acorns[i];
+            if (acorn.Claimants.Count < Acorn.MaxClaimants)
+                continue;
+
+            bool allTouching = true;
+            foreach (var claimant in acorn.Claimants)
+            {
+                if (claimant.IsDead || GroundMover.HorizontalDistance(claimant.Position, acorn.Position) > contactDistance)
+                {
+                    allTouching = false;
+                    break;
+                }
+            }
+            if (!allTouching)
+                continue;
+
+            ScatterFoodShardsAround(acorn.Position, ShardsPerAcorn, Acorn.Radius + FoodShard.Radius + 0.35f);
+            Acorns.RemoveAt(i);
+        }
+    }
+
+    /// <summary>
+    /// Scatters <paramref name="count"/> Food Shards in a ring
+    /// <paramref name="distance"/> meters out from <paramref name="center"/>,
+    /// clamped to stay on the terrain — Cooperative Acorn Cracking's shatter.
+    /// Queued rather than added directly, same as any other spawn from
+    /// inside World.Update().
+    /// </summary>
+    private void ScatterFoodShardsAround(Vector3 center, int count, float distance)
+    {
+        float baseAngle = (float)(Rng.NextDouble() * MathF.Tau);
+        float half = Terrain.Size / 2f - Bramblekin.EdgeMargin;
+        for (int i = 0; i < count; i++)
+        {
+            float angle = baseAngle + i * MathF.Tau / count;
+            var position = new Vector3(
+                Math.Clamp(center.X + MathF.Cos(angle) * distance, -half, half),
+                Terrain.GroundHeight,
+                Math.Clamp(center.Z + MathF.Sin(angle) * distance, -half, half));
+            _pendingShardSpawns.Add(new FoodShard(position));
         }
     }
 
@@ -2540,6 +3733,30 @@ public sealed class World
     }
 
     /// <summary>
+    /// Miracle Allegiance: a pebble whose centre lands within
+    /// <see cref="SquishRadius"/> of a living Bramblekin — any faction,
+    /// Gatherer or Militia alike — squishes it outright, same as a direct
+    /// hit on the Wolf Spider. Gives the player a way to personally
+    /// intervene in a Border War (or just thin out an overcrowded faction)
+    /// rather than only ever helping colonies along.
+    /// </summary>
+    private void SquishBramblekinOnImpact()
+    {
+        if (Physics.Impacts.Count == 0)
+            return;
+
+        foreach (var impact in Physics.Impacts)
+        {
+            for (int i = Colony.Count - 1; i >= 0; i--)
+            {
+                Bramblekin bramblekin = Colony[i];
+                if (!bramblekin.IsDead && GroundMover.HorizontalDistance(impact.Point, bramblekin.Position) <= SquishRadius)
+                    Kill(bramblekin);
+            }
+        }
+    }
+
+    /// <summary>
     /// Sustained Combat: applies Militia poke damage to the spider and, if
     /// that brings its Health to 0, kills it outright — the same
     /// despawn/respawn-timer path as a direct pebble hit. Purely a Health
@@ -2557,10 +3774,11 @@ public sealed class World
     }
 
     /// <summary>
-    /// Removes the spider, leaves a splat where it stood, drops a Spider
-    /// Fang (Found-Object Weaponry's raw material — see <see cref="DeliverFang"/>)
-    /// right where it died, and starts the respawn timer — shared by a
-    /// pebble squish and a Health-based kill, so every death drops one.
+    /// Removes the spider, leaves a splat where it stood, and drops one
+    /// Spider Fang and one Chitin right where it died — Individual Equipment's
+    /// raw materials (see <see cref="ConsumeFang"/>/<see cref="ConsumeChitin"/>)
+    /// — then starts the respawn timer. Shared by a pebble squish and a
+    /// Health-based kill, so every death drops a pair.
     /// </summary>
     private void DespawnSpider()
     {
@@ -2569,6 +3787,7 @@ public sealed class World
 
         _splats.Add((Spider.Position, SplatDuration));
         _pendingFangSpawns.Add(new SpiderFang(Spider.Position));
+        _pendingChitinSpawns.Add(new Chitin(Spider.Position));
         Spider = null;
         SpidersCrushed++;
         SpiderRespawnTimer = SpiderRespawnDelay;
@@ -2581,31 +3800,25 @@ public sealed class World
 
         SpiderRespawnTimer -= deltaTime;
         if (SpiderRespawnTimer <= 0f)
-            SpawnSpiderNearEdge();
+            SpawnSpiderNearVillage();
     }
 
-    private void UpdateAcornRespawn(float deltaTime)
+    /// <summary>Tops the Acorn population back up to <see cref="MaxAcorns"/> every <see cref="AcornSpawnInterval"/> seconds, same pattern as Berries and Aphids.</summary>
+    private void UpdateAcornSpawn(float deltaTime)
     {
-        if (Acorn is not null)
+        _acornSpawnTimer -= deltaTime;
+        if (_acornSpawnTimer > 0f)
+            return;
+        _acornSpawnTimer = AcornSpawnInterval;
+
+        if (Acorns.Count >= MaxAcorns)
             return;
 
-        _acornRespawnTimer -= deltaTime;
-        if (_acornRespawnTimer <= 0f)
-            Acorn = new Acorn(RandomAcornSpot());
+        Acorns.Add(new Acorn(RandomAcornSpot()));
     }
 
-    /// <summary>Somewhere open, not hugging the edge, and a fair walk from the village.</summary>
-    private Vector3 RandomAcornSpot()
-    {
-        Vector3 candidate = Vector3.Zero;
-        for (int attempt = 0; attempt < 30; attempt++)
-        {
-            candidate = RandomFreePoint(Acorn.Radius + 0.5f, edgeMargin: 1.5f);
-            if (Vector3.Distance(candidate, Village.Center) > 4f)
-                return candidate;
-        }
-        return candidate;
-    }
+    /// <summary>Somewhere open inside a random faction's Territory Ring, not on top of its Village Heart — see <see cref="RandomTerritorySpot"/>.</summary>
+    private Vector3 RandomAcornSpot() => RandomTerritorySpot(Acorn.Radius + 0.5f, edgeMargin: 1.5f);
 }
 
 // =============================================================================
@@ -2613,15 +3826,52 @@ public sealed class World
 // =============================================================================
 
 /// <summary>
-/// The Village Heart: the colony's home and food store. A static brown block
-/// that Bramblekin deliver food to.
+/// The Village Heart: a faction's home and food store. A static brown block
+/// that its own Bramblekin deliver food to. Phase 3: each faction gets its
+/// own instance with its own economy (<see cref="FoodStored"/>,
+/// <see cref="Population"/>, <see cref="MaxFoodCapacity"/>,
+/// <see cref="Morale"/>) rather than sharing one set of numbers off
+/// <see cref="World"/> — see <see cref="World.Villages"/> and the
+/// per-village loop in <see cref="World.Update"/>.
 /// </summary>
+/// <summary>
+/// Faction Personalities: a Village Heart's independent, fixed-for-life
+/// stance on military vs. economy, randomly assigned the moment it's
+/// founded (the original Village Heart included) — see <see cref="VillageHeart.Trait"/>
+/// and <see cref="World.MilitiaRatioFor"/>.
+/// </summary>
+public enum FactionTrait
+{
+    /// <summary>1 Militia per 3 Gatherers (Population / 4).</summary>
+    Balanced,
+
+    /// <summary>1 Militia per 2 Gatherers (Population / 3) — highly aggressive.</summary>
+    Militaristic,
+
+    /// <summary>1 Militia per 5 Gatherers (Population / 6) — maximizes food collection.</summary>
+    Agrarian,
+}
+
 public sealed class VillageHeart
 {
     /// <summary>Footprint edge length, in meters.</summary>
     public const float Width = 1.6f;
 
     public const float Height = 1.2f;
+
+    /// <summary>Base Razing: hit points out of <see cref="MaxHealth"/>. Reduced by an enemy Militia's Poke (see <see cref="World.DamageVillageHeart"/>); at 0, the Heart is conquered and razed.</summary>
+    public int Health { get; private set; } = MaxHealth;
+
+    public const int MaxHealth = 200;
+
+    /// <summary>Radius (m) of the faint territory ring drawn on the ground around this Village Heart.</summary>
+    public const float TerritoryRadius = 15f;
+
+    /// <summary>Which tribe this Village Heart belongs to. The original heart is Faction 0.</summary>
+    public int FactionID { get; }
+
+    /// <summary>This faction's colour — tints its territory ring and, faintly, every one of its Bramblekin (see <see cref="Bramblekin.Draw"/>).</summary>
+    public Color FactionColor { get; }
 
     /// <summary>Centre of the footprint on the ground.</summary>
     public Vector3 Center { get; }
@@ -2639,38 +3889,215 @@ public sealed class VillageHeart
     /// <summary>A returning Bramblekin within this distance of the centre has arrived.</summary>
     public float DeliveryDistance => Obstacle.Radius + Bramblekin.BodyRadius + 0.2f;
 
-    public VillageHeart(Vector3 center)
+    /// <summary>Food in this faction's stores, waiting to become the next sprout.</summary>
+    public int FoodStored { get; internal set; }
+
+    /// <summary>
+    /// This faction's food storage cap. Starts at <see cref="World.BaseMaxFoodCapacity"/>
+    /// and rises permanently by <see cref="World.GranaryFoodBonus"/> for each Granary it completes.
+    /// </summary>
+    public int MaxFoodCapacity { get; internal set; } = World.BaseMaxFoodCapacity;
+
+    /// <summary>War Weariness: this faction's morale, drained by casualties and an actively hunting spider, recovered by calm.</summary>
+    public float Morale { get; internal set; } = World.MaxMorale;
+
+    /// <summary>Living Bramblekin of this faction — Militia and Gatherer alike. Recomputed every frame by the Job Manager.</summary>
+    public int Population { get; internal set; }
+
+    /// <summary>Auto-Conscription: how many of this faction's Bramblekin the Job Manager currently wants as Militia.</summary>
+    public int MilitiaTarget { get; internal set; }
+
+    /// <summary>Counts down to this faction's next Upkeep tax. Internal bookkeeping for <see cref="World"/>.</summary>
+    internal float UpkeepTimer { get; set; }
+
+    /// <summary>The Schism: true while this faction's Pioneers are already out founding a new Village Heart — guards against queuing a second Migration before the first lands.</summary>
+    public bool HasActiveMigration { get; internal set; }
+
+    /// <summary>
+    /// Default Peace & Thievery: which other Factions this Village Heart is
+    /// currently at war with, and how many seconds that Blood Feud has left
+    /// — keyed by FactionID. Every faction starts and stays at peace with
+    /// every other by default; an entry is only ever added by
+    /// <see cref="World.DeclareBloodFeud"/> (a foreign Militia unit caught
+    /// trespassing, or that faction landing a damaging hit on this one),
+    /// and ticks down to removal in <see cref="World.Update"/>. While a
+    /// FactionID is a key here, this faction's Militia treats it as a
+    /// lethal attack-on-sight enemy within the territory ring; every other
+    /// faction is simply ignored, Thievery aside (see
+    /// <see cref="Bramblekin.TrespassingAgainst"/>).
+    /// </summary>
+    public Dictionary<int, float> HostileFactions { get; } = new();
+
+    /// <summary>Below <see cref="World.WearyMoraleThreshold"/>: this faction's Gatherers walk at <see cref="World.WearySpeedMultiplier"/> speed.</summary>
+    public bool GatherersAreWeary => Morale < World.WearyMoraleThreshold;
+
+    /// <summary>Above <see cref="World.HighMoraleThreshold"/>: this faction's Builders work at <see cref="World.HighMoraleBuildMultiplier"/> speed.</summary>
+    public bool BuildersAreInspired => Morale > World.HighMoraleThreshold;
+
+    /// <summary>Faction Personalities: fixed for this Village Heart's entire life, randomly rolled the moment it's founded.</summary>
+    public FactionTrait Trait { get; }
+
+    /// <summary>
+    /// Extinction: no one left (<see cref="Population"/> is 0) and not even
+    /// enough Food Stored to Auto-Sprout a single replacement (<see cref="World.FoodPerSprout"/>)
+    /// — this faction is done for good. An Extinct Village Heart stops
+    /// functioning entirely (see the per-village loop in <see cref="World.Update"/>):
+    /// no Upkeep, no Auto-Anything. It still stands, and can still be found
+    /// and razed by Base Razing, until then.
+    /// </summary>
+    public bool IsExtinct => Population == 0 && FoodStored < World.FoodPerSprout;
+
+    public VillageHeart(Vector3 center, int factionId, Color factionColor, Random rng)
     {
         Center = center;
+        FactionID = factionId;
+        FactionColor = factionColor;
+        Trait = (FactionTrait)rng.Next(3);
         float half = Width / 2f;
         Bounds = new BoundingBox(
             new Vector3(center.X - half, Terrain.GroundHeight, center.Z - half),
             new Vector3(center.X + half, Terrain.GroundHeight + Height, center.Z + half));
     }
 
+    /// <summary>How long (s) a landed hit tints the Heart red in <see cref="Draw"/> — debug feedback that Base Razing damage is actually executing.</summary>
+    private const float DamageFlashDuration = 0.3f;
+
+    /// <summary>Counts down from <see cref="DamageFlashDuration"/> after every hit; ticked in <see cref="World.Update"/>.</summary>
+    public float DamageFlashTimer { get; internal set; }
+
+    /// <summary>Base Razing: reduces Health, floored at 0, and starts the red damage flash. Purely a Health mutation otherwise — destruction/loot is World's call, via <see cref="World.DamageVillageHeart"/>.</summary>
+    public void TakeDamage(int amount)
+    {
+        Health = Math.Max(0, Health - amount);
+        DamageFlashTimer = DamageFlashDuration;
+    }
+
     public void Draw()
     {
+        DrawTerritoryRing();
+
         var middle = Center + new Vector3(0, Height / 2f, 0);
-        Raylib.DrawCube(middle, Width, Height, Width, new Color(122, 78, 40, 255));
+        Color cubeColor = DamageFlashTimer > 0f ? new Color(210, 40, 40, 255) : new Color(122, 78, 40, 255);
+        Raylib.DrawCube(middle, Width, Height, Width, cubeColor);
         Raylib.DrawCubeWires(middle, Width, Height, Width, new Color(60, 35, 15, 255));
 
         // A small dark doorway on the camera-facing side so it reads as a home.
         var door = Center + new Vector3(Width / 2f + 0.01f, 0.3f, 0);
         Raylib.DrawCube(door, 0.02f, 0.6f, 0.45f, new Color(45, 25, 10, 255));
     }
+
+    /// <summary>
+    /// Territory: a faint ring of <see cref="FactionColor"/>, <see cref="TerritoryRadius"/>
+    /// meters out, laid flat on the ground just above the grid so it doesn't
+    /// z-fight with it. Purely a border — the claim itself, not a filled
+    /// disc — so overlapping territories both stay readable.
+    /// </summary>
+    private void DrawTerritoryRing()
+    {
+        const int segments = 48;
+        var ringColor = new Color(FactionColor.R, FactionColor.G, FactionColor.B, (byte)140);
+
+        Vector3 Point(int i)
+        {
+            float angle = i * MathF.Tau / segments;
+            return Center + new Vector3(MathF.Cos(angle) * TerritoryRadius, 0.02f, MathF.Sin(angle) * TerritoryRadius);
+        }
+
+        Vector3 previous = Point(0);
+        for (int i = 1; i <= segments; i++)
+        {
+            Vector3 next = Point(i);
+            Raylib.DrawLine3D(previous, next, ringColor);
+            previous = next;
+        }
+    }
 }
 
 /// <summary>
-/// The Acorn puzzle object: too hard for the Bramblekin to open, but a
-/// Pebble-Drop miracle cracks it into Food Shards.
+/// The Schism: bookkeeping shared by the 4 Pioneers of one migration, so
+/// the moment any one of them reaches <see cref="Target"/> and founds the
+/// new Village Heart (<see cref="World.FoundVillage"/>), every Pioneer
+/// bound to it — not just the one that arrived — drops its Migrating state
+/// on its very next Update() (see <see cref="Bramblekin.UpdateMigrating"/>).
+/// </summary>
+public sealed class Migration
+{
+    public int NewFactionID { get; }
+    public Color NewFactionColor { get; }
+    public Vector3 Target { get; }
+
+    /// <summary>The overcrowded Village Heart this Migration set out from — whose <see cref="VillageHeart.HasActiveMigration"/> clears once this Migration is founded or abandoned.</summary>
+    public VillageHeart Origin { get; }
+
+    /// <summary>The True Schism: how much Food Stored (half of Origin's own, at the moment it split) the new Village Heart is seeded with — see <see cref="World.FoundVillage"/>.</summary>
+    public int FoodAmount { get; }
+
+    /// <summary>True once a Pioneer has reached <see cref="Target"/> and founded the new Village Heart.</summary>
+    public bool Founded { get; private set; }
+
+    /// <summary>Pioneers still alive and travelling. If this reaches zero before the Migration is Founded, it's abandoned so the origin can try again.</summary>
+    private int _pioneersRemaining;
+
+    public Migration(int newFactionId, Color newFactionColor, Vector3 target, VillageHeart origin, int pioneerCount, int foodAmount)
+    {
+        NewFactionID = newFactionId;
+        NewFactionColor = newFactionColor;
+        Target = target;
+        Origin = origin;
+        FoodAmount = foodAmount;
+        _pioneersRemaining = pioneerCount;
+    }
+
+    public void MarkFounded() => Founded = true;
+
+    /// <summary>A Pioneer bound to this Migration died before reaching Target. Abandons the Migration (freeing the origin to try again) once none are left.</summary>
+    public void PioneerLost()
+    {
+        _pioneersRemaining = Math.Max(0, _pioneersRemaining - 1);
+        if (_pioneersRemaining == 0 && !Founded)
+            Origin.HasActiveMigration = false;
+    }
+}
+
+/// <summary>
+/// The Acorn puzzle object: too hard for a single Bramblekin to open alone.
+/// A Pebble-Drop miracle still cracks one outright, or up to
+/// <see cref="MaxClaimants"/> Chitin-Mallet Gatherers can claim and crack
+/// one together — Cooperative Acorn Cracking (see <see cref="World.NearestClaimableAcorn"/>/
+/// <see cref="World.Update"/>'s coop-crack check). Either way it shatters
+/// into Food Shards.
 /// </summary>
 public sealed class Acorn
 {
     public const float Radius = 0.35f;
 
+    /// <summary>Cooperative Acorn Cracking: at most this many Chitin-Mallet Gatherers may claim the same Acorn at once.</summary>
+    public const int MaxClaimants = 3;
+
     public Vector3 Position { get; }
 
+    private readonly List<Bramblekin> _claimants = new();
+
+    /// <summary>The Chitin-Mallet Gatherers currently claiming this Acorn.</summary>
+    public IReadOnlyList<Bramblekin> Claimants => _claimants;
+
     public Acorn(Vector3 groundPoint) => Position = groundPoint;
+
+    public bool IsClaimedBy(Bramblekin gatherer) => _claimants.Contains(gatherer);
+
+    /// <summary>Claims a free slot for <paramref name="gatherer"/> (a no-op if it already holds one). Returns whether it now holds a claim.</summary>
+    public bool TryClaim(Bramblekin gatherer)
+    {
+        if (_claimants.Contains(gatherer))
+            return true;
+        if (_claimants.Count >= MaxClaimants)
+            return false;
+
+        _claimants.Add(gatherer);
+        return true;
+    }
+
+    public void ReleaseClaim(Bramblekin gatherer) => _claimants.Remove(gatherer);
 
     public void Draw()
     {
@@ -2716,6 +4143,22 @@ public sealed class FoodShard
     /// </summary>
     public Vector3 Velocity { get; set; }
 
+    /// <summary>
+    /// Dibs: the one Bramblekin currently pursuing this shard, if any — see
+    /// <see cref="World.IsAvailable(FoodShard, Bramblekin)"/>. Only
+    /// meaningful while that Bramblekin's own State is actually Gathering;
+    /// it's released (see Bramblekin.SetState) the moment that stops being
+    /// true — and, as a failsafe against a claimant that's stuck, jittering,
+    /// or otherwise never actually closes the distance, it's also force-
+    /// released after <see cref="World.FoodClaimTimeoutSeconds"/> of game
+    /// time (see <see cref="ClaimTimer"/> and <see cref="World.Update"/>'s
+    /// timeout sweep) so nobody else is ever locked out forever.
+    /// </summary>
+    public Bramblekin? ClaimedBy { get; set; }
+
+    /// <summary>Seconds since <see cref="ClaimedBy"/> was last set. Reset to 0 on every new claim; ticked and enforced by World.</summary>
+    public float ClaimTimer { get; set; }
+
     public FoodShard(Vector3 groundPoint, FoodShardKind kind = FoodShardKind.Cracked)
     {
         Position = groundPoint;
@@ -2731,33 +4174,29 @@ public sealed class FoodShard
 }
 
 /// <summary>
-/// Found-Object Weaponry's raw material: dropped where the Wolf Spider dies
-/// (see <see cref="World.DespawnSpider"/>), for any Gatherer to scavenge —
-/// ahead of ordinary food, per Scavenger Priority — and carry back to the
-/// Village Heart (<see cref="World.DeliverFang"/>). Once enough are banked,
-/// the Fang Pikes upgrade unlocks for the whole Militia.
+/// Individual Equipment's raw material: dropped where the Wolf Spider dies
+/// (see <see cref="World.DespawnSpider"/>), alongside a <see cref="Chitin"/>.
+/// An un-upgraded Militia unit that touches one instantly equips a Fang Pike
+/// (<see cref="Bramblekin.HasFangPike"/>) and it despawns — see
+/// <see cref="World.ConsumeFang"/>.
 /// </summary>
 public sealed class SpiderFang
 {
     public const float Radius = 0.16f;
 
-    /// <summary>Resting spot on the ground (y = GroundHeight). Ignored while carried.</summary>
-    public Vector3 Position { get; set; }
-
-    /// <summary>True while a Bramblekin is holding it; carried fangs are hidden from the map.</summary>
-    public bool IsCarried { get; set; }
+    /// <summary>Resting spot on the ground (y = GroundHeight).</summary>
+    public Vector3 Position { get; }
 
     public SpiderFang(Vector3 groundPoint) => Position = groundPoint;
 
-    /// <summary>Draws a small white/silver triangle standing on the ground at (or carried above) <paramref name="groundPoint"/>.</summary>
-    public void Draw(Vector3 groundPoint)
+    public void Draw()
     {
         var fill = new Color(235, 235, 240, 255);
         var edge = new Color(150, 150, 160, 255);
 
-        var tip = groundPoint + new Vector3(0, Radius * 2f, 0);
-        var baseLeft = groundPoint + new Vector3(-Radius * 0.5f, 0, 0);
-        var baseRight = groundPoint + new Vector3(Radius * 0.5f, 0, 0);
+        var tip = Position + new Vector3(0, Radius * 2f, 0);
+        var baseLeft = Position + new Vector3(-Radius * 0.5f, 0, 0);
+        var baseRight = Position + new Vector3(Radius * 0.5f, 0, 0);
 
         // Both winding orders, so it reads as a solid fang from any angle.
         Raylib.DrawTriangle3D(baseLeft, tip, baseRight, fill);
@@ -2765,6 +4204,30 @@ public sealed class SpiderFang
         Raylib.DrawLine3D(baseLeft, tip, edge);
         Raylib.DrawLine3D(tip, baseRight, edge);
         Raylib.DrawLine3D(baseRight, baseLeft, edge);
+    }
+}
+
+/// <summary>
+/// Individual Equipment's other raw material: dropped alongside a
+/// <see cref="SpiderFang"/> where the Wolf Spider dies. An un-upgraded
+/// Gatherer that touches one instantly equips a Chitin Mallet (<see cref="Bramblekin.HasChitinMallet"/>)
+/// and it despawns — see <see cref="World.ConsumeChitin"/>.
+/// </summary>
+public sealed class Chitin
+{
+    public const float Radius = 0.15f;
+
+    /// <summary>Resting spot on the ground (y = GroundHeight).</summary>
+    public Vector3 Position { get; }
+
+    public Chitin(Vector3 groundPoint) => Position = groundPoint;
+
+    /// <summary>A small grey chitin plate lying on the ground.</summary>
+    public void Draw()
+    {
+        var center = Position + new Vector3(0, Radius * 0.6f, 0);
+        Raylib.DrawCube(center, Radius * 1.6f, Radius * 0.7f, Radius * 1.3f, new Color(150, 150, 150, 255));
+        Raylib.DrawCubeWires(center, Radius * 1.6f, Radius * 0.7f, Radius * 1.3f, new Color(90, 90, 95, 255));
     }
 }
 
@@ -2795,19 +4258,27 @@ public sealed class Building
     public const float SporePatchRadius = 1.0f;
     private const float SporePatchHeight = 0.05f;
 
-    /// <summary>Seconds between each Berry a finished Spore Patch spawns on top of itself.</summary>
-    public const float SporePatchInterval = 10f;
+    /// <summary>Seconds between each Berry a finished Spore Patch spawns on top of itself. Buffed further (10s -> 5s -> 4s) to keep established bases' baseline survival ahead of the Upkeep tax.</summary>
+    public const float SporePatchInterval = 4f;
 
     public BuildingKind Kind { get; }
     public Vector3 Position { get; }
 
+    /// <summary>Which faction built this — carried over from the <see cref="Blueprint"/> it was completed from.</summary>
+    public int FactionID { get; }
+
+    /// <summary>The owning faction's colour.</summary>
+    public Color FactionColor { get; }
+
     /// <summary>Counts down to the next Berry. Only meaningful for a Spore Patch.</summary>
     private float _sporeTimer = SporePatchInterval;
 
-    public Building(Vector3 position, BuildingKind kind = BuildingKind.Granary)
+    public Building(Vector3 position, BuildingKind kind, int factionId, Color factionColor)
     {
         Position = position;
         Kind = kind;
+        FactionID = factionId;
+        FactionColor = factionColor;
     }
 
     /// <summary>The footprint radius (m) a Blueprint/Building of this kind actually occupies on the ground.</summary>
@@ -2869,10 +4340,18 @@ public sealed class Blueprint
 
     public bool IsComplete => Progress >= ProgressRequired;
 
-    public Blueprint(Vector3 position, BuildingKind kind = BuildingKind.Granary)
+    /// <summary>Which faction placed this site — AI Faction Loyalty: only that faction's Builders will work it.</summary>
+    public int FactionID { get; }
+
+    /// <summary>The owning faction's colour.</summary>
+    public Color FactionColor { get; }
+
+    public Blueprint(Vector3 position, BuildingKind kind, int factionId, Color factionColor)
     {
         Position = position;
         Kind = kind;
+        FactionID = factionId;
+        FactionColor = factionColor;
     }
 
     public void AddProgress(float amount) => Progress = MathF.Min(Progress + amount, ProgressRequired);
@@ -2908,8 +4387,17 @@ public sealed class Blueprint
 /// </summary>
 public sealed class GroundMover
 {
-    /// <summary>Within this distance of a target counts as "arrived".</summary>
-    private const float ArriveDistance = 0.05f;
+    /// <summary>
+    /// Within this distance of a target counts as "arrived" — snapping
+    /// exactly onto it rather than taking one more tiny step. Loosened from
+    /// a hair-trigger 0.05 m so a walker settles cleanly instead of
+    /// endlessly re-approaching by a few centimeters at a time (e.g. after
+    /// PushOutOfObstacles nudges it back off a goal sitting right at an
+    /// obstacle's edge) — the "smoothed arrival" half of the High-Speed
+    /// Physics fix, alongside the callers' own more forgiving pickup/contact
+    /// radii.
+    /// </summary>
+    private const float ArriveDistance = 0.15f;
 
     /// <summary>How far ahead (m) the walker looks for obstacles in its path.</summary>
     private const float LookAhead = 1.5f;
@@ -3171,14 +4659,46 @@ public enum BramblekinState
     /// <summary>Running at 3x speed from a God's Shadow or a predator.</summary>
     Fleeing,
 
-    /// <summary>Militia only: charging the Wolf Spider to intercept it before it reaches the village.</summary>
+    /// <summary>
+    /// Militia only: charging the Wolf Spider to intercept it before it
+    /// reaches the village, chasing down a rival faction it's in a
+    /// declared Blood Feud with, or confronting (Warning Shove first) a
+    /// specific foreign Gatherer caught trespassing — see
+    /// <see cref="Bramblekin.UpdateDefending"/>.
+    /// </summary>
     Defending,
 
-    /// <summary>Militia only: chasing down the nearest Aphid.</summary>
+    /// <summary>Militia only: chasing down the nearest Aphid within the 20-Meter Territory Rule.</summary>
     Hunting,
+
+    /// <summary>
+    /// Blood Feud Base Razing: Militia only, opportunistic offense rather
+    /// than home defense — a unit that wanders within its own 20m aggro
+    /// radius of a Village Heart it's in a declared Blood Feud with, with
+    /// no living hostile Bramblekin also in range, paths to it and Pokes it
+    /// down. See <see cref="Bramblekin.UpdateRaiding"/>.
+    /// </summary>
+    Raiding,
 
     /// <summary>Gatherers only: the Builder AI, pathing to and working a Blueprint.</summary>
     Building,
+
+    /// <summary>
+    /// Individual Equipment: an un-upgraded Militia unit fetching a Spider
+    /// Fang, or an un-upgraded Gatherer fetching a Chitin piece — see
+    /// <see cref="Bramblekin.UpdateEquipping"/>.
+    /// </summary>
+    Equipping,
+
+    /// <summary>
+    /// The Schism: a Pioneer, forced into this state the instant it's
+    /// chosen (see <see cref="Bramblekin.BecomePioneer"/>) and overriding
+    /// every other priority — it ignores food, blueprints and enemies alike
+    /// and paths straight for its Migration's Target until it (or another
+    /// Pioneer bound to the same Migration) founds the new Village Heart.
+    /// See <see cref="Bramblekin.UpdateMigrating"/>.
+    /// </summary>
+    Migrating,
 }
 
 /// <summary>A Bramblekin's class: an ordinary worker, or a drafted defender.</summary>
@@ -3199,16 +4719,25 @@ public enum BramblekinRole
 ///   1. God's Shadow (always wins, every role): standing under a shadow drops
 ///      any carried food and sends it Fleeing at 3x speed to the nearest safe
 ///      spot — even with a spider on its tail.
-///   2. The Wolf Spider: a Militia unit's absolute highest priority the
-///      instant one exists, at any distance — it abandons anything else
-///      (Aphids included) and Defends, closing in to trade blows with it.
-///      A Gatherer only reacts once the spider is within <see cref="FearRadius"/>,
-///      dropping its food and Fleeing directly away.
-///   3. Economy (Gatherers only): while Food Shards are available, wandering
-///      (Walking/Pausing) is overridden by Gathering -> pick up ->
-///      Returning -> deliver.
-///   3b. Hunting (Militia only): with no spider to fight, wandering is
-///      overridden by chasing down the nearest Aphid.
+///   2. The 20-Meter Territory Rule: a Militia unit only Defends against the
+///      Wolf Spider, or Hunts an Aphid, while that hostile is within
+///      <see cref="World.TerritoryTargetingRadius"/> of its own Village
+///      Heart — see <see cref="World.SpawnSpiderNearVillage"/>'s organic
+///      roaming. A Gatherer's own Fear Aura response is unaffected by
+///      territory: it flees the spider on sight within <see cref="FearRadius"/>
+///      regardless of where either of them is standing. Default Peace &amp;
+///      Thievery: at this same priority tier, a Militia unit also Defends
+///      against any rival faction it's in a declared Blood Feud with (see
+///      <see cref="VillageHeart.HostileFactions"/>) and confronts (Warning
+///      Shove first) any specific foreign Gatherer it's caught stealing
+///      food from its own territory (see <see cref="TrespassingAgainst"/>)
+///      — every other faction is otherwise completely ignored.
+///   3. Village Building (Gatherers only), then Individual Equipment (an
+///      un-upgraded Militia fetching a Fang, or Gatherer fetching Chitin —
+///      see <see cref="HasFangPike"/>/<see cref="HasChitinMallet"/>), then
+///      Economy (Gathering food, prioritizing the 20 m Territory Rule
+///      before the wider map) or Hunting (Militia) override wandering in
+///      that priority order.
 ///   4. Wandering: Walking to a random free point, Pausing 2 s, repeat.
 ///      Shared by both roles as the default idle behaviour.
 ///
@@ -3216,11 +4745,18 @@ public enum BramblekinRole
 /// Spider hunts by (<see cref="IsVibrating"/>). Militia never gather, so they
 /// never draw that attention — the spider only ever engages one through the
 /// Bite/Poke exchange once it's within range.
+///
+/// Dibs: a Bramblekin claims its current Food Shard/Aphid/Acorn target (see
+/// <see cref="FoodShard.ClaimedBy"/>/<see cref="Aphid.ClaimedBy"/>/<see cref="Acorn.Claimants"/>)
+/// so others don't swarm the same one; the claim is released automatically
+/// the moment it stops actively pursuing it (see <see cref="SetState"/>) or
+/// dies (see <see cref="MarkDead"/>). The Wolf Spider is exempt — any number
+/// of Militia can pile onto it at once.
 /// </summary>
 public sealed class Bramblekin
 {
-    /// <summary>Normal walking speed in m/s (a slow amble).</summary>
-    public const float WalkSpeed = 1.0f;
+    /// <summary>Normal walking speed in m/s. Buffed 50% over the original slow amble so Bramblekin can cross the larger 60x60 m map before Upkeep starves them.</summary>
+    public const float WalkSpeed = 1.5f;
 
     /// <summary>Flee speed as a multiple of <see cref="WalkSpeed"/>.</summary>
     public const float FleeSpeedMultiplier = 3f;
@@ -3251,11 +4787,24 @@ public sealed class Bramblekin
     /// <summary>Extra clearance beyond the shadow's edge when picking an escape point.</summary>
     private const float SafetyMargin = 0.5f;
 
-    /// <summary>Within this distance of a shard, it is picked up.</summary>
-    private const float PickupDistance = BodyRadius + FoodShard.Radius + 0.1f;
+    /// <summary>
+    /// Within this distance of a shard, it is picked up. Forgiving on
+    /// purpose (well beyond BodyRadius + FoodShard.Radius' exact-touch
+    /// distance): at a high Debug Time Scale a claimant can be a whole
+    /// tick's movement away from dead-center and still needs to register as
+    /// "close enough", or it jitters past the target forever without ever
+    /// satisfying a tighter check.
+    /// </summary>
+    private const float PickupDistance = 0.8f;
 
-    /// <summary>Within this distance of a Spider Fang, it is picked up.</summary>
-    private const float FangPickupDistance = BodyRadius + SpiderFang.Radius + 0.1f;
+    /// <summary>Within this distance of a Spider Fang, it is picked up — see <see cref="PickupDistance"/>'s High-Speed Physics note.</summary>
+    private const float FangPickupDistance = 0.8f;
+
+    /// <summary>Within this distance of a Chitin piece, it is picked up — see <see cref="PickupDistance"/>'s High-Speed Physics note.</summary>
+    private const float ChitinPickupDistance = 0.8f;
+
+    /// <summary>The Schism: within this distance of its Migration Target, a Pioneer has arrived.</summary>
+    private const float MigrationArriveDistance = BodyRadius + 0.2f;
 
     /// <summary>Militia charge speed while Defending — faster than a gathering amble, short of a full panicked flee.</summary>
     private const float DefendSpeed = WalkSpeed * 1.5f;
@@ -3273,22 +4822,35 @@ public sealed class Bramblekin
     /// Extra reach (m) beyond a Blueprint's own footprint radius and the
     /// Builder's body radius — the two must actually be able to
     /// intersect/touch, not just get within some flat distance of its
-    /// centre regardless of how big the site itself is.
+    /// centre regardless of how big the site itself is. Combined with even
+    /// the smallest Blueprint's own footprint, the total contact distance
+    /// already comes out well past the High-Speed Physics floor (see
+    /// <see cref="PickupDistance"/>'s note), so it needs no bump of its own.
     /// </summary>
     private const float BuildContactMargin = 0.3f;
 
     /// <summary>Sustained Combat: within this distance of the Wolf Spider, a Defending Militia unit pokes it instead of just closing in.</summary>
     private const float PokeRange = 1.5f;
 
+    /// <summary>
+    /// Base Razing: within this distance of a Village Heart's centre, a
+    /// Raiding Militia unit attacks it instead of just closing in. Much
+    /// more forgiving than <see cref="PokeRange"/>: the Heart's own solid
+    /// Obstacle (radius ~0.96m) plus a walker's BodyRadius already stops
+    /// units short of the exact centre coordinate, and crowding several
+    /// raiders around the same small footprint leaves some of them jostled
+    /// out past a tight range — a real softlock that used to leave raiders
+    /// permanently "crowding around" the Heart without ever landing a hit.
+    /// </summary>
+    private const float BuildingAttackRange = 3.5f;
+
     /// <summary>Cooldown (s) between pokes — rapid, so Militia can wail on a spider (especially a Tumbled one) quickly.</summary>
     private const float PokeCooldownDuration = 1.0f;
 
     /// <summary>
-    /// Damage a Militia poke deals to the Wolf Spider — boosted by Found-
-    /// Object Weaponry once the Fang Pikes upgrade unlocks (see
-    /// <see cref="World.FangPikesUnlocked"/>). Applies to every current and
-    /// future Militia unit alike: it's a live world-state check, not
-    /// anything stored per-unit.
+    /// Damage a Militia poke deals to the Wolf Spider — boosted once this
+    /// specific unit's own <see cref="HasFangPike"/> is true. Individual
+    /// Equipment: unlike the old village-wide unlock, this is per-unit.
     /// </summary>
     private const int PokeDamage = 15;
     private const int UpgradedPokeDamage = 30;
@@ -3298,6 +4860,8 @@ public sealed class Bramblekin
     private static readonly Color MilitiaColor = new(150, 130, 95, 255); // A shade duller than a Gatherer — worn, armed.
     private static readonly Color PikeColor = new(120, 55, 40, 255);     // Rose-thorn brown-red.
     private static readonly Color FangPikeColor = new(235, 235, 240, 255); // Spider Fang: bright white/silver.
+    private static readonly Color MalletHandleColor = new(120, 80, 45, 255); // Wooden handle.
+    private static readonly Color MalletHeadColor = new(150, 150, 150, 255); // Grey chitin head.
 
     private readonly Random _rng;
     private readonly GroundMover _mover;
@@ -3305,7 +4869,56 @@ public sealed class Bramblekin
     private float _pauseTimer;
     private float _pokeCooldown;
     private FoodShard? _carried;
-    private SpiderFang? _carriedFang;
+
+    /// <summary>
+    /// Thievery: the foreign Village Heart this Gatherer is currently
+    /// trespassing against, set the instant it picks up a Food Shard
+    /// sitting inside that faction's own 20m territory ring (see
+    /// <see cref="World.ForeignTerritoryContaining"/>), null otherwise.
+    /// Only ever meaningful while <see cref="_carried"/> is the shard it
+    /// stole — cleared the moment that's no longer true (see
+    /// <see cref="DropCarried"/> and <see cref="UpdateReturning"/>), so the
+    /// flag never outlives the theft itself. That specific Village Heart's
+    /// Militia checks this to single the thief out — see
+    /// <see cref="World.NearestTrespasserInTerritory"/>.
+    /// </summary>
+    public VillageHeart? TrespassingAgainst { get; private set; }
+
+    // Dibs: the current claim on a Food Shard/Aphid/Acorn this Bramblekin is
+    // actively pursuing, so re-picking a different (or no) target releases
+    // the old one rather than leaving it permanently locked out for others.
+    // See SetState and MarkDead, which release all three on any transition
+    // away from the state that owns them.
+    private FoodShard? _claimedShard;
+    private Aphid? _claimedAphid;
+    private Acorn? _claimedAcorn;
+
+    /// <summary>
+    /// The Bramblekin this Militia unit is currently chasing down while
+    /// Defending, when there's no Wolf Spider in territory to prioritize
+    /// instead — either a declared enemy (Blood Feud Border Wars) or a
+    /// specific caught Trespasser (Thievery Response); UpdateDefending
+    /// decides which by checking whether its faction is a key in the home
+    /// Village Heart's HostileFactions. Re-picked every frame, same spirit
+    /// as <see cref="_claimedAphid"/> — not a Dibs claim (multiple
+    /// defenders can pile onto the same target), just a per-unit "who am I
+    /// dealing with right now" reference.
+    /// </summary>
+    private Bramblekin? _combatTarget;
+
+    /// <summary>
+    /// Blood Feud Base Razing: the enemy Village Heart this Militia unit is
+    /// currently pathing to and Poking while Raiding — opportunistic
+    /// offense, picked up when it wanders within its own aggro radius of
+    /// one its faction is at declared war with, with no living hostile
+    /// Bramblekin also in range. Re-checked every frame in
+    /// <see cref="UpdateRaiding"/>; not a Dibs claim, any number of Militia
+    /// can pile onto the same Heart at once.
+    /// </summary>
+    private VillageHeart? _raidTarget;
+
+    /// <summary>The Schism: set the instant this Bramblekin becomes a Pioneer (see <see cref="BecomePioneer"/>), cleared the instant it stops Migrating (see <see cref="UpdateMigrating"/>).</summary>
+    private Migration? _migration;
 
     /// <summary>Feet position on the ground (y = GroundHeight).</summary>
     public Vector3 Position => _mover.Position;
@@ -3315,7 +4928,23 @@ public sealed class Bramblekin
     /// <summary>Gatherer by default; the Job Manager promotes/demotes it to track the player's Militia Target.</summary>
     public BramblekinRole Role { get; private set; } = BramblekinRole.Gatherer;
 
-    public bool IsCarrying => _carried is not null || _carriedFang is not null;
+    public bool IsCarrying => _carried is not null;
+
+    /// <summary>
+    /// Individual Equipment: true once this specific Militia unit has
+    /// touched a Spider Fang. Boosts its own Poke damage and renders its
+    /// pike bright silver (see <see cref="Draw"/>). Perishes with it if it
+    /// dies — the Village Heart's next Sprout is always un-upgraded.
+    /// </summary>
+    public bool HasFangPike { get; private set; }
+
+    /// <summary>
+    /// Individual Equipment: true once this specific Gatherer has touched a
+    /// Chitin piece. Lets it target whole Acorns (Cooperative Acorn
+    /// Cracking) and renders a grey mallet (see <see cref="Draw"/>).
+    /// Perishes with it if it dies.
+    /// </summary>
+    public bool HasChitinMallet { get; private set; }
 
     /// <summary>
     /// True once this Bramblekin has been caught by a predator. A dead
@@ -3334,9 +4963,23 @@ public sealed class Bramblekin
 
     public const int MaxHealth = 30;
 
-    public Bramblekin(Vector3 position, Random rng)
+    /// <summary>
+    /// Which tribe this Bramblekin belongs to — determines which Village
+    /// Heart it gathers/builds for (see <see cref="World.VillageFor"/>).
+    /// Private set: the Schism reassigns this the instant a Bramblekin
+    /// becomes a Pioneer (see <see cref="BecomePioneer"/>), well before its
+    /// new Village Heart even exists.
+    /// </summary>
+    public int FactionID { get; private set; }
+
+    /// <summary>Its faction's colour, blended faintly into its body (see <see cref="Draw"/>) so tribes read apart at a glance.</summary>
+    public Color FactionColor { get; private set; }
+
+    public Bramblekin(Vector3 position, Random rng, int factionId, Color factionColor)
     {
         _rng = rng;
+        FactionID = factionId;
+        FactionColor = factionColor;
         _mover = new GroundMover(position, BodyRadius, EdgeMargin, rng);
 
         // Start mid-pause with a random timer so the colony doesn't move in lockstep.
@@ -3345,26 +4988,44 @@ public sealed class Bramblekin
     }
 
     /// <summary>
-    /// Sustained Combat: the Wolf Spider's Bite. Reduces Health and, if that
-    /// brings it to 0, dies via <see cref="World.Kill"/> (the usual
-    /// drop-food/Casualties/Morale/deferred-removal path).
+    /// Reduces Health and, if that brings it to 0, dies — via
+    /// <see cref="World.KillByBramblekin"/> (Spoils of War) when
+    /// <paramref name="attackerFactionId"/> names the Bramblekin faction
+    /// that dealt the blow, or the plain <see cref="World.Kill"/> for
+    /// anything else (the Wolf Spider's Bite, chiefly). The Blood Feud:
+    /// landing ANY damaging hit from one faction on another — a killing
+    /// blow or not — immediately declares war between them (see
+    /// <see cref="World.DeclareBloodFeud"/>) if they weren't already at
+    /// war, since Default Peace never survives actual bloodshed.
     /// </summary>
-    public void TakeDamage(int amount, World world)
+    public void TakeDamage(int amount, World world, int? attackerFactionId = null)
     {
         if (IsDead)
             return;
 
+        if (attackerFactionId is { } attackerId)
+            world.DeclareBloodFeud(FactionID, attackerId);
+
         Health = Math.Max(0, Health - amount);
         if (Health <= 0)
-            world.Kill(this);
+        {
+            if (attackerFactionId is not null)
+                world.KillByBramblekin(this);
+            else
+                world.Kill(this);
+        }
     }
 
     /// <summary>
     /// Marks this Bramblekin as caught: drops any carried food immediately
-    /// (so it's still gatherable) and flags it dead. Called once, from
-    /// <see cref="World.Kill"/>; it does not touch <see cref="World.Colony"/>
-    /// itself — that removal is deferred and processed at the end of the
-    /// frame.
+    /// (so it's still gatherable), releases any Dibs claim so it doesn't
+    /// lock a shard/Aphid/Acorn out forever, and flags it dead. Death
+    /// Penalty: any equipment (<see cref="HasFangPike"/>/<see cref="HasChitinMallet"/>)
+    /// simply perishes with the instance — nothing else ever references it,
+    /// and the Village Heart's next Sprout always starts fresh, un-upgraded.
+    /// Called once, from <see cref="World.Kill"/>; it does not touch
+    /// <see cref="World.Colony"/> itself — that removal is deferred and
+    /// processed at the end of the frame.
     /// </summary>
     public void MarkDead()
     {
@@ -3372,6 +5033,16 @@ public sealed class Bramblekin
             return;
 
         DropCarried();
+        ReleaseFoodClaim();
+        ReleaseAphidClaim();
+        ReleaseAcornClaim();
+
+        // The Schism: a Pioneer lost en route. Tells its Migration so the
+        // origin's HasActiveMigration eventually clears if all 4 are lost
+        // before any of them founds the new Village Heart.
+        _migration?.PioneerLost();
+        _migration = null;
+
         IsDead = true;
     }
 
@@ -3416,6 +5087,29 @@ public sealed class Bramblekin
         StartWandering(world);
     }
 
+    /// <summary>
+    /// The Schism: this Bramblekin is one of the 4 Pioneers a Village Heart
+    /// just sent off. Immediately switches its Faction (and, with it, its
+    /// visual tint — see <see cref="Draw"/>) to the new one, drops anything
+    /// it was carrying or claiming, and forces it into Migrating, where it
+    /// stays — ignoring food, blueprints and enemies alike — until it or
+    /// another Pioneer bound to the same <see cref="Migration"/> founds the
+    /// new Village Heart (see <see cref="UpdateMigrating"/>).
+    /// </summary>
+    public void BecomePioneer(Migration migration)
+    {
+        DropCarried();
+        ReleaseFoodClaim();
+        ReleaseAphidClaim();
+        ReleaseAcornClaim();
+
+        FactionID = migration.NewFactionID;
+        FactionColor = migration.NewFactionColor;
+        _migration = migration;
+        _target = migration.Target;
+        SetState(BramblekinState.Migrating);
+    }
+
     public void Update(float deltaTime, World world)
     {
         if (IsDead)
@@ -3424,7 +5118,20 @@ public sealed class Bramblekin
         _mover.Idle();
         if (_pokeCooldown > 0f)
             _pokeCooldown -= deltaTime;
+
+        // --- 0. The Schism (absolute priority, above even God's Shadow):
+        // a Pioneer ignores food, blueprints and enemies alike and paths
+        // straight for its Migration's Target. Nothing else in this method
+        // runs while Migrating — see UpdateMigrating.
+        if (State == BramblekinState.Migrating)
+        {
+            UpdateMigrating(deltaTime, world);
+            return;
+        }
+
         bool isSafe(Vector3 p) => IsSafeSpot(p, world);
+
+        VillageHeart? home = world.VillageFor(FactionID);
 
         // --- 1. God's Shadow (absolute priority) ------------------------------
         // A shadow flight only replans if its escape point has since been
@@ -3439,18 +5146,121 @@ public sealed class Bramblekin
                 SetState(BramblekinState.Fleeing);
             }
         }
-        // --- 2. The Wolf Spider: Militia's absolute top priority at any
-        // distance the instant one exists; a Gatherer only flees once it's
-        // within FearRadius. Re-aimed every frame, so a defending Militia
-        // keeps adjusting where it's standing (and a fleeing Gatherer keeps
-        // running straight away) as the spider moves.
-        else if (Role == BramblekinRole.Militia && world.Spider is { } spider)
+        // --- 2. The 20-Meter Territory Rule: Militia only engage the Wolf
+        // Spider while it's within TerritoryTargetingRadius of their own
+        // Village Heart — organic roaming means it spends most of its time
+        // out of territory, ignored. Re-aimed every frame, so a defending
+        // Militia keeps adjusting where it's standing as the spider moves.
+        // A Gatherer's Fear Aura is unaffected by territory: it flees on
+        // sight within FearRadius regardless of where either of them is.
+        // The 'Enemy of My Enemy' Protocol — Apex Priority: this check is
+        // unconditional on the spider's own State (any spider merely
+        // present in the ring, whatever it's doing, wins), and being
+        // checked here — ahead of 2a/2b/2c/2d below in the same if/else-if
+        // chain — it already completely overrides any rival-faction target
+        // the instant it's true, full stop.
+        else if (Role == BramblekinRole.Militia && world.Spider is { } spider && home is not null &&
+                 GroundMover.HorizontalDistance(spider.Position, home.Center) <= World.TerritoryTargetingRadius)
         {
-            _target = ComputeInterceptPoint(spider, world);
+            _combatTarget = null;
+            _target = ComputeInterceptPoint(spider, home);
             if (State != BramblekinState.Defending)
             {
                 DropCarried();
                 SetState(BramblekinState.Defending);
+            }
+        }
+        // --- 2a. Base Defense Aggro: a foreign Bramblekin caught within
+        // World.BaseDefenseAggroRadius of our own Village Heart — right up
+        // against the doorstep, not just somewhere in the wider 20m ring —
+        // is treated as an active attack in progress no matter what peace
+        // or Truce currently holds. Instantly declares a Blood Feud on its
+        // whole faction (World.DeclareBloodFeud) and engages it directly,
+        // rather than waiting for Border Wars/Thievery to notice next
+        // frame — this is what used to leave Base Razing raiders crowding
+        // around a Heart while the defenders looked right through them.
+        else if (Role == BramblekinRole.Militia && home is not null &&
+                 world.NearestForeignBramblekinNearHeart(home) is { } intruder)
+        {
+            world.DeclareBloodFeud(FactionID, intruder.FactionID);
+            _combatTarget = intruder;
+            _target = intruder.Position;
+            if (State != BramblekinState.Defending)
+            {
+                DropCarried();
+                SetState(BramblekinState.Defending);
+            }
+        }
+        // --- 2b. Blood Feud Border Wars: with no Wolf Spider to answer, a
+        // faction's Militia still has to answer a Bramblekin (Gatherer or
+        // Militia) of a faction it's actually at declared war with (see
+        // VillageHeart.HostileFactions) trespassing within their own
+        // Village Heart's territory ring. Default Peace: any other
+        // faction's Bramblekin is completely ignored here, full stop — see
+        // World.NearestHostileBramblekinInTerritory. Same absolute priority
+        // tier and the same Defending state as the spider fight above — see
+        // UpdateDefending for the actual chase/poke. The 'Enemy of My
+        // Enemy' Protocol — Temporary Truce: guarded against a spider
+        // that's actively Hunting/Pouncing nearby (see
+        // IsSpiderActivelyThreateningTerritory) on top of Apex Priority
+        // above, so a common-enemy emergency always wins even in the
+        // narrower window that check alone wouldn't have caught.
+        else if (Role == BramblekinRole.Militia && home is not null &&
+                 !world.IsSpiderActivelyThreateningTerritory(home) &&
+                 world.NearestHostileBramblekinInTerritory(home) is { } enemy)
+        {
+            _combatTarget = enemy;
+            _target = enemy.Position;
+            if (State != BramblekinState.Defending)
+            {
+                DropCarried();
+                SetState(BramblekinState.Defending);
+            }
+        }
+        // --- 2c. Thievery Response: Default Peace still allows for a
+        // surgical, single-target response — a foreign Gatherer caught
+        // physically picking up food inside our own territory (see
+        // Bramblekin.TrespassingAgainst / World.NearestTrespasserInTerritory)
+        // gets singled out and confronted, without declaring war on its
+        // whole faction. UpdateDefending resolves it as a non-lethal
+        // Warning Shove unless the confrontation itself escalates into a
+        // Blood Feud (an armed trespasser, or one that lands a hit back).
+        // Checked after Blood Feud Border Wars: an already-hostile
+        // faction's trespassing Gatherer is just an enemy in our territory
+        // by then, not merely a thief to warn off.
+        else if (Role == BramblekinRole.Militia && home is not null &&
+                 !world.IsSpiderActivelyThreateningTerritory(home) &&
+                 world.NearestTrespasserInTerritory(home) is { } trespasser)
+        {
+            _combatTarget = trespasser;
+            _target = trespasser.Position;
+            if (State != BramblekinState.Defending)
+            {
+                DropCarried();
+                SetState(BramblekinState.Defending);
+            }
+        }
+        // --- 2d. Blood Feud Base Razing: opportunistic offense rather than
+        // home defense -- a Militia unit that's simply wandered within its
+        // own 20m aggro radius of a Village Heart it's actually at declared
+        // war with, with no living hostile Bramblekin also in that radius
+        // (a live threat always comes first — see 2b above, which already
+        // claims this frame if one's in range), paths in and Pokes it down
+        // instead. Default Peace: any faction with no declared Blood Feud
+        // is never a valid Raiding target. Temporary Truce applies here
+        // too: a spider actively threatening home calls off Base Razing
+        // just like Border Wars.
+        else if (Role == BramblekinRole.Militia &&
+                 !world.IsSpiderActivelyThreateningTerritory(home) &&
+                 world.NearestHostileVillageHeartInRange(Position, FactionID, World.TerritoryTargetingRadius) is { } enemyHeart &&
+                 !world.HasLivingHostileBramblekinNear(Position, FactionID, World.TerritoryTargetingRadius))
+        {
+            _raidTarget = enemyHeart;
+            _target = enemyHeart.Center;
+            if (State != BramblekinState.Raiding)
+            {
+                DropCarried();
+                SetState(BramblekinState.Raiding);
             }
         }
         else if (Role == BramblekinRole.Gatherer && world.Spider is { } nearSpider &&
@@ -3465,23 +5275,30 @@ public sealed class Bramblekin
         // --- 3. Village Building (Gatherers only), elevated priority: an
         // incomplete Blueprint always beats Gathering, full stop — checked
         // before economy below on purpose. Once a Gatherer here is set to
-        // Building, it's no longer "Walking or Pausing", so the Gathering
-        // check right after can no longer steal it back this frame, and it
-        // won't gather again (ignoring nearby food/Berries entirely) until
-        // the site is finished and there's nothing left to build.
-        if (Role == BramblekinRole.Gatherer && State is BramblekinState.Walking or BramblekinState.Pausing && world.HasIncompleteBlueprint)
+        // Building, it's no longer "Walking or Pausing", so the checks right
+        // after can no longer steal it back this frame, and it won't gather
+        // again until the site is finished and there's nothing left to build.
+        if (Role == BramblekinRole.Gatherer && State is BramblekinState.Walking or BramblekinState.Pausing && world.HasIncompleteBlueprintFor(FactionID))
             SetState(BramblekinState.Building);
 
-        // --- 3b. Economy overrides wandering (Gatherers only) -- a Spider
-        // Fang counts too (Scavenger Priority picks it over ordinary food
-        // inside UpdateGathering itself), so a Fang lying around with no
-        // other food on the map still pulls an idle Gatherer in.
-        if (Role == BramblekinRole.Gatherer && State is BramblekinState.Walking or BramblekinState.Pausing &&
-            (world.HasAvailableFood || world.HasAvailableFang))
+        // --- 3a. Individual Equipment: an un-upgraded unit prioritizes
+        // gearing up over its ordinary job — a Militia unit fetches a
+        // Spider Fang, a Gatherer fetches a Chitin piece.
+        if (State is BramblekinState.Walking or BramblekinState.Pausing)
+        {
+            if (Role == BramblekinRole.Militia && !HasFangPike && world.HasAvailableFang)
+                SetState(BramblekinState.Equipping);
+            else if (Role == BramblekinRole.Gatherer && !HasChitinMallet && world.HasAvailableChitin)
+                SetState(BramblekinState.Equipping);
+        }
+
+        // --- 3b. Economy overrides wandering (Gatherers only) --------------
+        if (Role == BramblekinRole.Gatherer && State is BramblekinState.Walking or BramblekinState.Pausing && world.HasAvailableFoodFor(this, home))
             SetState(BramblekinState.Gathering);
 
-        // --- 3c. Militia hunts Aphids when it has no spider to fight -----------
-        if (Role == BramblekinRole.Militia && State is BramblekinState.Walking or BramblekinState.Pausing && world.HasHuntableAphid)
+        // --- 3c. Militia hunts Aphids within the 20-Meter Territory Rule, when it has no spider to fight -----------
+        if (Role == BramblekinRole.Militia && State is BramblekinState.Walking or BramblekinState.Pausing &&
+            home is not null && world.HasHuntableAphidNearVillage(this, home))
             SetState(BramblekinState.Hunting);
 
         // --- 4. Run the current state -------------------------------------------
@@ -3503,11 +5320,11 @@ public sealed class Bramblekin
                 break;
 
             case BramblekinState.Gathering:
-                UpdateGathering(deltaTime, world);
+                UpdateGathering(deltaTime, world, home);
                 break;
 
             case BramblekinState.Returning:
-                UpdateReturning(deltaTime, world);
+                UpdateReturning(deltaTime, world, home);
                 break;
 
             case BramblekinState.Fleeing:
@@ -3516,15 +5333,23 @@ public sealed class Bramblekin
                 break;
 
             case BramblekinState.Defending:
-                UpdateDefending(deltaTime, world);
+                UpdateDefending(deltaTime, world, home);
                 break;
 
             case BramblekinState.Hunting:
-                UpdateHunting(deltaTime, world);
+                UpdateHunting(deltaTime, world, home);
+                break;
+
+            case BramblekinState.Raiding:
+                UpdateRaiding(deltaTime, world);
                 break;
 
             case BramblekinState.Building:
                 UpdateBuilding(deltaTime, world);
+                break;
+
+            case BramblekinState.Equipping:
+                UpdateEquipping(deltaTime, world);
                 break;
         }
     }
@@ -3538,18 +5363,23 @@ public sealed class Bramblekin
     /// life.
     /// </summary>
     private float EffectiveWalkSpeed(World world) =>
-        Role == BramblekinRole.Gatherer && world.GatherersAreWeary ? WalkSpeed * World.WearySpeedMultiplier : WalkSpeed;
+        Role == BramblekinRole.Gatherer && (world.VillageFor(FactionID)?.GatherersAreWeary ?? false)
+            ? WalkSpeed * World.WearySpeedMultiplier
+            : WalkSpeed;
 
-    /// <param name="fangPikesUnlocked">
-    /// See <see cref="World.FangPikesUnlocked"/> — recolors every Militia
-    /// unit's pike from Rose-Thorn brown to Spider Fang white/silver once
-    /// Found-Object Weaponry has unlocked.
-    /// </param>
-    public void Draw(bool fangPikesUnlocked)
+    /// <summary>
+    /// Individual Equipment: a Militia unit's pike renders bright
+    /// white/silver once its own <see cref="HasFangPike"/> is true (Rose-
+    /// Thorn brown otherwise); a Gatherer with <see cref="HasChitinMallet"/>
+    /// carries a small grey mallet instead. Both are per-unit — no more
+    /// village-wide unlock.
+    /// </summary>
+    public void Draw()
     {
-        Color color = State == BramblekinState.Fleeing ? PanicColor
+        Color baseColor = State == BramblekinState.Fleeing ? PanicColor
                     : Role == BramblekinRole.Militia ? MilitiaColor
                     : CalmColor;
+        Color color = TintWithFaction(baseColor);
 
         // A capsule standing upright: DrawCapsule takes the centres of its two
         // hemispherical ends, so inset them by the radius.
@@ -3558,26 +5388,41 @@ public sealed class Bramblekin
         Raylib.DrawCapsule(bottom, top, BodyRadius, 8, 4, color);
         Raylib.DrawCapsuleWires(bottom, top, BodyRadius, 8, 4, new Color(0, 0, 0, 50));
 
+        Vector2 facing = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;
+
         // Militia carry a pike: a small line held out front, angled up, so
         // they read as armed even at a glance -- Rose-Thorn brown normally,
-        // or a bright white/silver Spider Fang once Found-Object Weaponry
-        // has unlocked.
+        // or bright white/silver once this unit's own Fang Pike is equipped.
         if (Role == BramblekinRole.Militia)
         {
-            Color pikeColor = fangPikesUnlocked ? FangPikeColor : PikeColor;
-            Vector2 facing = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;
+            Color pikeColor = HasFangPike ? FangPikeColor : PikeColor;
             var grip = Position + new Vector3(0, BodyHeight * 0.6f, 0);
             var tip = grip + new Vector3(facing.X, 0.55f, facing.Y) * 0.6f;
             Raylib.DrawLine3D(grip, tip, pikeColor);
             Raylib.DrawSphere(tip, 0.025f, pikeColor);
         }
+        // A Chitin-Mallet Gatherer carries a small hammer the same way.
+        else if (HasChitinMallet)
+        {
+            var grip = Position + new Vector3(0, BodyHeight * 0.55f, 0);
+            var headCenter = grip + new Vector3(facing.X, 0.3f, facing.Y) * 0.5f;
+            Raylib.DrawLine3D(grip, headCenter, MalletHandleColor);
+            Raylib.DrawCube(headCenter, 0.12f, 0.12f, 0.12f, MalletHeadColor);
+        }
 
-        // Carried food/Fang rides on top of the head.
+        // Carried food rides on top of the head.
         _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
-        _carriedFang?.Draw(Position + new Vector3(0, BodyHeight, 0));
     }
 
-    /// <summary>Puts carried food/Fang back on the ground where we stand (it can be gathered again later).</summary>
+    /// <summary>Unit Colors: blends a faint dash of <see cref="FactionColor"/> into a base body color, so tribes read apart without drowning out State/Role's own colour cues.</summary>
+    private Color TintWithFaction(Color baseColor)
+    {
+        const float tintStrength = 0.3f;
+        byte Mix(byte body, byte faction) => (byte)(body * (1f - tintStrength) + faction * tintStrength);
+        return new Color(Mix(baseColor.R, FactionColor.R), Mix(baseColor.G, FactionColor.G), Mix(baseColor.B, FactionColor.B), baseColor.A);
+    }
+
+    /// <summary>Puts carried food back on the ground where we stand (it can be gathered again later). Thievery: also clears <see cref="TrespassingAgainst"/> — the flag only ever applies while the stolen goods are still in hand.</summary>
     public void DropCarried()
     {
         if (_carried is not null)
@@ -3585,14 +5430,31 @@ public sealed class Bramblekin
             _carried.Position = Position;
             _carried.IsCarried = false;
             _carried = null;
+            TrespassingAgainst = null;
         }
+    }
 
-        if (_carriedFang is not null)
-        {
-            _carriedFang.Position = Position;
-            _carriedFang.IsCarried = false;
-            _carriedFang = null;
-        }
+    /// <summary>Dibs: releases this Bramblekin's claim on its current Food Shard target, if any (a no-op if someone else has since claimed it, e.g. through a race that shouldn't happen but is cheap to guard against).</summary>
+    private void ReleaseFoodClaim()
+    {
+        if (_claimedShard is not null && _claimedShard.ClaimedBy == this)
+            _claimedShard.ClaimedBy = null;
+        _claimedShard = null;
+    }
+
+    /// <summary>Dibs: releases this Bramblekin's claim on its current Aphid target, if any.</summary>
+    private void ReleaseAphidClaim()
+    {
+        if (_claimedAphid is not null && _claimedAphid.ClaimedBy == this)
+            _claimedAphid.ClaimedBy = null;
+        _claimedAphid = null;
+    }
+
+    /// <summary>Cooperative Acorn Cracking: releases this Gatherer's claim slot on its current Acorn target, if any.</summary>
+    private void ReleaseAcornClaim()
+    {
+        _claimedAcorn?.ReleaseClaim(this);
+        _claimedAcorn = null;
     }
 
     /// <summary>
@@ -3609,29 +5471,73 @@ public sealed class Bramblekin
         _mover.Nudge(push, world);
     }
 
+    /// <summary>Instant displacement (m) a Warning Shove knocks a caught trespasser back by.</summary>
+    private const float WarningShoveDistance = 1.2f;
+
+    /// <summary>
+    /// The Warning Shove (Thievery): unlike <see cref="ApplyWindPush"/>,
+    /// this DOES interrupt whatever this Bramblekin was doing — a defending
+    /// Militia unit just caught it red-handed. Knocks it directly away from
+    /// <paramref name="shovedFrom"/>, drops whatever it was carrying
+    /// (clearing <see cref="TrespassingAgainst"/> with it — see
+    /// <see cref="DropCarried"/>), and sends it fleeing straight for its
+    /// own Village Heart rather than to some arbitrary safe point, same as
+    /// any other Fleeing trigger.
+    /// </summary>
+    public void ReceiveWarningShove(Vector3 shovedFrom, World world)
+    {
+        if (IsDead)
+            return;
+
+        Vector2 away = new(Position.X - shovedFrom.X, Position.Z - shovedFrom.Z);
+        away = away.LengthSquared() > 1e-6f ? Vector2.Normalize(away) : Vector2.UnitX;
+        _mover.Nudge(new Vector3(away.X, 0, away.Y) * WarningShoveDistance, world);
+
+        DropCarried();
+        VillageHeart? home = world.VillageFor(FactionID);
+        _target = home?.Center ?? FindPointAwayFrom(shovedFrom, world);
+        SetState(BramblekinState.Fleeing);
+    }
+
     // --- Economy states ----------------------------------------------------------
 
-    private void UpdateGathering(float deltaTime, World world)
+    private void UpdateGathering(float deltaTime, World world, VillageHeart? home)
     {
-        // Scavenger Priority: a Spider Fang always wins over ordinary food.
-        // Re-pick the nearest one every frame: another Bramblekin may have
-        // grabbed ours, or a shadow may have made it unreachable.
-        SpiderFang? fang = world.NearestAvailableFang(Position);
-        if (fang is not null)
+        // Cooperative Acorn Cracking: only a Chitin-Mallet Gatherer ever
+        // targets a whole Acorn, and only while it still holds (or can still
+        // grab) one of its MaxClaimants slots. Re-checked every frame: the
+        // old claim may have been cracked out from under us (by a pebble, or
+        // by the coop-crack shatter itself) since last frame.
+        if (_claimedAcorn is not null && !world.Acorns.Contains(_claimedAcorn))
+            ReleaseAcornClaim();
+
+        if (HasChitinMallet)
         {
-            if (GroundMover.HorizontalDistance(Position, fang.Position) <= FangPickupDistance)
+            Acorn? acorn = _claimedAcorn ?? world.NearestClaimableAcorn(Position, this);
+            if (acorn is not null && acorn.TryClaim(this))
             {
-                fang.IsCarried = true;
-                _carriedFang = fang;
-                SetState(BramblekinState.Returning);
+                ReleaseFoodClaim(); // Switching to the Acorn this frame — don't leave a stale claim on whatever shard we were chasing.
+                _claimedAcorn = acorn;
+                float contactDistance = BodyRadius + Acorn.Radius + World.AcornCoopContactMargin;
+                if (GroundMover.HorizontalDistance(Position, acorn.Position) > contactDistance)
+                    _mover.MoveTowards(acorn.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+                // Else: standing at the Acorn, cracking it together — World checks the 3-claimant shatter condition every frame.
                 return;
             }
-
-            _mover.MoveTowards(fang.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
-            return;
         }
 
-        FoodShard? shard = world.NearestAvailableShard(Position);
+        FoodShard? shard = world.NearestAvailableShard(Position, this, home);
+        if (shard != _claimedShard)
+        {
+            ReleaseFoodClaim();
+            _claimedShard = shard;
+            if (shard is not null)
+            {
+                shard.ClaimedBy = this;
+                shard.ClaimTimer = 0f;
+            }
+        }
+
         if (shard is null)
         {
             StartWandering(world);
@@ -3641,7 +5547,16 @@ public sealed class Bramblekin
         if (GroundMover.HorizontalDistance(Position, shard.Position) <= PickupDistance)
         {
             shard.IsCarried = true;
+            shard.ClaimedBy = null;
+            _claimedShard = null;
             _carried = shard;
+
+            // Thievery: caught in the act the instant the shard we just
+            // grabbed turns out to be sitting inside someone else's 20m
+            // border -- flags us for that specific faction's Militia to
+            // single out, whatever the wider peace between us still holds.
+            TrespassingAgainst = world.ForeignTerritoryContaining(shard.Position, FactionID);
+
             SetState(BramblekinState.Returning);
             return;
         }
@@ -3649,20 +5564,22 @@ public sealed class Bramblekin
         _mover.MoveTowards(shard.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
     }
 
-    private void UpdateReturning(float deltaTime, World world)
+    private void UpdateReturning(float deltaTime, World world, VillageHeart? home)
     {
-        if (GroundMover.HorizontalDistance(Position, world.Village.Center) <= world.Village.DeliveryDistance)
+        // AI Faction Loyalty: a Gatherer only ever delivers to its own
+        // faction's Village Heart. Falls back to wandering in the
+        // practically-unreachable case that faction no longer has one.
+        if (home is null)
         {
-            if (_carriedFang is { } fang)
-            {
-                world.DeliverFang(fang);
-                _carriedFang = null;
-            }
-            else
-            {
-                world.DeliverFood(_carried!);
-                _carried = null;
-            }
+            StartWandering(world);
+            return;
+        }
+
+        if (GroundMover.HorizontalDistance(Position, home.Center) <= home.DeliveryDistance)
+        {
+            world.DeliverFood(_carried!, home);
+            _carried = null;
+            TrespassingAgainst = null; // Got away with it — the theft is over either way.
 
             // Always go back through Walking rather than jumping straight
             // to Gathering here: that used to let a Gatherer loop
@@ -3677,7 +5594,7 @@ public sealed class Bramblekin
             return;
         }
 
-        _mover.MoveTowards(world.Village.Center, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+        _mover.MoveTowards(home.Center, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
     }
 
     // --- Village Building (Builder AI) ---------------------------------------------
@@ -3686,7 +5603,8 @@ public sealed class Bramblekin
     {
         // Re-pick the nearest Blueprint every frame: another Bramblekin may
         // have just finished ours, or a new one may have gone up closer.
-        Blueprint? blueprint = world.NearestIncompleteBlueprint(Position);
+        // AI Faction Loyalty: only ever our own faction's sites.
+        Blueprint? blueprint = world.NearestIncompleteBlueprintFor(Position, FactionID);
         if (blueprint is null)
         {
             StartWandering(world);
@@ -3696,7 +5614,8 @@ public sealed class Bramblekin
         float contactDistance = BodyRadius + Building.RadiusFor(blueprint.Kind) + BuildContactMargin;
         if (GroundMover.HorizontalDistance(Position, blueprint.Position) <= contactDistance)
         {
-            float rate = world.BuildersAreInspired ? World.HighMoraleBuildMultiplier : 1f;
+            bool inspired = world.VillageFor(FactionID)?.BuildersAreInspired ?? false;
+            float rate = inspired ? World.HighMoraleBuildMultiplier : 1f;
             blueprint.AddProgress(rate * deltaTime);
             if (blueprint.IsComplete)
                 world.CompleteBlueprint(blueprint);
@@ -3712,31 +5631,114 @@ public sealed class Bramblekin
 
     // --- Militia states -------------------------------------------------------------
 
-    private void UpdateDefending(float deltaTime, World world)
+    private void UpdateDefending(float deltaTime, World world, VillageHeart? home)
     {
-        // The spider is gone (crushed, or its own Health ran out): stand
-        // down. Unlike before, there's no distance-based disengage any
-        // more — the spider is Militia's top priority at any range (see
-        // Update()'s priority chain), so it keeps closing in until it's
-        // actually dead.
-        if (world.Spider is not { } spider)
+        bool spiderInTerritory = home is not null && world.Spider is { } spiderCheck &&
+                                  GroundMover.HorizontalDistance(spiderCheck.Position, home.Center) <= World.TerritoryTargetingRadius;
+
+        if (home is not null && spiderInTerritory)
         {
+            _combatTarget = null;
+            WolfSpider spider = world.Spider!;
+            _target = ComputeInterceptPoint(spider, home);
+
+            // Sustained Combat: close enough to jab it directly, dealing
+            // PokeDamage (boosted to UpgradedPokeDamage once this specific
+            // unit's own Fang Pike is equipped). A fast, per-unit cooldown lets
+            // Militia wail on it rapidly, especially a Tumbled spider that can't
+            // fight back. This is pure Health damage -- it never touches the
+            // spider's State, so it can't wake a Tumbled spider early (see the
+            // hard lock in WolfSpider.Update()).
+            if (_pokeCooldown <= 0f && GroundMover.HorizontalDistance(Position, spider.Position) <= PokeRange)
+            {
+                world.DamageSpider(HasFangPike ? UpgradedPokeDamage : PokeDamage);
+                _pokeCooldown = PokeCooldownDuration;
+            }
+
+            _mover.MoveTowards(_target, DefendSpeed, deltaTime, world, p => IsSafeSpot(p, world));
+            return;
+        }
+
+        // Blood Feud Border Wars / Thievery Response: no Wolf Spider threat
+        // in territory right now, so chase down whichever individual the
+        // outer priority chain assigned us — a declared enemy (lethal) or a
+        // caught Trespasser (a Warning Shove first, unless it escalates) —
+        // as long as they're still alive and still within the territory
+        // ring. Re-checked every frame since they may flee, die, or simply
+        // wander back out.
+        if (home is not null && _combatTarget is { IsDead: false } enemy &&
+            GroundMover.HorizontalDistance(enemy.Position, home.Center) <= World.TerritoryTargetingRadius)
+        {
+            _target = enemy.Position;
+
+            if (_pokeCooldown <= 0f && GroundMover.HorizontalDistance(Position, enemy.Position) <= PokeRange)
+            {
+                if (home.HostileFactions.ContainsKey(enemy.FactionID))
+                {
+                    // Blood Feud: lethal. Same Sustained Combat mechanics as
+                    // the spider fight above, just aimed at a rival
+                    // Bramblekin's own Health — Spoils of War (see
+                    // World.KillByBramblekin) applies only on the killing
+                    // blow here, never on a plain spider Poke.
+                    enemy.TakeDamage(HasFangPike ? UpgradedPokeDamage : PokeDamage, world, attackerFactionId: FactionID);
+                }
+                else if (enemy.Role == BramblekinRole.Militia)
+                {
+                    // The Blood Feud (armed trespasser): a Warning Shove
+                    // doesn't work on an enemy soldier — open fire outright;
+                    // TakeDamage's own attackerFactionId hook declares the
+                    // war for us the instant the hit lands.
+                    enemy.TakeDamage(HasFangPike ? UpgradedPokeDamage : PokeDamage, world, attackerFactionId: FactionID);
+                }
+                else
+                {
+                    // The Warning Shove: a caught Gatherer-thief gets 0
+                    // damage and a shove home instead of a killing blow.
+                    enemy.ReceiveWarningShove(Position, world);
+                }
+
+                _pokeCooldown = PokeCooldownDuration;
+            }
+
+            _mover.MoveTowards(_target, DefendSpeed, deltaTime, world, p => IsSafeSpot(p, world));
+            return;
+        }
+
+        // Nothing left to fight: stand down.
+        _combatTarget = null;
+        StartWandering(world);
+    }
+
+    /// <summary>
+    /// Blood Feud Base Razing: paths to and attacks an enemy Village Heart
+    /// — the same Sustained Combat damage/cooldown numbers as UpdateDefending
+    /// (PokeDamage/UpgradedPokeDamage/PokeCooldownDuration), but checked
+    /// against the much more forgiving <see cref="BuildingAttackRange"/>
+    /// rather than <see cref="PokeRange"/>, since a building's solid
+    /// footprint (and a crowd of raiders jostling around it) never lets a
+    /// walker actually reach its exact centre coordinate. Stands down the
+    /// instant a living hostile Bramblekin shows up nearby (that always
+    /// wins — the outer priority chain picks it up as Border Wars/home
+    /// defense next frame instead) or the target Heart is razed (by this
+    /// unit's own killing blow or anyone else's) or simply falls out of
+    /// range.
+    /// </summary>
+    private void UpdateRaiding(float deltaTime, World world)
+    {
+        if (_raidTarget is null || !world.Villages.Contains(_raidTarget) ||
+            GroundMover.HorizontalDistance(Position, _raidTarget.Center) > World.TerritoryTargetingRadius ||
+            world.HasLivingHostileBramblekinNear(Position, FactionID, World.TerritoryTargetingRadius))
+        {
+            _raidTarget = null;
             StartWandering(world);
             return;
         }
 
-        _target = ComputeInterceptPoint(spider, world);
+        _target = _raidTarget.Center;
 
-        // Sustained Combat: close enough to jab it directly, dealing
-        // PokeDamage (boosted to UpgradedPokeDamage once Fang Pikes has
-        // unlocked). A fast, per-unit cooldown lets Militia wail on it
-        // rapidly, especially a Tumbled spider that can't fight back. This
-        // is pure Health damage -- it never touches the spider's State, so
-        // it can't wake a Tumbled spider early (see the hard lock in
-        // WolfSpider.Update()).
-        if (_pokeCooldown <= 0f && GroundMover.HorizontalDistance(Position, spider.Position) <= PokeRange)
+        if (_pokeCooldown <= 0f && GroundMover.HorizontalDistance(Position, _raidTarget.Center) <= BuildingAttackRange)
         {
-            world.DamageSpider(world.FangPikesUnlocked ? UpgradedPokeDamage : PokeDamage);
+            world.DamageVillageHeart(_raidTarget, HasFangPike ? UpgradedPokeDamage : PokeDamage);
             _pokeCooldown = PokeCooldownDuration;
         }
 
@@ -3745,21 +5747,31 @@ public sealed class Bramblekin
 
     /// <summary>
     /// A point <see cref="InterceptStandoff"/> meters from the spider, on the
-    /// side facing the Village Heart — the spot a Militia unit tries to hold
-    /// to physically get between the spider and the village.
+    /// side facing <paramref name="home"/> — the spot a Militia unit tries to
+    /// hold to physically get between the spider and its Village Heart.
     /// </summary>
-    private static Vector3 ComputeInterceptPoint(WolfSpider spider, World world)
+    private static Vector3 ComputeInterceptPoint(WolfSpider spider, VillageHeart home)
     {
-        Vector2 toVillage = new(world.Village.Center.X - spider.Position.X, world.Village.Center.Z - spider.Position.Z);
+        Vector2 toVillage = new(home.Center.X - spider.Position.X, home.Center.Z - spider.Position.Z);
         Vector2 direction = toVillage.LengthSquared() > 1e-6f ? Vector2.Normalize(toVillage) : Vector2.UnitX;
         return spider.Position + new Vector3(direction.X, 0, direction.Y) * InterceptStandoff;
     }
 
-    private void UpdateHunting(float deltaTime, World world)
+    private void UpdateHunting(float deltaTime, World world, VillageHeart? home)
     {
-        // Re-pick the nearest live Aphid every frame: another Militia unit
-        // may have already caught ours, or it may simply have wandered off.
-        Aphid? aphid = world.NearestLiveAphid(Position);
+        // The 20-Meter Territory Rule: nothing to hunt without a home village.
+        // Re-pick the nearest live, unclaimed Aphid every frame: another
+        // Militia unit may have already caught (or claimed) ours, or it may
+        // simply have wandered off/out of territory.
+        Aphid? aphid = home is null ? null : world.NearestLiveAphidNearVillage(Position, this, home);
+        if (aphid != _claimedAphid)
+        {
+            ReleaseAphidClaim();
+            _claimedAphid = aphid;
+            if (aphid is not null)
+                aphid.ClaimedBy = this;
+        }
+
         if (aphid is null)
         {
             StartWandering(world);
@@ -3769,10 +5781,113 @@ public sealed class Bramblekin
         if (GroundMover.HorizontalDistance(Position, aphid.Position) <= HuntContactDistance)
         {
             world.KillAphid(aphid);
+            _claimedAphid = null;
             return; // Re-targets (or wanders) fresh next frame.
         }
 
         _mover.MoveTowards(aphid.Position, HuntSpeed, deltaTime, world, p => IsSafeSpot(p, world));
+    }
+
+    // --- Individual Equipment (RPG-Style) --------------------------------------------
+
+    /// <summary>
+    /// Un-upgraded units prioritize gearing up: a Militia unit fetches the
+    /// nearest Spider Fang and instantly equips <see cref="HasFangPike"/> on
+    /// touch; a Gatherer fetches the nearest Chitin piece and equips
+    /// <see cref="HasChitinMallet"/>. Either way the item despawns — no
+    /// carrying it home, no shared/village-wide unlock.
+    /// </summary>
+    private void UpdateEquipping(float deltaTime, World world)
+    {
+        if (Role == BramblekinRole.Militia)
+        {
+            if (HasFangPike)
+            {
+                StartWandering(world);
+                return;
+            }
+
+            SpiderFang? fang = world.NearestAvailableFang(Position);
+            if (fang is null)
+            {
+                StartWandering(world);
+                return;
+            }
+
+            if (GroundMover.HorizontalDistance(Position, fang.Position) <= FangPickupDistance)
+            {
+                world.ConsumeFang(fang);
+                HasFangPike = true;
+                StartWandering(world);
+                return;
+            }
+
+            _mover.MoveTowards(fang.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+            return;
+        }
+
+        if (HasChitinMallet)
+        {
+            StartWandering(world);
+            return;
+        }
+
+        Chitin? chitin = world.NearestAvailableChitin(Position);
+        if (chitin is null)
+        {
+            StartWandering(world);
+            return;
+        }
+
+        if (GroundMover.HorizontalDistance(Position, chitin.Position) <= ChitinPickupDistance)
+        {
+            world.ConsumeChitin(chitin);
+            HasChitinMallet = true;
+            StartWandering(world);
+            return;
+        }
+
+        _mover.MoveTowards(chitin.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+    }
+
+    // --- The Schism -------------------------------------------------------------------
+
+    /// <summary>
+    /// A Pioneer's entire world while Migrating: path straight for its
+    /// Migration's Target, oblivious to food, blueprints, the Wolf Spider
+    /// and God's Shadow alike (see the hard lock at the top of Update()).
+    /// The moment ANY Pioneer bound to the same Migration founds the new
+    /// Village Heart — not just this one — it drops Migrating for good on
+    /// this check and reverts to ordinary AI; since its FactionID already
+    /// matches that Village Heart, the very next priority-chain evaluation
+    /// has it defending, gathering or building for it like any other unit.
+    /// </summary>
+    private void UpdateMigrating(float deltaTime, World world)
+    {
+        if (_migration is not { } migration)
+        {
+            // Defensive: BecomePioneer always sets this, but don't strand a
+            // Bramblekin in Migrating forever if it somehow didn't.
+            StartWandering(world);
+            return;
+        }
+
+        if (migration.Founded)
+        {
+            _migration = null;
+            StartWandering(world);
+            return;
+        }
+
+        if (GroundMover.HorizontalDistance(Position, migration.Target) <= MigrationArriveDistance)
+        {
+            world.FoundVillage(migration);
+            _migration = null;
+            StartWandering(world);
+            return;
+        }
+
+        _mover.MoveTowards(migration.Target, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
     }
 
     // --- Wandering ----------------------------------------------------------------
@@ -3791,8 +5906,23 @@ public sealed class Bramblekin
         _pauseTimer = PauseDuration;
     }
 
+    /// <summary>
+    /// Dibs: changing to any state other than the one that owns a given
+    /// claim releases it — the single hook every transition already goes
+    /// through, so a Gatherer scared off mid-Gathering (Fleeing), promoted
+    /// to Militia (Building/Gathering -> Pausing), or simply re-tasked to
+    /// Building doesn't leave a shard/Aphid/Acorn locked out forever.
+    /// </summary>
     private void SetState(BramblekinState state)
     {
+        if (state != BramblekinState.Gathering)
+        {
+            ReleaseFoodClaim();
+            ReleaseAcornClaim();
+        }
+        if (state != BramblekinState.Hunting)
+            ReleaseAphidClaim();
+
         State = state;
         _mover.ResetProgress();
     }
@@ -4470,6 +6600,14 @@ public sealed class Aphid
 
     /// <summary>True once caught by a Militia unit. Removal from World.Aphids is deferred to the end of the frame.</summary>
     public bool IsDead { get; private set; }
+
+    /// <summary>
+    /// Dibs: the one Militia unit currently hunting this Aphid, if any — see
+    /// <see cref="World.NearestLiveAphidNearVillage"/>. Only meaningful
+    /// while that Militia unit's own State is actually Hunting; it's
+    /// released (see Bramblekin.SetState) the moment that stops being true.
+    /// </summary>
+    public Bramblekin? ClaimedBy { get; set; }
 
     public Aphid(Vector3 position, Random rng)
     {
