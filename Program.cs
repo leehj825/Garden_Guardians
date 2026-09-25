@@ -2,7 +2,7 @@
 //  Garden Guardians — Pure Autonomous Simulation
 // -----------------------------------------------------------------------------
 //  Design (see Garden_Guardians_Roadmap.md/Garden_Guardians_Design.md):
-//    * A fixed isometric camera looking down at a 60 m x 60 m patch of
+//    * A fixed isometric camera looking down at a 100 m x 100 m patch of
 //      "terrain", with a mobile-friendly one-finger-pan/two-finger-pinch
 //      camera controller layered on top.
 //    * Zero player intervention: there is no god-game lever (no Pebble-Drop,
@@ -28,7 +28,7 @@
 //  pending-add/pending-remove queue processed once at the end of the frame,
 //  never directly inside another entity's Update().
 //
-//  Scale convention: 1 world unit = 1 meter. The terrain is a 60 m x 60 m plane
+//  Scale convention: 1 world unit = 1 meter. The terrain is a 100 m x 100 m plane
 //  centred on the origin, and "up" is +Y.
 //
 //  Everything lives in this single file for now; each class is small and
@@ -82,7 +82,7 @@ public static class Game
     private const float MaxDeltaTime = 1f / 20f;
 
     /// <summary>Debug Time Scale: the speeds the corner +/- buttons step through, clamped at either end.</summary>
-    private static readonly float[] TimeScaleSteps = { 1f, 2f, 5f, 10f, 100f };
+    private static readonly float[] TimeScaleSteps = { 1f, 2f, 5f, 10f, 20f };
 
     /// <summary>
     /// Debug Time Scale. Rather than feeding World.Update() an oversized
@@ -111,7 +111,7 @@ public static class Game
 
         // --- Build the world -------------------------------------------------
         var camera = IsometricCamera.Create(target: Vector3.Zero, distance: 30f);
-        var world = new World(new Terrain(size: 60f), new Random(), ColonySize);
+        var world = new World(new Terrain(size: 100f), new Random(), ColonySize);
         world.SpawnSpiderNearVillage();
         var input = new WorldTapInput();
         var touchCamera = new TouchCameraController();
@@ -791,10 +791,10 @@ public sealed class World
     /// competing over the same trickle, and the map's dominant faction can't
     /// simply out-gather everyone else before food ever reaches the rest.
     /// </summary>
-    private const float AcornSpawnInterval = 3f;
+    private const float AcornSpawnInterval = 1.5f;
 
     /// <summary>Global Food Abundance: most Acorns allowed on the map at once, per faction — raised again for Pure Simulation, since every tribe's Auto-Sprout economy now has to feed and scale itself with no player miracle to fall back on.</summary>
-    private const int MaxAcornsPerFaction = 12;
+    private const int MaxAcornsPerFaction = 15;
 
     /// <summary>
     /// Dynamic Ecosystem Scaling: the map-wide Acorn cap grows with the number of
@@ -840,10 +840,10 @@ public sealed class World
     private const float SplatDuration = 6f;
 
     /// <summary>Global Food Abundance: how often a wild Berry appears, in seconds — shortened again for Pure Simulation so the wilderness restocks fast enough for every tribe's own Auto-Sprout/Auto-Construction economy to keep scaling with no player miracle to bail it out.</summary>
-    public const float BerrySpawnInterval = 1.5f;
+    public const float BerrySpawnInterval = 0.75f;
 
     /// <summary>Global Food Abundance: most Berries allowed on the map (loose or carried) at once, per faction — raised again for Pure Simulation so a growing tribe's own economy always has enough wild food within reach to keep sprouting and building.</summary>
-    public const int MaxBerriesPerFaction = 30;
+    public const int MaxBerriesPerFaction = 60;
 
     /// <summary>
     /// Dynamic Ecosystem Scaling: the map-wide Berry cap grows with the number of
@@ -2015,6 +2015,7 @@ public sealed class World
             //    current MaxFoodCapacity — Housing and Growth always get
             //    first claim on Food Stored; a Granary only ever gets built
             //    once there's genuinely nowhere left to put more food.
+            UpdateAutoSporeFarm(village);
             UpdateAutoTent(village);
             UpdateAutoSprout(village);
             UpdateAutoGranary(village);
@@ -2022,7 +2023,6 @@ public sealed class World
             // Auxiliary Auto-Construction: population-gated one-time builds
             // that ride on top of the three phases above rather than being
             // part of that priority order.
-            UpdateAutoSporeFarm(village);
             UpdateAutoTradingPost(village);
 
             // The Schism: a Village Heart maxed out on Housing and
@@ -2512,6 +2512,12 @@ public sealed class World
     /// </summary>
     private void UpdateAutoSprout(VillageHeart village)
     {
+        int sporeFarmCount = Buildings.Count(b => b.Kind == BuildingKind.SporeFarm && b.FactionID == village.FactionID)
+            + Blueprints.Count(b => b.Kind == BuildingKind.SporeFarm && b.FactionID == village.FactionID);
+        int targetSporeFarmCount = Math.Clamp(village.Population / 8, 1, 5);
+        if (sporeFarmCount < targetSporeFarmCount)
+            return; // Forbidden from Auto-Sprouting until farm quota is met.
+
         int projectedPopulation = village.Population;
         while (true)
         {
@@ -2575,18 +2581,14 @@ public sealed class World
     /// </summary>
     private void UpdateAutoSporeFarm(VillageHeart village)
     {
-        if (village.Population < SporeFarmPopulationThreshold)
-            return;
-        if (!Buildings.Any(b => b.Kind == BuildingKind.Granary && b.FactionID == village.FactionID))
-            return; // Needs at least one Granary up first.
-
         int sporeFarmCount = Buildings.Count(b => b.Kind == BuildingKind.SporeFarm && b.FactionID == village.FactionID)
             + Blueprints.Count(b => b.Kind == BuildingKind.SporeFarm && b.FactionID == village.FactionID);
-        int targetSporeFarmCount = Math.Min(village.Population / SporeFarmPopulationThreshold, MaxSporeFarmsPerVillage);
+        int targetSporeFarmCount = Math.Clamp(village.Population / 8, 1, 5);
+
         if (sporeFarmCount >= targetSporeFarmCount)
             return; // Already have (or are building) enough for the current Population.
-        if (village.FoodStored < FoodSproutThreshold)
-            return; // Still hoarding.
+        if (village.FoodStored < SporeFarmFoodCost)
+            return; // MUST queue a SporePatch at 10 Food (cost).
 
         Vector3? spot = RandomPointNearVillage(village, SporeFarmPlacementRadius, Building.SporeFarmRadius + 0.2f);
         if (spot is { } point)
@@ -2754,7 +2756,7 @@ public sealed class World
     /// <see cref="MinMigrationDistance"/> meters from every existing
     /// Village Heart — a Schism's destination. Overcrowding Fallback: if
     /// none of <see cref="MigrationTargetAttempts"/> random tries lands
-    /// clean, the 60x60 map is genuinely too crowded for a gap that wide,
+    /// clean, the 100x100 map is genuinely too crowded for a gap that wide,
     /// so settle for the least-bad candidate tried (the one furthest from
     /// its nearest Village Heart) and accept that territorial war with a
     /// close neighbour is now unavoidable.
@@ -2981,7 +2983,7 @@ public sealed class World
     }
 
     /// <summary>
-    /// Full Map Resource Spawning (the 60x60 Fix): a uniformly random open
+    /// Full Map Resource Spawning (the 100x100 Fix): a uniformly random open
     /// point anywhere across the entire terrain — not seeded near any one
     /// faction's territory the way the old Territory Resource Spawning was
     /// — with every Village Heart's <see cref="VillageHeart.TerritoryRadius"/>
@@ -4456,7 +4458,7 @@ public enum BramblekinRole
 /// </summary>
 public sealed class Bramblekin
 {
-    /// <summary>Normal walking speed in m/s. Buffed 50% over the original slow amble so Bramblekin can cross the larger 60x60 m map before Upkeep starves them.</summary>
+    /// <summary>Normal walking speed in m/s. Buffed 50% over the original slow amble so Bramblekin can cross the larger 100x100 m map before Upkeep starves them.</summary>
     public const float WalkSpeed = 1.5f;
 
     /// <summary>Flee speed as a multiple of <see cref="WalkSpeed"/>.</summary>
