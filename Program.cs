@@ -1774,8 +1774,8 @@ public sealed class World
     /// <summary>The Schism: a Village Heart is Overcrowded once its Population reaches its MaxFoodCapacity — 40 at the 3-Granary cap.</summary>
     public const int SchismFoodReserve = 30;
 
-    /// <summary>The Pioneer Truce: how long (s) a Schism's parent and new splinter faction refuse to fight each other, giving the fledgling splinter a grace period to get on its feet — see <see cref="IsAtTruceWith"/>.</summary>
-    public const float TruceDurationSeconds = 60f;
+    /// <summary>The Blood Feud: how long (s) a declared war lasts before peace is automatically restored — see <see cref="DeclareBloodFeud"/>.</summary>
+    public const float BloodFeudDurationSeconds = 120f;
 
     /// <summary>How far (m) a Migration Target must be from every existing Village Heart.</summary>
     private const float MinMigrationDistance = 30f;
@@ -2198,61 +2198,127 @@ public sealed class World
     }
 
     /// <summary>
-    /// The Pioneer Truce: whether <paramref name="home"/>'s faction is
-    /// currently at truce with <paramref name="otherFactionId"/> — either
-    /// because that faction is <paramref name="home"/>'s own parent (the
-    /// tribe it split from) or because <paramref name="home"/> is that
-    /// faction's parent (a splinter it just sent off), and <paramref name="home"/>'s
-    /// own <see cref="VillageHeart.TruceTimer"/> hasn't run out yet. Checked
-    /// from each side's own perspective independently (see every call
-    /// site), so the grace period holds for either faction until its own
-    /// clock runs out.
+    /// The Blood Feud: declares (or refreshes) mutual war between
+    /// <paramref name="factionA"/> and <paramref name="factionB"/> for
+    /// <see cref="BloodFeudDurationSeconds"/> — both sides' <see cref="VillageHeart.HostileFactions"/>
+    /// get the other's FactionID, so Militia on either side treat the
+    /// other as a lethal attack-on-sight enemy within the territory ring,
+    /// not just the side that was wronged. A no-op for a faction with no
+    /// Village Heart left (a homeless refugee has nobody left to declare
+    /// war on its behalf). Called from <see cref="Bramblekin.TakeDamage"/>
+    /// the instant one faction lands a damaging hit on another, and from
+    /// the Warning Shove resolution when the caught trespasser turns out
+    /// to be an armed Militia unit rather than an unarmed thief.
     /// </summary>
-    public bool IsAtTruceWith(VillageHeart? home, int otherFactionId)
+    public void DeclareBloodFeud(int factionA, int factionB)
     {
-        if (home is null || home.TruceTimer <= 0f || home.FactionID == otherFactionId)
-            return false;
-        if (otherFactionId == home.ParentFactionID)
-            return true;
+        if (factionA == factionB)
+            return;
 
-        VillageHeart? other = VillageFor(otherFactionId);
-        return other is not null && other.ParentFactionID == home.FactionID;
+        if (VillageFor(factionA) is { } villageA)
+            villageA.HostileFactions[factionB] = BloodFeudDurationSeconds;
+        if (VillageFor(factionB) is { } villageB)
+            villageB.HostileFactions[factionA] = BloodFeudDurationSeconds;
     }
 
     /// <summary>
-    /// The 'Enemy of My Enemy' Protocol — Temporary Truce: whether the Wolf
-    /// Spider is actively a threat (Hunting or Pouncing, not just ambling
-    /// through or feeding) within <see cref="TerritoryTargetingRadius"/> of
+    /// The 'Enemy of My Enemy' Protocol: whether the Wolf Spider is
+    /// actively a threat (Hunting or Pouncing, not just ambling through or
+    /// feeding) within <see cref="TerritoryTargetingRadius"/> of
     /// <paramref name="home"/>. While true, that faction's Militia calls a
-    /// truce on every rival faction — see the guards on Border Wars and
-    /// Base Razing in <see cref="Bramblekin.Update"/> — so the whole tribe
-    /// can throw itself at the common enemy instead of a neighbour. Apex
-    /// Priority (a Militia unit always Defends against any spider merely
-    /// present in the ring, whatever its state) is the separate, broader
-    /// rule already enforced by that same priority chain's ordering; this
-    /// is the narrower, additional gate specifically on the Border
-    /// Wars/Base Razing side of it.
+    /// truce on every rival faction — see the guards on Blood Feud Border
+    /// Wars and Base Razing in <see cref="Bramblekin.Update"/> — so the
+    /// whole tribe can throw itself at the common enemy instead of a
+    /// neighbour. Apex Priority (a Militia unit always Defends against any
+    /// spider merely present in the ring, whatever its state) is the
+    /// separate, broader rule already enforced by that same priority
+    /// chain's ordering; this is the narrower, additional gate
+    /// specifically on the Border Wars/Base Razing side of it.
     /// </summary>
     public bool IsSpiderActivelyThreateningTerritory(VillageHeart? home) =>
         home is not null && Spider is { State: SpiderState.Hunting or SpiderState.Pouncing } spider &&
         GroundMover.HorizontalDistance(spider.Position, home.Center) <= TerritoryTargetingRadius;
 
     /// <summary>
-    /// Base Razing: whether any living enemy Bramblekin (any role) is
-    /// within <paramref name="radius"/> of <paramref name="position"/> — a
-    /// live threat always outranks Raiding an empty-looking enemy Village
-    /// Heart, so a Militia unit checks this before (and while) committing
-    /// to one. The Pioneer Truce: a parent/child faction still under its
-    /// own truce is never counted as a threat here either.
+    /// Thievery: the nearest OTHER faction's Village Heart whose territory
+    /// ring physically contains <paramref name="position"/>, if any —
+    /// checked the instant a Gatherer (any faction but
+    /// <paramref name="ownFactionId"/>'s own) picks up a Food Shard, to
+    /// catch it stealing from someone else's border. See
+    /// <see cref="Bramblekin.TrespassingAgainst"/>.
     /// </summary>
-    public bool HasLivingEnemyBramblekinNear(Vector3 position, int ownFactionId, float radius)
+    public VillageHeart? ForeignTerritoryContaining(Vector3 position, int ownFactionId)
+    {
+        VillageHeart? nearest = null;
+        float bestDistanceSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
+
+        foreach (VillageHeart village in Villages)
+        {
+            if (village.FactionID == ownFactionId)
+                continue;
+
+            float distanceSquared = Vector3.DistanceSquared(position, village.Center);
+            if (distanceSquared > bestDistanceSquared)
+                continue;
+
+            nearest = village;
+            bestDistanceSquared = distanceSquared;
+        }
+        return nearest;
+    }
+
+    /// <summary>
+    /// Thievery: the nearest living Bramblekin currently flagged as
+    /// trespassing specifically against <paramref name="home"/> (see
+    /// <see cref="Bramblekin.TrespassingAgainst"/>, set the instant a
+    /// Gatherer picks up food sitting inside a foreign territory) that's
+    /// still within the territory ring — a surgical, single-target
+    /// response. Unlike a Blood Feud, this never touches the wider
+    /// relationship between the two factions unless the confrontation
+    /// itself escalates one (see <see cref="Bramblekin.UpdateDefending"/>).
+    /// </summary>
+    public Bramblekin? NearestTrespasserInTerritory(VillageHeart home)
+    {
+        Bramblekin? nearest = null;
+        float bestDistanceSquared = float.MaxValue;
+        float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
+
+        for (int i = Colony.Count - 1; i >= 0; i--)
+        {
+            Bramblekin trespasser = Colony[i];
+            if (trespasser.IsDead || trespasser.TrespassingAgainst != home)
+                continue;
+
+            float distanceSquared = Vector3.DistanceSquared(trespasser.Position, home.Center);
+            if (distanceSquared > territoryRadiusSquared || distanceSquared >= bestDistanceSquared)
+                continue;
+
+            nearest = trespasser;
+            bestDistanceSquared = distanceSquared;
+        }
+        return nearest;
+    }
+
+    /// <summary>
+    /// Base Razing: whether any living Bramblekin of a faction
+    /// <paramref name="ownFactionId"/>'s own Village Heart currently has a
+    /// Blood Feud with is within <paramref name="radius"/> of
+    /// <paramref name="position"/> — a live threat always outranks Raiding
+    /// an empty-looking enemy Village Heart, so a Militia unit checks this
+    /// before (and while) committing to one. Default Peace: a faction with
+    /// no declared Blood Feud is never counted as a threat here at all.
+    /// </summary>
+    public bool HasLivingHostileBramblekinNear(Vector3 position, int ownFactionId, float radius)
     {
         VillageHeart? home = VillageFor(ownFactionId);
+        if (home is null || home.HostileFactions.Count == 0)
+            return false;
+
         float radiusSquared = radius * radius;
         for (int i = Colony.Count - 1; i >= 0; i--)
         {
             Bramblekin enemy = Colony[i];
-            if (enemy.IsDead || enemy.FactionID == ownFactionId || IsAtTruceWith(home, enemy.FactionID))
+            if (enemy.IsDead || !home.HostileFactions.ContainsKey(enemy.FactionID))
                 continue;
             if (Vector3.DistanceSquared(enemy.Position, position) <= radiusSquared)
                 return true;
@@ -2261,18 +2327,23 @@ public sealed class World
     }
 
     /// <summary>
-    /// Border Wars + the 20-Meter Territory Rule: the nearest living
-    /// Bramblekin (Gatherer or Militia, any faction but <paramref name="defender"/>'s
-    /// own, and not one <paramref name="home"/> is currently at Pioneer
-    /// Truce with) currently within <paramref name="home"/>'s territory
-    /// ring — an intruder for <paramref name="defender"/>'s Militia to run
-    /// down. Recomputed fresh every frame from <see cref="Update"/>'s
-    /// state-machine priority chain, same as the Wolf Spider and Aphid
-    /// checks, so a Defending Militia keeps re-picking as intruders come
-    /// and go.
+    /// Blood Feud Border Wars + the 20-Meter Territory Rule: the nearest
+    /// living Bramblekin (Gatherer or Militia) of a faction
+    /// <paramref name="home"/> is currently at declared war with (see
+    /// <see cref="VillageHeart.HostileFactions"/>), currently within
+    /// <paramref name="home"/>'s territory ring — an attack-on-sight
+    /// intruder for its Militia to run down. Default Peace: any other
+    /// faction's Bramblekin is completely ignored here, full stop —
+    /// there's no war to fight yet. Recomputed fresh every frame from
+    /// <see cref="Update"/>'s state-machine priority chain, same as the
+    /// Wolf Spider and Aphid checks, so a Defending Militia keeps
+    /// re-picking as intruders come and go.
     /// </summary>
-    public Bramblekin? NearestEnemyBramblekinInTerritory(Bramblekin defender, VillageHeart home)
+    public Bramblekin? NearestHostileBramblekinInTerritory(VillageHeart home)
     {
+        if (home.HostileFactions.Count == 0)
+            return null;
+
         Bramblekin? nearest = null;
         float bestDistanceSquared = float.MaxValue;
         float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
@@ -2280,7 +2351,7 @@ public sealed class World
         for (int i = Colony.Count - 1; i >= 0; i--)
         {
             Bramblekin enemy = Colony[i];
-            if (enemy.IsDead || enemy.FactionID == defender.FactionID || IsAtTruceWith(home, enemy.FactionID))
+            if (enemy.IsDead || !home.HostileFactions.ContainsKey(enemy.FactionID))
                 continue;
 
             float distanceSquared = Vector3.DistanceSquared(enemy.Position, home.Center);
@@ -2321,22 +2392,26 @@ public sealed class World
     }
 
     /// <summary>
-    /// Base Razing: the nearest living enemy Village Heart within
-    /// <paramref name="radius"/> of <paramref name="from"/> — an opportunistic
-    /// raid target for a Militia unit that's wandered near a rival base,
-    /// not the home-centered 20-Meter Territory Rule used for defense. The
-    /// Pioneer Truce: a parent/child faction's own Heart is never a valid
-    /// target while either side's truce still holds.
+    /// Blood Feud Base Razing: the nearest Village Heart <paramref name="ownFactionId"/>'s
+    /// own faction is currently at declared war with, within
+    /// <paramref name="radius"/> of <paramref name="from"/> — an
+    /// opportunistic raid target for a Militia unit that's wandered near a
+    /// rival base, not the home-centered 20-Meter Territory Rule used for
+    /// defense. Default Peace: any faction not in <see cref="VillageHeart.HostileFactions"/>
+    /// is never a valid Raiding target, full stop.
     /// </summary>
-    public VillageHeart? NearestEnemyVillageHeartInRange(Vector3 from, int ownFactionId, float radius)
+    public VillageHeart? NearestHostileVillageHeartInRange(Vector3 from, int ownFactionId, float radius)
     {
         VillageHeart? home = VillageFor(ownFactionId);
+        if (home is null || home.HostileFactions.Count == 0)
+            return null;
+
         VillageHeart? nearest = null;
         float bestDistanceSquared = radius * radius;
 
         foreach (VillageHeart village in Villages)
         {
-            if (village.FactionID == ownFactionId || IsAtTruceWith(home, village.FactionID))
+            if (!home.HostileFactions.ContainsKey(village.FactionID))
                 continue;
 
             float distanceSquared = Vector3.DistanceSquared(from, village.Center);
@@ -2561,15 +2636,29 @@ public sealed class World
             UpdateJobManager(village);
             UpdateMorale(village, deltaTime);
 
-            // The Pioneer Truce: counts down toward 0 regardless of anything
-            // else this Village Heart is doing. World.Update() is itself
-            // called once per Debug Time Scale substep with a real
-            // (clamped) frame time rather than a scaled-up deltaTime (see
-            // Program's simulation loop), so ticking down by this method's
-            // own deltaTime already runs TruceTimer out faster at a higher
-            // Time Scale exactly like every other timer here (UpkeepTimer,
-            // ClaimTimer, ...) -- no separate TimeScale multiply needed.
-            village.TruceTimer = MathF.Max(0f, village.TruceTimer - deltaTime);
+            // The Blood Feud: every declared war's timer counts down toward
+            // 0 regardless of anything else this Village Heart is doing;
+            // peace is restored automatically the instant one runs out.
+            // World.Update() is itself called once per Debug Time Scale
+            // substep with a real (clamped) frame time rather than a
+            // scaled-up deltaTime (see Program's simulation loop), so
+            // ticking down by this method's own deltaTime already runs
+            // these timers out faster at a higher Time Scale exactly like
+            // every other timer here (UpkeepTimer, ClaimTimer, ...) -- a
+            // literal GetFrameTime() * TimeScale here would double up with
+            // that substep multiplication and run every feud out far too
+            // fast at anything above 1x.
+            if (village.HostileFactions.Count > 0)
+            {
+                foreach (int factionId in village.HostileFactions.Keys.ToList())
+                {
+                    float remaining = village.HostileFactions[factionId] - deltaTime;
+                    if (remaining <= 0f)
+                        village.HostileFactions.Remove(factionId);
+                    else
+                        village.HostileFactions[factionId] = remaining;
+                }
+            }
 
             // Extinction: nobody left, and not even enough Food Stored to
             // Auto-Sprout a single replacement -- this faction is done.
@@ -3035,9 +3124,10 @@ public sealed class World
     /// depart as Pioneers, taking half the parent's Food Stored with them,
     /// to found a brand new faction elsewhere on the map — see
     /// <see cref="Bramblekin.BecomePioneer"/> and <see cref="FoundVillage"/>.
-    /// A fresh splinter this size is no longer easy prey, but the Pioneer
-    /// Truce (<see cref="IsAtTruceWith"/>) still guards both sides for
-    /// <see cref="TruceDurationSeconds"/> regardless. Guarded by
+    /// A fresh splinter this size is no longer easy prey, and Default Peace
+    /// (<see cref="VillageHeart.HostileFactions"/>) means it starts out at
+    /// peace with the parent it just split from automatically — no
+    /// separate grace-period timer needed any more. Guarded by
     /// <see cref="VillageHeart.HasActiveMigration"/> so only one Migration
     /// is ever in flight per origin at a time.
     /// </summary>
@@ -3087,11 +3177,6 @@ public sealed class World
         village.FoodStored -= foodGiven;
         village.HasActiveMigration = true;
 
-        // The Pioneer Truce: the parent's own clock starts ticking the
-        // instant the split happens; the splinter's starts once FoundVillage
-        // actually creates it (see there) — both get the same 60s grace.
-        village.TruceTimer = TruceDurationSeconds;
-
         int newFactionId = _nextSchismFactionId++;
         Color newFactionColor = SchismFactionColors[(newFactionId - 1) % SchismFactionColors.Length];
         var migration = new Migration(newFactionId, newFactionColor, RandomMigrationTarget(), village, pioneers.Count, foodGiven);
@@ -3117,12 +3202,13 @@ public sealed class World
     /// The True Schism's payoff: founds a brand new Village Heart at
     /// <paramref name="migration"/>'s Target, seeded with
     /// <see cref="Migration.FoodAmount"/> Food Stored (half of the parent's
-    /// own, at the moment it split) and starts its own Pioneer Truce clock
-    /// alongside the parent's, then immediately starts running its own
-    /// autonomous economy loop alongside every other entry in
-    /// <see cref="Villages"/>. Marks the Migration founded so every Pioneer
-    /// bound to it — not just the one that triggered this — drops Migrating
-    /// for good on its very next Update() (see <see cref="Bramblekin.UpdateMigrating"/>),
+    /// own, at the moment it split), then immediately starts running its
+    /// own autonomous economy loop alongside every other entry in
+    /// <see cref="Villages"/>. Default Peace means it starts out at peace
+    /// with every other faction, the parent it split from included — no
+    /// separate grace period needed. Marks the Migration founded so every
+    /// Pioneer bound to it — not just the one that triggered this — drops
+    /// Migrating for good on its very next Update() (see <see cref="Bramblekin.UpdateMigrating"/>),
     /// and clears the origin's <see cref="VillageHeart.HasActiveMigration"/>
     /// so it's free to schism again once it re-crowds.
     /// </summary>
@@ -3132,8 +3218,6 @@ public sealed class World
         {
             FoodStored = migration.FoodAmount,
             UpkeepTimer = UpkeepInterval,
-            ParentFactionID = migration.Origin.FactionID,
-            TruceTimer = TruceDurationSeconds,
         };
         Villages.Add(village);
         Physics.AddStaticBox(village.Bounds);
@@ -3781,18 +3865,20 @@ public sealed class VillageHeart
     /// <summary>The Schism: true while this faction's Pioneers are already out founding a new Village Heart — guards against queuing a second Migration before the first lands.</summary>
     public bool HasActiveMigration { get; internal set; }
 
-    /// <summary>The Pioneer Truce: the FactionID this Village Heart split off from, or -1 if it's an original (non-Schism) tribe. Fixed for life.</summary>
-    public int ParentFactionID { get; internal set; } = -1;
-
     /// <summary>
-    /// The Pioneer Truce: counts down from 60s the moment a Schism involving
-    /// this Village Heart happens (as either the parent or the new splinter
-    /// — see <see cref="World.UpdateSchism"/>/<see cref="World.FoundVillage"/>),
-    /// ticked in <see cref="World.Update"/>. While positive, this faction's
-    /// Militia won't target or attack its parent/child faction's Bramblekin
-    /// or Village Heart — see <see cref="World.IsAtTruceWith"/>.
+    /// Default Peace & Thievery: which other Factions this Village Heart is
+    /// currently at war with, and how many seconds that Blood Feud has left
+    /// — keyed by FactionID. Every faction starts and stays at peace with
+    /// every other by default; an entry is only ever added by
+    /// <see cref="World.DeclareBloodFeud"/> (a foreign Militia unit caught
+    /// trespassing, or that faction landing a damaging hit on this one),
+    /// and ticks down to removal in <see cref="World.Update"/>. While a
+    /// FactionID is a key here, this faction's Militia treats it as a
+    /// lethal attack-on-sight enemy within the territory ring; every other
+    /// faction is simply ignored, Thievery aside (see
+    /// <see cref="Bramblekin.TrespassingAgainst"/>).
     /// </summary>
-    public float TruceTimer { get; set; }
+    public Dictionary<int, float> HostileFactions { get; } = new();
 
     /// <summary>Below <see cref="World.WearyMoraleThreshold"/>: this faction's Gatherers walk at <see cref="World.WearySpeedMultiplier"/> speed.</summary>
     public bool GatherersAreWeary => Morale < World.WearyMoraleThreshold;
@@ -4514,17 +4600,24 @@ public enum BramblekinState
     /// <summary>Running at 3x speed from a God's Shadow or a predator.</summary>
     Fleeing,
 
-    /// <summary>Militia only: charging the Wolf Spider to intercept it before it reaches the village.</summary>
+    /// <summary>
+    /// Militia only: charging the Wolf Spider to intercept it before it
+    /// reaches the village, chasing down a rival faction it's in a
+    /// declared Blood Feud with, or confronting (Warning Shove first) a
+    /// specific foreign Gatherer caught trespassing — see
+    /// <see cref="Bramblekin.UpdateDefending"/>.
+    /// </summary>
     Defending,
 
     /// <summary>Militia only: chasing down the nearest Aphid within the 20-Meter Territory Rule.</summary>
     Hunting,
 
     /// <summary>
-    /// Base Razing: Militia only, opportunistic offense rather than home
-    /// defense — a unit that wanders within its own 20m aggro radius of an
-    /// enemy Village Heart, with no living enemy Bramblekin also in range,
-    /// paths to it and Pokes it down. See <see cref="Bramblekin.UpdateRaiding"/>.
+    /// Blood Feud Base Razing: Militia only, opportunistic offense rather
+    /// than home defense — a unit that wanders within its own 20m aggro
+    /// radius of a Village Heart it's in a declared Blood Feud with, with
+    /// no living hostile Bramblekin also in range, paths to it and Pokes it
+    /// down. See <see cref="Bramblekin.UpdateRaiding"/>.
     /// </summary>
     Raiding,
 
@@ -4573,7 +4666,13 @@ public enum BramblekinRole
 ///      Heart — see <see cref="World.SpawnSpiderNearVillage"/>'s organic
 ///      roaming. A Gatherer's own Fear Aura response is unaffected by
 ///      territory: it flees the spider on sight within <see cref="FearRadius"/>
-///      regardless of where either of them is standing.
+///      regardless of where either of them is standing. Default Peace &amp;
+///      Thievery: at this same priority tier, a Militia unit also Defends
+///      against any rival faction it's in a declared Blood Feud with (see
+///      <see cref="VillageHeart.HostileFactions"/>) and confronts (Warning
+///      Shove first) any specific foreign Gatherer it's caught stealing
+///      food from its own territory (see <see cref="TrespassingAgainst"/>)
+///      — every other faction is otherwise completely ignored.
 ///   3. Village Building (Gatherers only), then Individual Equipment (an
 ///      un-upgraded Militia fetching a Fang, or Gatherer fetching Chitin —
 ///      see <see cref="HasFangPike"/>/<see cref="HasChitinMallet"/>), then
@@ -4700,6 +4799,20 @@ public sealed class Bramblekin
     private float _pokeCooldown;
     private FoodShard? _carried;
 
+    /// <summary>
+    /// Thievery: the foreign Village Heart this Gatherer is currently
+    /// trespassing against, set the instant it picks up a Food Shard
+    /// sitting inside that faction's own 20m territory ring (see
+    /// <see cref="World.ForeignTerritoryContaining"/>), null otherwise.
+    /// Only ever meaningful while <see cref="_carried"/> is the shard it
+    /// stole — cleared the moment that's no longer true (see
+    /// <see cref="DropCarried"/> and <see cref="UpdateReturning"/>), so the
+    /// flag never outlives the theft itself. That specific Village Heart's
+    /// Militia checks this to single the thief out — see
+    /// <see cref="World.NearestTrespasserInTerritory"/>.
+    /// </summary>
+    public VillageHeart? TrespassingAgainst { get; private set; }
+
     // Dibs: the current claim on a Food Shard/Aphid/Acorn this Bramblekin is
     // actively pursuing, so re-picking a different (or no) target releases
     // the old one rather than leaving it permanently locked out for others.
@@ -4710,20 +4823,24 @@ public sealed class Bramblekin
     private Acorn? _claimedAcorn;
 
     /// <summary>
-    /// Border Wars: the rival Bramblekin this Militia unit is currently
-    /// chasing down while Defending, when there's no Wolf Spider in
-    /// territory to prioritize instead. Re-picked every frame in
-    /// <see cref="UpdateDefending"/>, same spirit as <see cref="_claimedAphid"/>
-    /// — not a Dibs claim (multiple defenders can pile onto the same
-    /// intruder), just a per-unit "who am I fighting right now" reference.
+    /// The Bramblekin this Militia unit is currently chasing down while
+    /// Defending, when there's no Wolf Spider in territory to prioritize
+    /// instead — either a declared enemy (Blood Feud Border Wars) or a
+    /// specific caught Trespasser (Thievery Response); UpdateDefending
+    /// decides which by checking whether its faction is a key in the home
+    /// Village Heart's HostileFactions. Re-picked every frame, same spirit
+    /// as <see cref="_claimedAphid"/> — not a Dibs claim (multiple
+    /// defenders can pile onto the same target), just a per-unit "who am I
+    /// dealing with right now" reference.
     /// </summary>
     private Bramblekin? _combatTarget;
 
     /// <summary>
-    /// Base Razing: the enemy Village Heart this Militia unit is currently
-    /// pathing to and Poking while Raiding — opportunistic offense, picked
-    /// up when it wanders within its own aggro radius of one with no living
-    /// enemy Bramblekin also in range. Re-checked every frame in
+    /// Blood Feud Base Razing: the enemy Village Heart this Militia unit is
+    /// currently pathing to and Poking while Raiding — opportunistic
+    /// offense, picked up when it wanders within its own aggro radius of
+    /// one its faction is at declared war with, with no living hostile
+    /// Bramblekin also in range. Re-checked every frame in
     /// <see cref="UpdateRaiding"/>; not a Dibs claim, any number of Militia
     /// can pile onto the same Heart at once.
     /// </summary>
@@ -4800,26 +4917,28 @@ public sealed class Bramblekin
     }
 
     /// <summary>
-    /// Sustained Combat: the Wolf Spider's Bite. Reduces Health and, if that
-    /// brings it to 0, dies via <see cref="World.Kill"/> (the usual
-    /// drop-food/Casualties/Morale/deferred-removal path).
+    /// Reduces Health and, if that brings it to 0, dies — via
+    /// <see cref="World.KillByBramblekin"/> (Spoils of War) when
+    /// <paramref name="attackerFactionId"/> names the Bramblekin faction
+    /// that dealt the blow, or the plain <see cref="World.Kill"/> for
+    /// anything else (the Wolf Spider's Bite, chiefly). The Blood Feud:
+    /// landing ANY damaging hit from one faction on another — a killing
+    /// blow or not — immediately declares war between them (see
+    /// <see cref="World.DeclareBloodFeud"/>) if they weren't already at
+    /// war, since Default Peace never survives actual bloodshed.
     /// </summary>
-    /// <summary>
-    /// <paramref name="fromBramblekin"/>: Border Wars — a killing blow dealt
-    /// by another Bramblekin's Poke (rather than the Wolf Spider's Bite)
-    /// goes through <see cref="World.KillByBramblekin"/> instead of the
-    /// plain <see cref="World.Kill"/>, so Spoils of War can leave its
-    /// equipment behind.
-    /// </summary>
-    public void TakeDamage(int amount, World world, bool fromBramblekin = false)
+    public void TakeDamage(int amount, World world, int? attackerFactionId = null)
     {
         if (IsDead)
             return;
 
+        if (attackerFactionId is { } attackerId)
+            world.DeclareBloodFeud(FactionID, attackerId);
+
         Health = Math.Max(0, Health - amount);
         if (Health <= 0)
         {
-            if (fromBramblekin)
+            if (attackerFactionId is not null)
                 world.KillByBramblekin(this);
             else
                 world.Kill(this);
@@ -4980,19 +5099,23 @@ public sealed class Bramblekin
                 SetState(BramblekinState.Defending);
             }
         }
-        // --- 2b. Border Wars: with no Wolf Spider to answer, a faction's
-        // Militia still has to answer a rival Bramblekin (Gatherer or
-        // Militia) trespassing within their own Village Heart's territory
-        // ring. Same absolute priority tier and the same Defending state as
-        // the spider fight above — see UpdateDefending for the actual
-        // chase/poke. The 'Enemy of My Enemy' Protocol — Temporary Truce:
-        // guarded against a spider that's actively Hunting/Pouncing nearby
-        // (see IsSpiderActivelyThreateningTerritory) on top of Apex
-        // Priority above, so a common-enemy emergency always wins even in
-        // the narrower window that check alone wouldn't have caught.
+        // --- 2b. Blood Feud Border Wars: with no Wolf Spider to answer, a
+        // faction's Militia still has to answer a Bramblekin (Gatherer or
+        // Militia) of a faction it's actually at declared war with (see
+        // VillageHeart.HostileFactions) trespassing within their own
+        // Village Heart's territory ring. Default Peace: any other
+        // faction's Bramblekin is completely ignored here, full stop — see
+        // World.NearestHostileBramblekinInTerritory. Same absolute priority
+        // tier and the same Defending state as the spider fight above — see
+        // UpdateDefending for the actual chase/poke. The 'Enemy of My
+        // Enemy' Protocol — Temporary Truce: guarded against a spider
+        // that's actively Hunting/Pouncing nearby (see
+        // IsSpiderActivelyThreateningTerritory) on top of Apex Priority
+        // above, so a common-enemy emergency always wins even in the
+        // narrower window that check alone wouldn't have caught.
         else if (Role == BramblekinRole.Militia && home is not null &&
                  !world.IsSpiderActivelyThreateningTerritory(home) &&
-                 world.NearestEnemyBramblekinInTerritory(this, home) is { } enemy)
+                 world.NearestHostileBramblekinInTerritory(home) is { } enemy)
         {
             _combatTarget = enemy;
             _target = enemy.Position;
@@ -5002,18 +5125,43 @@ public sealed class Bramblekin
                 SetState(BramblekinState.Defending);
             }
         }
-        // --- 2c. Base Razing: opportunistic offense rather than home
-        // defense -- a Militia unit that's simply wandered within its own
-        // 20m aggro radius of an enemy Village Heart, with no living enemy
-        // Bramblekin also in that radius (a live threat always comes
-        // first — see 2b above, which already claims this frame if one's
-        // in range), paths in and Pokes it down instead. Temporary Truce
-        // applies here too: a spider actively threatening home calls off
-        // Base Razing just like Border Wars.
+        // --- 2c. Thievery Response: Default Peace still allows for a
+        // surgical, single-target response — a foreign Gatherer caught
+        // physically picking up food inside our own territory (see
+        // Bramblekin.TrespassingAgainst / World.NearestTrespasserInTerritory)
+        // gets singled out and confronted, without declaring war on its
+        // whole faction. UpdateDefending resolves it as a non-lethal
+        // Warning Shove unless the confrontation itself escalates into a
+        // Blood Feud (an armed trespasser, or one that lands a hit back).
+        // Checked after Blood Feud Border Wars: an already-hostile
+        // faction's trespassing Gatherer is just an enemy in our territory
+        // by then, not merely a thief to warn off.
+        else if (Role == BramblekinRole.Militia && home is not null &&
+                 !world.IsSpiderActivelyThreateningTerritory(home) &&
+                 world.NearestTrespasserInTerritory(home) is { } trespasser)
+        {
+            _combatTarget = trespasser;
+            _target = trespasser.Position;
+            if (State != BramblekinState.Defending)
+            {
+                DropCarried();
+                SetState(BramblekinState.Defending);
+            }
+        }
+        // --- 2d. Blood Feud Base Razing: opportunistic offense rather than
+        // home defense -- a Militia unit that's simply wandered within its
+        // own 20m aggro radius of a Village Heart it's actually at declared
+        // war with, with no living hostile Bramblekin also in that radius
+        // (a live threat always comes first — see 2b above, which already
+        // claims this frame if one's in range), paths in and Pokes it down
+        // instead. Default Peace: any faction with no declared Blood Feud
+        // is never a valid Raiding target. Temporary Truce applies here
+        // too: a spider actively threatening home calls off Base Razing
+        // just like Border Wars.
         else if (Role == BramblekinRole.Militia &&
                  !world.IsSpiderActivelyThreateningTerritory(home) &&
-                 world.NearestEnemyVillageHeartInRange(Position, FactionID, World.TerritoryTargetingRadius) is { } enemyHeart &&
-                 !world.HasLivingEnemyBramblekinNear(Position, FactionID, World.TerritoryTargetingRadius))
+                 world.NearestHostileVillageHeartInRange(Position, FactionID, World.TerritoryTargetingRadius) is { } enemyHeart &&
+                 !world.HasLivingHostileBramblekinNear(Position, FactionID, World.TerritoryTargetingRadius))
         {
             _raidTarget = enemyHeart;
             _target = enemyHeart.Center;
@@ -5182,7 +5330,7 @@ public sealed class Bramblekin
         return new Color(Mix(baseColor.R, FactionColor.R), Mix(baseColor.G, FactionColor.G), Mix(baseColor.B, FactionColor.B), baseColor.A);
     }
 
-    /// <summary>Puts carried food back on the ground where we stand (it can be gathered again later).</summary>
+    /// <summary>Puts carried food back on the ground where we stand (it can be gathered again later). Thievery: also clears <see cref="TrespassingAgainst"/> — the flag only ever applies while the stolen goods are still in hand.</summary>
     public void DropCarried()
     {
         if (_carried is not null)
@@ -5190,6 +5338,7 @@ public sealed class Bramblekin
             _carried.Position = Position;
             _carried.IsCarried = false;
             _carried = null;
+            TrespassingAgainst = null;
         }
     }
 
@@ -5228,6 +5377,34 @@ public sealed class Bramblekin
             return;
 
         _mover.Nudge(push, world);
+    }
+
+    /// <summary>Instant displacement (m) a Warning Shove knocks a caught trespasser back by.</summary>
+    private const float WarningShoveDistance = 1.2f;
+
+    /// <summary>
+    /// The Warning Shove (Thievery): unlike <see cref="ApplyWindPush"/>,
+    /// this DOES interrupt whatever this Bramblekin was doing — a defending
+    /// Militia unit just caught it red-handed. Knocks it directly away from
+    /// <paramref name="shovedFrom"/>, drops whatever it was carrying
+    /// (clearing <see cref="TrespassingAgainst"/> with it — see
+    /// <see cref="DropCarried"/>), and sends it fleeing straight for its
+    /// own Village Heart rather than to some arbitrary safe point, same as
+    /// any other Fleeing trigger.
+    /// </summary>
+    public void ReceiveWarningShove(Vector3 shovedFrom, World world)
+    {
+        if (IsDead)
+            return;
+
+        Vector2 away = new(Position.X - shovedFrom.X, Position.Z - shovedFrom.Z);
+        away = away.LengthSquared() > 1e-6f ? Vector2.Normalize(away) : Vector2.UnitX;
+        _mover.Nudge(new Vector3(away.X, 0, away.Y) * WarningShoveDistance, world);
+
+        DropCarried();
+        VillageHeart? home = world.VillageFor(FactionID);
+        _target = home?.Center ?? FindPointAwayFrom(shovedFrom, world);
+        SetState(BramblekinState.Fleeing);
     }
 
     // --- Economy states ----------------------------------------------------------
@@ -5281,6 +5458,13 @@ public sealed class Bramblekin
             shard.ClaimedBy = null;
             _claimedShard = null;
             _carried = shard;
+
+            // Thievery: caught in the act the instant the shard we just
+            // grabbed turns out to be sitting inside someone else's 20m
+            // border -- flags us for that specific faction's Militia to
+            // single out, whatever the wider peace between us still holds.
+            TrespassingAgainst = world.ForeignTerritoryContaining(shard.Position, FactionID);
+
             SetState(BramblekinState.Returning);
             return;
         }
@@ -5303,6 +5487,7 @@ public sealed class Bramblekin
         {
             world.DeliverFood(_carried!, home);
             _carried = null;
+            TrespassingAgainst = null; // Got away with it — the theft is over either way.
 
             // Always go back through Walking rather than jumping straight
             // to Gathering here: that used to let a Gatherer loop
@@ -5382,22 +5567,44 @@ public sealed class Bramblekin
             return;
         }
 
-        // Border Wars: no Wolf Spider threat in territory right now, so chase
-        // down the rival intruder instead, as long as it's still alive and
-        // still within the territory ring. Re-checked every frame since the
-        // enemy may flee, die to someone else, or simply wander back out.
+        // Blood Feud Border Wars / Thievery Response: no Wolf Spider threat
+        // in territory right now, so chase down whichever individual the
+        // outer priority chain assigned us — a declared enemy (lethal) or a
+        // caught Trespasser (a Warning Shove first, unless it escalates) —
+        // as long as they're still alive and still within the territory
+        // ring. Re-checked every frame since they may flee, die, or simply
+        // wander back out.
         if (home is not null && _combatTarget is { IsDead: false } enemy &&
             GroundMover.HorizontalDistance(enemy.Position, home.Center) <= World.TerritoryTargetingRadius)
         {
             _target = enemy.Position;
 
-            // Same Sustained Combat mechanics as the spider fight above, just
-            // aimed at a rival Bramblekin's own Health instead of the
-            // spider's — Spoils of War (see World.KillByBramblekin) applies
-            // only on the killing blow here, never on a plain spider Poke.
             if (_pokeCooldown <= 0f && GroundMover.HorizontalDistance(Position, enemy.Position) <= PokeRange)
             {
-                enemy.TakeDamage(HasFangPike ? UpgradedPokeDamage : PokeDamage, world, fromBramblekin: true);
+                if (home.HostileFactions.ContainsKey(enemy.FactionID))
+                {
+                    // Blood Feud: lethal. Same Sustained Combat mechanics as
+                    // the spider fight above, just aimed at a rival
+                    // Bramblekin's own Health — Spoils of War (see
+                    // World.KillByBramblekin) applies only on the killing
+                    // blow here, never on a plain spider Poke.
+                    enemy.TakeDamage(HasFangPike ? UpgradedPokeDamage : PokeDamage, world, attackerFactionId: FactionID);
+                }
+                else if (enemy.Role == BramblekinRole.Militia)
+                {
+                    // The Blood Feud (armed trespasser): a Warning Shove
+                    // doesn't work on an enemy soldier — open fire outright;
+                    // TakeDamage's own attackerFactionId hook declares the
+                    // war for us the instant the hit lands.
+                    enemy.TakeDamage(HasFangPike ? UpgradedPokeDamage : PokeDamage, world, attackerFactionId: FactionID);
+                }
+                else
+                {
+                    // The Warning Shove: a caught Gatherer-thief gets 0
+                    // damage and a shove home instead of a killing blow.
+                    enemy.ReceiveWarningShove(Position, world);
+                }
+
                 _pokeCooldown = PokeCooldownDuration;
             }
 
@@ -5411,11 +5618,11 @@ public sealed class Bramblekin
     }
 
     /// <summary>
-    /// Base Razing: paths to and Pokes an enemy Village Heart, using the
-    /// exact same Sustained Combat mechanics (PokeRange/PokeDamage/
+    /// Blood Feud Base Razing: paths to and Pokes an enemy Village Heart,
+    /// using the exact same Sustained Combat mechanics (PokeRange/PokeDamage/
     /// UpgradedPokeDamage/PokeCooldownDuration) as UpdateDefending, just
     /// aimed at <see cref="World.DamageVillageHeart"/> instead of a spider
-    /// or a rival Bramblekin. Stands down the instant a living enemy
+    /// or a rival Bramblekin. Stands down the instant a living hostile
     /// Bramblekin shows up nearby (that always wins — the outer priority
     /// chain picks it up as Border Wars/home defense next frame instead)
     /// or the target Heart is razed (by this unit's own killing blow or
@@ -5425,7 +5632,7 @@ public sealed class Bramblekin
     {
         if (_raidTarget is null || !world.Villages.Contains(_raidTarget) ||
             GroundMover.HorizontalDistance(Position, _raidTarget.Center) > World.TerritoryTargetingRadius ||
-            world.HasLivingEnemyBramblekinNear(Position, FactionID, World.TerritoryTargetingRadius))
+            world.HasLivingHostileBramblekinNear(Position, FactionID, World.TerritoryTargetingRadius))
         {
             _raidTarget = null;
             StartWandering(world);
