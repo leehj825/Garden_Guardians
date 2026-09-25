@@ -66,6 +66,18 @@ Today, any two Bramblekin tribes (the original Village Heart and every Faction a
 *   **Territorial Greed:** If populations grow large enough that two Factions' 20-meter territory rings physically overlap, the intersection becomes a contested warzone — Gatherers from either side risk a fight just foraging there, and Militia from both tribes converge on it rather than waiting for a border violation deeper in their own territory.
 *   **Thievery:** If a Gatherer sneaks into a rival's territory to steal food and is caught and killed by that faction's Militia, that specific death — not the general existence of two nearby tribes — is what triggers a permanent war between those two Factions. Peace is the default right up until someone gets caught with their hand in the granary.
 
+## The Economy & Crafting Engine
+The simulation economy will be expanded with new resources, buildings, and entities to support trading and RPG-style crafting systems.
+
+*   **Currency (Amber):** Amber acts as the primary medium of exchange. It is mined from new sap nodes and is used by factions to trade resources, purchase missing Tech Blueprints, or pay off neighboring tribes.
+*   **New PvE Entities:**
+    *   *Stag Beetle:* A heavily armored, defensive insect. Upon death, it yields Chitin, which can be crafted into +Max HP Chestplates for Militia.
+    *   *Silkworm:* A fast, fleeing insect. It yields Silk, which can be used to upgrade Gatherer speed and carrying capacity.
+*   **New Buildings:**
+    *   *Trading Post:* Automates supply and demand logistics between factions. Factions can post buy/sell orders here, which are fulfilled by wandering Merchant units.
+    *   *Armory:* Processes rare materials (Chitin, Silk, Spider Fangs) into permanent unit upgrades via the Tech Tree.
+    *   *Aphid Pen:* Used in Advanced Agriculture. Gatherers can capture wandering Aphids alive and pen them here for a passive, continuous drip of high-value Nectar food.
+
 ## The Economy of War
 *   **The Caloric Tax:** Militia units burn calories at 2x-3x the normal rate and require high-tier rations (aphid meat, nut stores). Famine causes the army to desert and revert to Gatherer AI.
 *   **The Labor Vacuum:** Conscription instantly removes workers from the economy. Maintaining weapons cannibalizes civilian repair resources (wood, silk, sap).
