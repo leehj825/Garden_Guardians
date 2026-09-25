@@ -1718,8 +1718,8 @@ public sealed class World
     /// <summary>The Village Heart's base food storage cap, before any Granary bonus.</summary>
     public const int BaseMaxFoodCapacity = 10;
 
-    /// <summary>How much a completed Granary permanently raises the food storage cap by.</summary>
-    public const int GranaryFoodBonus = 10;
+    /// <summary>Economic Buff: how much a completed Granary permanently raises the food storage cap by — raised from 10 so a tribe reaches "well-fed" (see <see cref="Bramblekin.UpdateGathering"/>) with enough room to spare to actually chase Amber instead of staying locked in a bare-survival loop.</summary>
+    public const int GranaryFoodBonus = 25;
 
     /// <summary>Food Stored spent to place a Granary blueprint.</summary>
     public const int GranaryFoodCost = 10;
@@ -1760,8 +1760,8 @@ public sealed class World
     /// <summary>Emergency Food Import: Food Stored gained per import.</summary>
     public const int EmergencyImportFoodGain = 5;
 
-    /// <summary>How often (seconds) the Village Heart pays its Upkeep food tax.</summary>
-    private const float UpkeepInterval = 15f;
+    /// <summary>Economic Buff: how often (seconds) the Village Heart pays its Upkeep food tax — doubled from 15s so Food Stored lasts much longer between taxes, leaving room to gather Amber instead of running a bare-survival loop.</summary>
+    private const float UpkeepInterval = 30f;
 
     /// <summary>How long (seconds) a floating text pop-up (Upkeep, Starvation) stays on screen.</summary>
     public const float FloatingTextDuration = 1.5f;
@@ -1806,8 +1806,8 @@ public sealed class World
     /// back to the parent tribe's base: without a hard ceiling, the parent's
     /// food was still technically the nearest *available* food on the whole
     /// map (everything closer already claimed, or just not there yet), and
-    /// the Danger Penalty (see <see cref="ForeignTerritoryPenaltyFor"/>) is
-    /// only a soft tie-breaker, not a distance limit. See
+    /// Strict Border Control (see <see cref="IsForeignTerritory"/>) only
+    /// excludes foreign territory, it doesn't cap distance on its own. See
     /// <see cref="NearestAvailableShard"/>/<see cref="NearestClaimableAcorn"/>;
     /// coming up empty sends the Gatherer to <see cref="Bramblekin.StartWanderingNearHome"/>
     /// instead, to wait out its own Spore Farm's next Berry.
@@ -3093,43 +3093,41 @@ public sealed class World
     /// <summary>The 20-Meter Territory Rule: whether <paramref name="claimant"/> has anything to gather, preferring <paramref name="home"/>'s territory but falling back to the wider map.</summary>
     public bool HasAvailableFoodFor(Bramblekin claimant, VillageHeart? home) => NearestAvailableShard(claimant.Position, claimant, home) is not null;
 
-    /// <summary>Safe Gathering (The Danger Penalty): the artificial distance a border-crossing food/Acorn target gets saddled with for comparison purposes, so a Gatherer only ever picks it over safe wild food or its own domestic Spore Farm when literally nothing safe is left within <see cref="MaxGatherSearchRadius"/>.</summary>
-    private const float ForeignTerritoryPenalty = 1000f;
-
     /// <summary>
-    /// Safe Gathering (The Danger Penalty): <see cref="ForeignTerritoryPenalty"/>
-    /// if <paramref name="point"/> falls inside ANY Village Heart's
-    /// <see cref="TerritoryTargetingRadius"/> territory ring other than
-    /// <paramref name="ownFactionId"/>'s own, 0 otherwise. Shares
-    /// <see cref="ForeignTerritoryContaining"/> with the Thievery check for
-    /// one single "whose border is this?" answer — deliberately blind to
-    /// <see cref="VillageHeart.HostileFactions"/>/Default Peace, a Schism
-    /// splinter's shared ancestry with its parent, or anything else that
-    /// makes two factions not currently shoot at each other: a truce means
-    /// "don't attack," never "share food," so the parent tribe's own
+    /// Strict Border Control: true if <paramref name="point"/> falls inside
+    /// ANY Village Heart's <see cref="TerritoryTargetingRadius"/> (20m)
+    /// territory ring other than <paramref name="ownFactionId"/>'s own.
+    /// Shares <see cref="ForeignTerritoryContaining"/> with the Thievery
+    /// check for one single "whose border is this?" answer — deliberately
+    /// blind to <see cref="VillageHeart.HostileFactions"/>/Default Peace, a
+    /// Schism splinter's shared ancestry with its parent, or anything else
+    /// that makes two factions not currently shoot at each other: a truce
+    /// means "don't attack," never "share food," so the parent tribe's own
     /// granary is exactly as foreign to a freshly-split Pioneer faction as
-    /// any other rival's. Shared by <see cref="NearestAvailableShard"/> and
-    /// <see cref="NearestClaimableAcorn"/> so both "closest Food" searches
-    /// steer the same way around a border.
+    /// any other rival's. A hard exclusion, not a preference — used by
+    /// <see cref="NearestAvailableShard"/>, <see cref="NearestClaimableAcorn"/>
+    /// and <see cref="NearestAvailableAmber"/> to rule a resource out
+    /// entirely rather than merely discourage it, so a Gatherer never
+    /// crosses into a foreign border for any resource, at any desperation
+    /// level.
     /// </summary>
-    private float ForeignTerritoryPenaltyFor(Vector3 point, int ownFactionId) =>
-        ForeignTerritoryContaining(point, ownFactionId) is not null ? ForeignTerritoryPenalty : 0f;
+    private bool IsForeignTerritory(Vector3 point, int ownFactionId) =>
+        ForeignTerritoryContaining(point, ownFactionId) is not null;
 
     /// <summary>
-    /// The 20-Meter Territory Rule + Dibs + Safe Gathering (The Danger
-    /// Penalty, see <see cref="ForeignTerritoryPenaltyFor"/>) + Maximum
-    /// Search Radius (see <see cref="MaxGatherSearchRadius"/>), sorted by
-    /// distance: among unclaimed (or self-claimed) shards within
-    /// <see cref="TerritoryTargetingRadius"/> of <paramref name="home"/>,
-    /// the nearest (danger-adjusted) one to <paramref name="from"/>. Only
-    /// if none qualify locally does this fall back to the nearest anywhere
-    /// within <see cref="MaxGatherSearchRadius"/> — a Gatherer always
-    /// prefers its own doorstep, then safe wild food, and only risks a
-    /// rival's territory as an absolute last resort — but never travels
-    /// further than <see cref="MaxGatherSearchRadius"/> at all, resort or
-    /// not; a shard outside it is never even considered, so null (nothing
-    /// to gather) is a perfectly normal result once a fresh splinter's
-    /// immediate neighbourhood is picked clean.
+    /// The 20-Meter Territory Rule + Dibs + Strict Border Control (see
+    /// <see cref="IsForeignTerritory"/>) + Maximum Search Radius (see
+    /// <see cref="MaxGatherSearchRadius"/>), sorted by distance: among
+    /// unclaimed (or self-claimed) shards within <see cref="TerritoryTargetingRadius"/>
+    /// of <paramref name="home"/>, the nearest one to <paramref name="from"/>.
+    /// Only if none qualify locally does this fall back to the nearest
+    /// anywhere within <see cref="MaxGatherSearchRadius"/> — a Gatherer
+    /// always prefers its own doorstep, then safe wild food elsewhere on the
+    /// map, but a shard sitting inside another faction's territory ring is
+    /// never a candidate at all, desperate or not, and neither is one
+    /// further than <see cref="MaxGatherSearchRadius"/>; null (nothing to
+    /// gather) is a perfectly normal result once the local neighbourhood is
+    /// picked clean — see <see cref="Bramblekin.StartWanderingNearHome"/>.
     /// </summary>
     public FoodShard? NearestAvailableShard(Vector3 from, Bramblekin claimant, VillageHeart? home)
     {
@@ -3140,7 +3138,7 @@ public sealed class World
         float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
         // Desperation Mode: a starving village can't afford to wait for local food that
         // may not exist, so we skip the local-preference logic entirely and just grab
-        // whatever's nearest anywhere within MaxGatherSearchRadius.
+        // whatever's nearest anywhere within MaxGatherSearchRadius (still never foreign).
         bool desperate = home is not null && home.FoodStored < DesperationFoodThreshold;
 
         for (int i = FoodShards.Count - 1; i >= 0; i--)
@@ -3148,12 +3146,13 @@ public sealed class World
             FoodShard shard = FoodShards[i];
             if (!IsAvailable(shard, claimant))
                 continue;
+            if (IsForeignTerritory(shard.Position, claimant.FactionID))
+                continue; // Strict Border Control: off-limits, full stop, no matter how desperate.
 
-            float rawDistance = Vector3.Distance(from, shard.Position);
-            if (rawDistance > MaxGatherSearchRadius)
+            float distance = Vector3.Distance(from, shard.Position);
+            if (distance > MaxGatherSearchRadius)
                 continue; // Maximum Search Radius: never even evaluated, last resort or not.
 
-            float distance = rawDistance + ForeignTerritoryPenaltyFor(shard.Position, claimant.FactionID);
             if (distance < bestAnyDistance)
             {
                 bestAny = shard;
@@ -3200,14 +3199,14 @@ public sealed class World
         && ShadowOver(amber.Position, AmberNode.Radius) is null;
 
     /// <summary>
-    /// Tycoon Economy: Safe Gathering (The Danger Penalty, see
-    /// <see cref="ForeignTerritoryPenaltyFor"/>) + Maximum Search Radius
-    /// (see <see cref="MaxGatherSearchRadius"/>), sorted by distance — the
-    /// nearest available Amber to <paramref name="from"/>, or null if
-    /// nothing qualifies within reach. Amber is map-wide scarce rather than
-    /// territory-seeded, so unlike <see cref="NearestAvailableShard"/> there
-    /// is no separate "prefer local territory" pass — just the one
-    /// danger-adjusted nearest-wins search.
+    /// Tycoon Economy: Strict Border Control (see <see cref="IsForeignTerritory"/>)
+    /// + Maximum Search Radius (see <see cref="MaxGatherSearchRadius"/>),
+    /// sorted by distance — the nearest available Amber to <paramref name="from"/>,
+    /// or null if nothing qualifies within reach. Amber is map-wide scarce
+    /// rather than territory-seeded, so unlike <see cref="NearestAvailableShard"/>
+    /// there is no separate "prefer local territory" pass — just the one
+    /// nearest-wins search, with any Amber inside a foreign Village Heart's
+    /// territory ring excluded outright rather than merely discouraged.
     /// </summary>
     public AmberNode? NearestAvailableAmber(Vector3 from, Bramblekin claimant)
     {
@@ -3218,12 +3217,13 @@ public sealed class World
             AmberNode amber = AmberNodes[i];
             if (!IsAvailable(amber, claimant))
                 continue;
+            if (IsForeignTerritory(amber.Position, claimant.FactionID))
+                continue; // Strict Border Control: off-limits, full stop.
 
-            float rawDistance = Vector3.Distance(from, amber.Position);
-            if (rawDistance > MaxGatherSearchRadius)
+            float distance = Vector3.Distance(from, amber.Position);
+            if (distance > MaxGatherSearchRadius)
                 continue; // Maximum Search Radius: never even evaluated.
 
-            float distance = rawDistance + ForeignTerritoryPenaltyFor(amber.Position, claimant.FactionID);
             if (distance < bestDistance)
             {
                 best = amber;
@@ -3933,16 +3933,17 @@ public sealed class World
     }
 
     /// <summary>
-    /// Cooperative Acorn Cracking + Safe Gathering (The Danger Penalty, see
-    /// <see cref="ForeignTerritoryPenaltyFor"/>) + Maximum Search Radius
-    /// (see <see cref="MaxGatherSearchRadius"/>): the nearest Acorn
+    /// Cooperative Acorn Cracking + Strict Border Control (see
+    /// <see cref="IsForeignTerritory"/>) + Maximum Search Radius (see
+    /// <see cref="MaxGatherSearchRadius"/>): the nearest Acorn
     /// <paramref name="gatherer"/> (a Chitin-Mallet Gatherer) either
     /// already holds a claim on or can still claim a free slot on —
     /// <see cref="Acorn.MaxClaimants"/> may work the same Acorn at once.
-    /// Sorted by danger-adjusted distance like any other target, so a
-    /// Gatherer only cracks an Acorn sitting inside a rival's territory
-    /// once nothing safer is available within <see cref="MaxGatherSearchRadius"/>
-    /// — an Acorn any further than that is never even considered.
+    /// Sorted by distance like any other target; an Acorn sitting inside a
+    /// rival's territory ring is excluded outright — never a candidate, no
+    /// matter how desperate the gatherer's own village is — and one any
+    /// further than <see cref="MaxGatherSearchRadius"/> is never even
+    /// considered. No more suicidal cross-border mining runs.
     /// </summary>
     public Acorn? NearestClaimableAcorn(Vector3 from, Bramblekin gatherer)
     {
@@ -3953,12 +3954,13 @@ public sealed class World
             Acorn acorn = Acorns[i];
             if (!acorn.IsClaimedBy(gatherer) && acorn.Claimants.Count >= Acorn.MaxClaimants)
                 continue;
+            if (IsForeignTerritory(acorn.Position, gatherer.FactionID))
+                continue; // Strict Border Control: off-limits, full stop.
 
-            float rawDistance = Vector3.Distance(from, acorn.Position);
-            if (rawDistance > MaxGatherSearchRadius)
+            float distance = Vector3.Distance(from, acorn.Position);
+            if (distance > MaxGatherSearchRadius)
                 continue; // Maximum Search Radius: never even evaluated, last resort or not.
 
-            float distance = rawDistance + ForeignTerritoryPenaltyFor(acorn.Position, gatherer.FactionID);
             if (distance < bestDistance)
             {
                 best = acorn;
@@ -4691,8 +4693,8 @@ public sealed class Building
     public const float SporeFarmRadius = 1.6f;
     private const float SporeFarmHeight = 0.12f;
 
-    /// <summary>Seconds between each Berry a finished Spore Farm spawns on top of itself — fast enough that a large tribe's Gatherers have a safe, internal food loop and never need to cross the map for every Berry.</summary>
-    public const float SporeFarmInterval = 2.5f;
+    /// <summary>Economic Buff: seconds between each Berry a finished Spore Farm spawns on top of itself — fast enough that a large tribe's Gatherers have a safe, internal food loop and never need to cross the map for every Berry, and fast enough to actually free up bandwidth for Amber/Trading Post play.</summary>
+    public const float SporeFarmInterval = 5f;
 
     /// <summary>Tycoon Economy: the Trading Post's footprint — a square structure, distinct from the two round buildings.</summary>
     public const float TradingPostRadius = 0.9f;
@@ -6202,16 +6204,26 @@ public sealed class Bramblekin
 
         if (GroundMover.HorizontalDistance(Position, home.Center) <= home.DeliveryDistance)
         {
-            if (_carriedAmber is not null)
+            // Explicit payload-type check: Amber and Food Shards are two
+            // distinct carry slots (see _carriedAmber/_carried), so the
+            // drop-off has to ask which one this Gatherer is actually
+            // holding rather than assuming — depositing the wrong one (or
+            // silently dropping neither) is exactly how Amber stopped
+            // incrementing VillageHeart.AmberStored.
+            if (_carriedAmber is { } amberPayload)
             {
-                world.DeliverAmber(_carriedAmber, home);
+                world.DeliverAmber(amberPayload, home);
                 _carriedAmber = null;
             }
-            else
+            else if (_carried is { } foodPayload)
             {
-                world.DeliverFood(_carried!, home);
+                world.DeliverFood(foodPayload, home);
                 _carried = null;
             }
+            // else: reached the Heart carrying nothing (shouldn't happen,
+            // but falling through to StartWandering below instead of
+            // crashing keeps a stray edge case harmless).
+
             TrespassingAgainst = null; // Got away with it — the theft is over either way.
 
             // Always go back through Walking rather than jumping straight
