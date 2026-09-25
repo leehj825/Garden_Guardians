@@ -235,6 +235,11 @@ public static class Game
 
         if (world.Spider is { } spider)
             DrawHealthBar(camera, spider.Position + new Vector3(0, WolfSpider.BodyRadius * 2f + 0.3f, 0), spider.Health, WolfSpider.MaxHealth);
+
+        // Base Razing: a Village Heart under attack shows its own bar too,
+        // same hidden-until-damaged rule as everything else here.
+        foreach (VillageHeart village in world.Villages)
+            DrawHealthBar(camera, village.Center + new Vector3(0, VillageHeart.Height + 0.3f, 0), village.Health, VillageHeart.MaxHealth);
     }
 
     /// <summary>A small red-background/green-fill bar at <paramref name="worldPosition"/>'s projected screen point.</summary>
@@ -324,11 +329,14 @@ public static class Game
 
         const int fontSize = 24, lineHeight = 30;
         int militia = world.Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
+        string header = $"{FactionColorName(village.FactionColor)} Faction ({village.Trait})";
         string food = $"Food Stored: {village.FoodStored} / {village.MaxFoodCapacity}";
         string population = $"Population: {village.Population}   Militia: {militia}";
         string morale = $"Morale: {(int)village.Morale}%" +
                          (village.GatherersAreWeary ? " (Weary)" : village.BuildersAreInspired ? " (Inspired)" : "");
-        int width = Math.Max(Raylib.MeasureText(food, fontSize), Math.Max(Raylib.MeasureText(population, fontSize), Raylib.MeasureText(morale, fontSize)));
+        int width = Math.Max(Raylib.MeasureText(header, fontSize),
+                    Math.Max(Raylib.MeasureText(food, fontSize),
+                    Math.Max(Raylib.MeasureText(population, fontSize), Raylib.MeasureText(morale, fontSize))));
         int x = Raylib.GetScreenWidth() - width - 30;
 
         // Color Coding: the panel itself is tinted toward the selected
@@ -339,15 +347,36 @@ public static class Game
         Color fill = BlendToward(PanelFill, village.FactionColor, 0.4f);
         Color ink = BlendToward(PanelInk, village.FactionColor, 0.4f);
 
-        Raylib.DrawRectangle(x - 12, 18, width + 24, lineHeight * 3 + 14, fill);
-        Raylib.DrawRectangleLines(x - 12, 18, width + 24, lineHeight * 3 + 14, ink);
-        Raylib.DrawText(food, x, 26, fontSize, ink);
-        Raylib.DrawText(population, x, 26 + lineHeight, fontSize, ink);
+        Raylib.DrawRectangle(x - 12, 18, width + 24, lineHeight * 4 + 14, fill);
+        Raylib.DrawRectangleLines(x - 12, 18, width + 24, lineHeight * 4 + 14, ink);
+        Raylib.DrawText(header, x, 26, fontSize, ink);
+        Raylib.DrawText(food, x, 26 + lineHeight, fontSize, ink);
+        Raylib.DrawText(population, x, 26 + lineHeight * 2, fontSize, ink);
         Color moraleColor = village.GatherersAreWeary ? new Color(170, 60, 40, 255)
                            : village.BuildersAreInspired ? new Color(60, 130, 70, 255)
                            : ink;
-        Raylib.DrawText(morale, x, 26 + lineHeight * 2, fontSize, moraleColor);
+        Raylib.DrawText(morale, x, 26 + lineHeight * 3, fontSize, moraleColor);
     }
+
+    /// <summary>
+    /// Faction Personalities: a human-readable name for a faction's colour
+    /// — the original Village Heart's green, or one of the four Schism
+    /// palette colours (see <see cref="World.SchismFactionColors"/> — kept
+    /// in sync with it by hand, since it's a display-only lookup) — for the
+    /// panel header ("Blue Faction (Militaristic)"). Falls back to the
+    /// FactionID if a colour somehow doesn't match (never expected in
+    /// practice, since every Village Heart's colour comes from one of these
+    /// two sources).
+    /// </summary>
+    private static string FactionColorName(Color color) => color switch
+    {
+        { R: 40, G: 180, B: 90 } => "Green",
+        { R: 60, G: 120, B: 220 } => "Blue",
+        { R: 225, G: 195, B: 55 } => "Yellow",
+        { R: 205, G: 60, B: 55 } => "Red",
+        { R: 150, G: 80, B: 195 } => "Purple",
+        _ => "Unknown",
+    };
 
     /// <summary>Blends <paramref name="baseColor"/> toward <paramref name="tint"/> by <paramref name="amount"/> (0 = unchanged, 1 = fully tint), keeping <paramref name="baseColor"/>'s own alpha.</summary>
     private static Color BlendToward(Color baseColor, Color tint, float amount) => new(
@@ -374,7 +403,7 @@ public static class Game
             $"Pebbles: {world.Physics.Count}   Bramblekin: {world.Colony.Count} " +
             $"(gathering {Count(BramblekinState.Gathering)}, returning {Count(BramblekinState.Returning)}, " +
             $"fleeing {Count(BramblekinState.Fleeing)}, defending {Count(BramblekinState.Defending)}, " +
-            $"hunting {Count(BramblekinState.Hunting)}, lost {world.Casualties})   " +
+            $"hunting {Count(BramblekinState.Hunting)}, raiding {Count(BramblekinState.Raiding)}, lost {world.Casualties})   " +
             $"Aphids: {world.Aphids.Count(a => !a.IsDead)}   " +
             $"Spider: {SpiderStatus(world)}   Sprouted: {world.Births}   FPS: {Raylib.GetFPS()}",
             20, y + 26, 20, Color.DarkGray);
@@ -1872,7 +1901,7 @@ public sealed class World
         // The original Village Heart: Faction 0, green — sits just off the
         // centre of the garden. It is a solid box for pebbles and a solid
         // circle for walkers, same as any faction that joins it later.
-        var villageHeart = new VillageHeart(new Vector3(-2f, Terrain.GroundHeight, -2f), factionId: 0, factionColor: new Color(40, 180, 90, 255));
+        var villageHeart = new VillageHeart(new Vector3(-2f, Terrain.GroundHeight, -2f), factionId: 0, factionColor: new Color(40, 180, 90, 255), rng);
         villageHeart.UpkeepTimer = UpkeepInterval;
         Villages.Add(villageHeart);
         foreach (var village in Villages)
@@ -1893,16 +1922,28 @@ public sealed class World
     public VillageHeart? VillageFor(int factionId) => Villages.FirstOrDefault(v => v.FactionID == factionId);
 
     /// <summary>The Village Heart's Auto-Conscription ratio: one Militia unit for every this-many Gatherers.</summary>
-    private const int GatherersPerMilitia = 3;
+    /// <summary>
+    /// Faction Personalities: the Population divisor for a Village Heart's
+    /// Auto-Conscription target, per its fixed-for-life <see cref="FactionTrait"/>
+    /// — Militaristic wants a Militia unit for every 2 Gatherers (Population / 3),
+    /// Agrarian for every 5 (Population / 6), Balanced for every 3 (Population / 4).
+    /// </summary>
+    private static int MilitiaTargetDivisorFor(FactionTrait trait) => trait switch
+    {
+        FactionTrait.Militaristic => 3,
+        FactionTrait.Agrarian => 6,
+        _ => 4,
+    };
 
     /// <summary>
     /// The Job Manager: each Village Heart's own autonomous quartermaster.
-    /// Every frame it recomputes its own faction's Population and
-    /// <see cref="VillageHeart.MilitiaTarget"/> — one Militia per
-    /// <see cref="GatherersPerMilitia"/> Gatherers of that faction — and
-    /// nudges its actual Militia headcount one step toward it: promoting the
-    /// nearest same-faction Gatherer if under target, or standing down the
-    /// nearest same-faction Militia unit (pike put away, sent back to
+    /// Every frame it recomputes its own faction's Population — strictly
+    /// its own FactionID's living Bramblekin, never any other faction's —
+    /// and <see cref="VillageHeart.MilitiaTarget"/> per its own
+    /// <see cref="FactionTrait"/> (see <see cref="MilitiaTargetDivisorFor"/>),
+    /// and nudges its actual Militia headcount one step toward it: promoting
+    /// the nearest same-faction Gatherer if under target, or standing down
+    /// the nearest same-faction Militia unit (pike put away, sent back to
     /// Wandering) if over. One change per frame is plenty; at 60 fps even a
     /// large jump (a mass Sprout, or a Wolf Spider kill dropping the
     /// population) closes out in a fraction of a second, with no player
@@ -1911,7 +1952,7 @@ public sealed class World
     private void UpdateJobManager(VillageHeart village)
     {
         village.Population = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID);
-        village.MilitiaTarget = village.Population / (GatherersPerMilitia + 1);
+        village.MilitiaTarget = village.Population / MilitiaTargetDivisorFor(village.Trait);
 
         int current = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
         if (current < village.MilitiaTarget)
@@ -2090,6 +2131,27 @@ public sealed class World
     }
 
     /// <summary>
+    /// Base Razing: whether any living enemy Bramblekin (any role) is
+    /// within <paramref name="radius"/> of <paramref name="position"/> — a
+    /// live threat always outranks Raiding an empty-looking enemy Village
+    /// Heart, so a Militia unit checks this before (and while) committing
+    /// to one.
+    /// </summary>
+    public bool HasLivingEnemyBramblekinNear(Vector3 position, int ownFactionId, float radius)
+    {
+        float radiusSquared = radius * radius;
+        for (int i = Colony.Count - 1; i >= 0; i--)
+        {
+            Bramblekin enemy = Colony[i];
+            if (enemy.IsDead || enemy.FactionID == ownFactionId)
+                continue;
+            if (Vector3.DistanceSquared(enemy.Position, position) <= radiusSquared)
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
     /// Border Wars + the 20-Meter Territory Rule: the nearest living
     /// Bramblekin (Gatherer or Militia, any faction but <paramref name="defender"/>'s
     /// own) currently within <paramref name="home"/>'s territory ring — an
@@ -2145,6 +2207,81 @@ public sealed class World
             _pendingFangSpawns.Add(new SpiderFang(spot));
         else if (hadChitin)
             _pendingChitinSpawns.Add(new Chitin(spot));
+    }
+
+    /// <summary>
+    /// Base Razing: the nearest living enemy Village Heart within
+    /// <paramref name="radius"/> of <paramref name="from"/> — an opportunistic
+    /// raid target for a Militia unit that's wandered near a rival base,
+    /// not the home-centered 20-Meter Territory Rule used for defense.
+    /// </summary>
+    public VillageHeart? NearestEnemyVillageHeartInRange(Vector3 from, int ownFactionId, float radius)
+    {
+        VillageHeart? nearest = null;
+        float bestDistanceSquared = radius * radius;
+
+        foreach (VillageHeart village in Villages)
+        {
+            if (village.FactionID == ownFactionId)
+                continue;
+
+            float distanceSquared = Vector3.DistanceSquared(from, village.Center);
+            if (distanceSquared > bestDistanceSquared)
+                continue;
+
+            nearest = village;
+            bestDistanceSquared = distanceSquared;
+        }
+        return nearest;
+    }
+
+    /// <summary>
+    /// Base Razing: applies Militia poke damage to an enemy Village Heart
+    /// and, if that brings its Health to 0, conquers it outright — see
+    /// <see cref="DestroyVillageHeart"/>.
+    /// </summary>
+    public void DamageVillageHeart(VillageHeart village, int amount)
+    {
+        village.TakeDamage(amount);
+        if (village.Health <= 0)
+            DestroyVillageHeart(village);
+    }
+
+    /// <summary>Loose Food Shards a razed Village Heart shatters into for the victors to claim.</summary>
+    private const int VillageHeartLootShardCount = 10;
+
+    /// <summary>
+    /// Base Razing: a Village Heart reduced to 0 Health is conquered —
+    /// removed from <see cref="Villages"/> outright (same direct-mutation
+    /// pattern as <see cref="CompleteBlueprint"/>'s Blueprints.Remove; this
+    /// only ever runs from within the Colony loop, well before Villages is
+    /// next enumerated this frame, so there's no concurrent-modification
+    /// risk), taking every Granary, Spore Patch and Blueprint sharing its
+    /// FactionID down with it, and shattering into <see cref="VillageHeartLootShardCount"/>
+    /// loose Food Shards scattered around its footprint. Its own Colony
+    /// survives as suddenly homeless refugees — <see cref="VillageFor"/>
+    /// simply returns null for them from here on.
+    /// </summary>
+    private void DestroyVillageHeart(VillageHeart village)
+    {
+        if (!Villages.Remove(village))
+            return; // Already razed this frame by another poke landing the same instant.
+
+        Buildings.RemoveAll(b => b.FactionID == village.FactionID);
+        Blueprints.RemoveAll(b => b.FactionID == village.FactionID);
+
+        float half = Terrain.Size / 2f - Bramblekin.EdgeMargin;
+        for (int i = 0; i < VillageHeartLootShardCount; i++)
+        {
+            float angle = (float)(Rng.NextDouble() * MathF.Tau);
+            float distance = 0.5f + (float)Rng.NextDouble() * 1.5f;
+            var position = village.Center + new Vector3(MathF.Cos(angle), 0, MathF.Sin(angle)) * distance;
+            position.X = Math.Clamp(position.X, -half, half);
+            position.Z = Math.Clamp(position.Z, -half, half);
+            _pendingShardSpawns.Add(new FoodShard(position));
+        }
+
+        _splats.Add((village.Center, SplatDuration));
     }
 
     /// <summary>
@@ -2310,10 +2447,21 @@ public sealed class World
             UpdateJobManager(village);
             UpdateMorale(village, deltaTime);
 
+            // Extinction: nobody left, and not even enough Food Stored to
+            // Auto-Sprout a single replacement -- this faction is done.
+            // Stops functioning entirely: no Upkeep, no Auto-Anything. It
+            // still stands (and can still be found and razed) until then.
+            if (village.IsExtinct)
+                continue;
+
             // Upkeep is the survival tax: it gets first claim on Food Stored,
             // ahead of anything discretionary, and can cost a Bramblekin its
-            // life if the village can't pay it.
-            UpdateUpkeep(village, deltaTime);
+            // life if the village can't pay it. Bypassed entirely once
+            // Population hits 0 -- there's no one left to tax, even for a
+            // village that isn't (yet) Extinct because it's still sitting on
+            // enough Food Stored to Auto-Sprout its way back.
+            if (village.Population > 0)
+                UpdateUpkeep(village, deltaTime);
 
             // Auto-Construction gets next claim on Food Stored, checked before
             // Auto-Sprout: Sprout's own trigger (>= FoodPerSprout) is the lowest
@@ -2841,7 +2989,7 @@ public sealed class World
     /// </summary>
     public VillageHeart FoundVillage(Migration migration)
     {
-        var village = new VillageHeart(migration.Target, migration.NewFactionID, migration.NewFactionColor)
+        var village = new VillageHeart(migration.Target, migration.NewFactionID, migration.NewFactionColor, Rng)
         {
             FoodStored = SchismMigrationCost,
             UpkeepTimer = UpkeepInterval,
@@ -2886,7 +3034,7 @@ public sealed class World
             return;
         village.UpkeepTimer += UpkeepInterval;
 
-        int cost = Math.Max(1, village.Population / 5);
+        int cost = Math.Max(1, village.Population / 8);
         if (village.FoodStored >= cost)
         {
             village.FoodStored -= cost;
@@ -3380,12 +3528,35 @@ public sealed class World
 /// <see cref="World"/> — see <see cref="World.Villages"/> and the
 /// per-village loop in <see cref="World.Update"/>.
 /// </summary>
+/// <summary>
+/// Faction Personalities: a Village Heart's independent, fixed-for-life
+/// stance on military vs. economy, randomly assigned the moment it's
+/// founded (the original Village Heart included) — see <see cref="VillageHeart.Trait"/>
+/// and <see cref="World.MilitiaRatioFor"/>.
+/// </summary>
+public enum FactionTrait
+{
+    /// <summary>1 Militia per 3 Gatherers (Population / 4).</summary>
+    Balanced,
+
+    /// <summary>1 Militia per 2 Gatherers (Population / 3) — highly aggressive.</summary>
+    Militaristic,
+
+    /// <summary>1 Militia per 5 Gatherers (Population / 6) — maximizes food collection.</summary>
+    Agrarian,
+}
+
 public sealed class VillageHeart
 {
     /// <summary>Footprint edge length, in meters.</summary>
     public const float Width = 1.6f;
 
     public const float Height = 1.2f;
+
+    /// <summary>Base Razing: hit points out of <see cref="MaxHealth"/>. Reduced by an enemy Militia's Poke (see <see cref="World.DamageVillageHeart"/>); at 0, the Heart is conquered and razed.</summary>
+    public int Health { get; private set; } = MaxHealth;
+
+    public const int MaxHealth = 200;
 
     /// <summary>Radius (m) of the faint territory ring drawn on the ground around this Village Heart.</summary>
     public const float TerritoryRadius = 15f;
@@ -3442,16 +3613,33 @@ public sealed class VillageHeart
     /// <summary>Above <see cref="World.HighMoraleThreshold"/>: this faction's Builders work at <see cref="World.HighMoraleBuildMultiplier"/> speed.</summary>
     public bool BuildersAreInspired => Morale > World.HighMoraleThreshold;
 
-    public VillageHeart(Vector3 center, int factionId, Color factionColor)
+    /// <summary>Faction Personalities: fixed for this Village Heart's entire life, randomly rolled the moment it's founded.</summary>
+    public FactionTrait Trait { get; }
+
+    /// <summary>
+    /// Extinction: no one left (<see cref="Population"/> is 0) and not even
+    /// enough Food Stored to Auto-Sprout a single replacement (<see cref="World.FoodPerSprout"/>)
+    /// — this faction is done for good. An Extinct Village Heart stops
+    /// functioning entirely (see the per-village loop in <see cref="World.Update"/>):
+    /// no Upkeep, no Auto-Anything. It still stands, and can still be found
+    /// and razed by Base Razing, until then.
+    /// </summary>
+    public bool IsExtinct => Population == 0 && FoodStored < World.FoodPerSprout;
+
+    public VillageHeart(Vector3 center, int factionId, Color factionColor, Random rng)
     {
         Center = center;
         FactionID = factionId;
         FactionColor = factionColor;
+        Trait = (FactionTrait)rng.Next(3);
         float half = Width / 2f;
         Bounds = new BoundingBox(
             new Vector3(center.X - half, Terrain.GroundHeight, center.Z - half),
             new Vector3(center.X + half, Terrain.GroundHeight + Height, center.Z + half));
     }
+
+    /// <summary>Base Razing: reduces Health, floored at 0. Purely a Health mutation — destruction/loot is World's call, via <see cref="World.DamageVillageHeart"/>.</summary>
+    public void TakeDamage(int amount) => Health = Math.Max(0, Health - amount);
 
     public void Draw()
     {
@@ -3734,8 +3922,8 @@ public sealed class Building
     public const float SporePatchRadius = 1.0f;
     private const float SporePatchHeight = 0.05f;
 
-    /// <summary>Seconds between each Berry a finished Spore Patch spawns on top of itself. Buffed to help baseline survival for 5-faction maps.</summary>
-    public const float SporePatchInterval = 5f;
+    /// <summary>Seconds between each Berry a finished Spore Patch spawns on top of itself. Buffed further (10s -> 5s -> 4s) to keep established bases' baseline survival ahead of the Upkeep tax.</summary>
+    public const float SporePatchInterval = 4f;
 
     public BuildingKind Kind { get; }
     public Vector3 Position { get; }
@@ -4141,6 +4329,14 @@ public enum BramblekinState
     /// <summary>Militia only: chasing down the nearest Aphid within the 20-Meter Territory Rule.</summary>
     Hunting,
 
+    /// <summary>
+    /// Base Razing: Militia only, opportunistic offense rather than home
+    /// defense — a unit that wanders within its own 20m aggro radius of an
+    /// enemy Village Heart, with no living enemy Bramblekin also in range,
+    /// paths to it and Pokes it down. See <see cref="Bramblekin.UpdateRaiding"/>.
+    /// </summary>
+    Raiding,
+
     /// <summary>Gatherers only: the Builder AI, pathing to and working a Blueprint.</summary>
     Building,
 
@@ -4331,6 +4527,16 @@ public sealed class Bramblekin
     /// intruder), just a per-unit "who am I fighting right now" reference.
     /// </summary>
     private Bramblekin? _combatTarget;
+
+    /// <summary>
+    /// Base Razing: the enemy Village Heart this Militia unit is currently
+    /// pathing to and Poking while Raiding — opportunistic offense, picked
+    /// up when it wanders within its own aggro radius of one with no living
+    /// enemy Bramblekin also in range. Re-checked every frame in
+    /// <see cref="UpdateRaiding"/>; not a Dibs claim, any number of Militia
+    /// can pile onto the same Heart at once.
+    /// </summary>
+    private VillageHeart? _raidTarget;
 
     /// <summary>The Schism: set the instant this Bramblekin becomes a Pioneer (see <see cref="BecomePioneer"/>), cleared the instant it stops Migrating (see <see cref="UpdateMigrating"/>).</summary>
     private Migration? _migration;
@@ -4593,6 +4799,24 @@ public sealed class Bramblekin
                 SetState(BramblekinState.Defending);
             }
         }
+        // --- 2c. Base Razing: opportunistic offense rather than home
+        // defense -- a Militia unit that's simply wandered within its own
+        // 20m aggro radius of an enemy Village Heart, with no living enemy
+        // Bramblekin also in that radius (a live threat always comes
+        // first — see 2b above, which already claims this frame if one's
+        // in range), paths in and Pokes it down instead.
+        else if (Role == BramblekinRole.Militia &&
+                 world.NearestEnemyVillageHeartInRange(Position, FactionID, World.TerritoryTargetingRadius) is { } enemyHeart &&
+                 !world.HasLivingEnemyBramblekinNear(Position, FactionID, World.TerritoryTargetingRadius))
+        {
+            _raidTarget = enemyHeart;
+            _target = enemyHeart.Center;
+            if (State != BramblekinState.Raiding)
+            {
+                DropCarried();
+                SetState(BramblekinState.Raiding);
+            }
+        }
         else if (Role == BramblekinRole.Gatherer && world.Spider is { } nearSpider &&
                  GroundMover.HorizontalDistance(Position, nearSpider.Position) < FearRadius)
         {
@@ -4668,6 +4892,10 @@ public sealed class Bramblekin
 
             case BramblekinState.Hunting:
                 UpdateHunting(deltaTime, world, home);
+                break;
+
+            case BramblekinState.Raiding:
+                UpdateRaiding(deltaTime, world);
                 break;
 
             case BramblekinState.Building:
@@ -4974,6 +5202,39 @@ public sealed class Bramblekin
         // Nothing left to fight: stand down.
         _combatTarget = null;
         StartWandering(world);
+    }
+
+    /// <summary>
+    /// Base Razing: paths to and Pokes an enemy Village Heart, using the
+    /// exact same Sustained Combat mechanics (PokeRange/PokeDamage/
+    /// UpgradedPokeDamage/PokeCooldownDuration) as UpdateDefending, just
+    /// aimed at <see cref="World.DamageVillageHeart"/> instead of a spider
+    /// or a rival Bramblekin. Stands down the instant a living enemy
+    /// Bramblekin shows up nearby (that always wins — the outer priority
+    /// chain picks it up as Border Wars/home defense next frame instead)
+    /// or the target Heart is razed (by this unit's own killing blow or
+    /// anyone else's) or simply falls out of range.
+    /// </summary>
+    private void UpdateRaiding(float deltaTime, World world)
+    {
+        if (_raidTarget is null || !world.Villages.Contains(_raidTarget) ||
+            GroundMover.HorizontalDistance(Position, _raidTarget.Center) > World.TerritoryTargetingRadius ||
+            world.HasLivingEnemyBramblekinNear(Position, FactionID, World.TerritoryTargetingRadius))
+        {
+            _raidTarget = null;
+            StartWandering(world);
+            return;
+        }
+
+        _target = _raidTarget.Center;
+
+        if (_pokeCooldown <= 0f && GroundMover.HorizontalDistance(Position, _raidTarget.Center) <= PokeRange)
+        {
+            world.DamageVillageHeart(_raidTarget, HasFangPike ? UpgradedPokeDamage : PokeDamage);
+            _pokeCooldown = PokeCooldownDuration;
+        }
+
+        _mover.MoveTowards(_target, DefendSpeed, deltaTime, world, p => IsSafeSpot(p, world));
     }
 
     /// <summary>
