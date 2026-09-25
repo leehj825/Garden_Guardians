@@ -1995,7 +1995,7 @@ public sealed class World
     /// <summary>Under-construction sites; a Blueprint becomes a <see cref="Building"/> once its Construction Progress is complete.</summary>
     public List<Blueprint> Blueprints { get; } = new();
 
-    /// <summary>Finished structures: Granaries, which permanently raise <see cref="MaxFoodCapacity"/>.</summary>
+    /// <summary>Finished structures: Granaries, which permanently raise <see cref="VillageHeart.MaxFoodCapacity"/>.</summary>
     public List<Building> Buildings { get; } = new();
 
     /// <summary>Bramblekin lost to predators so far.</summary>
@@ -4185,19 +4185,10 @@ public sealed class World
 // =============================================================================
 
 /// <summary>
-/// The Village Heart: a faction's home and food store. A static brown block
-/// that its own Bramblekin deliver food to. Phase 3: each faction gets its
-/// own instance with its own economy (<see cref="FoodStored"/>,
-/// <see cref="Population"/>, <see cref="MaxFoodCapacity"/>,
-/// <see cref="Morale"/>) rather than sharing one set of numbers off
-/// <see cref="World"/> — see <see cref="World.Villages"/> and the
-/// per-village loop in <see cref="World.Update"/>.
-/// </summary>
-/// <summary>
 /// Faction Personalities: a Village Heart's independent, fixed-for-life
 /// stance on military vs. economy, randomly assigned the moment it's
 /// founded (the original Village Heart included) — see <see cref="VillageHeart.Trait"/>
-/// and <see cref="World.MilitiaRatioFor"/>.
+/// and <see cref="World.MilitiaTargetDivisorFor"/>.
 /// </summary>
 public enum FactionTrait
 {
@@ -4211,6 +4202,15 @@ public enum FactionTrait
     Agrarian,
 }
 
+/// <summary>
+/// The Village Heart: a faction's home and food store. A static brown block
+/// that its own Bramblekin deliver food to. Phase 3: each faction gets its
+/// own instance with its own economy (<see cref="VillageHeart.FoodStored"/>,
+/// <see cref="VillageHeart.Population"/>, <see cref="VillageHeart.MaxFoodCapacity"/>,
+/// <see cref="VillageHeart.Morale"/>) rather than sharing one set of numbers off
+/// <see cref="World"/> — see <see cref="World.Villages"/> and the
+/// per-village loop in <see cref="World.Update"/>.
+/// </summary>
 public sealed class VillageHeart
 {
     /// <summary>Footprint edge length, in meters.</summary>
@@ -4284,7 +4284,7 @@ public sealed class VillageHeart
     public bool HasActiveMigration { get; internal set; }
 
     /// <summary>
-    /// Default Peace & Thievery: which other Factions this Village Heart is
+    /// Default Peace and Thievery: which other Factions this Village Heart is
     /// currently at war with, and how many seconds that Blood Feud has left
     /// — keyed by FactionID. Every faction starts and stays at peace with
     /// every other by default; an entry is only ever added by
@@ -4667,7 +4667,7 @@ public sealed class Chitin
 /// <summary>Which kind of Village Building a <see cref="Blueprint"/>/<see cref="Building"/> is.</summary>
 public enum BuildingKind
 {
-    /// <summary>Permanently raises <see cref="World.MaxFoodCapacity"/> by <see cref="World.GranaryFoodBonus"/>.</summary>
+    /// <summary>Permanently raises <see cref="VillageHeart.MaxFoodCapacity"/> by <see cref="World.GranaryFoodBonus"/>.</summary>
     Granary,
 
     /// <summary>Passive Income: spawns a Berry on top of itself every <see cref="Building.SporeFarmInterval"/> seconds.</summary>
