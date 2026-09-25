@@ -2681,10 +2681,11 @@ public sealed class World
         for (int i = Colony.Count - 1; i >= 0; i--)
             Colony[i].Update(deltaTime, this);
 
-        // Cooperative Acorn Cracking: checked once here, after the Colony
-        // loop has moved everyone this frame, so a claiming Gatherer's
-        // Position is fully up to date before the three-way touch check.
-        UpdateAcornCoopCrack();
+        // Continuous Cracking: checked once here, after the Colony loop has
+        // added every Cracking Gatherer's own contribution for the frame,
+        // so several claimants finishing an Acorn off in the same frame can
+        // never cause a double-shatter.
+        UpdateAcornCracking();
 
         Spider?.Update(deltaTime, this);
 
@@ -3645,33 +3646,25 @@ public sealed class World
     }
 
     /// <summary>
-    /// Cooperative Acorn Cracking: once <see cref="Acorn.MaxClaimants"/>
-    /// Chitin-Mallet Gatherers are all actually touching the same Acorn, it
-    /// shatters into <see cref="ShardsPerAcorn"/> Food Shards scattered
-    /// around it. Checked once a frame, after the Colony loop has moved
-    /// everyone, so every claimant's Position is current.
+    /// Continuous Cracking: shatters any Acorn whose CrackProgress has
+    /// reached its CrackThreshold — checked once a frame, after the Colony
+    /// loop has added every Cracking Gatherer's contribution for the frame,
+    /// so several claimants finishing it off in the same frame can never
+    /// cause a double-shatter. The Shatter Trigger: explicitly hands every
+    /// claimant back from Cracking to Gathering (see Bramblekin.OnAcornShattered)
+    /// so they immediately call dibs on the fresh Food Shards instead of
+    /// idling with a now-dangling Acorn reference.
     /// </summary>
-    private void UpdateAcornCoopCrack()
+    private void UpdateAcornCracking()
     {
-        float contactDistance = Bramblekin.BodyRadius + Acorn.Radius + AcornCoopContactMargin;
-
         for (int i = Acorns.Count - 1; i >= 0; i--)
         {
             Acorn acorn = Acorns[i];
-            if (acorn.Claimants.Count < Acorn.MaxClaimants)
+            if (acorn.CrackProgress < acorn.CrackThreshold)
                 continue;
 
-            bool allTouching = true;
-            foreach (var claimant in acorn.Claimants)
-            {
-                if (claimant.IsDead || GroundMover.HorizontalDistance(claimant.Position, acorn.Position) > contactDistance)
-                {
-                    allTouching = false;
-                    break;
-                }
-            }
-            if (!allTouching)
-                continue;
+            foreach (Bramblekin claimant in acorn.Claimants)
+                claimant.OnAcornShattered();
 
             ScatterFoodShardsAround(acorn.Position, ShardsPerAcorn, Acorn.Radius + FoodShard.Radius + 0.35f);
             Acorns.RemoveAt(i);
@@ -4096,6 +4089,20 @@ public sealed class Acorn
 
     /// <summary>Cooperative Acorn Cracking: at most this many Chitin-Mallet Gatherers may claim the same Acorn at once.</summary>
     public const int MaxClaimants = 3;
+
+    /// <summary>
+    /// Continuous Cracking: how far this Acorn's shatter has progressed.
+    /// Every Chitin-Mallet Gatherer actually touching it while Cracking
+    /// adds its own cracking speed to this every frame (see
+    /// <see cref="Bramblekin.UpdateCracking"/>), so claimants' rates simply
+    /// add together — more Gatherers means it breaks proportionally
+    /// faster, rather than needing all <see cref="MaxClaimants"/> to show
+    /// up before anything happens at all.
+    /// </summary>
+    public float CrackProgress { get; set; }
+
+    /// <summary>CrackProgress needed to shatter this Acorn — see <see cref="CrackProgress"/>.</summary>
+    public float CrackThreshold { get; } = 100f;
 
     public Vector3 Position { get; }
 
@@ -4679,6 +4686,15 @@ public enum BramblekinState
     /// <summary>Carrying a Food Shard back to the Village Heart.</summary>
     Returning,
 
+    /// <summary>
+    /// Continuous Cracking: a Chitin-Mallet Gatherer pathing to (and, once
+    /// touching, steadily adding its cracking speed to) a claimed Acorn —
+    /// see <see cref="Bramblekin.UpdateCracking"/>. Up to <see cref="Acorn.MaxClaimants"/>
+    /// Gatherers can be in this state on the same Acorn at once, their
+    /// rates simply adding together.
+    /// </summary>
+    Cracking,
+
     /// <summary>Running at 3x speed from a God's Shadow or a predator.</summary>
     Fleeing,
 
@@ -4819,6 +4835,9 @@ public sealed class Bramblekin
     /// satisfying a tighter check.
     /// </summary>
     private const float PickupDistance = 0.8f;
+
+    /// <summary>Continuous Cracking: how much this Gatherer alone adds to a touched Acorn's CrackProgress per second — see <see cref="UpdateCracking"/>.</summary>
+    private const float CrackRatePerGatherer = 20f;
 
     /// <summary>Within this distance of a Spider Fang, it is picked up — see <see cref="PickupDistance"/>'s High-Speed Physics note.</summary>
     private const float FangPickupDistance = 0.8f;
@@ -5359,6 +5378,10 @@ public sealed class Bramblekin
                 UpdateGathering(deltaTime, world, home);
                 break;
 
+            case BramblekinState.Cracking:
+                UpdateCracking(deltaTime, world);
+                break;
+
             case BramblekinState.Returning:
                 UpdateReturning(deltaTime, world, home);
                 break;
@@ -5494,6 +5517,22 @@ public sealed class Bramblekin
     }
 
     /// <summary>
+    /// The Shatter Trigger: called once by <see cref="World.UpdateAcornCracking"/>
+    /// for every claimant the instant their shared Acorn's CrackProgress
+    /// crosses its CrackThreshold. Explicitly drops the now-gone Acorn as a
+    /// target (no need to release the claim slot itself — the whole Acorn
+    /// is being discarded) and hands this Gatherer straight back to
+    /// Gathering, so it immediately calls dibs on one of the Food Shards
+    /// the shatter just dropped rather than idling on a dangling reference.
+    /// </summary>
+    public void OnAcornShattered()
+    {
+        _claimedAcorn = null;
+        if (State == BramblekinState.Cracking)
+            SetState(BramblekinState.Gathering);
+    }
+
+    /// <summary>
     /// The Gust's effect on a Bramblekin: an immediate, gentle shove in the
     /// wind's direction. Never touches <see cref="State"/> or its current
     /// target — it's just physically moved a little, same as running into
@@ -5539,27 +5578,17 @@ public sealed class Bramblekin
 
     private void UpdateGathering(float deltaTime, World world, VillageHeart? home)
     {
-        // Cooperative Acorn Cracking: only a Chitin-Mallet Gatherer ever
-        // targets a whole Acorn, and only while it still holds (or can still
-        // grab) one of its MaxClaimants slots. Re-checked every frame: the
-        // old claim may have been cracked out from under us (by a pebble, or
-        // by the coop-crack shatter itself) since last frame.
-        if (_claimedAcorn is not null && !world.Acorns.Contains(_claimedAcorn))
-            ReleaseAcornClaim();
-
-        if (HasChitinMallet)
+        // Continuous Cracking: only a Chitin-Mallet Gatherer ever targets a
+        // whole Acorn, and only while it can still claim one of its
+        // MaxClaimants slots. Claiming one hands off to the Cracking state
+        // entirely — see UpdateCracking for the walk-there/add-progress
+        // loop and World.UpdateAcornCracking for the actual shatter.
+        if (HasChitinMallet && world.NearestClaimableAcorn(Position, this) is { } acorn && acorn.TryClaim(this))
         {
-            Acorn? acorn = _claimedAcorn ?? world.NearestClaimableAcorn(Position, this);
-            if (acorn is not null && acorn.TryClaim(this))
-            {
-                ReleaseFoodClaim(); // Switching to the Acorn this frame — don't leave a stale claim on whatever shard we were chasing.
-                _claimedAcorn = acorn;
-                float contactDistance = BodyRadius + Acorn.Radius + World.AcornCoopContactMargin;
-                if (GroundMover.HorizontalDistance(Position, acorn.Position) > contactDistance)
-                    _mover.MoveTowards(acorn.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
-                // Else: standing at the Acorn, cracking it together — World checks the 3-claimant shatter condition every frame.
-                return;
-            }
+            ReleaseFoodClaim(); // Switching to the Acorn this frame — don't leave a stale claim on whatever shard we were chasing.
+            _claimedAcorn = acorn;
+            SetState(BramblekinState.Cracking);
+            return;
         }
 
         FoodShard? shard = world.NearestAvailableShard(Position, this, home);
@@ -5598,6 +5627,44 @@ public sealed class Bramblekin
         }
 
         _mover.MoveTowards(shard.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+    }
+
+    /// <summary>
+    /// Continuous Cracking: an Acorn is a mining node, not a switch three
+    /// Gatherers all have to flip at once — paths to the claimed Acorn and,
+    /// once touching, steadily adds <see cref="CrackRatePerGatherer"/> to
+    /// its <see cref="Acorn.CrackProgress"/> every frame. Up to
+    /// <see cref="Acorn.MaxClaimants"/> Gatherers can be doing this on the
+    /// same Acorn at once — their rates simply add together, so it breaks
+    /// proportionally faster the more show up (20/s alone takes 5s for the
+    /// default 100 CrackThreshold; two together take 2.5s; three, ~1.7s)
+    /// rather than nothing happening at all until every slot is full. The
+    /// actual shatter is handled centrally, once a frame, by
+    /// <see cref="World.UpdateAcornCracking"/> — see
+    /// <see cref="OnAcornShattered"/> for the hand-off back to Gathering.
+    /// </summary>
+    private void UpdateCracking(float deltaTime, World world)
+    {
+        // The claim may have gone stale since last frame -- the Acorn
+        // already shattered (handled via OnAcornShattered, which should
+        // already have moved us out of this state, but a stray call path
+        // is cheap to guard against) or was cracked outright by a direct
+        // Pebble-Drop hit.
+        if (_claimedAcorn is not { } acorn || !world.Acorns.Contains(acorn))
+        {
+            _claimedAcorn = null;
+            SetState(BramblekinState.Gathering);
+            return;
+        }
+
+        float contactDistance = BodyRadius + Acorn.Radius + World.AcornCoopContactMargin;
+        if (GroundMover.HorizontalDistance(Position, acorn.Position) > contactDistance)
+        {
+            _mover.MoveTowards(acorn.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+            return;
+        }
+
+        acorn.CrackProgress += CrackRatePerGatherer * deltaTime;
     }
 
     private void UpdateReturning(float deltaTime, World world, VillageHeart? home)
@@ -5992,15 +6059,17 @@ public sealed class Bramblekin
     /// claim releases it — the single hook every transition already goes
     /// through, so a Gatherer scared off mid-Gathering (Fleeing), promoted
     /// to Militia (Building/Gathering -> Pausing), or simply re-tasked to
-    /// Building doesn't leave a shard/Aphid/Acorn locked out forever.
+    /// Building doesn't leave a shard/Aphid/Acorn locked out forever. The
+    /// Acorn claim specifically survives a Gathering &lt;-&gt; Cracking
+    /// transition either way — those two states are just "chasing an
+    /// Acorn" and "actively cracking it," not a change of target.
     /// </summary>
     private void SetState(BramblekinState state)
     {
         if (state != BramblekinState.Gathering)
-        {
             ReleaseFoodClaim();
+        if (state != BramblekinState.Gathering && state != BramblekinState.Cracking)
             ReleaseAcornClaim();
-        }
         if (state != BramblekinState.Hunting)
             ReleaseAphidClaim();
 
