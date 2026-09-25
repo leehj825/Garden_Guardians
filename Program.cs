@@ -1770,6 +1770,20 @@ public sealed class World
     /// <summary>The Split Fix: exactly how much Food Stored departs with the Pioneers in a True Schism.</summary>
     public const int SchismPioneerFood = 50;
 
+    /// <summary>
+    /// Upkeep Grace Period: extra seconds (on top of the normal
+    /// <see cref="UpkeepInterval"/> cycle) before a freshly-founded Schism
+    /// Village Heart pays its first Upkeep tax — see <see cref="FoundVillage"/>.
+    /// Gives the Pioneers time to walk the ~<see cref="MinMigrationDistance"/>
+    /// meters to their new home and start gathering before the tax bill
+    /// arrives. Applied by adding to <see cref="VillageHeart.UpkeepTimer"/>'s
+    /// starting value rather than by setting it negative: UpkeepTimer counts
+    /// down to (and fires at) zero, so a negative starting value would fire
+    /// the tax on the very next tick instead of delaying it — the opposite
+    /// of a grace period.
+    /// </summary>
+    public const float SchismUpkeepGracePeriod = 30f;
+
     /// <summary>Food Stored spent to place a Spore Farm blueprint.</summary>
     public const int SporeFarmFoodCost = 10;
 
@@ -3659,8 +3673,24 @@ public sealed class World
         if (gathererCount < pioneerGatherers || militiaCount < pioneerMilitia)
             return; // Someone died mid-count; try again next frame.
 
+        // The Wealth Transfer: exactly SchismPioneerFood leaves the parent's
+        // stores — the new Village Heart is seeded with exactly the same
+        // amount in FoundVillage below, via Migration.FoodAmount.
         village.FoodStored -= SchismPioneerFood;
         village.HasActiveMigration = true;
+
+        // The Physical Population Transfer: every pioneer's FactionID flips
+        // the instant it becomes a Pioneer (see Bramblekin.BecomePioneer,
+        // called below) — from that point on, world.VillageFor(FactionID)
+        // (the Gatherer/Militia's own lookup of "my Village Heart") already
+        // resolves to the new faction rather than this one, so nothing
+        // further is needed to redirect their loyalty. Population itself is
+        // just a live count of Colony by FactionID (see UpdateJobManager),
+        // recomputed every frame — but it's adjusted here too, immediately,
+        // rather than left to wait for that recompute, so the parent's own
+        // Population never reads stale-high for even a single frame after a
+        // Schism it already committed to.
+        village.Population -= pioneers.Count;
 
         int newFactionId = _nextSchismFactionId++;
         Color newFactionColor = SchismFactionColors[(newFactionId - 1) % SchismFactionColors.Length];
@@ -3726,24 +3756,35 @@ public sealed class World
 
     /// <summary>
     /// The True Schism's payoff: founds a brand new Village Heart at
-    /// <paramref name="migration"/>'s Target, seeded with
-    /// <see cref="Migration.FoodAmount"/> Food Stored (half of the parent's
-    /// own, at the moment it split), then immediately starts running its
-    /// own autonomous economy loop alongside every other entry in
-    /// <see cref="Villages"/>. Default Peace means it starts out at peace
-    /// with every other faction, the parent it split from included — no
-    /// separate grace period needed. Marks the Migration founded so every
-    /// Pioneer bound to it — not just the one that triggered this — drops
-    /// Migrating for good on its very next Update() (see <see cref="Bramblekin.UpdateMigrating"/>),
-    /// and clears the origin's <see cref="VillageHeart.HasActiveMigration"/>
-    /// so it's free to schism again once it re-crowds.
+    /// <paramref name="migration"/>'s Target, seeded with exactly
+    /// <see cref="Migration.FoodAmount"/> Food Stored (the fixed
+    /// <see cref="SchismPioneerFood"/> handed over at the moment it split —
+    /// see <see cref="UpdateSchism"/>'s Wealth Transfer) and a Population
+    /// counted fresh from every living Bramblekin already carrying this
+    /// migration's FactionID (set the instant each one became a Pioneer, in
+    /// <see cref="Bramblekin.BecomePioneer"/> — normally exactly
+    /// <see cref="SchismPioneerCount"/>, one fewer per any Pioneer lost en
+    /// route), so the new tribe never reads as a lone, starving founder.
+    /// UpkeepTimer starts <see cref="SchismUpkeepGracePeriod"/> seconds
+    /// beyond the normal cycle, so it isn't taxed the moment it lands.
+    /// Then immediately starts running its own autonomous economy loop
+    /// alongside every other entry in <see cref="Villages"/>. Default Peace
+    /// means it starts out diplomatically at peace with every other faction,
+    /// the parent it split from included — no separate peace-grace-period
+    /// timer needed on top of the Upkeep one above. Marks the Migration
+    /// founded so every Pioneer bound to it — not just the one that
+    /// triggered this — drops Migrating for good on its very next Update()
+    /// (see <see cref="Bramblekin.UpdateMigrating"/>), and clears the
+    /// origin's <see cref="VillageHeart.HasActiveMigration"/> so it's free
+    /// to schism again once it re-crowds.
     /// </summary>
     public VillageHeart FoundVillage(Migration migration)
     {
         var village = new VillageHeart(migration.Target, migration.NewFactionID, migration.NewFactionColor, Rng)
         {
             FoodStored = migration.FoodAmount,
-            UpkeepTimer = UpkeepInterval,
+            Population = Colony.Count(b => !b.IsDead && b.FactionID == migration.NewFactionID),
+            UpkeepTimer = UpkeepInterval + SchismUpkeepGracePeriod,
         };
         Villages.Add(village);
         Physics.AddStaticBox(village.Bounds);
