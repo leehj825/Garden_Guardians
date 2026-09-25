@@ -1728,14 +1728,14 @@ public sealed class World
     /// <summary>The most Granaries the Village Heart will ever build on its own — caps MaxFoodCapacity at 10 + 3*10 = 40.</summary>
     public const int MaxGranaries = 3;
 
-    /// <summary>Food Stored spent to place a Spore Patch blueprint.</summary>
-    public const int SporePatchFoodCost = 10;
+    /// <summary>Food Stored spent to place a Spore Farm blueprint.</summary>
+    public const int SporeFarmFoodCost = 10;
 
-    /// <summary>Population needed before the Village Heart will build a Spore Patch.</summary>
-    public const int SporePatchPopulationThreshold = 12;
+    /// <summary>Population needed before the Village Heart will build a Spore Farm — the Domestic Spore Farm: a big tribe's internal food loop, so its Gatherers don't need to cross the map for every Berry.</summary>
+    public const int SporeFarmPopulationThreshold = 15;
 
-    /// <summary>How far (m) from the Village Heart a Spore Patch may be placed — kept close, near the village's centre.</summary>
-    private const float SporePatchPlacementRadius = 2.5f;
+    /// <summary>How far (m) from the Village Heart a Spore Farm may be placed — kept close, near the village's centre.</summary>
+    private const float SporeFarmPlacementRadius = 5f;
 
     /// <summary>How often (seconds) the Village Heart pays its Upkeep food tax.</summary>
     private const float UpkeepInterval = 15f;
@@ -1788,8 +1788,11 @@ public sealed class World
     /// <summary>The Blood Feud: how long (s) a declared war lasts before peace is automatically restored — see <see cref="DeclareBloodFeud"/>.</summary>
     public const float BloodFeudDurationSeconds = 120f;
 
-    /// <summary>How far (m) a Migration Target must be from every existing Village Heart.</summary>
-    private const float MinMigrationDistance = 30f;
+    /// <summary>Strict Migration Distance: how far (m) a Migration Target must be from every existing Village Heart — kept comfortably outside a 20m territory ring plus its neighbour's so a fresh Schism splinter doesn't spawn straight into a Border War.</summary>
+    private const float MinMigrationDistance = 35f;
+
+    /// <summary>How many random coordinates <see cref="RandomMigrationTarget"/>/<see cref="RandomRefugeeTarget"/> try before giving up on a clean gap.</summary>
+    private const int MigrationTargetAttempts = 50;
 
     /// <summary>The palette a new Schism faction's colour is drawn from, cycling once all four are in use.</summary>
     private static readonly Color[] SchismFactionColors =
@@ -2470,17 +2473,18 @@ public sealed class World
     /// <summary>
     /// Base Razing: applies Militia poke damage to an enemy Village Heart
     /// and, if that brings its Health to 0, conquers it outright — see
-    /// <see cref="DestroyVillageHeart"/>. Visual Damage Feedback: a floating
-    /// "-N" pop-up on top of the Heart's own red damage flash (see
-    /// <see cref="VillageHeart.TakeDamage"/>) confirms the hit actually
-    /// landed, for debugging Base Razing.
+    /// <see cref="DestroyVillageHeart"/>, which needs <paramref name="attackerFactionId"/>
+    /// (the raider's own FactionID) on hand for the Refugee Protocol's
+    /// Assimilation branch. Visual Damage Feedback: a floating "-N" pop-up
+    /// on top of the Heart's own red damage flash (see <see cref="VillageHeart.TakeDamage"/>)
+    /// confirms the hit actually landed, for debugging Base Razing.
     /// </summary>
-    public void DamageVillageHeart(VillageHeart village, int amount)
+    public void DamageVillageHeart(VillageHeart village, int amount, int attackerFactionId)
     {
         village.TakeDamage(amount);
         QueueFloatingText(village.Center, $"-{amount}", new Color(220, 30, 30, 255));
         if (village.Health <= 0)
-            DestroyVillageHeart(village);
+            DestroyVillageHeart(village, attackerFactionId);
     }
 
     /// <summary>Loose Food Shards a razed Village Heart shatters into for the victors to claim.</summary>
@@ -2490,7 +2494,7 @@ public sealed class World
     /// Shared cleanup for a Village Heart that's gone for good, one way or
     /// another: removes it from <see cref="Villages"/> outright (same
     /// direct-mutation pattern as <see cref="CompleteBlueprint"/>'s
-    /// Blueprints.Remove) and takes every Granary, Spore Patch and
+    /// Blueprints.Remove) and takes every Granary, Spore Farm and
     /// Blueprint sharing its FactionID down with it. Its own Colony
     /// survives as suddenly homeless refugees — <see cref="VillageFor"/>
     /// simply returns null for them from here on. Callers add whatever's
@@ -2511,13 +2515,16 @@ public sealed class World
     /// Villages is next enumerated this frame, so there's no
     /// concurrent-modification risk — shattering into
     /// <see cref="VillageHeartLootShardCount"/> loose Food Shards scattered
-    /// around its footprint on top of the shared cleanup above.
+    /// around its footprint on top of the shared cleanup above, then
+    /// running the Refugee Protocol (see <see cref="RunRefugeeProtocol"/>)
+    /// for whichever of its own Gatherers are still alive.
     /// </summary>
-    private void DestroyVillageHeart(VillageHeart village)
+    private void DestroyVillageHeart(VillageHeart village, int attackerFactionId)
     {
         if (!Villages.Contains(village))
             return; // Already razed this frame by another poke landing the same instant.
 
+        int razedFactionId = village.FactionID;
         RemoveVillageAndItsBuildings(village);
 
         float half = Terrain.Size / 2f - Bramblekin.EdgeMargin;
@@ -2532,6 +2539,43 @@ public sealed class World
         }
 
         _splats.Add((village.Center, SplatDuration));
+
+        RunRefugeeProtocol(village, razedFactionId, attackerFactionId);
+    }
+
+    /// <summary>
+    /// The Refugee Protocol: Base Razing no longer means instant death for
+    /// the losing side's Gatherers. First tries <see cref="RandomRefugeeTarget"/>
+    /// for empty ground far from every surviving Village Heart — if one
+    /// exists, every surviving Gatherer of the razed faction becomes a
+    /// Pioneer (exactly like a Schism splinter, reusing <see cref="Bramblekin.BecomePioneer"/>
+    /// so they ignore hostiles and everything else while fleeing) bound for
+    /// it, to plant a brand new Village Heart from scratch. If the map has
+    /// no safe ground left at all, they surrender instead: Assimilation
+    /// switches every survivor straight into <paramref name="attackerFactionId"/>'s
+    /// faction and colour on the spot. Militia aren't covered here — this
+    /// only ever runs on the losing side's remaining Gatherers, per the
+    /// design.
+    /// </summary>
+    private void RunRefugeeProtocol(VillageHeart razedVillage, int razedFactionId, int attackerFactionId)
+    {
+        List<Bramblekin> survivors = Colony.Where(b => !b.IsDead && b.FactionID == razedFactionId && b.Role == BramblekinRole.Gatherer).ToList();
+        if (survivors.Count == 0)
+            return;
+
+        if (RandomRefugeeTarget() is { } safeSpot)
+        {
+            int newFactionId = _nextSchismFactionId++;
+            Color newFactionColor = SchismFactionColors[(newFactionId - 1) % SchismFactionColors.Length];
+            var migration = new Migration(newFactionId, newFactionColor, safeSpot, razedVillage, survivors.Count, foodAmount: 0);
+            foreach (Bramblekin refugee in survivors)
+                refugee.BecomePioneer(migration);
+        }
+        else if (VillageFor(attackerFactionId) is { } conqueror)
+        {
+            foreach (Bramblekin refugee in survivors)
+                refugee.Assimilate(attackerFactionId, conqueror.FactionColor);
+        }
     }
 
     /// <summary>
@@ -2728,7 +2772,7 @@ public sealed class World
             // Stored to Auto-Sprout a single replacement -- this faction is
             // done for good. Actually removed outright now (rather than
             // just left standing inert forever), taking its Granaries and
-            // Spore Patches down with it (see RemoveVillageAndItsBuildings)
+            // Spore Farms down with it (see RemoveVillageAndItsBuildings)
             // -- otherwise a starvation wipeout could never bring
             // World.IsWorldExtinct (Villages.Count == 0) true, and Genesis
             // would never have anything to trigger on. Iterated backwards
@@ -2761,9 +2805,9 @@ public sealed class World
             // halves of the same Population-vs-MaxFoodCapacity comparison (see
             // UpdateAutoSprout's Growth Phase and UpdateAutoGranary's Saving
             // Phase), so between them the village is always either growing or
-            // banking toward more room to grow. The Spore Patch is a one-time,
+            // banking toward more room to grow. The Spore Farm is a one-time,
             // population-gated addition on top of that cycle.
-            UpdateAutoSporePatch(village);
+            UpdateAutoSporeFarm(village);
             UpdateAutoGranary(village);
             UpdateAutoSprout(village);
 
@@ -2771,7 +2815,7 @@ public sealed class World
             // off a new faction of its own rather than just capping out.
             UpdateSchism(village);
         }
-        UpdateSporePatchIncome(deltaTime);
+        UpdateSporeFarmIncome(deltaTime);
 
         UpdateAcornSpawn(deltaTime);
         UpdateSpiderRespawn(deltaTime);
@@ -3161,29 +3205,29 @@ public sealed class World
     }
 
     /// <summary>
-    /// Auto-Construction (Spore Patch): a one-time build. Once Population
-    /// reaches <see cref="SporePatchPopulationThreshold"/>, at least one
+    /// Auto-Construction (Spore Farm): a one-time build. Once Population
+    /// reaches <see cref="SporeFarmPopulationThreshold"/>, at least one
     /// Granary already exists, and the village doesn't already have a Spore
-    /// Patch (finished or under construction), the Village Heart hoards
-    /// Food Stored until it can afford <see cref="SporePatchFoodCost"/>,
-    /// then places a Spore Patch Blueprint close to its own centre. Never
+    /// Farm (finished or under construction), the Village Heart hoards
+    /// Food Stored until it can afford <see cref="SporeFarmFoodCost"/>,
+    /// then places a Spore Farm Blueprint close to its own centre. Never
     /// queued a second time once one exists.
     /// </summary>
-    private void UpdateAutoSporePatch(VillageHeart village)
+    private void UpdateAutoSporeFarm(VillageHeart village)
     {
-        if (village.Population < SporePatchPopulationThreshold)
+        if (village.Population < SporeFarmPopulationThreshold)
             return;
         if (!Buildings.Any(b => b.Kind == BuildingKind.Granary && b.FactionID == village.FactionID))
             return; // Needs at least one Granary up first.
-        if (Buildings.Any(b => b.Kind == BuildingKind.SporePatch && b.FactionID == village.FactionID) ||
-            Blueprints.Any(b => b.Kind == BuildingKind.SporePatch && b.FactionID == village.FactionID))
+        if (Buildings.Any(b => b.Kind == BuildingKind.SporeFarm && b.FactionID == village.FactionID) ||
+            Blueprints.Any(b => b.Kind == BuildingKind.SporeFarm && b.FactionID == village.FactionID))
             return; // Already have one, finished or in progress.
-        if (village.FoodStored < SporePatchFoodCost)
+        if (village.FoodStored < SporeFarmFoodCost)
             return; // Still hoarding.
 
-        Vector3? spot = RandomPointNearVillage(village, SporePatchPlacementRadius, Building.SporePatchRadius + 0.2f);
+        Vector3? spot = RandomPointNearVillage(village, SporeFarmPlacementRadius, Building.SporeFarmRadius + 0.2f);
         if (spot is { } point)
-            TryPlaceBlueprint(village, point, BuildingKind.SporePatch);
+            TryPlaceBlueprint(village, point, BuildingKind.SporeFarm);
     }
 
     /// <summary>
@@ -3257,17 +3301,58 @@ public sealed class World
             pioneer.BecomePioneer(migration);
     }
 
-    /// <summary>A random point at least <see cref="MinMigrationDistance"/> meters from every existing Village Heart — a Schism's destination.</summary>
+    /// <summary>
+    /// Strict Migration Distance: a random point at least
+    /// <see cref="MinMigrationDistance"/> meters from every existing
+    /// Village Heart — a Schism's destination. Overcrowding Fallback: if
+    /// none of <see cref="MigrationTargetAttempts"/> random tries lands
+    /// clean, the 60x60 map is genuinely too crowded for a gap that wide,
+    /// so settle for the least-bad candidate tried (the one furthest from
+    /// its nearest Village Heart) and accept that territorial war with a
+    /// close neighbour is now unavoidable.
+    /// </summary>
     private Vector3 RandomMigrationTarget()
     {
-        Vector3 candidate = Vector3.Zero;
-        for (int attempt = 0; attempt < 30; attempt++)
+        Vector3 best = Vector3.Zero;
+        float bestDistance = -1f;
+        for (int attempt = 0; attempt < MigrationTargetAttempts; attempt++)
         {
-            candidate = Terrain.RandomPoint(Rng, margin: 2f);
-            if (Villages.All(v => Vector3.Distance(candidate, v.Center) >= MinMigrationDistance))
+            Vector3 candidate = Terrain.RandomPoint(Rng, margin: 2f);
+            float nearestVillage = Villages.Count == 0 ? float.MaxValue : Villages.Min(v => Vector3.Distance(candidate, v.Center));
+            if (nearestVillage >= MinMigrationDistance)
+                return candidate;
+
+            if (nearestVillage > bestDistance)
+            {
+                bestDistance = nearestVillage;
+                best = candidate;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>The Refugee Protocol: how far (m) from every surviving Village Heart a razed faction's resettlement point must land.</summary>
+    private const float RefugeeSafeDistance = 30f;
+
+    /// <summary>
+    /// The Refugee Protocol: a random point at least
+    /// <see cref="RefugeeSafeDistance"/> meters from every surviving
+    /// Village Heart, for a just-razed faction's Gatherers to flee to and
+    /// found a new Village Heart from scratch. Unlike <see cref="RandomMigrationTarget"/>
+    /// there is no furthest-point fallback here — a null result means the
+    /// map is genuinely full of other tribes, and <see cref="DestroyVillageHeart"/>
+    /// falls back to Assimilation instead of sending refugees to their
+    /// deaths in someone else's territory.
+    /// </summary>
+    private Vector3? RandomRefugeeTarget()
+    {
+        for (int attempt = 0; attempt < MigrationTargetAttempts; attempt++)
+        {
+            Vector3 candidate = Terrain.RandomPoint(Rng, margin: 2f);
+            if (Villages.All(v => Vector3.Distance(candidate, v.Center) >= RefugeeSafeDistance))
                 return candidate;
         }
-        return candidate; // Fallback: the map's too crowded for a clean gap — found it wherever the last attempt landed.
+        return null;
     }
 
     /// <summary>
@@ -3334,11 +3419,11 @@ public sealed class World
     }
 
     /// <summary>
-    /// Passive Income: every finished Spore Patch spawns a Berry (Food
-    /// Shard) directly on top of itself every <see cref="Building.SporePatchInterval"/>
+    /// Passive Income: every finished Spore Farm spawns a Berry (Food
+    /// Shard) directly on top of itself every <see cref="Building.SporeFarmInterval"/>
     /// seconds, for Gatherers to pick up and deliver like any other food.
     /// </summary>
-    private void UpdateSporePatchIncome(float deltaTime)
+    private void UpdateSporeFarmIncome(float deltaTime)
     {
         for (int i = Buildings.Count - 1; i >= 0; i--)
         {
@@ -3426,14 +3511,14 @@ public sealed class World
 
     /// <summary>
     /// Village Building: spends the Blueprint kind's Food cost (<see cref="GranaryFoodCost"/>
-    /// or <see cref="SporePatchFoodCost"/>) to place a Blueprint owned by
+    /// or <see cref="SporeFarmFoodCost"/>) to place a Blueprint owned by
     /// <paramref name="village"/>'s Faction at <paramref name="groundPoint"/>
-    /// — called by the Village Heart's own Auto-Construction (<see cref="UpdateAutoGranary"/>/<see cref="UpdateAutoSporePatch"/>).
+    /// — called by the Village Heart's own Auto-Construction (<see cref="UpdateAutoGranary"/>/<see cref="UpdateAutoSporeFarm"/>).
     /// Returns false (and spends nothing) if there isn't enough Food Stored.
     /// </summary>
     public bool TryPlaceBlueprint(VillageHeart village, Vector3 groundPoint, BuildingKind kind = BuildingKind.Granary)
     {
-        int cost = kind == BuildingKind.Granary ? GranaryFoodCost : SporePatchFoodCost;
+        int cost = kind == BuildingKind.Granary ? GranaryFoodCost : SporeFarmFoodCost;
         if (village.FoodStored < cost)
             return false;
 
@@ -3471,8 +3556,8 @@ public sealed class World
     /// its requirement: removes the site and adds the completed Building,
     /// carrying over the Blueprint's Faction. A finished Granary permanently
     /// raises its owning Village Heart's MaxFoodCapacity; a finished Spore
-    /// Patch raises nothing but starts its own passive-income timer (see
-    /// <see cref="UpdateSporePatchIncome"/>). Called from inside a
+    /// Farm raises nothing but starts its own passive-income timer (see
+    /// <see cref="UpdateSporeFarmIncome"/>). Called from inside a
     /// Bramblekin's own Update() (itself inside World's reverse for-loop
     /// over Colony), but mutates Blueprints/Buildings directly rather than
     /// through a pending queue: nothing else iterates either list while the
@@ -4271,13 +4356,13 @@ public enum BuildingKind
     /// <summary>Permanently raises <see cref="World.MaxFoodCapacity"/> by <see cref="World.GranaryFoodBonus"/>.</summary>
     Granary,
 
-    /// <summary>Passive Income: spawns a Berry on top of itself every <see cref="Building.SporePatchInterval"/> seconds.</summary>
-    SporePatch,
+    /// <summary>Passive Income: spawns a Berry on top of itself every <see cref="Building.SporeFarmInterval"/> seconds.</summary>
+    SporeFarm,
 }
 
 /// <summary>
 /// A finished piece of Village Building: either a Granary (permanently
-/// raises the food cap) or a Spore Patch (a flat mushroom bed that spawns
+/// raises the food cap) or a Spore Farm (a flat mushroom bed that spawns
 /// Berries on a timer — see <see cref="TickSporeTimer"/>).
 /// </summary>
 public sealed class Building
@@ -4285,11 +4370,11 @@ public sealed class Building
     public const float GranaryRadius = 0.7f;
     public const float GranaryHeight = 1.1f;
 
-    public const float SporePatchRadius = 1.0f;
-    private const float SporePatchHeight = 0.05f;
+    public const float SporeFarmRadius = 1.0f;
+    private const float SporeFarmHeight = 0.05f;
 
-    /// <summary>Seconds between each Berry a finished Spore Patch spawns on top of itself. Buffed further (10s -> 5s -> 4s) to keep established bases' baseline survival ahead of the Upkeep tax.</summary>
-    public const float SporePatchInterval = 4f;
+    /// <summary>Seconds between each Berry a finished Spore Farm spawns on top of itself — fast enough that a large tribe's Gatherers have a safe, internal food loop and never need to cross the map for every Berry.</summary>
+    public const float SporeFarmInterval = 2.5f;
 
     public BuildingKind Kind { get; }
     public Vector3 Position { get; }
@@ -4300,8 +4385,8 @@ public sealed class Building
     /// <summary>The owning faction's colour.</summary>
     public Color FactionColor { get; }
 
-    /// <summary>Counts down to the next Berry. Only meaningful for a Spore Patch.</summary>
-    private float _sporeTimer = SporePatchInterval;
+    /// <summary>Counts down to the next Berry. Only meaningful for a Spore Farm.</summary>
+    private float _sporeTimer = SporeFarmInterval;
 
     public Building(Vector3 position, BuildingKind kind, int factionId, Color factionColor)
     {
@@ -4312,24 +4397,24 @@ public sealed class Building
     }
 
     /// <summary>The footprint radius (m) a Blueprint/Building of this kind actually occupies on the ground.</summary>
-    public static float RadiusFor(BuildingKind kind) => kind == BuildingKind.Granary ? GranaryRadius : SporePatchRadius;
+    public static float RadiusFor(BuildingKind kind) => kind == BuildingKind.Granary ? GranaryRadius : SporeFarmRadius;
 
     /// <summary>
-    /// A Spore Patch's passive-income clock: counts down by
+    /// A Spore Farm's passive-income clock: counts down by
     /// <paramref name="deltaTime"/> and, once it reaches zero, resets and
     /// returns true so <see cref="World"/> can spawn a Berry on top of it.
     /// Always false for a Granary.
     /// </summary>
     public bool TickSporeTimer(float deltaTime)
     {
-        if (Kind != BuildingKind.SporePatch)
+        if (Kind != BuildingKind.SporeFarm)
             return false;
 
         _sporeTimer -= deltaTime;
         if (_sporeTimer > 0f)
             return false;
 
-        _sporeTimer += SporePatchInterval;
+        _sporeTimer += SporeFarmInterval;
         return true;
     }
 
@@ -4343,10 +4428,10 @@ public sealed class Building
             return;
         }
 
-        // Spore Patch: a flat green/brown mushroom bed, barely raised off the ground.
-        var patchCenter = Position + new Vector3(0, SporePatchHeight / 2f, 0);
-        Raylib.DrawCylinder(patchCenter, SporePatchRadius, SporePatchRadius, SporePatchHeight, 20, new Color(95, 130, 55, 255));
-        Raylib.DrawCylinderWires(patchCenter, SporePatchRadius, SporePatchRadius, SporePatchHeight, 20, new Color(70, 55, 30, 255));
+        // Spore Farm: a flat green/brown mushroom bed, barely raised off the ground.
+        var patchCenter = Position + new Vector3(0, SporeFarmHeight / 2f, 0);
+        Raylib.DrawCylinder(patchCenter, SporeFarmRadius, SporeFarmRadius, SporeFarmHeight, 20, new Color(95, 130, 55, 255));
+        Raylib.DrawCylinderWires(patchCenter, SporeFarmRadius, SporeFarmRadius, SporeFarmHeight, 20, new Color(70, 55, 30, 255));
     }
 }
 
@@ -4362,7 +4447,7 @@ public sealed class Blueprint
 {
     public BuildingKind Kind { get; }
 
-    /// <summary>Construction Progress needed to finish — 10 for a Granary, 15 for a Spore Patch.</summary>
+    /// <summary>Construction Progress needed to finish — 10 for a Granary, 15 for a Spore Farm.</summary>
     public float ProgressRequired => Kind == BuildingKind.Granary ? 10f : 15f;
 
     public Vector3 Position { get; }
@@ -4394,7 +4479,7 @@ public sealed class Blueprint
         var wire = new Color(210, 200, 70, 200);
 
         float radius = Building.RadiusFor(Kind);
-        // A Spore Patch is nearly flat when finished, but a full-height wireframe (like a Granary's)
+        // A Spore Farm is nearly flat when finished, but a full-height wireframe (like a Granary's)
         // still reads clearly as "a site under construction" while it fills in.
         float fullHeight = Kind == BuildingKind.Granary ? Building.GranaryHeight : 0.3f;
 
@@ -5165,6 +5250,21 @@ public sealed class Bramblekin
         SetState(BramblekinState.Migrating);
     }
 
+    /// <summary>
+    /// The Refugee Protocol's Assimilation branch: called on a Base Razing
+    /// survivor when <see cref="World.RunRefugeeProtocol"/> can't find any
+    /// safe ground left to resettle on. Surrenders outright — no Migrating
+    /// detour, no Pioneer status, just an immediate switch into the
+    /// conquering faction's colour and FactionID, wherever the fight left
+    /// it standing. The very next Update() picks up its new home's food,
+    /// blueprints and defense needs like it had always belonged there.
+    /// </summary>
+    public void Assimilate(int factionId, Color factionColor)
+    {
+        FactionID = factionId;
+        FactionColor = factionColor;
+    }
+
     public void Update(float deltaTime, World world)
     {
         if (IsDead)
@@ -5870,7 +5970,7 @@ public sealed class Bramblekin
 
         if (_pokeCooldown <= 0f && GroundMover.HorizontalDistance(Position, _raidTarget.Center) <= BuildingAttackRange)
         {
-            world.DamageVillageHeart(_raidTarget, HasFangPike ? UpgradedPokeDamage : PokeDamage);
+            world.DamageVillageHeart(_raidTarget, HasFangPike ? UpgradedPokeDamage : PokeDamage, FactionID);
             _pokeCooldown = PokeCooldownDuration;
         }
 

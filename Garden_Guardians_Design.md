@@ -45,6 +45,7 @@ Yes, miracles can crush your own units. Treating the Bramblekin as immune to phy
 
 ## Mid-Game: Militarization & Defenses
 *   **The Militia AI:** Building a Village Bell changes the Fear Aura response to "Alert." Gatherers flee, while Militia units flock into a Phalanx formation to block the threat.
+*   **The Diplomat (Diplomatic Assimilation):** A unit unlocked by advanced factions — the same role that begs a hoarding neighbor for food in the Resource Greed loop below, put to conquest instead. Rather than a Militia raid grinding an enemy Village Heart down to 0 HP and razing it (Base Razing), a late-game faction can instead send a Diplomat to path to the enemy Village Heart and start a negotiation timer there. Success doesn't destroy the rival tribe: their Village Heart, Granaries, Spore Farms and every living Bramblekin are assimilated wholesale, instantly switching FactionID and color to join the conqueror's empire. For a faction that has unlocked it, the Diplomat replaces the Militia's attack-on-sight response toward that rival outright — cultural victory and a free workforce beat scattering the enemy's Gatherers as Base Razing refugees (see the Refugee Protocol) or grinding them down to nothing.
 *   **Found-Object Weaponry:** 
     *   *Rose-Thorn Pikes:* Planted in the ground to counter leaping spiders.
     *   *Pollen Grenades:* Create AoE dust clouds that disable enemy insect targeting.
