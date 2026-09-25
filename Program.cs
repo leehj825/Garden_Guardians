@@ -332,7 +332,7 @@ public static class Game
         int militia = world.Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
         string header = $"{FactionColorName(village.FactionColor)} Faction ({village.Trait})";
         string food = $"Food Stored: {village.FoodStored} / {village.MaxFoodCapacity}";
-        string population = $"Population: {village.Population}   Militia: {militia}";
+        string population = $"Population: {village.Population} / {village.MaxPopulation}   Militia: {militia}";
         string morale = $"Morale: {(int)village.Morale}%" +
                          (village.GatherersAreWeary ? " (Weary)" : village.BuildersAreInspired ? " (Inspired)" : "");
         // Tycoon Economy: Amber tacked onto this same panel, in Color.GOLD
@@ -1727,8 +1727,38 @@ public sealed class World
     /// <summary>How far (m) from the Village Heart an Auto-Granary may be placed.</summary>
     private const float GranaryPlacementRadius = 5f;
 
-    /// <summary>The most Granaries the Village Heart will ever build on its own — caps MaxFoodCapacity at 10 + 3*10 = 40.</summary>
-    public const int MaxGranaries = 3;
+    /// <summary>
+    /// Decoupled Economy: the most Granaries the Village Heart will ever
+    /// build on its own — raised from 3 to 10 now that Granaries purely
+    /// expand <see cref="VillageHeart.MaxFoodCapacity"/> (Wealth
+    /// Accumulation) and no longer gate <see cref="VillageHeart.Population"/>
+    /// growth at all (see <see cref="VillageHeart.MaxPopulation"/>/the
+    /// Housing System), so a thriving tribe can bank a genuinely massive
+    /// food surplus: 10 + 10*25 = 260 MaxFoodCapacity at the cap.
+    /// </summary>
+    public const int MaxGranaries = 10;
+
+    /// <summary>Storage Phase: a Village Heart queues a Granary once its Food Stored comes within this many Food of its current MaxFoodCapacity.</summary>
+    private const int GranaryStorageTriggerMargin = 5;
+
+    /// <summary>The Housing System: Food Stored spent to place a Tent blueprint.</summary>
+    public const int TentFoodCost = 8;
+
+    /// <summary>The Housing System: how much a completed Tent permanently raises <see cref="VillageHeart.MaxPopulation"/> by.</summary>
+    public const int TentPopulationBonus = 5;
+
+    /// <summary>How far (m) from the Village Heart an Auto-Tent may be placed.</summary>
+    private const float TentPlacementRadius = 5f;
+
+    /// <summary>
+    /// Hard Cap: the absolute ceiling on <see cref="VillageHeart.MaxPopulation"/>
+    /// — the Village Heart never queues another Tent once it's reached this,
+    /// full stop, no matter how much Food Stored is banked. This is also the
+    /// True Schism's new trigger population (see <see cref="UpdateSchism"/>):
+    /// once a tribe is physically maxed out on housing, splitting in two is
+    /// the only way left for it to keep growing.
+    /// </summary>
+    public const int MaxPopulationCap = 40;
 
     /// <summary>Food Stored spent to place a Spore Farm blueprint.</summary>
     public const int SporeFarmFoodCost = 10;
@@ -1822,9 +1852,6 @@ public sealed class World
     /// else forever. See <see cref="UpdateFoodClaimTimeouts"/>.
     /// </summary>
     public const float FoodClaimTimeoutSeconds = 15f;
-
-    /// <summary>The Schism: a Village Heart is Overcrowded once its Population reaches its MaxFoodCapacity — 40 at the 3-Granary cap.</summary>
-    public const int SchismFoodReserve = 30;
 
     /// <summary>The Blood Feud: how long (s) a declared war lasts before peace is automatically restored — see <see cref="DeclareBloodFeud"/>.</summary>
     public const float BloodFeudDurationSeconds = 120f;
@@ -2852,28 +2879,35 @@ public sealed class World
             if (village.Population > 0)
                 UpdateUpkeep(village, deltaTime);
 
-            // Auto-Construction gets next claim on Food Stored, checked before
-            // Auto-Sprout: Sprout's own trigger (>= FoodPerSprout) is the lowest
-            // bar of the two, and its while-loop drains anything at or above
-            // that back toward zero every single frame. Left to run first, it
-            // would starve Auto-Construction completely -- Food Stored could
-            // never sit at a Blueprint's cost across a frame boundary for it to
-            // ever see it. Checking Construction first still leaves Sprout free
-            // to spend whatever's left over once nothing needs building.
+            // The New Economy AI: three independent phases, checked in a
+            // fixed priority order every frame so a phase that spends Food
+            // Stored this frame is always seen by the next one, rather than
+            // letting a later phase double-spend against a stale balance.
             //
-            // The Smarter Economy: Auto-Sprout and the Auto-Granary are two
-            // halves of the same Population-vs-MaxFoodCapacity comparison (see
-            // UpdateAutoSprout's Growth Phase and UpdateAutoGranary's Saving
-            // Phase), so between them the village is always either growing or
-            // banking toward more room to grow. The Spore Farm is a one-time,
-            // population-gated addition on top of that cycle.
-            UpdateAutoSporeFarm(village);
-            UpdateAutoGranary(village);
-            UpdateAutoTradingPost(village);
+            // 1. Housing Phase (UpdateAutoTent): Population is capped by
+            //    MaxPopulation now, not MaxFoodCapacity/Granaries — once a
+            //    tribe hits its housing ceiling, it saves toward a Tent
+            //    instead of sprouting.
+            // 2. Growth Phase (UpdateAutoSprout): otherwise, sprout new
+            //    Bramblekin until Food Stored runs out or MaxPopulation is
+            //    reached.
+            // 3. Storage Phase (UpdateAutoGranary): fully decoupled from
+            //    Population — purely a function of how full the silo is —
+            //    so it can fire in the very same frame as Housing or Growth
+            //    without conflicting with either.
+            UpdateAutoTent(village);
             UpdateAutoSprout(village);
+            UpdateAutoGranary(village);
 
-            // The Schism: an overcrowded, well-stocked Village Heart spins
-            // off a new faction of its own rather than just capping out.
+            // Auxiliary Auto-Construction: population-gated one-time builds
+            // that ride on top of the three phases above rather than being
+            // part of that priority order.
+            UpdateAutoSporeFarm(village);
+            UpdateAutoTradingPost(village);
+
+            // The Schism: a Village Heart maxed out on Housing and
+            // overflowing with Food Stored spins off a new faction of its
+            // own rather than just sitting capped out forever.
             UpdateSchism(village);
         }
         UpdateSporeFarmIncome(deltaTime);
@@ -3320,46 +3354,86 @@ public sealed class World
     }
 
     /// <summary>
-    /// Auto-Sprout — the Growth Phase: whenever Population is still below
-    /// MaxFoodCapacity, the Village Heart spends Food Stored on new
-    /// Bramblekin as soon as it reaches <see cref="FoodPerSprout"/>,
-    /// repeating until there's less than a Sprout's worth left banked. Once
-    /// Population catches up to the food cap, sprouting is disabled outright
-    /// (see <see cref="UpdateAutoGranary"/>'s Saving Phase) — no player
-    /// action involved either way.
+    /// The Housing System — Housing Phase, checked first of the three New
+    /// Economy AI phases (see <see cref="Update"/>'s per-village loop):
+    /// once Population catches up to <see cref="VillageHeart.MaxPopulation"/>,
+    /// the tribe has physically run out of room to sprout into, so it
+    /// hoards Food Stored until it can afford <see cref="TentFoodCost"/> and
+    /// places a Tent Blueprint near its own centre instead. Completing it
+    /// permanently raises MaxPopulation by <see cref="TentPopulationBonus"/>
+    /// (see <see cref="CompleteBlueprint"/>), reopening the Growth Phase.
+    /// Hard Cap: never queues a Tent once MaxPopulation has reached
+    /// <see cref="MaxPopulationCap"/>, full stop — that ceiling is permanent,
+    /// and past it the only way for a tribe to keep growing is the True
+    /// Schism (see <see cref="UpdateSchism"/>).
+    /// </summary>
+    private void UpdateAutoTent(VillageHeart village)
+    {
+        if (village.MaxPopulation >= MaxPopulationCap)
+            return; // Hard Cap: no more Tents, ever, regardless of Food Stored.
+        if (village.Population < village.MaxPopulation)
+            return; // Housing Phase not triggered: still room to grow.
+        if (Blueprints.Any(b => b.Kind == BuildingKind.Tent && b.FactionID == village.FactionID))
+            return; // Already building one; don't queue a second.
+        if (village.FoodStored < TentFoodCost)
+            return; // Saving toward a Tent.
+
+        Vector3? spot = RandomPointNearVillage(village, TentPlacementRadius, Building.TentRadius + 0.2f);
+        if (spot is { } point)
+            TryPlaceBlueprint(village, point, BuildingKind.Tent);
+    }
+
+    /// <summary>
+    /// Auto-Sprout — the Growth Phase, checked second (see <see cref="Update"/>'s
+    /// per-village loop): whenever Population is still below the Housing
+    /// System's <see cref="VillageHeart.MaxPopulation"/> — entirely decoupled
+    /// from MaxFoodCapacity/Granaries now — the Village Heart spends Food
+    /// Stored on new Bramblekin as soon as it reaches <see cref="FoodPerSprout"/>,
+    /// repeating until either there's less than a Sprout's worth left banked
+    /// or Population would reach MaxPopulation this frame — the latter check
+    /// uses a local running count rather than <see cref="VillageHeart.Population"/>
+    /// itself (which the Job Manager only recomputes once a frame from the
+    /// live Colony), so a Food Stored windfall can never sprout a village
+    /// past its own housing cap in a single frame. Once Population catches
+    /// up, sprouting is disabled outright and the Housing Phase (see
+    /// <see cref="UpdateAutoTent"/>) takes over instead.
     /// </summary>
     private void UpdateAutoSprout(VillageHeart village)
     {
-        if (village.Population >= village.MaxFoodCapacity)
-            return; // Saving Phase: the village has outgrown its food cap; sprouting is off.
+        if (village.Population >= village.MaxPopulation)
+            return; // Housing Phase: no room for another Bramblekin until a Tent is built.
 
-        while (village.FoodStored >= FoodPerSprout)
+        int projectedPopulation = village.Population;
+        while (projectedPopulation < village.MaxPopulation && village.FoodStored >= FoodPerSprout)
         {
             village.FoodStored -= FoodPerSprout;
             SproutBramblekin(village);
+            projectedPopulation++;
         }
     }
 
     /// <summary>
-    /// Auto-Construction (Granaries) — the Saving Phase, the other half of
-    /// the Smarter Economy's Population-vs-MaxFoodCapacity comparison:
-    /// once Population reaches MaxFoodCapacity, Auto-Sprout shuts off and
-    /// the Village Heart instead hoards Food Stored until it can afford
-    /// <see cref="GranaryFoodCost"/>, then places a Granary Blueprint on its
-    /// own, at a random unoccupied spot within <see cref="GranaryPlacementRadius"/>
+    /// Auto-Construction (Granaries) — the Storage Phase, checked third (see
+    /// <see cref="Update"/>'s per-village loop) and now fully decoupled from
+    /// Population/Housing: a Granary purely expands wealth capacity, it
+    /// no longer gates or is gated by Auto-Sprout. Once Food Stored comes
+    /// within <see cref="GranaryStorageTriggerMargin"/> of the current
+    /// MaxFoodCapacity, the Village Heart hoards Food Stored until it can
+    /// afford <see cref="GranaryFoodCost"/>, then places a Granary Blueprint
+    /// at a random unoccupied spot within <see cref="GranaryPlacementRadius"/>
     /// meters of itself. Completing it permanently raises MaxFoodCapacity
-    /// (see <see cref="CompleteBlueprint"/>), which naturally reopens the
-    /// Growth Phase. Checked every frame in <see cref="Update"/>, but
-    /// guarded so at most one Auto-Granary is ever queued at a time, and
-    /// capped at <see cref="MaxGranaries"/> total so the village can't spam
-    /// Granaries forever — once it hits the cap, this simply stops firing.
+    /// (see <see cref="CompleteBlueprint"/>), reopening headroom for the
+    /// Trading Post/Amber economy. Guarded so at most one Auto-Granary is
+    /// ever queued at a time, and capped at <see cref="MaxGranaries"/> total
+    /// so the village can't spam Granaries forever — once it hits the cap,
+    /// this simply stops firing.
     /// </summary>
     private void UpdateAutoGranary(VillageHeart village)
     {
         if (Buildings.Count(b => b.Kind == BuildingKind.Granary && b.FactionID == village.FactionID) >= MaxGranaries)
-            return; // Capped: never queue a 4th Granary.
-        if (village.Population < village.MaxFoodCapacity)
-            return; // Growth Phase: no need to save for a Granary yet.
+            return; // Capped: never queue another Granary.
+        if (village.FoodStored < village.MaxFoodCapacity - GranaryStorageTriggerMargin)
+            return; // Storage Phase not triggered: plenty of room left in the silo.
         if (Blueprints.Any(b => b.Kind == BuildingKind.Granary && b.FactionID == village.FactionID))
             return; // Already building one; don't queue a second.
         if (village.FoodStored < GranaryFoodCost)
@@ -3450,14 +3524,17 @@ public sealed class World
     }
 
     /// <summary>
-    /// The True Schism: once a Village Heart is both Overcrowded (Population
-    /// at or beyond its MaxFoodCapacity — capped at 40 by <see cref="MaxGranaries"/>)
-    /// and has a healthy Food Stored reserve, it splits in two rather than
-    /// budding off a token handful: half its current Gatherers and half its
-    /// current Militia (rounded down, same ratio as the parent, so a
-    /// heavily militarized tribe doesn't send off a defenseless splinter)
-    /// depart as Pioneers, taking half the parent's Food Stored with them,
-    /// to found a brand new faction elsewhere on the map — see
+    /// The True Schism, updated for the Housing System: once a Village
+    /// Heart is both physically maxed out on housing (Population at
+    /// <see cref="MaxPopulationCap"/> — it has nowhere left to sprout into,
+    /// full stop) and overflowing with Food Stored (at or beyond its own
+    /// MaxFoodCapacity), it splits in two rather than budding off a token
+    /// handful: half its current Gatherers and half its current Militia
+    /// (rounded down, same ratio as the parent, so a heavily militarized
+    /// tribe doesn't send off a defenseless splinter — at the 40-population
+    /// trigger this lands close to two 20-strong tribes) depart as
+    /// Pioneers, taking half the parent's Food Stored with them, to found a
+    /// brand new faction elsewhere on the map — see
     /// <see cref="Bramblekin.BecomePioneer"/> and <see cref="FoundVillage"/>.
     /// A fresh splinter this size is no longer easy prey, and Default Peace
     /// (<see cref="VillageHeart.HostileFactions"/>) means it starts out at
@@ -3470,10 +3547,10 @@ public sealed class World
     {
         if (village.HasActiveMigration)
             return;
-        if (village.Population < village.MaxFoodCapacity)
-            return;
-        if (village.FoodStored < SchismFoodReserve)
-            return;
+        if (village.Population < MaxPopulationCap)
+            return; // Housing isn't maxed out yet — still room to grow in place.
+        if (village.FoodStored < village.MaxFoodCapacity)
+            return; // Not yet overflowing with Food Stored.
 
         int totalGatherers = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Gatherer);
         int totalMilitia = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
@@ -3738,15 +3815,24 @@ public sealed class World
     }
 
     /// <summary>
-    /// Village Building: spends the Blueprint kind's Food cost (<see cref="GranaryFoodCost"/>
-    /// or <see cref="SporeFarmFoodCost"/>) to place a Blueprint owned by
-    /// <paramref name="village"/>'s Faction at <paramref name="groundPoint"/>
-    /// — called by the Village Heart's own Auto-Construction (<see cref="UpdateAutoGranary"/>/<see cref="UpdateAutoSporeFarm"/>).
-    /// Returns false (and spends nothing) if there isn't enough Food Stored.
+    /// Village Building: spends the Blueprint kind's Food cost (<see cref="GranaryFoodCost"/>,
+    /// <see cref="SporeFarmFoodCost"/> or <see cref="TentFoodCost"/>) to
+    /// place a Blueprint owned by <paramref name="village"/>'s Faction at
+    /// <paramref name="groundPoint"/> — called by the Village Heart's own
+    /// Auto-Construction (<see cref="UpdateAutoTent"/>/<see cref="UpdateAutoGranary"/>/<see cref="UpdateAutoSporeFarm"/>).
+    /// The Trading Post is the one exception: it's priced in Amber, not
+    /// Food, so <see cref="UpdateAutoTradingPost"/> places its Blueprint
+    /// directly instead of going through here. Returns false (and spends
+    /// nothing) if there isn't enough Food Stored.
     /// </summary>
     public bool TryPlaceBlueprint(VillageHeart village, Vector3 groundPoint, BuildingKind kind = BuildingKind.Granary)
     {
-        int cost = kind == BuildingKind.Granary ? GranaryFoodCost : SporeFarmFoodCost;
+        int cost = kind switch
+        {
+            BuildingKind.Granary => GranaryFoodCost,
+            BuildingKind.Tent => TentFoodCost,
+            _ => SporeFarmFoodCost,
+        };
         if (village.FoodStored < cost)
             return false;
 
@@ -3783,21 +3869,29 @@ public sealed class World
     /// Finishes a Blueprint once a Builder's Construction Progress reaches
     /// its requirement: removes the site and adds the completed Building,
     /// carrying over the Blueprint's Faction. A finished Granary permanently
-    /// raises its owning Village Heart's MaxFoodCapacity; a finished Spore
-    /// Farm raises nothing but starts its own passive-income timer (see
-    /// <see cref="UpdateSporeFarmIncome"/>). Called from inside a
-    /// Bramblekin's own Update() (itself inside World's reverse for-loop
-    /// over Colony), but mutates Blueprints/Buildings directly rather than
-    /// through a pending queue: nothing else iterates either list while the
-    /// Colony loop is running, so — unlike Colony/FoodShards/Aphids — there's
-    /// no concurrent-modification hazard here to defer around.
+    /// raises its owning Village Heart's MaxFoodCapacity and nothing else —
+    /// the Housing System decouples Wealth Accumulation from Population
+    /// growth entirely; a finished Tent permanently raises MaxPopulation
+    /// instead (and only that); a finished Spore Farm raises neither but
+    /// starts its own passive-income timer (see <see cref="UpdateSporeFarmIncome"/>).
+    /// Called from inside a Bramblekin's own Update() (itself inside World's
+    /// reverse for-loop over Colony), but mutates Blueprints/Buildings
+    /// directly rather than through a pending queue: nothing else iterates
+    /// either list while the Colony loop is running, so — unlike
+    /// Colony/FoodShards/Aphids — there's no concurrent-modification hazard
+    /// here to defer around.
     /// </summary>
     public void CompleteBlueprint(Blueprint blueprint)
     {
         Blueprints.Remove(blueprint);
         Buildings.Add(new Building(blueprint.Position, blueprint.Kind, blueprint.FactionID, blueprint.FactionColor));
-        if (blueprint.Kind == BuildingKind.Granary && VillageFor(blueprint.FactionID) is { } owner)
+        if (VillageFor(blueprint.FactionID) is not { } owner)
+            return;
+
+        if (blueprint.Kind == BuildingKind.Granary)
             owner.MaxFoodCapacity += GranaryFoodBonus;
+        else if (blueprint.Kind == BuildingKind.Tent)
+            owner.MaxPopulation = Math.Min(owner.MaxPopulation + TentPopulationBonus, MaxPopulationCap);
     }
 
     /// <summary>Queues a new Bramblekin of <paramref name="village"/>'s Faction on a free spot right beside it.</summary>
@@ -4276,6 +4370,17 @@ public sealed class VillageHeart
     /// <summary>Living Bramblekin of this faction — Militia and Gatherer alike. Recomputed every frame by the Job Manager.</summary>
     public int Population { get; internal set; }
 
+    /// <summary>
+    /// The Housing System: this faction's hard population ceiling —
+    /// decoupled entirely from <see cref="MaxFoodCapacity"/>/Granaries.
+    /// Starts at 10 and permanently rises by <see cref="World.TentPopulationBonus"/>
+    /// for each completed Tent, capped at <see cref="World.MaxPopulationCap"/>
+    /// (see <see cref="World.UpdateAutoTent"/>'s Hard Cap). Auto-Sprout (the
+    /// Growth Phase, see <see cref="World.UpdateAutoSprout"/>) refuses to
+    /// grow the tribe past this, full stop.
+    /// </summary>
+    public int MaxPopulation { get; internal set; } = 10;
+
     /// <summary>Auto-Conscription: how many of this faction's Bramblekin the Job Manager currently wants as Militia.</summary>
     public int MilitiaTarget { get; internal set; }
 
@@ -4677,6 +4782,9 @@ public enum BuildingKind
 
     /// <summary>Tycoon Economy: once built, unlocks the Emergency Food Import (see <see cref="World.TryEmergencyFoodImport"/>).</summary>
     TradingPost,
+
+    /// <summary>The Housing System: permanently raises <see cref="VillageHeart.MaxPopulation"/> by <see cref="World.TentPopulationBonus"/>, hard-capped at <see cref="World.MaxPopulationCap"/>.</summary>
+    Tent,
 }
 
 /// <summary>
@@ -4699,6 +4807,10 @@ public sealed class Building
     /// <summary>Tycoon Economy: the Trading Post's footprint — a square structure, distinct from the two round buildings.</summary>
     public const float TradingPostRadius = 0.9f;
     private const float TradingPostHeight = 1.3f;
+
+    /// <summary>The Housing System: a Tent's small footprint — the smallest building on the map, so a tribe can pack in several without crowding out its other structures.</summary>
+    public const float TentRadius = 0.5f;
+    public const float TentHeight = 0.55f;
 
     public BuildingKind Kind { get; }
     public Vector3 Position { get; }
@@ -4725,6 +4837,7 @@ public sealed class Building
     {
         BuildingKind.Granary => GranaryRadius,
         BuildingKind.TradingPost => TradingPostRadius,
+        BuildingKind.Tent => TentRadius,
         _ => SporeFarmRadius,
     };
 
@@ -4770,6 +4883,19 @@ public sealed class Building
             return;
         }
 
+        if (Kind == BuildingKind.Tent)
+        {
+            // A small white/grey dome — a cone (full radius tapering to a
+            // point) reads as a simple canvas tent, small and plain enough
+            // not to compete visually with the three "real" buildings.
+            var canvas = new Color(235, 235, 230, 255);
+            var canvasEdge = new Color(150, 150, 145, 220);
+            var tentCenter = Position + new Vector3(0, TentHeight / 2f, 0);
+            Raylib.DrawCylinder(tentCenter, TentRadius, 0f, TentHeight, 16, canvas);
+            Raylib.DrawCylinderWires(tentCenter, TentRadius, 0f, TentHeight, 16, canvasEdge);
+            return;
+        }
+
         // Spore Farm: a large, saturated Dark Green disc, deliberately far
         // enough from the grass-green ground plane's own hue (86, 150, 60)
         // that it reads as an obvious landmark at a glance rather than
@@ -4792,11 +4918,12 @@ public sealed class Blueprint
 {
     public BuildingKind Kind { get; }
 
-    /// <summary>Construction Progress needed to finish — 10 for a Granary, 15 for a Spore Farm, 20 for a Trading Post.</summary>
+    /// <summary>Construction Progress needed to finish — 10 for a Granary, 15 for a Spore Farm, 20 for a Trading Post, 8 for a Tent (cheap and fast — Housing needs to keep pace with a growing tribe).</summary>
     public float ProgressRequired => Kind switch
     {
         BuildingKind.Granary => 10f,
         BuildingKind.TradingPost => 20f,
+        BuildingKind.Tent => 8f,
         _ => 15f,
     };
 
@@ -4831,7 +4958,12 @@ public sealed class Blueprint
         float radius = Building.RadiusFor(Kind);
         // A Spore Farm is nearly flat when finished, but a full-height wireframe (like a Granary's)
         // still reads clearly as "a site under construction" while it fills in.
-        float fullHeight = Kind == BuildingKind.Granary ? Building.GranaryHeight : 0.3f;
+        float fullHeight = Kind switch
+        {
+            BuildingKind.Granary => Building.GranaryHeight,
+            BuildingKind.Tent => Building.TentHeight,
+            _ => 0.3f,
+        };
 
         var wireCenter = Position + new Vector3(0, fullHeight / 2f, 0);
         Raylib.DrawCylinderWires(wireCenter, radius, radius, fullHeight, 16, wire);
