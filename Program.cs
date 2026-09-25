@@ -2487,24 +2487,38 @@ public sealed class World
     private const int VillageHeartLootShardCount = 10;
 
     /// <summary>
-    /// Base Razing: a Village Heart reduced to 0 Health is conquered —
-    /// removed from <see cref="Villages"/> outright (same direct-mutation
-    /// pattern as <see cref="CompleteBlueprint"/>'s Blueprints.Remove; this
-    /// only ever runs from within the Colony loop, well before Villages is
-    /// next enumerated this frame, so there's no concurrent-modification
-    /// risk), taking every Granary, Spore Patch and Blueprint sharing its
-    /// FactionID down with it, and shattering into <see cref="VillageHeartLootShardCount"/>
-    /// loose Food Shards scattered around its footprint. Its own Colony
+    /// Shared cleanup for a Village Heart that's gone for good, one way or
+    /// another: removes it from <see cref="Villages"/> outright (same
+    /// direct-mutation pattern as <see cref="CompleteBlueprint"/>'s
+    /// Blueprints.Remove) and takes every Granary, Spore Patch and
+    /// Blueprint sharing its FactionID down with it. Its own Colony
     /// survives as suddenly homeless refugees — <see cref="VillageFor"/>
-    /// simply returns null for them from here on.
+    /// simply returns null for them from here on. Callers add whatever's
+    /// specific to how it ended — Base Razing's loot/splat
+    /// (<see cref="DestroyVillageHeart"/>), or nothing at all for a
+    /// starved-out Ghost Town (see the per-village loop in <see cref="Update"/>).
+    /// </summary>
+    private void RemoveVillageAndItsBuildings(VillageHeart village)
+    {
+        Villages.Remove(village);
+        Buildings.RemoveAll(b => b.FactionID == village.FactionID);
+        Blueprints.RemoveAll(b => b.FactionID == village.FactionID);
+    }
+
+    /// <summary>
+    /// Base Razing: a Village Heart reduced to 0 Health is conquered —
+    /// this only ever runs from within the Colony loop, well before
+    /// Villages is next enumerated this frame, so there's no
+    /// concurrent-modification risk — shattering into
+    /// <see cref="VillageHeartLootShardCount"/> loose Food Shards scattered
+    /// around its footprint on top of the shared cleanup above.
     /// </summary>
     private void DestroyVillageHeart(VillageHeart village)
     {
-        if (!Villages.Remove(village))
+        if (!Villages.Contains(village))
             return; // Already razed this frame by another poke landing the same instant.
 
-        Buildings.RemoveAll(b => b.FactionID == village.FactionID);
-        Blueprints.RemoveAll(b => b.FactionID == village.FactionID);
+        RemoveVillageAndItsBuildings(village);
 
         float half = Terrain.Size / 2f - Bramblekin.EdgeMargin;
         for (int i = 0; i < VillageHeartLootShardCount; i++)
@@ -2678,8 +2692,9 @@ public sealed class World
         // Auto-Conscription, War Weariness, Upkeep and Auto-Construction
         // entirely off its own Population/FoodStored/MaxFoodCapacity/Morale
         // — one faction starving or booming never touches another's.
-        foreach (var village in Villages)
+        for (int villageIndex = Villages.Count - 1; villageIndex >= 0; villageIndex--)
         {
+            VillageHeart village = Villages[villageIndex];
             UpdateJobManager(village);
             UpdateMorale(village, deltaTime);
             village.DamageFlashTimer = MathF.Max(0f, village.DamageFlashTimer - deltaTime);
@@ -2708,12 +2723,20 @@ public sealed class World
                 }
             }
 
-            // Extinction: nobody left, and not even enough Food Stored to
-            // Auto-Sprout a single replacement -- this faction is done.
-            // Stops functioning entirely: no Upkeep, no Auto-Anything. It
-            // still stands (and can still be found and razed) until then.
+            // Ghost Town Cleanup: nobody left, and not even enough Food
+            // Stored to Auto-Sprout a single replacement -- this faction is
+            // done for good. Actually removed outright now (rather than
+            // just left standing inert forever), taking its Granaries and
+            // Spore Patches down with it (see RemoveVillageAndItsBuildings)
+            // -- otherwise a starvation wipeout could never bring
+            // World.IsWorldExtinct (Villages.Count == 0) true, and Genesis
+            // would never have anything to trigger on. Iterated backwards
+            // by index specifically so removing an entry mid-loop is safe.
             if (village.IsExtinct)
+            {
+                RemoveVillageAndItsBuildings(village);
                 continue;
+            }
 
             // Upkeep is the survival tax: it gets first claim on Food Stored,
             // ahead of anything discretionary, and can cost a Bramblekin its
@@ -3360,7 +3383,7 @@ public sealed class World
         _floatingTexts.Add((position, text, color, FloatingTextDuration));
 
     /// <summary>A random point within <paramref name="maxRadius"/> meters of <paramref name="village"/> that isn't blocked. Null if nothing opened up in a handful of tries.</summary>
-    private Vector3? RandomPointNearVillage(VillageHeart village, float maxRadius, float clearance)
+    public Vector3? RandomPointNearVillage(VillageHeart village, float maxRadius, float clearance)
     {
         float minRadius = village.Obstacle.Radius + 0.5f;
         for (int attempt = 0; attempt < 20; attempt++)
@@ -4844,6 +4867,19 @@ public sealed class Bramblekin
     /// </summary>
     private const float BuildingAttackRange = 3.5f;
 
+    /// <summary>
+    /// The Militia Leash: how far (m) a Militia unit may stray from its own
+    /// Village Heart while Chasing (Defending) or Attacking (Raiding)
+    /// before it breaks off entirely and heads straight home instead,
+    /// letting the target escape. Deliberately a hair past
+    /// <see cref="World.TerritoryTargetingRadius"/> (20m) — a moving
+    /// target right at that boundary, or an obstacle detour, can easily
+    /// drag a chasing unit slightly past it without this being a runaway
+    /// pursuit — while still keeping Militia from ever wandering off to
+    /// fight across the whole map.
+    /// </summary>
+    private const float MilitiaLeashDistance = 22f;
+
     /// <summary>Cooldown (s) between pokes — rapid, so Militia can wail on a spider (especially a Tumbled one) quickly.</summary>
     private const float PokeCooldownDuration = 1.0f;
 
@@ -5341,7 +5377,7 @@ public sealed class Bramblekin
                 break;
 
             case BramblekinState.Raiding:
-                UpdateRaiding(deltaTime, world);
+                UpdateRaiding(deltaTime, world, home);
                 break;
 
             case BramblekinState.Building:
@@ -5633,6 +5669,23 @@ public sealed class Bramblekin
 
     private void UpdateDefending(float deltaTime, World world, VillageHeart? home)
     {
+        // The Militia Leash: over-extended past MilitiaLeashDistance from
+        // home, drop whatever's being chased and head straight back —
+        // moves toward home directly (rather than only setting State and
+        // waiting for the Walking case to pick it up next frame) so this
+        // unit reliably makes progress home even if another priority-chain
+        // branch (Border Wars, Base Razing) tries to re-claim it into
+        // Defending again before it arrives; only once it's back inside
+        // the leash does a fresh chase actually stick.
+        if (home is not null && GroundMover.HorizontalDistance(Position, home.Center) > MilitiaLeashDistance)
+        {
+            _combatTarget = null;
+            _target = home.Center;
+            SetState(BramblekinState.Walking);
+            _mover.MoveTowards(_target, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+            return;
+        }
+
         bool spiderInTerritory = home is not null && world.Spider is { } spiderCheck &&
                                   GroundMover.HorizontalDistance(spiderCheck.Position, home.Center) <= World.TerritoryTargetingRadius;
 
@@ -5721,10 +5774,22 @@ public sealed class Bramblekin
     /// wins — the outer priority chain picks it up as Border Wars/home
     /// defense next frame instead) or the target Heart is razed (by this
     /// unit's own killing blow or anyone else's) or simply falls out of
-    /// range.
+    /// range. The Militia Leash: also breaks off (see UpdateDefending's own
+    /// copy of this same check) if this unit itself has strayed past
+    /// MilitiaLeashDistance from home, regardless of how close the target
+    /// still is.
     /// </summary>
-    private void UpdateRaiding(float deltaTime, World world)
+    private void UpdateRaiding(float deltaTime, World world, VillageHeart? home)
     {
+        if (home is not null && GroundMover.HorizontalDistance(Position, home.Center) > MilitiaLeashDistance)
+        {
+            _raidTarget = null;
+            _target = home.Center;
+            SetState(BramblekinState.Walking);
+            _mover.MoveTowards(_target, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+            return;
+        }
+
         if (_raidTarget is null || !world.Villages.Contains(_raidTarget) ||
             GroundMover.HorizontalDistance(Position, _raidTarget.Center) > World.TerritoryTargetingRadius ||
             world.HasLivingHostileBramblekinNear(Position, FactionID, World.TerritoryTargetingRadius))
@@ -5894,6 +5959,22 @@ public sealed class Bramblekin
 
     private void StartWandering(World world)
     {
+        // The Militia Leash: a Militia unit's default wander destination
+        // never drifts outside its own borders, unlike a Gatherer's
+        // map-wide roam — strictly within World.TerritoryTargetingRadius of
+        // its own Village Heart. Falls back to standing at home outright
+        // (never the map-wide point below) if nothing opens up nearby, and
+        // to the ordinary map-wide wander if it has no home at all (a
+        // homeless refugee, e.g. after Base Razing, has no border left to
+        // keep).
+        VillageHeart? home = Role == BramblekinRole.Militia ? world.VillageFor(FactionID) : null;
+        if (home is not null)
+        {
+            _target = world.RandomPointNearVillage(home, World.TerritoryTargetingRadius, BodyRadius + 0.1f) ?? home.Center;
+            SetState(BramblekinState.Walking);
+            return;
+        }
+
         // No-spawn zones: RandomFreePoint never picks a spot inside a rock,
         // the village, or a God's Shadow.
         _target = world.RandomFreePoint(BodyRadius + 0.1f, EdgeMargin);
