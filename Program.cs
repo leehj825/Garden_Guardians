@@ -1711,14 +1711,8 @@ public sealed class World
     /// <summary>The Schism: a Village Heart is Overcrowded once its Population reaches its MaxFoodCapacity — 40 at the 3-Granary cap.</summary>
     public const int SchismFoodReserve = 30;
 
-    /// <summary>Food Stored a Schism costs its origin Village Heart, and the new Village Heart's starting Food Stored.</summary>
-    public const int SchismMigrationCost = 15;
-
-    /// <summary>Gatherers among the 4 Pioneers a Schism sends off.</summary>
-    private const int PioneerGathererCount = 3;
-
-    /// <summary>Militia among the 4 Pioneers a Schism sends off.</summary>
-    private const int PioneerMilitiaCount = 1;
+    /// <summary>The Pioneer Truce: how long (s) a Schism's parent and new splinter faction refuse to fight each other, giving the fledgling splinter a grace period to get on its feet — see <see cref="IsAtTruceWith"/>.</summary>
+    public const float TruceDurationSeconds = 60f;
 
     /// <summary>How far (m) a Migration Target must be from every existing Village Heart.</summary>
     private const float MinMigrationDistance = 30f;
@@ -2131,19 +2125,43 @@ public sealed class World
     }
 
     /// <summary>
+    /// The Pioneer Truce: whether <paramref name="home"/>'s faction is
+    /// currently at truce with <paramref name="otherFactionId"/> — either
+    /// because that faction is <paramref name="home"/>'s own parent (the
+    /// tribe it split from) or because <paramref name="home"/> is that
+    /// faction's parent (a splinter it just sent off), and <paramref name="home"/>'s
+    /// own <see cref="VillageHeart.TruceTimer"/> hasn't run out yet. Checked
+    /// from each side's own perspective independently (see every call
+    /// site), so the grace period holds for either faction until its own
+    /// clock runs out.
+    /// </summary>
+    public bool IsAtTruceWith(VillageHeart? home, int otherFactionId)
+    {
+        if (home is null || home.TruceTimer <= 0f || home.FactionID == otherFactionId)
+            return false;
+        if (otherFactionId == home.ParentFactionID)
+            return true;
+
+        VillageHeart? other = VillageFor(otherFactionId);
+        return other is not null && other.ParentFactionID == home.FactionID;
+    }
+
+    /// <summary>
     /// Base Razing: whether any living enemy Bramblekin (any role) is
     /// within <paramref name="radius"/> of <paramref name="position"/> — a
     /// live threat always outranks Raiding an empty-looking enemy Village
     /// Heart, so a Militia unit checks this before (and while) committing
-    /// to one.
+    /// to one. The Pioneer Truce: a parent/child faction still under its
+    /// own truce is never counted as a threat here either.
     /// </summary>
     public bool HasLivingEnemyBramblekinNear(Vector3 position, int ownFactionId, float radius)
     {
+        VillageHeart? home = VillageFor(ownFactionId);
         float radiusSquared = radius * radius;
         for (int i = Colony.Count - 1; i >= 0; i--)
         {
             Bramblekin enemy = Colony[i];
-            if (enemy.IsDead || enemy.FactionID == ownFactionId)
+            if (enemy.IsDead || enemy.FactionID == ownFactionId || IsAtTruceWith(home, enemy.FactionID))
                 continue;
             if (Vector3.DistanceSquared(enemy.Position, position) <= radiusSquared)
                 return true;
@@ -2154,11 +2172,13 @@ public sealed class World
     /// <summary>
     /// Border Wars + the 20-Meter Territory Rule: the nearest living
     /// Bramblekin (Gatherer or Militia, any faction but <paramref name="defender"/>'s
-    /// own) currently within <paramref name="home"/>'s territory ring — an
-    /// intruder for <paramref name="defender"/>'s Militia to run down. Recomputed
-    /// fresh every frame from <see cref="Update"/>'s state-machine priority chain,
-    /// same as the Wolf Spider and Aphid checks, so a Defending Militia keeps
-    /// re-picking as intruders come and go.
+    /// own, and not one <paramref name="home"/> is currently at Pioneer
+    /// Truce with) currently within <paramref name="home"/>'s territory
+    /// ring — an intruder for <paramref name="defender"/>'s Militia to run
+    /// down. Recomputed fresh every frame from <see cref="Update"/>'s
+    /// state-machine priority chain, same as the Wolf Spider and Aphid
+    /// checks, so a Defending Militia keeps re-picking as intruders come
+    /// and go.
     /// </summary>
     public Bramblekin? NearestEnemyBramblekinInTerritory(Bramblekin defender, VillageHeart home)
     {
@@ -2169,7 +2189,7 @@ public sealed class World
         for (int i = Colony.Count - 1; i >= 0; i--)
         {
             Bramblekin enemy = Colony[i];
-            if (enemy.IsDead || enemy.FactionID == defender.FactionID)
+            if (enemy.IsDead || enemy.FactionID == defender.FactionID || IsAtTruceWith(home, enemy.FactionID))
                 continue;
 
             float distanceSquared = Vector3.DistanceSquared(enemy.Position, home.Center);
@@ -2213,16 +2233,19 @@ public sealed class World
     /// Base Razing: the nearest living enemy Village Heart within
     /// <paramref name="radius"/> of <paramref name="from"/> — an opportunistic
     /// raid target for a Militia unit that's wandered near a rival base,
-    /// not the home-centered 20-Meter Territory Rule used for defense.
+    /// not the home-centered 20-Meter Territory Rule used for defense. The
+    /// Pioneer Truce: a parent/child faction's own Heart is never a valid
+    /// target while either side's truce still holds.
     /// </summary>
     public VillageHeart? NearestEnemyVillageHeartInRange(Vector3 from, int ownFactionId, float radius)
     {
+        VillageHeart? home = VillageFor(ownFactionId);
         VillageHeart? nearest = null;
         float bestDistanceSquared = radius * radius;
 
         foreach (VillageHeart village in Villages)
         {
-            if (village.FactionID == ownFactionId)
+            if (village.FactionID == ownFactionId || IsAtTruceWith(home, village.FactionID))
                 continue;
 
             float distanceSquared = Vector3.DistanceSquared(from, village.Center);
@@ -2446,6 +2469,16 @@ public sealed class World
         {
             UpdateJobManager(village);
             UpdateMorale(village, deltaTime);
+
+            // The Pioneer Truce: counts down toward 0 regardless of anything
+            // else this Village Heart is doing. World.Update() is itself
+            // called once per Debug Time Scale substep with a real
+            // (clamped) frame time rather than a scaled-up deltaTime (see
+            // Program's simulation loop), so ticking down by this method's
+            // own deltaTime already runs TruceTimer out faster at a higher
+            // Time Scale exactly like every other timer here (UpkeepTimer,
+            // ClaimTimer, ...) -- no separate TimeScale multiply needed.
+            village.TruceTimer = MathF.Max(0f, village.TruceTimer - deltaTime);
 
             // Extinction: nobody left, and not even enough Food Stored to
             // Auto-Sprout a single replacement -- this faction is done.
@@ -2902,15 +2935,20 @@ public sealed class World
     }
 
     /// <summary>
-    /// The Schism: once a Village Heart is both Overcrowded (Population at
-    /// or beyond its MaxFoodCapacity — capped at 40 by <see cref="MaxGranaries"/>)
-    /// and has a healthy Food Stored reserve, it spends
-    /// <see cref="SchismMigrationCost"/> of that reserve sending 4 Pioneers
-    /// (<see cref="PioneerGathererCount"/> Gatherers, <see cref="PioneerMilitiaCount"/>
-    /// Militia) off to found a brand new faction elsewhere on the map — see
+    /// The True Schism: once a Village Heart is both Overcrowded (Population
+    /// at or beyond its MaxFoodCapacity — capped at 40 by <see cref="MaxGranaries"/>)
+    /// and has a healthy Food Stored reserve, it splits in two rather than
+    /// budding off a token handful: half its current Gatherers and half its
+    /// current Militia (rounded down, same ratio as the parent, so a
+    /// heavily militarized tribe doesn't send off a defenseless splinter)
+    /// depart as Pioneers, taking half the parent's Food Stored with them,
+    /// to found a brand new faction elsewhere on the map — see
     /// <see cref="Bramblekin.BecomePioneer"/> and <see cref="FoundVillage"/>.
-    /// Guarded by <see cref="VillageHeart.HasActiveMigration"/> so only one
-    /// Migration is ever in flight per origin at a time.
+    /// A fresh splinter this size is no longer easy prey, but the Pioneer
+    /// Truce (<see cref="IsAtTruceWith"/>) still guards both sides for
+    /// <see cref="TruceDurationSeconds"/> regardless. Guarded by
+    /// <see cref="VillageHeart.HasActiveMigration"/> so only one Migration
+    /// is ever in flight per origin at a time.
     /// </summary>
     private void UpdateSchism(VillageHeart village)
     {
@@ -2921,42 +2959,51 @@ public sealed class World
         if (village.FoodStored < SchismFoodReserve)
             return;
 
-        // Round up 3 idle-enough Gatherers and 1 Militia unit of this
-        // faction to serve as Pioneers. If the village doesn't have enough
-        // of either on hand yet (e.g. right after a costly battle), simply
-        // try again next frame rather than forcing an incomplete migration.
-        var pioneers = new List<Bramblekin>(PioneerGathererCount + PioneerMilitiaCount);
+        int totalGatherers = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Gatherer);
+        int totalMilitia = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
+        int pioneerGatherers = totalGatherers / 2;
+        int pioneerMilitia = totalMilitia / 2;
+        if (pioneerGatherers + pioneerMilitia < 1)
+            return; // Too small a population to split yet.
+
+        var pioneers = new List<Bramblekin>(pioneerGatherers + pioneerMilitia);
         int gathererCount = 0, militiaCount = 0;
         for (int i = Colony.Count - 1; i >= 0; i--)
         {
-            if (gathererCount >= PioneerGathererCount && militiaCount >= PioneerMilitiaCount)
+            if (gathererCount >= pioneerGatherers && militiaCount >= pioneerMilitia)
                 break;
 
             Bramblekin bramblekin = Colony[i];
             if (bramblekin.IsDead || bramblekin.FactionID != village.FactionID)
                 continue;
 
-            if (bramblekin.Role == BramblekinRole.Gatherer && gathererCount < PioneerGathererCount)
+            if (bramblekin.Role == BramblekinRole.Gatherer && gathererCount < pioneerGatherers)
             {
                 pioneers.Add(bramblekin);
                 gathererCount++;
             }
-            else if (bramblekin.Role == BramblekinRole.Militia && militiaCount < PioneerMilitiaCount)
+            else if (bramblekin.Role == BramblekinRole.Militia && militiaCount < pioneerMilitia)
             {
                 pioneers.Add(bramblekin);
                 militiaCount++;
             }
         }
 
-        if (gathererCount < PioneerGathererCount || militiaCount < PioneerMilitiaCount)
-            return;
+        if (gathererCount < pioneerGatherers || militiaCount < pioneerMilitia)
+            return; // Someone died mid-count; try again next frame.
 
-        village.FoodStored -= SchismMigrationCost;
+        int foodGiven = village.FoodStored / 2;
+        village.FoodStored -= foodGiven;
         village.HasActiveMigration = true;
+
+        // The Pioneer Truce: the parent's own clock starts ticking the
+        // instant the split happens; the splinter's starts once FoundVillage
+        // actually creates it (see there) — both get the same 60s grace.
+        village.TruceTimer = TruceDurationSeconds;
 
         int newFactionId = _nextSchismFactionId++;
         Color newFactionColor = SchismFactionColors[(newFactionId - 1) % SchismFactionColors.Length];
-        var migration = new Migration(newFactionId, newFactionColor, RandomMigrationTarget(), village, pioneers.Count);
+        var migration = new Migration(newFactionId, newFactionColor, RandomMigrationTarget(), village, pioneers.Count, foodGiven);
 
         foreach (var pioneer in pioneers)
             pioneer.BecomePioneer(migration);
@@ -2976,23 +3023,26 @@ public sealed class World
     }
 
     /// <summary>
-    /// The Schism's payoff: founds a brand new Village Heart at
+    /// The True Schism's payoff: founds a brand new Village Heart at
     /// <paramref name="migration"/>'s Target, seeded with
-    /// <see cref="SchismMigrationCost"/> Food Stored, and immediately starts
-    /// running its own autonomous economy loop alongside every other entry
-    /// in <see cref="Villages"/>. Marks the Migration founded so every
-    /// Pioneer bound to it — not just the one that triggered this — drops
-    /// Migrating for good on its very next Update() (see
-    /// <see cref="Bramblekin.UpdateMigrating"/>), and clears the origin's
-    /// <see cref="VillageHeart.HasActiveMigration"/> so it's free to schism
-    /// again once it re-crowds.
+    /// <see cref="Migration.FoodAmount"/> Food Stored (half of the parent's
+    /// own, at the moment it split) and starts its own Pioneer Truce clock
+    /// alongside the parent's, then immediately starts running its own
+    /// autonomous economy loop alongside every other entry in
+    /// <see cref="Villages"/>. Marks the Migration founded so every Pioneer
+    /// bound to it — not just the one that triggered this — drops Migrating
+    /// for good on its very next Update() (see <see cref="Bramblekin.UpdateMigrating"/>),
+    /// and clears the origin's <see cref="VillageHeart.HasActiveMigration"/>
+    /// so it's free to schism again once it re-crowds.
     /// </summary>
     public VillageHeart FoundVillage(Migration migration)
     {
         var village = new VillageHeart(migration.Target, migration.NewFactionID, migration.NewFactionColor, Rng)
         {
-            FoodStored = SchismMigrationCost,
+            FoodStored = migration.FoodAmount,
             UpkeepTimer = UpkeepInterval,
+            ParentFactionID = migration.Origin.FactionID,
+            TruceTimer = TruceDurationSeconds,
         };
         Villages.Add(village);
         Physics.AddStaticBox(village.Bounds);
@@ -3604,8 +3654,21 @@ public sealed class VillageHeart
     /// <summary>Counts down to this faction's next Upkeep tax. Internal bookkeeping for <see cref="World"/>.</summary>
     internal float UpkeepTimer { get; set; }
 
-    /// <summary>The Schism: true while 4 Pioneers of this faction are already out founding a new Village Heart — guards against queuing a second Migration before the first lands.</summary>
+    /// <summary>The Schism: true while this faction's Pioneers are already out founding a new Village Heart — guards against queuing a second Migration before the first lands.</summary>
     public bool HasActiveMigration { get; internal set; }
+
+    /// <summary>The Pioneer Truce: the FactionID this Village Heart split off from, or -1 if it's an original (non-Schism) tribe. Fixed for life.</summary>
+    public int ParentFactionID { get; internal set; } = -1;
+
+    /// <summary>
+    /// The Pioneer Truce: counts down from 60s the moment a Schism involving
+    /// this Village Heart happens (as either the parent or the new splinter
+    /// — see <see cref="World.UpdateSchism"/>/<see cref="World.FoundVillage"/>),
+    /// ticked in <see cref="World.Update"/>. While positive, this faction's
+    /// Militia won't target or attack its parent/child faction's Bramblekin
+    /// or Village Heart — see <see cref="World.IsAtTruceWith"/>.
+    /// </summary>
+    public float TruceTimer { get; set; }
 
     /// <summary>Below <see cref="World.WearyMoraleThreshold"/>: this faction's Gatherers walk at <see cref="World.WearySpeedMultiplier"/> speed.</summary>
     public bool GatherersAreWeary => Morale < World.WearyMoraleThreshold;
@@ -3697,18 +3760,22 @@ public sealed class Migration
     /// <summary>The overcrowded Village Heart this Migration set out from — whose <see cref="VillageHeart.HasActiveMigration"/> clears once this Migration is founded or abandoned.</summary>
     public VillageHeart Origin { get; }
 
+    /// <summary>The True Schism: how much Food Stored (half of Origin's own, at the moment it split) the new Village Heart is seeded with — see <see cref="World.FoundVillage"/>.</summary>
+    public int FoodAmount { get; }
+
     /// <summary>True once a Pioneer has reached <see cref="Target"/> and founded the new Village Heart.</summary>
     public bool Founded { get; private set; }
 
     /// <summary>Pioneers still alive and travelling. If this reaches zero before the Migration is Founded, it's abandoned so the origin can try again.</summary>
     private int _pioneersRemaining;
 
-    public Migration(int newFactionId, Color newFactionColor, Vector3 target, VillageHeart origin, int pioneerCount)
+    public Migration(int newFactionId, Color newFactionColor, Vector3 target, VillageHeart origin, int pioneerCount, int foodAmount)
     {
         NewFactionID = newFactionId;
         NewFactionColor = newFactionColor;
         Target = target;
         Origin = origin;
+        FoodAmount = foodAmount;
         _pioneersRemaining = pioneerCount;
     }
 
