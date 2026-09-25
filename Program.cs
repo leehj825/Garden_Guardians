@@ -286,9 +286,10 @@ public static class Game
 
         const int fontSize = 24, lineHeight = 30;
         int militia = world.Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
+        int builders = world.Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Builder);
         string header = $"{FactionColorName(village.FactionColor)} Faction ({village.Trait})";
         string food = $"Food Stored: {village.FoodStored} / {village.MaxFoodCapacity}";
-        string population = $"Population: {village.Population} / {village.MaxPopulation}   Militia: {militia}";
+        string population = $"Population: {village.Population} / {village.MaxPopulation}   Militia: {militia}   Builder: {builders}";
         string morale = $"Morale: {(int)village.Morale}%" +
                          (village.GatherersAreWeary ? " (Weary)" : village.BuildersAreInspired ? " (Inspired)" : "");
         // Tycoon Economy: Amber tacked onto this same panel, in Color.GOLD
@@ -1238,7 +1239,6 @@ public sealed class World
     /// <summary>The Village Heart whose Faction matches <paramref name="factionId"/>, if any.</summary>
     public VillageHeart? VillageFor(int factionId) => Villages.FirstOrDefault(v => v.FactionID == factionId);
 
-    /// <summary>The Village Heart's Auto-Conscription ratio: one Militia unit for every this-many Gatherers.</summary>
     /// <summary>
     /// Faction Personalities: the Population divisor for a Village Heart's
     /// Auto-Conscription target, per its fixed-for-life <see cref="FactionTrait"/>
@@ -1266,6 +1266,14 @@ public sealed class World
     /// large jump (a mass Sprout, or a Wolf Spider kill dropping the
     /// population) closes out in a fraction of a second, with no player
     /// input needed.
+    ///
+    /// Builder Conscription: the same nudge-one-step-per-frame treatment
+    /// also keeps exactly one dedicated Builder on hand whenever this
+    /// faction has an incomplete Blueprint (<see cref="HasIncompleteBlueprintFor"/>)
+    /// — promoting the nearest Gatherer to work it, or standing the Builder
+    /// back down to Gatherer once nothing's left to build — so the rest of
+    /// the colony's Gatherers never have to abandon food duty to pick up a
+    /// Blueprint themselves.
     /// </summary>
     private void UpdateJobManager(VillageHeart village)
     {
@@ -1277,6 +1285,13 @@ public sealed class World
             NearestByRole(village, BramblekinRole.Gatherer)?.PromoteToMilitia();
         else if (current > village.MilitiaTarget)
             NearestByRole(village, BramblekinRole.Militia)?.DemoteToGatherer(this);
+
+        int builderTarget = HasIncompleteBlueprintFor(village.FactionID) ? 1 : 0;
+        int currentBuilders = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Builder);
+        if (currentBuilders < builderTarget)
+            NearestByRole(village, BramblekinRole.Gatherer)?.PromoteToBuilder();
+        else if (currentBuilders > builderTarget)
+            NearestByRole(village, BramblekinRole.Builder)?.DemoteToGatherer(this);
     }
 
     /// <summary>
@@ -1732,12 +1747,13 @@ public sealed class World
     /// no safe ground left at all, they surrender instead: Assimilation
     /// switches every survivor straight into <paramref name="attackerFactionId"/>'s
     /// faction and colour on the spot. Militia aren't covered here — this
-    /// only ever runs on the losing side's remaining Gatherers, per the
-    /// design.
+    /// only ever runs on the losing side's remaining Gatherers and Builder,
+    /// per the design.
     /// </summary>
     private void RunRefugeeProtocol(VillageHeart razedVillage, int razedFactionId, int attackerFactionId)
     {
-        List<Bramblekin> survivors = Colony.Where(b => !b.IsDead && b.FactionID == razedFactionId && b.Role == BramblekinRole.Gatherer).ToList();
+        List<Bramblekin> survivors = Colony.Where(b => !b.IsDead && b.FactionID == razedFactionId &&
+            b.Role is BramblekinRole.Gatherer or BramblekinRole.Builder).ToList();
         if (survivors.Count == 0)
             return;
 
@@ -1989,28 +2005,19 @@ public sealed class World
             //    MaxPopulation now, not MaxFoodCapacity/Granaries — once a
             //    tribe hits its housing ceiling, it saves toward a Tent
             //    instead of sprouting.
-            // 2. Storage Phase (UpdateAutoGranary): checked BEFORE Growth on
-            //    purpose — Parallel Progress: a flat, always-attainable Food
-            //    Stored threshold (just GranaryFoodCost, not "close to
-            //    MaxFoodCapacity") gets first claim on any surplus, so
-            //    Wealth Accumulation actually happens alongside population
-            //    growth instead of only once growth stalls out at
-            //    MaxPopulation. Checking Growth first would have starved
-            //    this every single frame Growth is still active: Growth's
-            //    own while-loop is greedy, so it would drain Food Stored
-            //    back under GranaryFoodCost before Storage ever got a look
-            //    at it, and a Granary would never get queued until the
-            //    tribe was already fully grown — exactly the "food storage
-            //    doesn't grow until population does" gating this fixes.
-            // 3. Growth Phase (UpdateAutoSprout): sprouts new Bramblekin
-            //    with whatever Food Stored the Storage Phase left behind,
-            //    until that runs out or MaxPopulation is reached. A Granary
-            //    only ever claims its flat cost once per Granary queued, so
-            //    this still gets the lion's share of continuous food income
-            //    the rest of the time.
+            // 2. Growth Phase (UpdateAutoSprout): sprouts new Bramblekin with
+            //    whatever Food Stored is on hand, until MaxPopulation is
+            //    reached. Growing the tribe always outranks banking surplus
+            //    Food away in a Granary — a colony that isn't there yet has
+            //    nothing to gain from more storage capacity.
+            // 3. Storage Phase (UpdateAutoGranary): checked LAST, and only
+            //    once Food Stored is actually at (or effectively at) the
+            //    current MaxFoodCapacity — Housing and Growth always get
+            //    first claim on Food Stored; a Granary only ever gets built
+            //    once there's genuinely nowhere left to put more food.
             UpdateAutoTent(village);
-            UpdateAutoGranary(village);
             UpdateAutoSprout(village);
+            UpdateAutoGranary(village);
 
             // Auxiliary Auto-Construction: population-gated one-time builds
             // that ride on top of the three phases above rather than being
@@ -2524,20 +2531,18 @@ public sealed class World
     }
 
     /// <summary>
-    /// Auto-Construction (Granaries) — the Storage Phase, checked second
-    /// (see <see cref="Update"/>'s per-village loop), fully decoupled from
-    /// Population/Housing: a Granary purely expands wealth capacity, it no
-    /// longer gates or is gated by Auto-Sprout. Parallel Progress: triggers
-    /// on a flat, always-attainable threshold — simply affording
-    /// <see cref="GranaryFoodCost"/> — rather than needing Food Stored to
-    /// approach the current MaxFoodCapacity, and is checked BEFORE the
-    /// Growth Phase each frame so it gets first claim on any real surplus.
-    /// A Granary this cheap, checked this early, banks steadily right
-    /// alongside population growth instead of only once growth stalls out
-    /// at MaxPopulation. Once affordable, the Village Heart places a
-    /// Granary Blueprint at a random unoccupied spot within
-    /// <see cref="GranaryPlacementRadius"/> meters of itself. Completing it
-    /// permanently raises MaxFoodCapacity (see <see cref="CompleteBlueprint"/>),
+    /// Auto-Construction (Granaries) — the Storage Phase, checked LAST (see
+    /// <see cref="Update"/>'s per-village loop), after Housing and Growth
+    /// have both already had first claim on Food Stored this frame. Only
+    /// fires once Food Stored is actually maxed out (at or above the
+    /// current MaxFoodCapacity) — there's no point banking surplus into
+    /// more storage while a tribe still has empty houses to fill or mouths
+    /// it could be feeding into new Bramblekin instead. Once maxed, the
+    /// Village Heart places a Granary Blueprint (costing
+    /// <see cref="GranaryFoodCost"/>) at a random unoccupied spot within
+    /// <see cref="GranaryPlacementRadius"/> meters of itself, for the
+    /// faction's dedicated Builder to work. Completing it permanently
+    /// raises MaxFoodCapacity (see <see cref="CompleteBlueprint"/>),
     /// reopening headroom for the Trading Post/Amber economy. Guarded so at
     /// most one Auto-Granary is ever queued at a time, and capped at
     /// <see cref="MaxGranaries"/> total so the village can't spam Granaries
@@ -2549,8 +2554,8 @@ public sealed class World
             return; // Capped: never queue another Granary.
         if (Blueprints.Any(b => b.Kind == BuildingKind.Granary && b.FactionID == village.FactionID))
             return; // Already building one; don't queue a second.
-        if (village.FoodStored < GranaryFoodCost)
-            return; // Saving Phase: still hoarding toward the next Granary.
+        if (village.FoodStored < village.MaxFoodCapacity)
+            return; // Not maxed out yet — Housing/Growth still have first claim on Food Stored.
 
         Vector3? spot = RandomPointNearVillage(village, GranaryPlacementRadius, Building.GranaryRadius + 0.2f);
         if (spot is { } point)
@@ -2936,7 +2941,9 @@ public sealed class World
         }
 
         village.FoodStored = 0;
-        Bramblekin? victim = NearestByRole(village, BramblekinRole.Gatherer) ?? NearestByRole(village, BramblekinRole.Militia);
+        Bramblekin? victim = NearestByRole(village, BramblekinRole.Gatherer)
+            ?? NearestByRole(village, BramblekinRole.Builder)
+            ?? NearestByRole(village, BramblekinRole.Militia);
         if (victim is { } v)
             Kill(v);
         QueueFloatingText(village.Center, "Starving!", new Color(220, 30, 30, 255));
@@ -3988,8 +3995,9 @@ public sealed class Building
 
 /// <summary>
 /// A Building site under construction: placed for Food Stored via
-/// <see cref="World.TryPlaceBlueprint"/>, then worked on by idle Gatherers
-/// (the Builder AI, <see cref="Bramblekin"/>'s Building state) until its
+/// <see cref="World.TryPlaceBlueprint"/>, then worked on by the faction's
+/// dedicated Builder (the Builder AI, <see cref="Bramblekin"/>'s Building
+/// state) until its
 /// Construction Progress reaches <see cref="ProgressRequired"/>, at which
 /// point <see cref="World.CompleteBlueprint"/> turns it into a <see cref="Building"/>
 /// of the same <see cref="Kind"/>.
@@ -4366,7 +4374,7 @@ public enum BramblekinState
     /// </summary>
     Raiding,
 
-    /// <summary>Gatherers only: the Builder AI, pathing to and working a Blueprint.</summary>
+    /// <summary>Builder only: the Builder AI, pathing to and working a Blueprint.</summary>
     Building,
 
     /// <summary>
@@ -4387,7 +4395,7 @@ public enum BramblekinState
     Migrating,
 }
 
-/// <summary>A Bramblekin's class: an ordinary worker, or a drafted defender.</summary>
+/// <summary>A Bramblekin's class: an ordinary worker, a dedicated builder, or a drafted defender.</summary>
 public enum BramblekinRole
 {
     /// <summary>Gathers food; flees the Wolf Spider like everyone else.</summary>
@@ -4395,6 +4403,15 @@ public enum BramblekinRole
 
     /// <summary>Set by Conscription (the Job Manager). Never gathers; instead defends the colony and hunts Aphids.</summary>
     Militia,
+
+    /// <summary>
+    /// Set by Conscription (the Job Manager) whenever the faction has an
+    /// incomplete Blueprint — a single Gatherer pulled off food duty to work
+    /// it, so the rest of the colony's Gatherers never have to abandon
+    /// gathering to pick up a trowel. Flees the Wolf Spider like a Gatherer,
+    /// but never gathers food itself.
+    /// </summary>
+    Builder,
 }
 
 /// <summary>
@@ -4415,14 +4432,15 @@ public enum BramblekinRole
 ///      Shove first) any specific foreign Gatherer it's caught stealing
 ///      food from its own territory (see <see cref="TrespassingAgainst"/>)
 ///      — every other faction is otherwise completely ignored.
-///   2. Village Building (Gatherers only), then Individual Equipment (an
-///      un-upgraded Militia fetching a Fang, or Gatherer fetching Chitin —
-///      see <see cref="HasFangPike"/>/<see cref="HasChitinMallet"/>), then
-///      Economy (Gathering food, prioritizing the 20 m Territory Rule
-///      before the wider map) or Hunting (Militia) override wandering in
-///      that priority order.
+///   2. Village Building (Builder only — a single Gatherer the Job Manager
+///      pulls onto Blueprint duty, see <see cref="World.HasIncompleteBlueprintFor"/>),
+///      then Individual Equipment (an un-upgraded Militia fetching a Fang,
+///      or Gatherer fetching Chitin — see <see cref="HasFangPike"/>/
+///      <see cref="HasChitinMallet"/>), then Economy (Gathering food,
+///      prioritizing the 20 m Territory Rule before the wider map) or
+///      Hunting (Militia) override wandering in that priority order.
 ///   3. Wandering: Walking to a random free point, Pausing 2 s, repeat.
-///      Shared by both roles as the default idle behaviour.
+///      Shared by all three roles as the default idle behaviour.
 ///
 /// Gathering and Returning Bramblekin shake the ground; that is what the Wolf
 /// Spider hunts by (<see cref="IsVibrating"/>). Militia never gather, so they
@@ -4553,6 +4571,7 @@ public sealed class Bramblekin
     private static readonly Color CalmColor = new(196, 160, 110, 255);   // Bark brown.
     private static readonly Color PanicColor = new(225, 85, 60, 255);    // Alarm red.
     private static readonly Color MilitiaColor = new(150, 130, 95, 255); // A shade duller than a Gatherer — worn, armed.
+    private static readonly Color BuilderColor = new(170, 140, 200, 255); // Lavender — visually distinct, on-the-job.
     private static readonly Color PikeColor = new(120, 55, 40, 255);     // Rose-thorn brown-red.
     private static readonly Color FangPikeColor = new(235, 235, 240, 255); // Spider Fang: bright white/silver.
     private static readonly Color MalletHandleColor = new(120, 80, 45, 255); // Wooden handle.
@@ -4622,7 +4641,7 @@ public sealed class Bramblekin
 
     public BramblekinState State { get; private set; }
 
-    /// <summary>Gatherer by default; the Job Manager promotes/demotes it to track the player's Militia Target.</summary>
+    /// <summary>Gatherer by default; the Job Manager promotes/demotes it to track its faction's Militia Target and Builder Conscription.</summary>
     public BramblekinRole Role { get; private set; } = BramblekinRole.Gatherer;
 
     public bool IsCarrying => _carried is not null || _carriedAmber is not null;
@@ -4745,17 +4764,18 @@ public sealed class Bramblekin
     }
 
     /// <summary>
-    /// Conscription: reclassifies this Bramblekin as Militia (called by
-    /// World's Job Manager as it works the colony toward the player's
-    /// Militia Target). Drops anything carried and, if it was mid-Gathering,
-    /// mid-Returning or mid-Building (all Gatherer-only errands), immediately
-    /// breaks that off with a short pause rather than let it finish one last
-    /// delivery or Blueprint — the transition is meant to be immediate.
-    /// Without this, a promoted Builder would otherwise keep running
-    /// UpdateBuilding as a Militia unit forever (nothing else ever reclaims
-    /// a Bramblekin stuck in the Building state), never actually fighting.
-    /// The priority chain re-decides what to do next (defend, hunt, or
-    /// wander) on the very next Update().
+    /// Conscription: reclassifies this Bramblekin as Militia (called by the
+    /// Job Manager as it works the colony toward its own faction's Militia
+    /// Target). Drops anything carried and, if it was mid-Gathering,
+    /// mid-Returning or mid-Building, immediately breaks that off with a
+    /// short pause rather than let it finish one last delivery or Blueprint
+    /// — the transition is meant to be immediate. The Building guard is
+    /// defensive: only a Builder normally enters that state, and Builder
+    /// Conscription only ever promotes to Militia from the Gatherer pool,
+    /// but nothing else ever reclaims a Bramblekin stuck in Building, so
+    /// this stays here as a safety net rather than fighting. The priority
+    /// chain re-decides what to do next (defend, hunt, or wander) on the
+    /// very next Update().
     /// </summary>
     public void PromoteToMilitia()
     {
@@ -4769,11 +4789,12 @@ public sealed class Bramblekin
     }
 
     /// <summary>
-    /// Conscription in reverse: stands this Militia unit down (pike put
-    /// away — Draw() stops drawing it the moment Role changes) and sends it
-    /// back to Wandering so it starts looking for food again. Whatever it
-    /// was doing — mid-charge Defending, mid-chase Hunting — is dropped
-    /// immediately, same as a promotion is.
+    /// Conscription in reverse: stands this Militia or Builder unit down
+    /// (a Militia's pike is put away — Draw() stops drawing it the moment
+    /// Role changes) and sends it back to Wandering so it starts looking
+    /// for food again. Whatever it was doing — mid-charge Defending,
+    /// mid-chase Hunting, mid-Building — is dropped immediately, same as a
+    /// promotion is.
     /// </summary>
     public void DemoteToGatherer(World world)
     {
@@ -4781,8 +4802,30 @@ public sealed class Bramblekin
             return;
 
         Role = BramblekinRole.Gatherer;
-        DropCarried(); // Defensive: a Militia unit never actually carries food.
+        DropCarried(); // Defensive: neither Militia nor Builder ever actually carries food.
         StartWandering(world);
+    }
+
+    /// <summary>
+    /// Conscription (the Job Manager's Builder assignment): pulls this
+    /// Gatherer off food duty to work the faction's Blueprints instead.
+    /// Releases whatever Gathering claim it was holding (Food Shard, Acorn
+    /// or Amber) so it isn't left orphaned, mid-claim, at the old job, and
+    /// interrupts anything it was mid-way through so the priority chain
+    /// picks Building fresh on its very next Update().
+    /// </summary>
+    public void PromoteToBuilder()
+    {
+        if (Role == BramblekinRole.Builder)
+            return;
+
+        Role = BramblekinRole.Builder;
+        DropCarried();
+        ReleaseFoodClaim();
+        ReleaseAcornClaim();
+        ReleaseAmberClaim();
+        if (State is BramblekinState.Gathering or BramblekinState.Returning or BramblekinState.Cracking or BramblekinState.Equipping)
+            StartPause();
     }
 
     /// <summary>
@@ -4973,7 +5016,7 @@ public sealed class Bramblekin
                 SetState(BramblekinState.Raiding);
             }
         }
-        else if (Role == BramblekinRole.Gatherer && world.Spider is { } nearSpider &&
+        else if (Role != BramblekinRole.Militia && world.Spider is { } nearSpider &&
                  GroundMover.HorizontalDistance(Position, nearSpider.Position) < FearRadius)
         {
             DropCarried();
@@ -4982,13 +5025,13 @@ public sealed class Bramblekin
                 SetState(BramblekinState.Fleeing);
         }
 
-        // --- 3. Village Building (Gatherers only), elevated priority: an
-        // incomplete Blueprint always beats Gathering, full stop — checked
-        // before economy below on purpose. Once a Gatherer here is set to
-        // Building, it's no longer "Walking or Pausing", so the checks right
-        // after can no longer steal it back this frame, and it won't gather
-        // again until the site is finished and there's nothing left to build.
-        if (Role == BramblekinRole.Gatherer && State is BramblekinState.Walking or BramblekinState.Pausing && world.HasIncompleteBlueprintFor(FactionID))
+        // --- 3. Village Building (Builder only): the Job Manager's Builder
+        // Conscription already keeps exactly one Bramblekin assigned to this
+        // Role whenever the faction has an incomplete Blueprint, so it's
+        // simply put to work here rather than every idle Gatherer racing for
+        // the same site. Once set to Building it's no longer "Walking or
+        // Pausing", so nothing below can steal it back this frame.
+        if (Role == BramblekinRole.Builder && State is BramblekinState.Walking or BramblekinState.Pausing && world.HasIncompleteBlueprintFor(FactionID))
             SetState(BramblekinState.Building);
 
         // --- 3a. Individual Equipment: an un-upgraded unit prioritizes
@@ -5070,14 +5113,14 @@ public sealed class Bramblekin
 
     /// <summary>
     /// War Weariness: below <see cref="World.WearyMoraleThreshold"/> Morale, a
-    /// Gatherer is Weary and walks at <see cref="World.WearySpeedMultiplier"/>
+    /// Gatherer or Builder is Weary and walks at <see cref="World.WearySpeedMultiplier"/>
     /// speed. Militia are unaffected — soldiers, not workers — and a full
     /// panicked Flee (see <see cref="BramblekinState.Fleeing"/>) always runs
     /// at full speed regardless: fatigue doesn't slow down running for your
     /// life.
     /// </summary>
     private float EffectiveWalkSpeed(World world) =>
-        Role == BramblekinRole.Gatherer && (world.VillageFor(FactionID)?.GatherersAreWeary ?? false)
+        Role != BramblekinRole.Militia && (world.VillageFor(FactionID)?.GatherersAreWeary ?? false)
             ? WalkSpeed * World.WearySpeedMultiplier
             : WalkSpeed;
 
@@ -5092,6 +5135,7 @@ public sealed class Bramblekin
     {
         Color baseColor = State == BramblekinState.Fleeing ? PanicColor
                     : Role == BramblekinRole.Militia ? MilitiaColor
+                    : Role == BramblekinRole.Builder ? BuilderColor
                     : CalmColor;
         Color color = TintWithFaction(baseColor);
 
@@ -5241,12 +5285,27 @@ public sealed class Bramblekin
         // MaxClaimants slots. Claiming one hands off to the Cracking state
         // entirely — see UpdateCracking for the walk-there/add-progress
         // loop and World.UpdateAcornCracking for the actual shatter.
-        if (HasChitinMallet && world.NearestClaimableAcorn(Position, this) is { } acorn && acorn.TryClaim(this))
+        //
+        // Efficiency Check: an upgraded Gatherer doesn't blindly beeline for
+        // every claimable Acorn in reach — it only commits when the Acorn
+        // is genuinely the smarter catch, i.e. no loose Food Shard sitting
+        // closer that it would otherwise walk straight past. A shard tied
+        // (or a wash) with the Acorn still favors cracking, since a group
+        // Acorn generally out-yields a single shard once a few Gatherers
+        // pile on.
+        if (HasChitinMallet && world.NearestClaimableAcorn(Position, this) is { } acorn)
         {
-            ReleaseFoodClaim(); // Switching to the Acorn this frame — don't leave a stale claim on whatever shard we were chasing.
-            _claimedAcorn = acorn;
-            SetState(BramblekinState.Cracking);
-            return;
+            FoodShard? nearestShard = world.NearestAvailableShard(Position, this, home);
+            bool acornIsSmarterChoice = nearestShard is null ||
+                GroundMover.HorizontalDistance(Position, acorn.Position) <= GroundMover.HorizontalDistance(Position, nearestShard.Position);
+
+            if (acornIsSmarterChoice && acorn.TryClaim(this))
+            {
+                ReleaseFoodClaim(); // Switching to the Acorn this frame — don't leave a stale claim on whatever shard we were chasing.
+                _claimedAcorn = acorn;
+                SetState(BramblekinState.Cracking);
+                return;
+            }
         }
 
         // Tycoon Economy — Maslow's Hierarchy: a well-fed village's
