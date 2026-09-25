@@ -1718,8 +1718,8 @@ public sealed class World
     /// <summary>The Village Heart's base food storage cap, before any Granary bonus.</summary>
     public const int BaseMaxFoodCapacity = 10;
 
-    /// <summary>Economic Buff: how much a completed Granary permanently raises the food storage cap by — raised from 10 so a tribe reaches "well-fed" (see <see cref="Bramblekin.UpdateGathering"/>) with enough room to spare to actually chase Amber instead of staying locked in a bare-survival loop.</summary>
-    public const int GranaryFoodBonus = 25;
+    /// <summary>How much a completed Granary permanently raises the food storage cap by.</summary>
+    public const int GranaryFoodBonus = 10;
 
     /// <summary>Food Stored spent to place a Granary blueprint.</summary>
     public const int GranaryFoodCost = 10;
@@ -1729,14 +1729,15 @@ public sealed class World
 
     /// <summary>
     /// Decoupled Economy: the most Granaries the Village Heart will ever
-    /// build on its own — raised from 3 to 10 now that Granaries purely
-    /// expand <see cref="VillageHeart.MaxFoodCapacity"/> (Wealth
-    /// Accumulation) and no longer gate <see cref="VillageHeart.Population"/>
-    /// growth at all (see <see cref="VillageHeart.MaxPopulation"/>/the
-    /// Housing System), so a thriving tribe can bank a genuinely massive
-    /// food surplus: 10 + 10*25 = 260 MaxFoodCapacity at the cap.
+    /// build on its own — now that Granaries purely expand
+    /// <see cref="VillageHeart.MaxFoodCapacity"/> (Wealth Accumulation) and
+    /// no longer gate <see cref="VillageHeart.Population"/> growth at all
+    /// (see <see cref="VillageHeart.MaxPopulation"/>/the Housing System), a
+    /// thriving tribe can bank a genuinely massive food surplus: exactly
+    /// <see cref="BaseMaxFoodCapacity"/> + 25*<see cref="GranaryFoodBonus"/>
+    /// = 260 MaxFoodCapacity at the cap.
     /// </summary>
-    public const int MaxGranaries = 10;
+    public const int MaxGranaries = 25;
 
     /// <summary>Storage Phase: a Village Heart queues a Granary once its Food Stored comes within this many Food of its current MaxFoodCapacity.</summary>
     private const int GranaryStorageTriggerMargin = 5;
@@ -1759,6 +1760,15 @@ public sealed class World
     /// the only way left for it to keep growing.
     /// </summary>
     public const int MaxPopulationCap = 40;
+
+    /// <summary>The Split Fix: Food Stored the True Schism needs banked before it fires — no longer tied to MaxFoodCapacity, so a tribe sitting on a 260-capacity silo doesn't wait to fill it before relieving population pressure.</summary>
+    public const int SchismFoodThreshold = 100;
+
+    /// <summary>The Split Fix: exactly how many Bramblekin depart as Pioneers in a True Schism, regardless of the parent's total Population.</summary>
+    public const int SchismPioneerCount = 20;
+
+    /// <summary>The Split Fix: exactly how much Food Stored departs with the Pioneers in a True Schism.</summary>
+    public const int SchismPioneerFood = 50;
 
     /// <summary>Food Stored spent to place a Spore Farm blueprint.</summary>
     public const int SporeFarmFoodCost = 10;
@@ -2689,7 +2699,7 @@ public sealed class World
         if (berries >= MaxBerries)
             return;
 
-        Vector3 spot = RandomTerritorySpot(FoodShard.Radius + 0.3f, edgeMargin: 1f);
+        Vector3 spot = RandomWildernessSpot(FoodShard.Radius + 0.3f, edgeMargin: 1f);
         _pendingShardSpawns.Add(new FoodShard(spot, FoodShardKind.Berry));
     }
 
@@ -2771,6 +2781,46 @@ public sealed class World
                 amber.ClaimedBy = null;
                 amber.ClaimTimer = 0f;
             }
+        }
+    }
+
+    /// <summary>
+    /// Breaking the Death Loop: ticks <see cref="FoodShard.DespawnTimer"/>/
+    /// <see cref="AmberNode.DespawnTimer"/> down for every uncarried piece
+    /// of loot on the map and removes it once its timer runs out. Without
+    /// this, a pile of Food Shards scattered by a Base Razing, a hunted
+    /// Aphid, or a cracked Acorn sits forever, drawing wave after wave of
+    /// Gatherers into the same spot — often a rock cluster or a rival's
+    /// border — to die exactly the way the last one did. Carried loot never
+    /// counts down (see <see cref="FoodShard.IsCarried"/>/<see cref="AmberNode.IsCarried"/>):
+    /// only what's actually sitting abandoned on the ground is at risk.
+    /// Called directly at the top level of <see cref="Update"/> (not from
+    /// inside the Colony loop), so removing straight from FoodShards/
+    /// AmberNodes here — rather than through the deferred pending-removal
+    /// queues — is safe.
+    /// </summary>
+    private void UpdateLootDespawn(float deltaTime)
+    {
+        for (int i = FoodShards.Count - 1; i >= 0; i--)
+        {
+            FoodShard shard = FoodShards[i];
+            if (shard.IsCarried)
+                continue;
+
+            shard.DespawnTimer -= deltaTime;
+            if (shard.DespawnTimer <= 0f)
+                FoodShards.RemoveAt(i);
+        }
+
+        for (int i = AmberNodes.Count - 1; i >= 0; i--)
+        {
+            AmberNode amber = AmberNodes[i];
+            if (amber.IsCarried)
+                continue;
+
+            amber.DespawnTimer -= deltaTime;
+            if (amber.DespawnTimer <= 0f)
+                AmberNodes.RemoveAt(i);
         }
     }
 
@@ -2917,6 +2967,7 @@ public sealed class World
         UpdateSpiderRespawn(deltaTime);
         UpdateBerrySpawn(deltaTime);
         UpdateAphidRespawn(deltaTime);
+        UpdateLootDespawn(deltaTime);
 
         for (int i = _splats.Count - 1; i >= 0; i--)
         {
@@ -3388,24 +3439,33 @@ public sealed class World
     /// per-village loop): whenever Population is still below the Housing
     /// System's <see cref="VillageHeart.MaxPopulation"/> — entirely decoupled
     /// from MaxFoodCapacity/Granaries now — the Village Heart spends Food
-    /// Stored on new Bramblekin as soon as it reaches <see cref="FoodPerSprout"/>,
-    /// repeating until either there's less than a Sprout's worth left banked
-    /// or Population would reach MaxPopulation this frame — the latter check
-    /// uses a local running count rather than <see cref="VillageHeart.Population"/>
-    /// itself (which the Job Manager only recomputes once a frame from the
-    /// live Colony), so a Food Stored windfall can never sprout a village
-    /// past its own housing cap in a single frame. Once Population catches
-    /// up, sprouting is disabled outright and the Housing Phase (see
-    /// <see cref="UpdateAutoTent"/>) takes over instead.
+    /// Stored on new Bramblekin as soon as it reaches <see cref="FoodPerSprout"/>.
+    /// Strictly Enforced: Food is deducted and a Bramblekin spawned only
+    /// when doing so still keeps Population below MaxPopulation, checked
+    /// fresh on every single iteration via a local running count rather
+    /// than <see cref="VillageHeart.Population"/> itself (which the Job
+    /// Manager only recomputes once a frame from the live Colony) — a large
+    /// Food Stored windfall can spend down across several sprouts in one
+    /// frame, but the loop condition below is re-evaluated before every one
+    /// of them, so it can never push Population past MaxPopulation (the
+    /// "41/40" bug). Once Population catches up, sprouting is disabled
+    /// outright and the Housing Phase (see <see cref="UpdateAutoTent"/>)
+    /// takes over instead.
     /// </summary>
     private void UpdateAutoSprout(VillageHeart village)
     {
-        if (village.Population >= village.MaxPopulation)
-            return; // Housing Phase: no room for another Bramblekin until a Tent is built.
-
         int projectedPopulation = village.Population;
-        while (projectedPopulation < village.MaxPopulation && village.FoodStored >= FoodPerSprout)
+        while (true)
         {
+            // Strict Population Enforcement: re-checked before every single
+            // sprout, not just once before the loop -- Food is deducted and
+            // a Bramblekin spawned ONLY if Population (projected) is still
+            // strictly below MaxPopulation.
+            if (projectedPopulation >= village.MaxPopulation)
+                return;
+            if (village.FoodStored < FoodPerSprout)
+                return;
+
             village.FoodStored -= FoodPerSprout;
             SproutBramblekin(village);
             projectedPopulation++;
@@ -3524,17 +3584,19 @@ public sealed class World
     }
 
     /// <summary>
-    /// The True Schism, updated for the Housing System: once a Village
-    /// Heart is both physically maxed out on housing (Population at
+    /// The True Schism — The Split Fix: once a Village Heart is both
+    /// physically maxed out on housing (Population at
     /// <see cref="MaxPopulationCap"/> — it has nowhere left to sprout into,
-    /// full stop) and overflowing with Food Stored (at or beyond its own
-    /// MaxFoodCapacity), it splits in two rather than budding off a token
-    /// handful: half its current Gatherers and half its current Militia
-    /// (rounded down, same ratio as the parent, so a heavily militarized
-    /// tribe doesn't send off a defenseless splinter — at the 40-population
-    /// trigger this lands close to two 20-strong tribes) depart as
-    /// Pioneers, taking half the parent's Food Stored with them, to found a
-    /// brand new faction elsewhere on the map — see
+    /// full stop) and has banked at least <see cref="SchismFoodThreshold"/>
+    /// Food Stored, it splits in two immediately — it no longer waits to
+    /// fill a (now potentially 260-capacity) silo all the way to
+    /// MaxFoodCapacity before relieving the pressure. A fixed
+    /// <see cref="SchismPioneerCount"/> Bramblekin (same Gatherer/Militia
+    /// ratio as the parent, rounded down, so a heavily militarized tribe
+    /// doesn't send off a defenseless splinter) depart as Pioneers, taking a
+    /// fixed <see cref="SchismPioneerFood"/> Food Stored with them, to found
+    /// a brand new faction elsewhere on the map, leaving the parent at
+    /// roughly half Population and comfortably fed — see
     /// <see cref="Bramblekin.BecomePioneer"/> and <see cref="FoundVillage"/>.
     /// A fresh splinter this size is no longer easy prey, and Default Peace
     /// (<see cref="VillageHeart.HostileFactions"/>) means it starts out at
@@ -3549,17 +3611,29 @@ public sealed class World
             return;
         if (village.Population < MaxPopulationCap)
             return; // Housing isn't maxed out yet — still room to grow in place.
-        if (village.FoodStored < village.MaxFoodCapacity)
-            return; // Not yet overflowing with Food Stored.
+        if (village.FoodStored < SchismFoodThreshold)
+            return; // The Split Fix: 100 Food is plenty to send a party off safely — no need to wait for a full silo.
 
         int totalGatherers = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Gatherer);
         int totalMilitia = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
-        int pioneerGatherers = totalGatherers / 2;
-        int pioneerMilitia = totalMilitia / 2;
-        if (pioneerGatherers + pioneerMilitia < 1)
-            return; // Too small a population to split yet.
+        int totalLiving = totalGatherers + totalMilitia;
+        if (totalLiving < SchismPioneerCount)
+            return; // Someone died since Population was last counted; try again next frame.
 
-        var pioneers = new List<Bramblekin>(pioneerGatherers + pioneerMilitia);
+        // Same Gatherer/Militia ratio as the parent (rounded down), but
+        // adding up to a fixed SchismPioneerCount total rather than a flat
+        // half of each role — see SchismPioneerCount.
+        int pioneerGatherers = totalGatherers * SchismPioneerCount / totalLiving;
+        int pioneerMilitia = SchismPioneerCount - pioneerGatherers;
+        if (pioneerMilitia > totalMilitia)
+        {
+            pioneerMilitia = totalMilitia;
+            pioneerGatherers = SchismPioneerCount - pioneerMilitia;
+        }
+        if (pioneerGatherers > totalGatherers)
+            return; // Not enough of either role yet to make up a full pioneer party.
+
+        var pioneers = new List<Bramblekin>(SchismPioneerCount);
         int gathererCount = 0, militiaCount = 0;
         for (int i = Colony.Count - 1; i >= 0; i--)
         {
@@ -3585,13 +3659,12 @@ public sealed class World
         if (gathererCount < pioneerGatherers || militiaCount < pioneerMilitia)
             return; // Someone died mid-count; try again next frame.
 
-        int foodGiven = village.FoodStored / 2;
-        village.FoodStored -= foodGiven;
+        village.FoodStored -= SchismPioneerFood;
         village.HasActiveMigration = true;
 
         int newFactionId = _nextSchismFactionId++;
         Color newFactionColor = SchismFactionColors[(newFactionId - 1) % SchismFactionColors.Length];
-        var migration = new Migration(newFactionId, newFactionColor, RandomMigrationTarget(), village, pioneers.Count, foodGiven);
+        var migration = new Migration(newFactionId, newFactionColor, RandomMigrationTarget(), village, pioneers.Count, SchismPioneerFood);
 
         foreach (var pioneer in pioneers)
             pioneer.BecomePioneer(migration);
@@ -3788,30 +3861,45 @@ public sealed class World
         return null;
     }
 
-    /// <summary>A uniformly random faction Village Heart, if any exist.</summary>
-    private VillageHeart? RandomVillage() => Villages.Count == 0 ? null : Villages[Rng.Next(Villages.Count)];
+    /// <summary>True if <paramref name="point"/> falls inside ANY Village Heart's <see cref="VillageHeart.TerritoryRadius"/> ring, regardless of faction.</summary>
+    private bool IsInsideAnyTerritory(Vector3 point)
+    {
+        float radiusSquared = VillageHeart.TerritoryRadius * VillageHeart.TerritoryRadius;
+        for (int i = Villages.Count - 1; i >= 0; i--)
+        {
+            if (Vector3.DistanceSquared(point, Villages[i].Center) <= radiusSquared)
+                return true;
+        }
+        return false;
+    }
 
     /// <summary>
-    /// Territory Resource Spawning: a random open point inside a random
-    /// faction's Territory Ring (<see cref="VillageHeart.TerritoryRadius"/>),
-    /// rather than anywhere across the whole map — the Acorn and wild Berries
-    /// both spawn this way (see <see cref="RandomAcornSpot"/>/<see cref="UpdateBerrySpawn"/>)
-    /// so every faction has a local food supply and Gatherers aren't
-    /// commuting the length of a 60x60 m map before Upkeep starves them.
-    /// Falls back to anywhere open on the map on the rare chance no
-    /// territory has room.
+    /// Full Map Resource Spawning (the 60x60 Fix): a uniformly random open
+    /// point anywhere across the entire terrain — not seeded near any one
+    /// faction's territory the way the old Territory Resource Spawning was
+    /// — with every Village Heart's <see cref="VillageHeart.TerritoryRadius"/>
+    /// ring explicitly excluded (see <see cref="IsInsideAnyTerritory"/>), so
+    /// wild Berries, Acorns and Amber populate the empty wilderness between
+    /// tribes instead of clustering into whatever small patch of the map
+    /// those rings happen to cover. Falls back to whatever the last (still
+    /// open, just not territory-clear) candidate was if nothing outside
+    /// every ring turns up in a reasonable number of tries — better a rare
+    /// spawn just inside someone's border than none at all.
     /// </summary>
-    private Vector3 RandomTerritorySpot(float clearance, float edgeMargin)
+    private Vector3 RandomWildernessSpot(float clearance, float edgeMargin)
     {
-        for (int attempt = 0; attempt < 10; attempt++)
+        Vector3 candidate = Vector3.Zero;
+        for (int attempt = 0; attempt < 30; attempt++)
         {
-            if (RandomVillage() is not { } village)
-                break;
-            if (RandomPointNearVillage(village, VillageHeart.TerritoryRadius, clearance) is { } point)
-                return point;
+            candidate = Terrain.RandomPoint(Rng, edgeMargin);
+            if (IsBlocked(candidate, clearance) || ShadowOver(candidate, clearance) is not null)
+                continue;
+            if (IsInsideAnyTerritory(candidate))
+                continue;
+            return candidate;
         }
 
-        return RandomFreePoint(clearance, edgeMargin);
+        return candidate;
     }
 
     /// <summary>
@@ -4252,15 +4340,15 @@ public sealed class World
         Acorns.Add(new Acorn(RandomAcornSpot()));
     }
 
-    /// <summary>Somewhere open inside a random faction's Territory Ring, not on top of its Village Heart — see <see cref="RandomTerritorySpot"/>.</summary>
-    private Vector3 RandomAcornSpot() => RandomTerritorySpot(Acorn.Radius + 0.5f, edgeMargin: 1.5f);
+    /// <summary>Somewhere open anywhere on the map, outside every Village Heart's Territory Ring — see <see cref="RandomWildernessSpot"/>.</summary>
+    private Vector3 RandomAcornSpot() => RandomWildernessSpot(Acorn.Radius + 0.5f, edgeMargin: 1.5f);
 
     /// <summary>
     /// Tycoon Economy: tops the map-wide Amber population back up to
     /// <see cref="MaxAmberOnMap"/> every <see cref="AmberSpawnInterval"/>
     /// seconds — kept scarce (at most 3 on the map at once) and spread
-    /// anywhere valid on the map rather than confined to any one faction's
-    /// territory, same pattern as Acorns and Berries otherwise.
+    /// anywhere valid across the whole map, outside every Village Heart's
+    /// Territory Ring, same pattern as Acorns and Berries.
     /// </summary>
     private void UpdateAmberSpawn(float deltaTime)
     {
@@ -4272,7 +4360,7 @@ public sealed class World
         if (AmberNodes.Count >= MaxAmberOnMap)
             return;
 
-        AmberNodes.Add(new AmberNode(RandomFreePoint(AmberNode.Radius + 0.5f, edgeMargin: 1.5f)));
+        AmberNodes.Add(new AmberNode(RandomWildernessSpot(AmberNode.Radius + 0.5f, edgeMargin: 1.5f)));
     }
 }
 
@@ -4633,6 +4721,18 @@ public sealed class AmberNode
     /// <summary>Seconds since <see cref="ClaimedBy"/> was last set. Reset to 0 on every new claim; ticked and enforced by World.</summary>
     public float ClaimTimer { get; set; }
 
+    /// <summary>Breaking the Death Loop: seconds an uncarried Amber sits on the map before it despawns — see <see cref="DespawnTimer"/>.</summary>
+    public const float DespawnLifespan = 60f;
+
+    /// <summary>
+    /// Counts down from <see cref="DespawnLifespan"/>; once it reaches 0
+    /// while this Amber isn't being carried, World removes it outright
+    /// (see <see cref="World.UpdateLootDespawn"/>) so a pile of loot
+    /// dropped by dead Bramblekin can't sit forever as bait that lures more
+    /// Gatherers to their deaths in the same spot.
+    /// </summary>
+    public float DespawnTimer { get; set; } = DespawnLifespan;
+
     public AmberNode(Vector3 groundPoint) => Position = groundPoint;
 
     /// <summary>Draws the gem resting on the ground at (or carried above) <paramref name="groundPoint"/>.</summary>
@@ -4694,6 +4794,19 @@ public sealed class FoodShard
 
     /// <summary>Seconds since <see cref="ClaimedBy"/> was last set. Reset to 0 on every new claim; ticked and enforced by World.</summary>
     public float ClaimTimer { get; set; }
+
+    /// <summary>Breaking the Death Loop: seconds an uncarried Food Shard sits on the map before it despawns — see <see cref="DespawnTimer"/>.</summary>
+    public const float DespawnLifespan = 60f;
+
+    /// <summary>
+    /// Counts down from <see cref="DespawnLifespan"/>; once it reaches 0
+    /// while this shard isn't being carried, World removes it outright
+    /// (see <see cref="World.UpdateLootDespawn"/>) so a pile of loot
+    /// dropped by dead Bramblekin (or an old Aphid-hunt/Acorn-crack scatter)
+    /// can't sit forever as bait that lures more Gatherers to their deaths
+    /// in the same spot.
+    /// </summary>
+    public float DespawnTimer { get; set; } = DespawnLifespan;
 
     public FoodShard(Vector3 groundPoint, FoodShardKind kind = FoodShardKind.Cracked)
     {
