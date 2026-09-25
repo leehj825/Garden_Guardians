@@ -375,7 +375,7 @@ public static class Game
 
         const int titleSize = 44, subtitleSize = 28;
         string title = "World Dead.";
-        string subtitle = $"Tap anywhere to Seed new Life (Cost: {(int)MiracleManager.GenesisFaithCost} Faith)";
+        string subtitle = "Tap anywhere to Seed new Life (Free)";
         int titleWidth = Raylib.MeasureText(title, titleSize);
         int subtitleWidth = Raylib.MeasureText(subtitle, subtitleSize);
         int centerX = Raylib.GetScreenWidth() / 2;
@@ -1170,23 +1170,22 @@ public sealed class MiracleInput
     }
 
     /// <summary>
-    /// Genesis: raycasts the tap onto the terrain and, if it lands and the
-    /// player can afford <see cref="MiracleManager.GenesisFaithCost"/>
-    /// Faith, spends it and reseeds the world right there. A tap that
-    /// misses the terrain, or lands without enough Faith banked, is simply
-    /// ignored — the blinking prompt (<see cref="Game.DrawGenesisPrompt"/>)
-    /// stays up and the player just tries again once Faith regenerates.
+    /// Free Extinction Recovery: raycasts the tap onto the terrain and, if
+    /// it lands, reseeds the world right there — no Faith cost. Total
+    /// extinction already means <see cref="World.Faith"/> has no Shrines or
+    /// Morale left worshipping it, so gating the player's only way back
+    /// behind the very resource extinction stops generating would be a hard
+    /// lock; Genesis only ever runs from <see cref="World.IsWorldExtinct"/>
+    /// in the first place; a tap that misses the terrain is simply ignored
+    /// — the blinking prompt (<see cref="Game.DrawGenesisPrompt"/>) stays up
+    /// and the player just taps again.
     /// </summary>
     private void TryGenesis(Vector2 screenPosition, Camera3D camera, World world)
     {
-        if (world.Faith < MiracleManager.GenesisFaithCost)
-            return;
-
         Vector3? groundPoint = PickGround(camera, world.Terrain, screenPosition);
         if (groundPoint is null)
             return;
 
-        world.TrySpendFaith(MiracleManager.GenesisFaithCost);
         world.Genesis(groundPoint.Value);
     }
 
@@ -1481,9 +1480,6 @@ public sealed class MiracleManager
     /// <summary>Faith spent per Gust.</summary>
     public const float GustFaithCost = 10f;
 
-    /// <summary>Genesis: Faith spent to reseed the world from total extinction — see <see cref="World.Genesis"/>.</summary>
-    public const float GenesisFaithCost = 50f;
-
     /// <summary>How long the wind-streak visual plays for, in seconds.</summary>
     public const float GustVisualDuration = 1f;
 
@@ -1731,8 +1727,8 @@ public sealed class World
     /// <summary>Food Stored spent to place a Spore Farm blueprint.</summary>
     public const int SporeFarmFoodCost = 10;
 
-    /// <summary>Population needed before the Village Heart will build a Spore Farm — the Domestic Spore Farm: a big tribe's internal food loop, so its Gatherers don't need to cross the map for every Berry.</summary>
-    public const int SporeFarmPopulationThreshold = 15;
+    /// <summary>Population needed before the Village Heart will build a Spore Farm — the Domestic Spore Farm: a big tribe's internal food loop, so its Gatherers don't need to cross the map for every Berry. Lowered from 15 so it lands early enough to actually save a struggling tribe, not just reward one that's already thriving.</summary>
+    public const int SporeFarmPopulationThreshold = 10;
 
     /// <summary>How far (m) from the Village Heart a Spore Farm may be placed — kept close, near the village's centre.</summary>
     private const float SporeFarmPlacementRadius = 5f;
@@ -3017,12 +3013,41 @@ public sealed class World
     /// <summary>The 20-Meter Territory Rule: whether <paramref name="claimant"/> has anything to gather, preferring <paramref name="home"/>'s territory but falling back to the wider map.</summary>
     public bool HasAvailableFoodFor(Bramblekin claimant, VillageHeart? home) => NearestAvailableShard(claimant.Position, claimant, home) is not null;
 
+    /// <summary>Safe Gathering (The Danger Penalty): the artificial distance a border-crossing food/Acorn target gets saddled with for comparison purposes, so a Gatherer only ever picks it over safe wild food or its own domestic Spore Farm when literally nothing safe is left anywhere on the map.</summary>
+    private const float ForeignTerritoryPenalty = 1000f;
+
     /// <summary>
-    /// The 20-Meter Territory Rule + Dibs, sorted by distance: among
-    /// unclaimed (or self-claimed) shards within <see cref="TerritoryTargetingRadius"/>
-    /// of <paramref name="home"/>, the nearest one to <paramref name="from"/>.
-    /// Only if none qualify locally does this fall back to the nearest
-    /// anywhere on the map — a Gatherer always prefers its own doorstep.
+    /// Safe Gathering (The Danger Penalty): the true (non-squared) distance
+    /// from <paramref name="from"/> to <paramref name="point"/>, plus
+    /// <see cref="ForeignTerritoryPenalty"/> if <paramref name="point"/>
+    /// falls strictly inside another faction's <see cref="TerritoryTargetingRadius"/>
+    /// (20m) territory ring — a Gatherer's own faction's territory never
+    /// counts as foreign, so its own doorstep or its own Spore Farm are
+    /// never penalized. Shared by <see cref="NearestAvailableShard"/> and
+    /// <see cref="NearestClaimableAcorn"/> so both "closest Food" searches
+    /// steer the same way around a rival's granary.
+    /// </summary>
+    private float DangerDistance(Vector3 from, Vector3 point, int ownFactionId)
+    {
+        float distance = Vector3.Distance(from, point);
+        foreach (VillageHeart village in Villages)
+        {
+            if (village.FactionID != ownFactionId && Vector3.Distance(point, village.Center) < TerritoryTargetingRadius)
+                return distance + ForeignTerritoryPenalty;
+        }
+        return distance;
+    }
+
+    /// <summary>
+    /// The 20-Meter Territory Rule + Dibs + Safe Gathering (The Danger
+    /// Penalty, see <see cref="DangerDistance"/>), sorted by distance:
+    /// among unclaimed (or self-claimed) shards within
+    /// <see cref="TerritoryTargetingRadius"/> of <paramref name="home"/>,
+    /// the nearest (danger-adjusted) one to <paramref name="from"/>. Only
+    /// if none qualify locally does this fall back to the nearest anywhere
+    /// on the map — a Gatherer always prefers its own doorstep, then safe
+    /// wild food, and only risks a rival's territory as an absolute last
+    /// resort.
     /// </summary>
     public FoodShard? NearestAvailableShard(Vector3 from, Bramblekin claimant, VillageHeart? home)
     {
@@ -3042,7 +3067,7 @@ public sealed class World
             if (!IsAvailable(shard, claimant))
                 continue;
 
-            float distance = Vector3.DistanceSquared(from, shard.Position);
+            float distance = DangerDistance(from, shard.Position, claimant.FactionID);
             if (distance < bestAnyDistance)
             {
                 bestAny = shard;
@@ -3400,8 +3425,9 @@ public sealed class World
     /// with <see cref="GenesisGathererCount"/> Gatherers spawned right
     /// beside it so it isn't left standing empty. Called from
     /// <see cref="MiracleInput"/>'s tap handling once it's confirmed the
-    /// world is dead and the player can afford <see cref="MiracleManager.GenesisFaithCost"/>
-    /// Faith.
+    /// world is dead — Free Extinction Recovery: no Faith cost, since a
+    /// totally extinct world has nobody left worshipping to ever regenerate
+    /// Faith with in the first place.
     /// </summary>
     public void Genesis(Vector3 groundPoint)
     {
@@ -3705,10 +3731,13 @@ public sealed class World
     }
 
     /// <summary>
-    /// Cooperative Acorn Cracking: the nearest Acorn <paramref name="gatherer"/>
+    /// Cooperative Acorn Cracking + Safe Gathering (The Danger Penalty, see
+    /// <see cref="DangerDistance"/>): the nearest Acorn <paramref name="gatherer"/>
     /// (a Chitin-Mallet Gatherer) either already holds a claim on or can
     /// still claim a free slot on — <see cref="Acorn.MaxClaimants"/> may work
-    /// the same Acorn at once. Sorted by distance like any other target.
+    /// the same Acorn at once. Sorted by danger-adjusted distance like any
+    /// other target, so a Gatherer only cracks an Acorn sitting inside a
+    /// rival's territory once nothing safer is available.
     /// </summary>
     public Acorn? NearestClaimableAcorn(Vector3 from, Bramblekin gatherer)
     {
@@ -3720,7 +3749,7 @@ public sealed class World
             if (!acorn.IsClaimedBy(gatherer) && acorn.Claimants.Count >= Acorn.MaxClaimants)
                 continue;
 
-            float distance = Vector3.DistanceSquared(from, acorn.Position);
+            float distance = DangerDistance(from, acorn.Position, gatherer.FactionID);
             if (distance < bestDistance)
             {
                 best = acorn;
@@ -4370,8 +4399,9 @@ public sealed class Building
     public const float GranaryRadius = 0.7f;
     public const float GranaryHeight = 1.1f;
 
-    public const float SporeFarmRadius = 1.0f;
-    private const float SporeFarmHeight = 0.05f;
+    /// <summary>Large enough, and drawn in a saturated Dark Green well off the grass-green ground plane's hue (see <see cref="Draw"/>), to read as an obviously distinct landmark rather than blending into the terrain.</summary>
+    public const float SporeFarmRadius = 1.6f;
+    private const float SporeFarmHeight = 0.12f;
 
     /// <summary>Seconds between each Berry a finished Spore Farm spawns on top of itself — fast enough that a large tribe's Gatherers have a safe, internal food loop and never need to cross the map for every Berry.</summary>
     public const float SporeFarmInterval = 2.5f;
@@ -4428,10 +4458,13 @@ public sealed class Building
             return;
         }
 
-        // Spore Farm: a flat green/brown mushroom bed, barely raised off the ground.
+        // Spore Farm: a large, saturated Dark Green disc, deliberately far
+        // enough from the grass-green ground plane's own hue (86, 150, 60)
+        // that it reads as an obvious landmark at a glance rather than
+        // blending in.
         var patchCenter = Position + new Vector3(0, SporeFarmHeight / 2f, 0);
-        Raylib.DrawCylinder(patchCenter, SporeFarmRadius, SporeFarmRadius, SporeFarmHeight, 20, new Color(95, 130, 55, 255));
-        Raylib.DrawCylinderWires(patchCenter, SporeFarmRadius, SporeFarmRadius, SporeFarmHeight, 20, new Color(70, 55, 30, 255));
+        Raylib.DrawCylinder(patchCenter, SporeFarmRadius, SporeFarmRadius, SporeFarmHeight, 24, new Color(20, 95, 35, 255));
+        Raylib.DrawCylinderWires(patchCenter, SporeFarmRadius, SporeFarmRadius, SporeFarmHeight, 24, new Color(10, 45, 15, 255));
     }
 }
 
