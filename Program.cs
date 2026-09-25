@@ -1,36 +1,39 @@
 // =============================================================================
-//  Garden Guardians — Phase 1 Touch-Physics Prototype
+//  Garden Guardians — Pure Autonomous Simulation
 // -----------------------------------------------------------------------------
-//  Goal of this prototype (see Garden_Guardians_Roadmap.md, Phase 1):
-//    * A fixed isometric camera looking down at a patch of backyard "terrain".
-//    * A tiny hand-rolled physics loop (Raylib has no rigidbodies): gravity,
-//      ground contact, and solid pebbles that stack or roll off each other.
-//    * A two-state input model: click the "Equip Pebble" button, then click the
-//      ground to cast the Pebble-Drop miracle at that spot.
-//    * The God's Shadow: a cast pebble is telegraphed by a dark shadow on the
-//      ground for 1.5 s before it actually drops.
-//    * A colony of Bramblekin that wander, steer around rocks, and scurry out
-//      of any God's Shadow at 3x speed (see Garden_Guardians_Design.md).
-//    * The first economic loop: crack an Acorn with a pebble, and the
-//      Bramblekin carry the Food Shards back to the Village Heart.
-//    * The first predator: a Wolf Spider that hunts busy workers by
-//      vibration, and can be distracted by the thud of a dropped pebble —
-//      or crushed by a direct hit.
-//    * The macro-economy: every 5 food sprouts a new Bramblekin, and the
-//      colony's worship refills the Faith that miracles cost.
+//  Design (see Garden_Guardians_Roadmap.md/Garden_Guardians_Design.md):
+//    * A fixed isometric camera looking down at a 60 m x 60 m patch of
+//      "terrain", with a mobile-friendly one-finger-pan/two-finger-pinch
+//      camera controller layered on top.
+//    * Zero player intervention: there is no god-game lever (no Pebble-Drop,
+//      no Gust, no Faith) left to pull. Every faction's Village Heart runs
+//      its own economy end to end — Auto-Sprout, Auto-Conscription, farm and
+//      building construction, Militia defense — entirely on its own. The
+//      only two taps left are inspecting a faction (WorldTapInput) and
+//      Genesis (reseeding the world after total extinction, since an
+//      autonomous simulation still needs some way back from an empty map).
+//    * A colony of Bramblekin that wander, gather, build and fight, steering
+//      around obstacles (Village Hearts) and each faction's Wolf Spider
+//      threat.
+//    * The economic loop: crack an Acorn (Cooperative Acorn Cracking, up to
+//      3 Chitin-Mallet Gatherers working it together) or forage a wild
+//      Berry, and the Bramblekin carry the Food Shards back to the Village
+//      Heart; Amber and a Trading Post round out a Tycoon Economy layer.
+//    * The predator: a Wolf Spider that hunts busy workers by vibration,
+//      fought off by a faction's own Militia.
 //
 //  Safety: entities are created and destroyed constantly (sprouts, spider
-//  kills, expiring pebbles), so every list that can change size mid-frame is
+//  kills, deaths in combat), so every list that can change size mid-frame is
 //  either walked with a reverse for-loop or mutated through a deferred
 //  pending-add/pending-remove queue processed once at the end of the frame,
 //  never directly inside another entity's Update().
 //
-//  Scale convention: 1 world unit = 1 meter. The terrain is a 20 m x 20 m plane
-//  centred on the origin, and "up" is +Y. Gravity is 9.8 m/s² downwards.
+//  Scale convention: 1 world unit = 1 meter. The terrain is a 60 m x 60 m plane
+//  centred on the origin, and "up" is +Y.
 //
 //  Everything lives in this single file for now; each class is small and
-//  self-contained so it can be lifted into its own file once the prototype
-//  graduates into the real project structure.
+//  self-contained so it can be lifted into its own file once the project
+//  graduates into a fuller project structure.
 // =============================================================================
 
 using System.Numerics;
@@ -74,8 +77,7 @@ public static class Game
 
     /// <summary>
     /// Largest time step the game simulates in one frame. A hitch (window
-    /// dragged, app resumed) would otherwise teleport walkers and tunnel
-    /// pebbles through the ground.
+    /// dragged, app resumed) would otherwise teleport walkers past obstacles.
     /// </summary>
     private const float MaxDeltaTime = 1f / 20f;
 
@@ -84,9 +86,9 @@ public static class Game
 
     /// <summary>
     /// Debug Time Scale. Rather than feeding World.Update() an oversized
-    /// deltaTime at high multiples (which would let pebbles tunnel through
-    /// the ground and walkers skip past obstacles in a single giant physics
-    /// step), the main loop below instead calls World.Update() this many
+    /// deltaTime at high multiples (which would let walkers skip past
+    /// obstacles in a single giant step), the main loop below instead calls
+    /// World.Update() this many
     /// times per rendered frame, each with its own normal, clamped
     /// deltaTime — every timer, cooldown and movement speed inside it ends
     /// up advancing exactly TimeScale times faster in wall-clock terms,
@@ -104,19 +106,17 @@ public static class Game
             Raylib.SetConfigFlags(ConfigFlags.Msaa4xHint | ConfigFlags.ResizableWindow);
         }
 
-        Raylib.InitWindow(ScreenWidth, ScreenHeight, "Garden Guardians — Phase 1 Touch-Physics Prototype");
+        Raylib.InitWindow(ScreenWidth, ScreenHeight, "Garden Guardians");
         Raylib.SetTargetFPS(TargetFps);
 
         // --- Build the world -------------------------------------------------
         var camera = IsometricCamera.Create(target: Vector3.Zero, distance: 30f);
         var world = new World(new Terrain(size: 60f), new Random(), ColonySize);
         world.SpawnSpiderNearVillage();
-        var input = new MiracleInput();
+        var input = new WorldTapInput();
         var touchCamera = new TouchCameraController();
-        var pebbleButton = new UiButton(new Rectangle(20, 20, 220, 50));
-        var gustButton = new UiButton(new Rectangle(250, 20, 180, 50));
-        var speedDownButton = new UiButton(new Rectangle(20, 80, 50, 44));
-        var speedUpButton = new UiButton(new Rectangle(130, 80, 50, 44));
+        var speedDownButton = new UiButton(new Rectangle(20, 20, 50, 44));
+        var speedUpButton = new UiButton(new Rectangle(130, 20, 50, 44));
 
         // --- Main loop -------------------------------------------------------
         while (!Raylib.WindowShouldClose())
@@ -124,17 +124,18 @@ public static class Game
             float rawDeltaTime = MathF.Min(Raylib.GetFrameTime(), MaxDeltaTime);
 
             // 0) Mobile camera: one-finger drag pans, two-finger pinch zooms.
-            //    Runs before the miracle input below so the rest of the frame
+            //    Runs before the tap input below so the rest of the frame
             //    sees an already-settled camera.
             touchCamera.Update(ref camera, world.Terrain.Size / 2f);
 
-            // 1) Input: a pure God Game — the player's only lever on the
-            //    world is a miracle. Conscription, Sprouting and Village
-            //    Building are all the Village Heart's own business now, run
-            //    autonomously inside world.Update() below with no UI of
-            //    their own to intercept a press first. The Debug Time Scale
-            //    +/- buttons are checked first and, if hit, swallow the click
-            //    so it never also lands as a ground click/miracle cast.
+            // 1) Input: Pure Simulation — the player has no lever on the
+            //    world any more. Conscription, Sprouting and Village
+            //    Building are all the Village Heart's own business, run
+            //    autonomously inside world.Update() below. The only taps
+            //    left are inspecting a faction and Genesis (see
+            //    WorldTapInput). The Debug Time Scale +/- buttons are
+            //    checked first and, if hit, swallow the click so it never
+            //    also lands as a ground tap.
             bool mousePressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
             Vector2 mousePosition = Raylib.GetMousePosition();
             if (mousePressed && speedDownButton.Contains(mousePosition))
@@ -142,7 +143,7 @@ public static class Game
             else if (mousePressed && speedUpButton.Contains(mousePosition))
                 IncreaseTimeScale();
             else
-                input.Update(rawDeltaTime, camera, world, pebbleButton, gustButton);
+                input.Update(camera, world);
 
             // 2) Simulation: TimeScale runs World.Update() several times per
             //    rendered frame (see _timeScale's own doc comment) rather
@@ -157,25 +158,17 @@ public static class Game
 
             Raylib.BeginMode3D(camera);
             world.Draw();
-            input.DrawCursorPreview(camera, world.Terrain);
             Raylib.EndMode3D();
 
             // 2D overlay (UI) is drawn after EndMode3D so it sits on top.
             DrawHealthBars(camera, world);
             DrawFloatingTexts(camera, world);
-            pebbleButton.Draw(input.PebbleButtonLabel,
-                              highlighted: input.State == InputState.PebbleEquipped,
-                              disabled: !input.CanAffordPebble(world));
-            gustButton.Draw(input.GustButtonLabel,
-                            highlighted: input.State is InputState.GustEquipped or InputState.GustDragging,
-                            disabled: !input.CanAffordGust(world));
             speedDownButton.Draw("-", highlighted: false, disabled: _timeScale <= TimeScaleSteps[0]);
             DrawSpeedLabel();
             speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
-            DrawFaithMeter(world.Faith);
             DrawColonyPanel(world);
             DrawGenesisPrompt(world);
-            DrawHud(input, world);
+            DrawHud(world);
 
             Raylib.EndDrawing();
 
@@ -203,10 +196,10 @@ public static class Game
         _timeScale = TimeScaleSteps[Math.Min(TimeScaleSteps.Length - 1, index + 1)];
     }
 
-    /// <summary>The current speed ("5x"), on a small panel in the gap between the +/- buttons — gold once sped up, same as an armed miracle button.</summary>
+    /// <summary>The current speed ("5x"), on a small panel in the gap between the +/- buttons — gold once sped up.</summary>
     private static void DrawSpeedLabel()
     {
-        const int fontSize = 22, x = 70, width = 60, y = 80, height = 44;
+        const int fontSize = 22, x = 70, width = 60, y = 20, height = 44;
         Raylib.DrawRectangle(x, y, width, height, PanelFill);
         Raylib.DrawRectangleLines(x, y, width, height, PanelInk);
 
@@ -279,43 +272,6 @@ public static class Game
     }
 
     /// <summary>
-    /// The Faith meter, top centre: a bar that fills toward
-    /// <see cref="World.MaxFaith"/>, with a tick at each miracle's cost (Gust
-    /// at 10, Pebble-Drop at 30) so the player can see at a glance what they
-    /// can currently afford.
-    /// </summary>
-    private static void DrawFaithMeter(float faith)
-    {
-        const int width = 380, height = 56, barHeight = 16;
-        int x = (Raylib.GetScreenWidth() - width) / 2;
-        const int y = 18;
-        bool canAffordAnything = faith >= MiracleManager.GustFaithCost;
-
-        Raylib.DrawRectangle(x, y, width, height, PanelFill);
-        Raylib.DrawRectangleLines(x, y, width, height, PanelInk);
-
-        string text = $"Faith: {(int)faith} / {(int)World.MaxFaith}";
-        Raylib.DrawText(text, x + 12, y + 6, 24, canAffordAnything ? PanelInk : new Color(170, 60, 40, 255));
-
-        // Bar: gold once at least the cheapest miracle is affordable, dull otherwise.
-        var bar = new Rectangle(x + 12, y + height - barHeight - 8, width - 24, barHeight);
-        Raylib.DrawRectangleRec(bar, new Color(225, 215, 190, 255));
-        var fill = bar with { Width = bar.Width * Math.Clamp(faith / World.MaxFaith, 0f, 1f) };
-        Raylib.DrawRectangleRec(fill, canAffordAnything ? new Color(235, 185, 50, 255) : new Color(190, 160, 110, 255));
-        Raylib.DrawRectangleLinesEx(bar, 1f, PanelInk);
-
-        // Cost ticks, one per miracle.
-        DrawCostTick(bar, MiracleManager.GustFaithCost);
-        DrawCostTick(bar, MiracleManager.PebbleFaithCost);
-    }
-
-    private static void DrawCostTick(Rectangle bar, float cost)
-    {
-        float tickX = bar.X + bar.Width * (cost / World.MaxFaith);
-        Raylib.DrawLineEx(new Vector2(tickX, bar.Y - 3), new Vector2(tickX, bar.Y + bar.Height + 3), 2f, PanelInk);
-    }
-
-    /// <summary>
     /// Contextual Faction UI: Food (against the storage cap), Population,
     /// Militia and Morale for whichever single faction <see cref="World.SelectedFactionID"/>
     /// currently points at (tap a Village Heart to switch — see
@@ -370,7 +326,7 @@ public static class Game
     /// center-screen prompt (twice a second, driven off <see cref="Raylib.GetTime"/>
     /// so it needs no state of its own) telling the player to tap anywhere
     /// to reseed the world. The actual tap handling lives in
-    /// <see cref="MiracleInput.HandlePress"/>/TryGenesis.
+    /// <see cref="WorldTapInput.HandlePress"/>/TryGenesis.
     /// </summary>
     private static void DrawGenesisPrompt(World world)
     {
@@ -420,21 +376,15 @@ public static class Game
         baseColor.A);
 
     /// <summary>Small help text and debug counters in the bottom-left corner.</summary>
-    private static void DrawHud(MiracleInput input, World world)
+    private static void DrawHud(World world)
     {
         int Count(BramblekinState state) => world.Colony.Count(b => b.State == state);
 
         int y = Raylib.GetScreenHeight() - 60;
-        string hint = input.State switch
-        {
-            InputState.PebbleEquipped => $"Click the ground to drop the pebble ({MiracleManager.PebbleFaithCost} Faith).",
-            InputState.GustEquipped => $"Click and drag across the ground, then release to blow a Gust ({MiracleManager.GustFaithCost} Faith).",
-            InputState.GustDragging => "Release to blow the Gust in this direction.",
-            _ => "A pure God Game: Pebble-Drop and Gust are all you command. The Village Heart runs itself — sprouting, drafting Militia and building Granaries on its own — while Militia trade blows with the spider toe-to-toe, and a Gust tumbles one mid-hunt.",
-        };
+        const string hint = "A pure autonomous simulation: no player intervention. Every Village Heart runs itself — sprouting, drafting Militia, farming and building on its own — while Militia trade blows with the spider toe-to-toe.";
         Raylib.DrawText(hint, 20, y, 20, Color.DarkGray);
         Raylib.DrawText(
-            $"Pebbles: {world.Physics.Count}   Bramblekin: {world.Colony.Count} " +
+            $"Bramblekin: {world.Colony.Count} " +
             $"(gathering {Count(BramblekinState.Gathering)}, returning {Count(BramblekinState.Returning)}, " +
             $"fleeing {Count(BramblekinState.Fleeing)}, defending {Count(BramblekinState.Defending)}, " +
             $"hunting {Count(BramblekinState.Hunting)}, raiding {Count(BramblekinState.Raiding)}, lost {world.Casualties})   " +
@@ -489,8 +439,8 @@ public static class IsometricCamera
 /// <summary>
 /// Mobile camera controls layered on top of the fixed isometric view. A
 /// single finger is reserved entirely for World interaction — UI clicks and
-/// Miracle targeting (tapping Pebble-Drop, dragging out a Gust) — and never
-/// moves the camera. Only a two-finger gesture drives the camera: the
+/// <see cref="WorldTapInput"/>'s taps — and never moves the camera. Only a
+/// two-finger gesture drives the camera: the
 /// midpoint's drag pans it across the terrain's X/Z plane, and the pinch
 /// distance's change moves it closer to or further from its Target. Both
 /// translate <see cref="Camera3D.Position"/> and <see cref="Camera3D.Target"/>
@@ -519,8 +469,8 @@ public sealed class TouchCameraController
     {
         int touchCount = Raylib.GetTouchPointCount();
 
-        // Two fingers only: a single touch belongs entirely to MiracleInput
-        // (UI buttons, Pebble-Drop taps, Gust drags) and must never also pan
+        // Two fingers only: a single touch belongs entirely to WorldTapInput
+        // (UI buttons, faction-select/Genesis taps) and must never also pan
         // the camera underneath it.
         if (touchCount == 2)
         {
@@ -669,8 +619,6 @@ public sealed class Terrain
     /// Intersects a ray with the infinite horizontal plane y = GroundHeight,
     /// with no bound on where that point falls — unlike <see cref="Raycast"/>,
     /// a hit off the edge of the terrain (or well beyond it) still counts.
-    /// Used for The Gust, where a swipe only needs a direction and may start
-    /// or end past the terrain's edge.
     /// </summary>
     public Vector3? RaycastGroundPlane(Ray ray)
     {
@@ -700,491 +648,58 @@ public sealed class Terrain
 }
 
 // =============================================================================
-//  Physics
+//  Input
 // =============================================================================
 
 /// <summary>
-/// A minimal rigid body: a sphere with a position, a velocity and a radius.
-/// No rotation — pebbles slide rather than truly roll — but that is plenty
-/// for stacking, rolling off each other and coming to rest.
-///
-/// Every object has a limited lifetime. Over its last
-/// <see cref="ShrinkDuration"/> seconds it shrinks to nothing (so anything
-/// resting on it settles gently and walkers can pass), then it is removed.
+/// Pure Simulation: the player has no lever on the world any more — no
+/// miracles, no Faith. The only two taps left are a Village Heart tap
+/// (inspects that faction, see <see cref="World.TrySelectFactionAt"/>) and,
+/// once every faction is gone, a tap anywhere on the ground to reseed the
+/// world (Genesis, see <see cref="World.Genesis"/>) — an autonomous
+/// simulation still needs some way back from total extinction rather than
+/// sitting on a permanently empty map forever.
 /// </summary>
-public sealed class PhysicsObject
+public sealed class WorldTapInput
 {
-    /// <summary>How long the shrink-away at the end of an object's life takes, in seconds.</summary>
-    public const float ShrinkDuration = 1.5f;
-
-    private readonly float _fullRadius;
-
-    public Vector3 Position;
-    public Vector3 Velocity;
-
-    /// <summary>Current sphere radius in meters (shrinks at the end of the object's life).</summary>
-    public float Radius => _fullRadius * Scale;
-
-    /// <summary>Seconds since the object was spawned.</summary>
-    public float Age { get; private set; }
-
-    /// <summary>Total lifetime in seconds; the object is removed when <see cref="Age"/> reaches it.</summary>
-    public float Lifetime { get; }
-
-    /// <summary>1 for most of its life, falling to 0 during the final shrink.</summary>
-    public float Scale => Math.Clamp((Lifetime - Age) / ShrinkDuration, 0f, 1f);
-
-    /// <summary>True once the object has started shrinking away.</summary>
-    public bool IsExpiring => Age >= Lifetime - ShrinkDuration;
-
-    public bool IsExpired => Age >= Lifetime;
-
-    /// <summary>Mass in kilograms. Heavier bodies are pushed less in collisions.</summary>
-    public float Mass { get; }
-
-    public float InverseMass => 1f / Mass;
-
-    public Color Color { get; }
-
-    /// <summary>True while the sphere is touching the terrain.</summary>
-    public bool OnGround { get; internal set; }
-
-    /// <summary>True while the sphere is clearly above the ground (falling or perched on something).</summary>
-    public bool IsAirborne => Position.Y - Radius > Terrain.GroundHeight + 0.05f;
-
-    public PhysicsObject(Vector3 position, float radius, float mass, Color color, float lifetime = float.PositiveInfinity)
+    /// <summary>Polls the mouse/touch and handles this frame's press, if any.</summary>
+    public void Update(Camera3D camera, World world)
     {
-        Position = position;
-        Velocity = Vector3.Zero;
-        _fullRadius = radius;
-        Mass = mass;
-        Color = color;
-        Lifetime = lifetime;
-    }
-
-    public void Tick(float deltaTime) => Age += deltaTime;
-
-    /// <summary>Skips ahead to the start of the shrink-away (no-op if already shrinking).</summary>
-    public void Expire() => Age = MathF.Max(Age, Lifetime - ShrinkDuration);
-
-    public void Draw()
-    {
-        if (Radius <= 0.001f)
-            return;
-
-        Raylib.DrawSphere(Position, Radius, Color);
-        Raylib.DrawSphereWires(Position, Radius, 8, 8, new Color(0, 0, 0, 60));
-    }
-}
-
-/// <summary>A sphere hitting the ground hard enough to matter (e.g. to crack an acorn).</summary>
-public readonly record struct GroundImpact(PhysicsObject Body, Vector3 Point, float Speed);
-
-/// <summary>
-/// Owns every simulated sphere and steps them each frame:
-///
-///   1. Integrate: gravity, then move (semi-implicit Euler).
-///   2. Detect hard ground landings and report them as <see cref="Impacts"/>.
-///   3. Solve contacts a few times over: sphere-vs-sphere, then each sphere
-///      against the ground, static boxes and the terrain edge. Repeating the
-///      pass lets a stack settle: pushing one pair apart can create a new
-///      overlap with a third sphere or the ground, which the next pass fixes.
-///   4. Ground friction, so rocks that rolled off a pile come to rest.
-///   5. Age every object and remove the ones whose lifetime is over.
-///
-/// At most <see cref="MaxObjects"/> objects exist at once: adding one past
-/// the cap makes the oldest start shrinking away early.
-/// </summary>
-public sealed class PhysicsManager
-{
-    /// <summary>Gravitational acceleration in m/s² (Earth, since 1 unit = 1 m).</summary>
-    public const float Gravity = 9.8f;
-
-    /// <summary>Contact passes per frame. More is stiffer; 4 is plenty for a handful of pebbles.</summary>
-    private const int SolverIterations = 4;
-
-    /// <summary>Bounciness of sphere-sphere hits (0 = dead stop, 1 = perfectly elastic).</summary>
-    private const float Restitution = 0.2f;
-
-    /// <summary>How quickly horizontal speed bleeds away on the ground, per second.</summary>
-    private const float GroundFriction = 4f;
-
-    /// <summary>Below this horizontal speed (m/s) a grounded sphere is simply stopped.</summary>
-    private const float RestSpeed = 0.05f;
-
-    /// <summary>Landings faster than this (m/s) are reported as impacts.</summary>
-    private const float ImpactSpeed = 3f;
-
-    /// <summary>
-    /// Most objects allowed at once. Keeps the garden readable and the
-    /// all-pairs collision check (which grows with the square of the count)
-    /// cheap on phones.
-    /// </summary>
-    public const int MaxObjects = 25;
-
-    private readonly float _terrainHalfSize;
-    private readonly List<PhysicsObject> _objects = new();
-    private readonly List<BoundingBox> _staticBoxes = new();
-    private readonly List<GroundImpact> _impacts = new();
-
-    public PhysicsManager(Terrain terrain) => _terrainHalfSize = terrain.Size / 2f;
-
-    public int Count => _objects.Count;
-
-    public IReadOnlyList<PhysicsObject> Objects => _objects;
-
-    /// <summary>Hard ground landings that happened during the last <see cref="Update"/>.</summary>
-    public IReadOnlyList<GroundImpact> Impacts => _impacts;
-
-    public void Add(PhysicsObject obj)
-    {
-        _objects.Add(obj);
-
-        // Over the cap: retire the oldest objects that aren't already on their way out.
-        int surplus = _objects.Count(o => !o.IsExpiring) - MaxObjects;
-        foreach (var oldest in _objects.Where(o => !o.IsExpiring).OrderByDescending(o => o.Age).Take(surplus).ToList())
-            oldest.Expire();
-    }
-
-    /// <summary>Adds an immovable box (e.g. a building) that spheres collide with.</summary>
-    public void AddStaticBox(BoundingBox box) => _staticBoxes.Add(box);
-
-    public void Update(float deltaTime)
-    {
-        _impacts.Clear();
-
-        // 1-2) Integrate, then catch first contact with the ground. Reverse
-        // for-loop: nothing here mutates _objects, but pebbles are created
-        // and expired every frame elsewhere, so every walk of this list uses
-        // the same crash-proof pattern as a rule, not case by case.
-        for (int i = _objects.Count - 1; i >= 0; i--)
-        {
-            PhysicsObject obj = _objects[i];
-            obj.Velocity.Y -= Gravity * deltaTime;
-            obj.Position += obj.Velocity * deltaTime;
-
-            bool touching = obj.Position.Y - obj.Radius <= Terrain.GroundHeight;
-            if (touching && !obj.OnGround && -obj.Velocity.Y >= ImpactSpeed)
-            {
-                var point = new Vector3(obj.Position.X, Terrain.GroundHeight, obj.Position.Z);
-                _impacts.Add(new GroundImpact(obj, point, -obj.Velocity.Y));
-            }
-            obj.OnGround = touching;
-        }
-
-        // 3) Contacts.
-        for (int iteration = 0; iteration < SolverIterations; iteration++)
-        {
-            ResolveSphereContacts();
-            for (int i = _objects.Count - 1; i >= 0; i--)
-                ResolveStaticContacts(_objects[i]);
-        }
-
-        // 4) Friction.
-        for (int i = _objects.Count - 1; i >= 0; i--)
-        {
-            PhysicsObject obj = _objects[i];
-            if (!obj.OnGround)
-                continue;
-
-            float damping = MathF.Max(0f, 1f - GroundFriction * deltaTime);
-            obj.Velocity.X *= damping;
-            obj.Velocity.Z *= damping;
-            if (obj.Velocity.X * obj.Velocity.X + obj.Velocity.Z * obj.Velocity.Z < RestSpeed * RestSpeed)
-            {
-                obj.Velocity.X = 0f;
-                obj.Velocity.Z = 0f;
-            }
-        }
-
-        // 5) Lifetimes: age every pebble, then remove the ones that expired.
-        // RemoveAll is safe here — it is the list's own single mutating pass,
-        // not a foreach we are mutating out from under.
-        for (int i = _objects.Count - 1; i >= 0; i--)
-            _objects[i].Tick(deltaTime);
-        _objects.RemoveAll(o => o.IsExpired);
-    }
-
-    /// <summary>
-    /// Rock-to-rock collision. For every overlapping pair: push the two apart
-    /// along the line between their centres (the collision normal) by the
-    /// penetration depth, split by mass, then cancel the velocity with which
-    /// they approach each other along that normal. A pebble landing slightly
-    /// off-centre on another gets a sideways normal and slides off; one landing
-    /// dead on top stays stacked.
-    /// </summary>
-    private void ResolveSphereContacts()
-    {
-        for (int i = 0; i < _objects.Count; i++)
-        {
-            for (int j = i + 1; j < _objects.Count; j++)
-            {
-                PhysicsObject a = _objects[i], b = _objects[j];
-
-                Vector3 delta = b.Position - a.Position;
-                float minDistance = a.Radius + b.Radius;
-                float distanceSquared = delta.LengthSquared();
-                if (distanceSquared >= minDistance * minDistance)
-                    continue;
-
-                float distance = MathF.Sqrt(distanceSquared);
-                // Exactly coincident centres have no direction; separate vertically.
-                Vector3 normal = distance > 1e-5f ? delta / distance : Vector3.UnitY;
-                float penetration = minDistance - distance;
-
-                float totalInverseMass = a.InverseMass + b.InverseMass;
-                a.Position -= normal * (penetration * a.InverseMass / totalInverseMass);
-                b.Position += normal * (penetration * b.InverseMass / totalInverseMass);
-
-                float approachSpeed = Vector3.Dot(b.Velocity - a.Velocity, normal);
-                if (approachSpeed < 0f)
-                {
-                    float impulse = -(1f + Restitution) * approachSpeed / totalInverseMass;
-                    a.Velocity -= normal * (impulse * a.InverseMass);
-                    b.Velocity += normal * (impulse * b.InverseMass);
-                }
-            }
-        }
-    }
-
-    /// <summary>Keeps a sphere above the ground, outside static boxes and on the terrain.</summary>
-    private void ResolveStaticContacts(PhysicsObject obj)
-    {
-        // Ground: rest the bottom of the sphere on the surface.
-        if (obj.Position.Y - obj.Radius <= Terrain.GroundHeight)
-        {
-            obj.Position.Y = Terrain.GroundHeight + obj.Radius;
-            if (obj.Velocity.Y < 0f)
-                obj.Velocity.Y = 0f;
-            obj.OnGround = true;
-        }
-
-        // Static boxes: push out from the closest point on the box.
-        foreach (var box in _staticBoxes)
-        {
-            Vector3 closest = Vector3.Clamp(obj.Position, box.Min, box.Max);
-            Vector3 offset = obj.Position - closest;
-            float distanceSquared = offset.LengthSquared();
-            if (distanceSquared >= obj.Radius * obj.Radius)
-                continue;
-
-            Vector3 normal;
-            if (distanceSquared > 1e-8f)
-            {
-                normal = offset / MathF.Sqrt(distanceSquared);
-                obj.Position = closest + normal * obj.Radius;
-            }
-            else
-            {
-                // Centre inside the box: pop it out on top.
-                normal = Vector3.UnitY;
-                obj.Position.Y = box.Max.Y + obj.Radius;
-            }
-
-            float intoBox = Vector3.Dot(obj.Velocity, normal);
-            if (intoBox < 0f)
-                obj.Velocity -= normal * intoBox;
-        }
-
-        // Terrain edge: keep pebbles on the play area.
-        float limit = _terrainHalfSize - obj.Radius;
-        if (MathF.Abs(obj.Position.X) > limit)
-        {
-            obj.Position.X = Math.Clamp(obj.Position.X, -limit, limit);
-            obj.Velocity.X = 0f;
-        }
-        if (MathF.Abs(obj.Position.Z) > limit)
-        {
-            obj.Position.Z = Math.Clamp(obj.Position.Z, -limit, limit);
-            obj.Velocity.Z = 0f;
-        }
-    }
-
-    public void Draw()
-    {
-        foreach (var obj in _objects)
-        {
-            // While an object is clearly above the ground, draw a small dark
-            // disc under it. It helps judge height from the isometric view (the
-            // bigger God's Shadow telegraph is drawn by MiracleManager).
-            if (obj.IsAirborne)
-                DrawDropShadow(obj);
-
-            obj.Draw();
-        }
-    }
-
-    private static void DrawDropShadow(PhysicsObject obj)
-    {
-        var groundPoint = new Vector3(obj.Position.X, Terrain.GroundHeight + 0.02f, obj.Position.Z);
-        // A very flat cylinder makes a cheap filled disc lying on the ground.
-        Raylib.DrawCylinder(groundPoint, obj.Radius * 1.2f, obj.Radius * 1.2f, 0.01f, 24, new Color(0, 0, 0, 110));
-    }
-}
-
-// =============================================================================
-//  Input & Miracles
-// =============================================================================
-
-/// <summary>The player's current "hand" state.</summary>
-public enum InputState
-{
-    /// <summary>Nothing equipped; clicking the ground does nothing.</summary>
-    Idle,
-
-    /// <summary>The Pebble-Drop miracle is armed; the next ground click casts it.</summary>
-    PebbleEquipped,
-
-    /// <summary>The Gust is armed; the next press starts a swipe.</summary>
-    GustEquipped,
-
-    /// <summary>Mid-swipe: the player is holding the press down, aiming the Gust.</summary>
-    GustDragging,
-}
-
-/// <summary>Which miracle a "Not Enough Faith" refusal message belongs to.</summary>
-public enum RefusedMiracle
-{
-    None,
-    Pebble,
-    Gust,
-}
-
-/// <summary>
-/// Translates mouse/touch input into miracles. Holds the equip/drag state and
-/// knows how to turn a screen position into a point on the terrain (or, for
-/// the Gust, the wider ground plane).
-/// </summary>
-public sealed class MiracleInput
-{
-    /// <summary>How long the "Not Enough Faith" message stays on its button, in seconds.</summary>
-    private const float RefusalMessageDuration = 1.5f;
-
-    /// <summary>
-    /// Shortest horizontal swipe (m, world space) that counts as a Gust cast.
-    /// A shorter drag — effectively a tap-and-release — is ignored, so an
-    /// accidental fumble doesn't spend Faith or fling something with no
-    /// meaningful direction; the Gust stays equipped so the player can just
-    /// try again.
-    /// </summary>
-    private const float MinGustDragDistance = 0.5f;
-
-    private float _refusalTimer;
-    private RefusedMiracle _refused = RefusedMiracle.None;
-    private Vector3? _gustStartGround;
-
-    public InputState State { get; private set; } = InputState.Idle;
-
-    /// <summary>Text for the Pebble button, including its temporary "Not Enough Faith" refusal.</summary>
-    public string PebbleButtonLabel =>
-        _refused == RefusedMiracle.Pebble && _refusalTimer > 0f ? "Not Enough Faith"
-        : State == InputState.PebbleEquipped ? "Pebble Equipped"
-        : "Equip Pebble";
-
-    /// <summary>Text for the Gust button, including its temporary "Not Enough Faith" refusal.</summary>
-    public string GustButtonLabel =>
-        _refused == RefusedMiracle.Gust && _refusalTimer > 0f ? "Not Enough Faith"
-        : State is InputState.GustEquipped or InputState.GustDragging ? "Gust Equipped"
-        : "Equip Gust";
-
-    public bool CanAffordPebble(World world) => world.Faith >= MiracleManager.PebbleFaithCost;
-
-    public bool CanAffordGust(World world) => world.Faith >= MiracleManager.GustFaithCost;
-
-    /// <summary>Polls the mouse/touch and handles this frame's press/release, if any.</summary>
-    public void Update(float deltaTime, Camera3D camera, World world, UiButton pebbleButton, UiButton gustButton)
-    {
-        _refusalTimer = MathF.Max(0f, _refusalTimer - deltaTime);
-
         // Raylib maps a primary touch to the left mouse button, so the same
-        // code path serves desktop clicks and phone taps/drags.
+        // code path serves desktop clicks and phone taps.
         if (Raylib.IsMouseButtonPressed(MouseButton.Left))
-            HandlePress(Raylib.GetMousePosition(), camera, world, pebbleButton, gustButton);
-
-        if (State == InputState.GustDragging && Raylib.IsMouseButtonReleased(MouseButton.Left))
-            HandleGustRelease(Raylib.GetMousePosition(), camera, world);
+            HandlePress(Raylib.GetMousePosition(), camera, world);
     }
 
     /// <summary>
-    /// Handles the start of a press at <paramref name="screenPosition"/>: a
-    /// button toggles its miracle, a Pebble cast fires immediately, and a
-    /// Gust cast begins tracking a swipe. Public (like <see cref="HandleGustRelease"/>)
-    /// so input can be driven directly, from a test harness or an
+    /// Handles the start of a press at <paramref name="screenPosition"/>.
+    /// Public so input can be driven directly, from a test harness or an
     /// alternate input source.
     /// </summary>
-    public void HandlePress(Vector2 screenPosition, Camera3D camera, World world, UiButton pebbleButton, UiButton gustButton)
+    public void HandlePress(Vector2 screenPosition, Camera3D camera, World world)
     {
         // --- Genesis: the world is dead (every Village Heart gone) --
         // nothing below matters with nobody left to gather, build or fight,
-        // so a tap anywhere on the ground reseeds it instead (Faith
-        // allowing) rather than falling through to the usual miracle/UI
-        // handling.
+        // so a tap anywhere on the ground reseeds it instead rather than
+        // falling through to the usual faction-select handling.
         if (world.IsWorldExtinct)
         {
             TryGenesis(screenPosition, camera, world);
             return;
         }
 
-        // --- UI layer ------------------------------------------------------
-        if (pebbleButton.Contains(screenPosition))
-        {
-            if (State == InputState.PebbleEquipped)
-                State = InputState.Idle; // Toggle off (nothing was spent yet).
-            else if (CanAffordPebble(world))
-                State = InputState.PebbleEquipped;
-            else
-                Refuse(RefusedMiracle.Pebble);
-            return;
-        }
-
-        if (gustButton.Contains(screenPosition))
-        {
-            if (State is InputState.GustEquipped or InputState.GustDragging)
-                State = InputState.Idle; // Toggle off (nothing was spent yet).
-            else if (CanAffordGust(world))
-                State = InputState.GustEquipped;
-            else
-                Refuse(RefusedMiracle.Gust);
-            return;
-        }
-
         // --- Contextual Faction UI: a tap on or very near a Village Heart
-        // inspects that faction, regardless of what's equipped below --
-        // this is a separate concern from casting a miracle, so it never
-        // returns early or consumes the tap.
+        // inspects that faction.
         if (PickGround(camera, world.Terrain, screenPosition) is { } tapGround)
             world.TrySelectFactionAt(tapGround);
-
-        // --- World layer ---------------------------------------------------
-        switch (State)
-        {
-            case InputState.PebbleEquipped:
-                CastPebble(screenPosition, camera, world);
-                break;
-
-            case InputState.GustEquipped:
-                // Anchor the swipe. Uses the unbounded ground-plane raycast:
-                // a swipe can reasonably start right at the terrain's edge.
-                Vector3? start = PickGroundPlane(camera, world.Terrain, screenPosition);
-                if (start is not null)
-                {
-                    _gustStartGround = start;
-                    State = InputState.GustDragging;
-                }
-                break;
-        }
     }
 
     /// <summary>
     /// Free Extinction Recovery: raycasts the tap onto the terrain and, if
-    /// it lands, reseeds the world right there — no Faith cost. Total
-    /// extinction already means <see cref="World.Faith"/> has no Shrines or
-    /// Morale left worshipping it, so gating the player's only way back
-    /// behind the very resource extinction stops generating would be a hard
-    /// lock; Genesis only ever runs from <see cref="World.IsWorldExtinct"/>
-    /// in the first place; a tap that misses the terrain is simply ignored
-    /// — the blinking prompt (<see cref="Game.DrawGenesisPrompt"/>) stays up
-    /// and the player just taps again.
+    /// it lands, reseeds the world right there. Genesis only ever runs from
+    /// <see cref="World.IsWorldExtinct"/> in the first place; a tap that
+    /// misses the terrain is simply ignored — the blinking prompt (<see cref="Game.DrawGenesisPrompt"/>)
+    /// stays up and the player just taps again.
     /// </summary>
     private void TryGenesis(Vector2 screenPosition, Camera3D camera, World world)
     {
@@ -1193,76 +708,6 @@ public sealed class MiracleInput
             return;
 
         world.Genesis(groundPoint.Value);
-    }
-
-    /// <summary>Raycasts the tap onto the terrain and, if it lands, spends Faith and casts the Pebble-Drop.</summary>
-    private void CastPebble(Vector2 screenPosition, Camera3D camera, World world)
-    {
-        Vector3? groundPoint = PickGround(camera, world.Terrain, screenPosition);
-        if (groundPoint is null)
-            return; // Tapped the sky or off the edge of the terrain: stay equipped, nothing spent.
-
-        // Pay the moment the raycast lands. Equipping already checked the
-        // cost and Faith only goes down when a miracle is cast, so this
-        // succeeds; the check is a guard, not a gameplay rule.
-        if (!world.TrySpendFaith(MiracleManager.PebbleFaithCost))
-        {
-            State = InputState.Idle;
-            Refuse(RefusedMiracle.Pebble);
-            return;
-        }
-
-        // Don't drop yet: cast the God's Shadow first. MiracleManager spawns
-        // the pebble when the shadow's timer runs out.
-        world.Miracles.QueuePebbleDrop(groundPoint.Value);
-        State = InputState.Idle; // One pebble per equip.
-    }
-
-    /// <summary>
-    /// Ends a Gust swipe: projects the release point onto the ground plane,
-    /// and — if the drag was long enough to read as a real swipe — spends
-    /// Faith and casts the Gust along the start-to-end vector. Public so it
-    /// can be driven directly (see <see cref="HandlePress"/>).
-    /// </summary>
-    public void HandleGustRelease(Vector2 screenPosition, Camera3D camera, World world)
-    {
-        Vector3? start = _gustStartGround;
-        Vector3? end = PickGroundPlane(camera, world.Terrain, screenPosition);
-        _gustStartGround = null;
-
-        if (start is null || end is null)
-        {
-            // Should be unreachable with this fixed camera (the ground plane
-            // raycast only fails for a ray parallel to or behind it), but
-            // stay armed rather than lose the Faith on a gesture with no
-            // usable vector.
-            State = InputState.GustEquipped;
-            return;
-        }
-
-        Vector3 delta = end.Value - start.Value;
-        delta.Y = 0f; // The Gust only ever blows horizontally.
-        if (delta.Length() < MinGustDragDistance)
-        {
-            State = InputState.GustEquipped; // Too short to read as a swipe; try again.
-            return;
-        }
-
-        if (!world.TrySpendFaith(MiracleManager.GustFaithCost))
-        {
-            State = InputState.Idle;
-            Refuse(RefusedMiracle.Gust);
-            return;
-        }
-
-        world.CastGust(start.Value, Vector3.Normalize(delta));
-        State = InputState.Idle;
-    }
-
-    private void Refuse(RefusedMiracle which)
-    {
-        _refused = which;
-        _refusalTimer = RefusalMessageDuration;
     }
 
     /// <summary>
@@ -1285,21 +730,9 @@ public sealed class MiracleInput
     }
 
     /// <summary>
-    /// Same as <see cref="PickGround"/>, but the hit point is not bounded to
-    /// the terrain rectangle — used for the Gust, where a swipe only needs a
-    /// direction and may reasonably start or end just past the terrain's edge.
-    /// </summary>
-    private static Vector3? PickGroundPlane(Camera3D camera, Terrain terrain, Vector2 screenPosition)
-    {
-        Ray? ray = SafeScreenRay(screenPosition, camera);
-        return ray is null ? null : terrain.RaycastGroundPlane(ray.Value);
-    }
-
-    /// <summary>
-    /// The bounds/NaN/Infinity guards shared by <see cref="PickGround"/> and
-    /// <see cref="PickGroundPlane"/>: validates the screen position and the
-    /// window before asking raylib to project it, and validates the ray it
-    /// gets back.
+    /// The bounds/NaN/Infinity guards shared by <see cref="PickGround"/>:
+    /// validates the screen position and the window before asking raylib to
+    /// project it, and validates the ray it gets back.
     /// </summary>
     private static Ray? SafeScreenRay(Vector2 screenPosition, Camera3D camera)
     {
@@ -1322,269 +755,6 @@ public sealed class MiracleInput
     private static bool IsFinite(Vector2 v) => float.IsFinite(v.X) && float.IsFinite(v.Y);
 
     private static bool IsFinite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
-
-    /// <summary>
-    /// Live aiming feedback: while a pebble is equipped, where it would land
-    /// (the outer ring is the God's Shadow, the inner ring the pebble
-    /// itself); while dragging a Gust, a line from where the swipe started
-    /// to the current touch position.
-    /// </summary>
-    public void DrawCursorPreview(Camera3D camera, Terrain terrain)
-    {
-        switch (State)
-        {
-            case InputState.PebbleEquipped:
-                Vector3? target = PickGround(camera, terrain, Raylib.GetMousePosition());
-                if (target is null)
-                    return;
-
-                var p = target.Value + new Vector3(0, 0.02f, 0); // Lift slightly to avoid z-fighting.
-                Raylib.DrawCircle3D(p, MiracleManager.ShadowRadius, Vector3.UnitX, 90f, new Color(255, 255, 0, 140));
-                Raylib.DrawCircle3D(p, MiracleManager.PebbleRadius, Vector3.UnitX, 90f, Color.Yellow);
-                Raylib.DrawLine3D(p, p + new Vector3(0, MiracleManager.PebbleSpawnHeight, 0), new Color(255, 255, 0, 80));
-                break;
-
-            case InputState.GustDragging when _gustStartGround is not null:
-                Vector3? end = PickGroundPlane(camera, terrain, Raylib.GetMousePosition());
-                if (end is null)
-                    return;
-
-                var start = _gustStartGround.Value + new Vector3(0, 0.05f, 0);
-                var endPoint = end.Value + new Vector3(0, 0.05f, 0);
-                Raylib.DrawSphere(start, 0.15f, new Color(255, 255, 255, 160));
-                Raylib.DrawLine3D(start, endPoint, new Color(255, 255, 255, 180));
-                break;
-        }
-    }
-}
-
-// =============================================================================
-//  Miracles: the God's Shadow telegraph
-// =============================================================================
-
-/// <summary>
-/// A pending Pebble-Drop: a dark circle on the ground that warns the
-/// Bramblekin a pebble is about to fall there. While it exists, any Bramblekin
-/// under it drops what it is doing and scurries out.
-/// </summary>
-public sealed class GodShadow
-{
-    /// <summary>Centre of the shadow on the ground (y = GroundHeight).</summary>
-    public Vector3 Center { get; }
-
-    /// <summary>Radius of the danger zone, in meters.</summary>
-    public float Radius { get; }
-
-    /// <summary>Total telegraph time, in seconds.</summary>
-    public float Duration { get; }
-
-    /// <summary>Seconds left before the pebble is released.</summary>
-    public float TimeLeft { get; private set; }
-
-    /// <summary>0 when the shadow appears, 1 when the pebble drops.</summary>
-    public float Progress => 1f - TimeLeft / Duration;
-
-    public bool HasExpired => TimeLeft <= 0f;
-
-    public GodShadow(Vector3 center, float radius, float duration)
-    {
-        Center = center;
-        Radius = radius;
-        Duration = duration;
-        TimeLeft = duration;
-    }
-
-    public void Tick(float deltaTime) => TimeLeft -= deltaTime;
-
-    /// <summary>
-    /// True if a round body of radius <paramref name="bodyRadius"/> standing at
-    /// <paramref name="point"/> is at least partly under the shadow. Only the
-    /// horizontal (x, z) distance matters.
-    /// </summary>
-    public bool Overlaps(Vector3 point, float bodyRadius)
-    {
-        float dx = point.X - Center.X;
-        float dz = point.Z - Center.Z;
-        float reach = Radius + bodyRadius;
-        return dx * dx + dz * dz < reach * reach;
-    }
-}
-
-/// <summary>
-/// A cast Gust's wind-streak visual: a set of lines that shoot across the
-/// terrain along <see cref="Direction"/> from <see cref="Origin"/> and fade
-/// out over <see cref="Duration"/> seconds. Purely cosmetic — the physics
-/// push happens once, immediately, when the Gust is cast (see World.CastGust).
-/// </summary>
-public sealed class GustEffect
-{
-    /// <summary>Ground point the swipe started from (y = GroundHeight).</summary>
-    public Vector3 Origin { get; }
-
-    /// <summary>Unit, horizontal (y = 0) direction of the wind.</summary>
-    public Vector3 Direction { get; }
-
-    public float Duration { get; }
-
-    /// <summary>Seconds left before the visual finishes.</summary>
-    public float TimeLeft { get; private set; }
-
-    /// <summary>0 when cast, 1 once the visual has fully played out.</summary>
-    public float Progress => 1f - TimeLeft / Duration;
-
-    public bool HasExpired => TimeLeft <= 0f;
-
-    public GustEffect(Vector3 origin, Vector3 direction, float duration)
-    {
-        Origin = origin;
-        Direction = direction;
-        Duration = duration;
-        TimeLeft = duration;
-    }
-
-    public void Tick(float deltaTime) => TimeLeft -= deltaTime;
-}
-
-/// <summary>
-/// Runs cast miracles over time. For now that means the Pebble-Drop: each
-/// cast first becomes a <see cref="GodShadow"/>, and only when its timer runs
-/// out does the physical pebble spawn and fall. The Gust is simpler — its
-/// physics happens all at once in World.CastGust — so this only owns its
-/// fading wind-streak visual.
-/// </summary>
-public sealed class MiracleManager
-{
-    /// <summary>How long the shadow telegraphs the drop before the pebble spawns.</summary>
-    public const float TelegraphDuration = 1.5f;
-
-    /// <summary>
-    /// Radius of the God's Shadow, in meters. Deliberately larger than the
-    /// pebble so the danger zone is easy to read and Bramblekin clear it with
-    /// some room to spare.
-    /// </summary>
-    public const float ShadowRadius = 1.5f;
-
-    /// <summary>How high above the target the pebble spawns, in meters.</summary>
-    public const float PebbleSpawnHeight = 10f;
-
-    /// <summary>Pebble radius in meters (oversized for the prototype so it reads clearly).</summary>
-    public const float PebbleRadius = 0.5f;
-
-    /// <summary>Pebble mass in kilograms (placeholder for future impact damage).</summary>
-    public const float PebbleMass = 2f;
-
-    /// <summary>Faith spent per Pebble-Drop.</summary>
-    public const float PebbleFaithCost = 30f;
-
-    /// <summary>
-    /// How long a dropped pebble stays in the garden, in seconds, before it
-    /// shrinks away. Together with <see cref="PhysicsManager.MaxObjects"/>
-    /// this stops the map from silting up with rocks.
-    /// </summary>
-    public const float PebbleLifetime = 30f;
-
-    /// <summary>Faith spent per Gust.</summary>
-    public const float GustFaithCost = 10f;
-
-    /// <summary>How long the wind-streak visual plays for, in seconds.</summary>
-    public const float GustVisualDuration = 1f;
-
-    private readonly List<GodShadow> _shadows = new();
-    private readonly List<GustEffect> _gusts = new();
-
-    /// <summary>Shadows currently on the ground. Bramblekin read this to decide when to flee.</summary>
-    public IReadOnlyList<GodShadow> ActiveShadows => _shadows;
-
-    /// <summary>Starts a Pebble-Drop at <paramref name="groundPoint"/>: shadow now, pebble later.</summary>
-    public void QueuePebbleDrop(Vector3 groundPoint)
-    {
-        _shadows.Add(new GodShadow(groundPoint, ShadowRadius, TelegraphDuration));
-    }
-
-    /// <summary>
-    /// Starts the wind-streak visual for a Gust cast from <paramref name="origin"/>
-    /// along <paramref name="direction"/>. The physics push itself is applied
-    /// immediately by the caller (World.CastGust) — this only animates it.
-    /// </summary>
-    public void QueueGust(Vector3 origin, Vector3 direction)
-    {
-        _gusts.Add(new GustEffect(origin, direction, GustVisualDuration));
-    }
-
-    /// <summary>Counts down every shadow and gust, releasing the pebble for any shadow that expired.</summary>
-    public void Update(float deltaTime, PhysicsManager physics)
-    {
-        // Iterate backwards so expired entries can be removed in place.
-        for (int i = _shadows.Count - 1; i >= 0; i--)
-        {
-            GodShadow shadow = _shadows[i];
-            shadow.Tick(deltaTime);
-            if (!shadow.HasExpired)
-                continue;
-
-            var spawn = shadow.Center + new Vector3(0, PebbleSpawnHeight, 0);
-            physics.Add(new PhysicsObject(spawn, PebbleRadius, PebbleMass, Color.Gray, PebbleLifetime));
-            _shadows.RemoveAt(i);
-        }
-
-        for (int i = _gusts.Count - 1; i >= 0; i--)
-        {
-            _gusts[i].Tick(deltaTime);
-            if (_gusts[i].HasExpired)
-                _gusts.RemoveAt(i);
-        }
-    }
-
-    public void Draw()
-    {
-        foreach (var shadow in _shadows)
-        {
-            // The shadow darkens as the drop approaches, like something
-            // descending from above.
-            byte alpha = (byte)(80 + 110 * shadow.Progress);
-            var p = shadow.Center + new Vector3(0, 0.015f, 0); // Just above the grid lines.
-
-            // A very flat cylinder is a cheap filled disc lying on the ground.
-            Raylib.DrawCylinder(p, shadow.Radius, shadow.Radius, 0.01f, 36, new Color(0, 0, 0, (int)alpha));
-            Raylib.DrawCircle3D(p + new Vector3(0, 0.015f, 0), shadow.Radius, Vector3.UnitX, 90f, new Color(0, 0, 0, 220));
-        }
-
-        foreach (var gust in _gusts)
-            DrawGustStreaks(gust);
-    }
-
-    /// <summary>
-    /// A handful of white streak lines that race out from <paramref name="gust"/>'s
-    /// origin along its direction and fade as they go, like a burst of wind
-    /// made visible. Purely decorative — the actual push already happened.
-    /// </summary>
-    private static void DrawGustStreaks(GustEffect gust)
-    {
-        const int StreakCount = 6;
-        const float HalfSpread = 1.8f;    // Roughly matches World's Gust corridor width.
-        const float StreakLength = 3.5f;
-        const float TravelDistance = 26f; // How far the streak heads race out over the visual's life.
-
-        var direction2D = new Vector2(gust.Direction.X, gust.Direction.Z);
-        var side = new Vector2(-direction2D.Y, direction2D.X); // Perpendicular, for lateral spread.
-        var sideOffset3D = new Vector3(side.X, 0, side.Y);
-
-        var color = new Color(255, 255, 255, (int)(210 * (1f - gust.Progress)));
-
-        // A stable per-streak lateral offset, so the streaks fan out instead
-        // of all riding the same line, without needing per-frame randomness.
-        for (int i = 0; i < StreakCount; i++)
-        {
-            float lateral = (i - (StreakCount - 1) / 2f) / StreakCount * 2f * HalfSpread;
-            float headDistance = gust.Progress * TravelDistance + i * 0.5f; // Staggered starts.
-            float tailDistance = MathF.Max(0f, headDistance - StreakLength);
-
-            Vector3 offset = sideOffset3D * lateral + new Vector3(0, 0.05f, 0);
-            Vector3 head = gust.Origin + gust.Direction * headDistance + offset;
-            Vector3 tail = gust.Origin + gust.Direction * tailDistance + offset;
-            Raylib.DrawLine3D(tail, head, color);
-        }
-    }
 }
 
 // =============================================================================
@@ -1592,26 +762,24 @@ public sealed class MiracleManager
 // =============================================================================
 
 /// <summary>
-/// A solid circle on the ground that Bramblekin walk around (a resting
-/// pebble, the Village Heart). Coordinates are (x, z).
+/// A solid circle on the ground that Bramblekin walk around — a Village
+/// Heart's footprint. Coordinates are (x, z).
 /// </summary>
 public readonly record struct Obstacle(Vector2 Center, float Radius);
 
 /// <summary>
-/// Owns the simulation state — terrain, physics, miracles, the village, the
-/// acorn, food shards and the colony — and steps it in a fixed order:
+/// Owns the simulation state — terrain, every faction's Village Heart, the
+/// Acorn/Amber/Food Shard economy and the colony — and steps it in a fixed
+/// order, entirely autonomously (Pure Simulation: there is no player lever
+/// on any of this any more):
 ///
-///   faith regen -> miracles (shadows, pebble release)
-///   -> physics (+ acorn cracking, spider squishing every frame, Tumbled or not)
-///   -> shard sliding (from a Gust) -> obstacle list -> shove food out from
-///   under rocks -> ambient prey -> Bramblekin (Militia poke, may damage
-///   the spider) -> Wolf Spider (may bite Militia, may kill a Gatherer) ->
-///   the Village Heart's own autonomous business (Auto-Conscription, War
-///   Weariness, Auto-Sprout, Auto-Construction) -> acorn / spider respawn
-///
-/// A cast Gust (CastGust) sits outside this per-frame order: it applies its
-/// push to everything caught in its corridor all at once, the instant it's
-/// cast, rather than as a lingering per-frame force.
+///   Dibs timeouts -> obstacle list -> shove food out from under obstacles
+///   -> ambient prey -> Bramblekin (Militia poke, may damage the spider) ->
+///   Wolf Spider (may bite Militia, may kill a Gatherer) -> Cooperative
+///   Acorn Cracking's shatter check -> the Village Heart's own autonomous
+///   business (Auto-Conscription, War Weariness, Upkeep, Auto-Sprout,
+///   Auto-Construction, the True Schism) -> acorn/amber/berry/spider respawn
+///   -> loot despawn.
 /// </summary>
 public sealed class World
 {
@@ -1622,10 +790,10 @@ public sealed class World
     /// competing over the same trickle, and the map's dominant faction can't
     /// simply out-gather everyone else before food ever reaches the rest.
     /// </summary>
-    private const float AcornSpawnInterval = 4f;
+    private const float AcornSpawnInterval = 3f;
 
-    /// <summary>Food Abundance: most Acorns allowed on the map at once, per faction — raised from 5 so the full 60x60 map stays richly populated as more tribes compete for it.</summary>
-    private const int MaxAcornsPerFaction = 8;
+    /// <summary>Global Food Abundance: most Acorns allowed on the map at once, per faction — raised again for Pure Simulation, since every tribe's Auto-Sprout economy now has to feed and scale itself with no player miracle to fall back on.</summary>
+    private const int MaxAcornsPerFaction = 12;
 
     /// <summary>
     /// Dynamic Ecosystem Scaling: the map-wide Acorn cap grows with the number of
@@ -1638,12 +806,6 @@ public sealed class World
     private const int InitialAcorns = 2;
 
     /// <summary>
-    /// How far (beyond touching) a pebble may land from the acorn and still
-    /// crack it — "on or very close to" the acorn.
-    /// </summary>
-    private const float AcornCrackSlack = 0.4f;
-
-    /// <summary>
     /// Cooperative Acorn Cracking: extra reach (m) beyond a Chitin-Mallet
     /// Gatherer's body radius and the Acorn's own radius — three of them
     /// must actually be touching it, not just nearby, for it to shatter.
@@ -1652,25 +814,23 @@ public sealed class World
 
     /// <summary>
     /// Number of Food Shards a cracked acorn yields. High-yield: the reward
-    /// for spending Faith on a Pebble-Drop, well above a Berry's 1 food or
-    /// an Aphid's 2.
+    /// for Cooperative Acorn Cracking, well above a Berry's 1 food or an
+    /// Aphid's 2.
     /// </summary>
     private const int ShardsPerAcorn = 4;
-
-    /// <summary>Faith cap. Also the starting amount: the colony begins devout.</summary>
-    public const float MaxFaith = 100f;
-
-    /// <summary>Faith each living Bramblekin generates per second (0.5 x population per second).</summary>
-    public const float FaithPerBramblekinPerSecond = 0.5f;
 
     /// <summary>Food Stored consumed to sprout one new Bramblekin at the Village Heart.</summary>
     public const int FoodPerSprout = 5;
 
     /// <summary>
-    /// A pebble whose centre lands within this distance (m) of the spider's
-    /// centre crushes it. Tight on purpose: a direct hit, not a near miss.
+    /// Growth Buffer: Food Stored must reach this much before Auto-Sprout will
+    /// spend <see cref="FoodPerSprout"/> of it on a new Bramblekin, leaving a
+    /// 10-food safety buffer behind. Pure Simulation: with no player left to
+    /// bail out a starving tribe, a colony that bred the instant it scraped
+    /// together <see cref="FoodPerSprout"/> could sprout itself straight into
+    /// a starvation cascade; this buffer keeps some Food Stored in reserve.
     /// </summary>
-    public const float SquishRadius = 0.4f;
+    public const int FoodSproutThreshold = 15;
 
     /// <summary>Seconds after a spider is crushed before a new one appears at an edge.</summary>
     public const float SpiderRespawnDelay = 45f;
@@ -1678,32 +838,11 @@ public sealed class World
     /// <summary>How long a crushed spider's splat mark stays on the ground, in seconds.</summary>
     private const float SplatDuration = 6f;
 
-    /// <summary>How far (m) the Gust's wind corridor reaches from the swipe's start point.</summary>
-    public const float GustCorridorLength = 30f;
+    /// <summary>Global Food Abundance: how often a wild Berry appears, in seconds — shortened again for Pure Simulation so the wilderness restocks fast enough for every tribe's own Auto-Sprout/Auto-Construction economy to keep scaling with no player miracle to bail it out.</summary>
+    public const float BerrySpawnInterval = 1.5f;
 
-    /// <summary>Half-width (m) of the wind corridor — "wide" per the design.</summary>
-    public const float GustCorridorHalfWidth = 2f;
-
-    /// <summary>Speed (m/s) a loose Food Shard is flung to when caught in a Gust.</summary>
-    public const float ShardGustSpeed = 5f;
-
-    /// <summary>How quickly a flung shard's speed bleeds off, per second.</summary>
-    public const float ShardFriction = 2.5f;
-
-    /// <summary>Below this speed (m/s) a sliding shard is simply stopped.</summary>
-    private const float ShardRestSpeed = 0.05f;
-
-    /// <summary>One-time position nudge (m) a Bramblekin gets from a Gust.</summary>
-    public const float BramblekinGustPush = 1f;
-
-    /// <summary>One-time knockback (m) the Wolf Spider gets from a Gust.</summary>
-    public const float SpiderGustKnockback = 3f;
-
-    /// <summary>Food Abundance: how often a wild Berry appears, in seconds — shortened from 3s so a multi-tribe map keeps a steady supply flowing to everyone, not just whichever faction gets there first.</summary>
-    public const float BerrySpawnInterval = 2f;
-
-    /// <summary>Food Abundance: most Berries allowed on the map (loose or carried) at once, per faction — raised from 18 so food is actually scattered widely enough for every tribe to find its own, rather than one dominant faction hoovering up the map's whole supply.</summary>
-    public const int MaxBerriesPerFaction = 24;
+    /// <summary>Global Food Abundance: most Berries allowed on the map (loose or carried) at once, per faction — raised again for Pure Simulation so a growing tribe's own economy always has enough wild food within reach to keep sprouting and building.</summary>
+    public const int MaxBerriesPerFaction = 30;
 
     /// <summary>
     /// Dynamic Ecosystem Scaling: the map-wide Berry cap grows with the number of
@@ -1792,6 +931,14 @@ public sealed class World
 
     /// <summary>Population needed before the Village Heart will build a Spore Farm — the Domestic Spore Farm: a big tribe's internal food loop, so its Gatherers don't need to cross the map for every Berry. Lowered from 15 so it lands early enough to actually save a struggling tribe, not just reward one that's already thriving.</summary>
     public const int SporeFarmPopulationThreshold = 10;
+
+    /// <summary>
+    /// Scaling Domestic Farms: the most Spore Farms a single Village Heart
+    /// will ever build. Population / <see cref="SporeFarmPopulationThreshold"/>
+    /// (rounded down) queues each one — the 1st at 10 Population, 2nd at 20,
+    /// 3rd at 30, capped here at the 4th (40+).
+    /// </summary>
+    public const int MaxSporeFarmsPerVillage = 4;
 
     /// <summary>How far (m) from the Village Heart a Spore Farm may be placed — kept close, near the village's centre.</summary>
     private const float SporeFarmPlacementRadius = 5f;
@@ -1956,8 +1103,6 @@ public sealed class World
     private float _aphidRespawnTimer = AphidRespawnDelay;
 
     public Terrain Terrain { get; }
-    public PhysicsManager Physics { get; }
-    public MiracleManager Miracles { get; } = new();
 
     /// <summary>
     /// Every faction's Village Heart. Phase 3 prep: the world still starts
@@ -1988,19 +1133,16 @@ public sealed class World
     /// <summary>
     /// Genesis: true once every Village Heart is gone — a dead end no
     /// autonomous system (Auto-Sprout, the Job Manager, anything) can ever
-    /// climb out of on its own. See <see cref="MiracleInput"/>'s tap
-    /// handling (which reseeds Faction 0 via <see cref="Genesis"/> once the
-    /// player can afford it) and <see cref="Game.DrawGenesisPrompt"/> for
-    /// what happens while this holds.
+    /// climb out of on its own. See <see cref="WorldTapInput"/>'s tap
+    /// handling (which reseeds Faction 0 via <see cref="Genesis"/>) and
+    /// <see cref="Game.DrawGenesisPrompt"/> for what happens while this holds.
     /// </summary>
     public bool IsWorldExtinct => Villages.Count == 0;
 
     /// <summary>
     /// Contextual Faction UI: a single tap on or very near a Village
     /// Heart's footprint switches <see cref="SelectedFactionID"/> to that
-    /// faction. Independent of whatever miracle (if any) is equipped —
-    /// tapping a heart while a Pebble is armed still drops it right there
-    /// afterward. A miss (too far from every Village Heart) leaves the
+    /// faction. A miss (too far from every Village Heart) leaves the
     /// current selection alone.
     /// </summary>
     public void TrySelectFactionAt(Vector3 groundPoint)
@@ -2061,14 +1203,8 @@ public sealed class World
     /// <summary>Bramblekin sprouted from stored food so far.</summary>
     public int Births { get; private set; }
 
-    /// <summary>The god's power budget. Miracles spend it; worship refills it.</summary>
-    public float Faith { get; set; } = MaxFaith;
-
     /// <summary>Seconds until a crushed spider is replaced (only meaningful while <see cref="Spider"/> is null).</summary>
     public float SpiderRespawnTimer { get; private set; }
-
-    /// <summary>Spiders crushed by direct pebble hits so far.</summary>
-    public int SpidersCrushed { get; private set; }
 
     /// <summary>Solid circles every walker (Bramblekin, Aphids, the Wolf Spider) must steer around. Rebuilt every frame.</summary>
     public IReadOnlyList<Obstacle> Obstacles => _obstacles;
@@ -2080,16 +1216,13 @@ public sealed class World
     {
         Terrain = terrain;
         Rng = rng;
-        Physics = new PhysicsManager(terrain);
 
         // The original Village Heart: Faction 0, green — sits just off the
-        // centre of the garden. It is a solid box for pebbles and a solid
-        // circle for walkers, same as any faction that joins it later.
+        // centre of the garden. It is a solid circle for walkers, same as
+        // any faction that joins it later.
         var villageHeart = new VillageHeart(new Vector3(-2f, Terrain.GroundHeight, -2f), factionId: 0, factionColor: new Color(40, 180, 90, 255), rng);
         villageHeart.UpkeepTimer = UpkeepInterval;
         Villages.Add(villageHeart);
-        foreach (var village in Villages)
-            Physics.AddStaticBox(village.Bounds);
         RebuildObstacles();
 
         for (int i = 0; i < InitialAcorns; i++)
@@ -2110,13 +1243,14 @@ public sealed class World
     /// Faction Personalities: the Population divisor for a Village Heart's
     /// Auto-Conscription target, per its fixed-for-life <see cref="FactionTrait"/>
     /// — Militaristic wants a Militia unit for every 2 Gatherers (Population / 3),
-    /// Agrarian for every 5 (Population / 6), Balanced for every 3 (Population / 4).
+    /// Balanced and Agrarian for every 5 (Population / 6). Pure Simulation: with
+    /// no player left to bail out a starving tribe, every non-Militaristic
+    /// faction keeps its Militia small so more Bramblekin work as Gatherers.
     /// </summary>
     private static int MilitiaTargetDivisorFor(FactionTrait trait) => trait switch
     {
         FactionTrait.Militaristic => 3,
-        FactionTrait.Agrarian => 6,
-        _ => 4,
+        _ => 6,
     };
 
     /// <summary>
@@ -2219,65 +1353,6 @@ public sealed class World
         VillageHeart? home = VillageFor(bramblekin.FactionID);
         if (home is not null)
             home.Morale = MathF.Max(0f, home.Morale - MoraleLossPerKill);
-    }
-
-    /// <summary>Pays for a miracle. Returns false (and spends nothing) if there isn't enough Faith.</summary>
-    public bool TrySpendFaith(float amount)
-    {
-        if (Faith < amount)
-            return false;
-
-        Faith -= amount;
-        return true;
-    }
-
-    /// <summary>
-    /// The Gust miracle: starts the wind-streak visual and immediately shoves
-    /// every loose Food Shard, Bramblekin and the Wolf Spider caught in a
-    /// wide corridor running from <paramref name="origin"/> along
-    /// <paramref name="direction"/> (a horizontal unit vector) across the
-    /// terrain. Faith is spent by the caller before this is invoked.
-    /// </summary>
-    public void CastGust(Vector3 origin, Vector3 direction)
-    {
-        Miracles.QueueGust(origin, direction);
-
-        for (int i = FoodShards.Count - 1; i >= 0; i--)
-        {
-            FoodShard shard = FoodShards[i];
-            if (!shard.IsCarried && IsInGustCorridor(origin, direction, shard.Position))
-                shard.Velocity = direction * ShardGustSpeed;
-        }
-
-        for (int i = Colony.Count - 1; i >= 0; i--)
-        {
-            Bramblekin bramblekin = Colony[i];
-            if (!bramblekin.IsDead && IsInGustCorridor(origin, direction, bramblekin.Position))
-                bramblekin.ApplyWindPush(direction * BramblekinGustPush, this);
-        }
-
-        if (Spider is { } spider && IsInGustCorridor(origin, direction, spider.Position))
-            spider.ApplyWindPush(direction * SpiderGustKnockback, this);
-    }
-
-    /// <summary>
-    /// True if <paramref name="point"/> lies within the wide rectangular
-    /// corridor running from <paramref name="origin"/> along
-    /// <paramref name="direction"/> (both horizontal; <paramref name="direction"/>
-    /// must already be a unit vector).
-    /// </summary>
-    private static bool IsInGustCorridor(Vector3 origin, Vector3 direction, Vector3 point)
-    {
-        var o = new Vector2(origin.X, origin.Z);
-        var d = new Vector2(direction.X, direction.Z);
-        var toPoint = new Vector2(point.X, point.Z) - o;
-
-        float along = Vector2.Dot(toPoint, d);
-        if (along < 0f || along > GustCorridorLength)
-            return false;
-
-        Vector2 perpendicular = toPoint - d * along;
-        return perpendicular.LengthSquared() <= GustCorridorHalfWidth * GustCorridorHalfWidth;
     }
 
     /// <summary>The 20-Meter Territory Rule: whether <paramref name="claimant"/>'s Militia has anything huntable within <see cref="TerritoryTargetingRadius"/> of <paramref name="home"/>.</summary>
@@ -2740,33 +1815,6 @@ public sealed class World
     }
 
     /// <summary>
-    /// Slides any Food Shard the Gust has flung, decelerating it with
-    /// friction each frame until it stops. Shards at rest (the common case)
-    /// are skipped entirely.
-    /// </summary>
-    private void UpdateShardPhysics(float deltaTime)
-    {
-        float half = Terrain.Size / 2f - FoodShard.Radius;
-        for (int i = FoodShards.Count - 1; i >= 0; i--)
-        {
-            FoodShard shard = FoodShards[i];
-            if (shard.IsCarried || shard.Velocity == Vector3.Zero)
-                continue;
-
-            shard.Position += shard.Velocity * deltaTime;
-
-            float damping = MathF.Max(0f, 1f - ShardFriction * deltaTime);
-            Vector3 velocity = shard.Velocity * damping;
-            shard.Velocity = velocity.LengthSquared() < ShardRestSpeed * ShardRestSpeed ? Vector3.Zero : velocity;
-
-            shard.Position = new Vector3(
-                Math.Clamp(shard.Position.X, -half, half),
-                Terrain.GroundHeight,
-                Math.Clamp(shard.Position.Z, -half, half));
-        }
-    }
-
-    /// <summary>
     /// Timeout Failsafe against the "dibs" deadlock: a claimed Food Shard whose
     /// claimant never actually closes the distance (stuck, jittering, or
     /// otherwise stalled) would otherwise lock that shard out of the pool
@@ -2846,29 +1894,12 @@ public sealed class World
 
     public void Update(float deltaTime)
     {
-        // Worship: every living Bramblekin feeds the Faith pool, so each
-        // loss weakens the player's miracles as well as the economy.
-        // Counted as !IsDead rather than Colony.Count: a kill this frame is
-        // marked dead immediately but its removal from Colony is deferred to
-        // the end of the frame, and a just-caught Bramblekin shouldn't still
-        // be tithing.
-        int livingPopulation = Colony.Count(b => !b.IsDead);
-        Faith = MathF.Min(MaxFaith, Faith + FaithPerBramblekinPerSecond * livingPopulation * deltaTime);
-
-        Miracles.Update(deltaTime, Physics);
-        Physics.Update(deltaTime);
-        CrackAcornOnImpact();
-        SquishSpiderOnImpact();
-        SquishBramblekinOnImpact();
-
-        UpdateShardPhysics(deltaTime);
         UpdateFoodClaimTimeouts(deltaTime);
         RebuildObstacles();
         PushFoodOutOfObstacles();
 
-        // Ambient prey moves before the colony reacts to it this frame —
-        // same ordering as pebbles settling before Bramblekin steer round
-        // them. Reverse for-loop: a Militia unit's own Update() (below) can
+        // Ambient prey moves before the colony reacts to it this frame.
+        // Reverse for-loop: a Militia unit's own Update() (below) can
         // call KillAphid, which marks an Aphid dead but, like everything
         // else this session, defers the actual list removal.
         for (int i = Aphids.Count - 1; i >= 0; i--)
@@ -3113,7 +2144,6 @@ public sealed class World
             byte alpha = (byte)(200 * Math.Clamp(timeLeft / 2f, 0f, 1f));
             Raylib.DrawCylinder(position + new Vector3(0, 0.012f, 0), 0.9f, 0.9f, 0.005f, 20, new Color(30, 25, 20, (int)alpha));
         }
-        Miracles.Draw();
         for (int i = Villages.Count - 1; i >= 0; i--)
             Villages[i].Draw();
 
@@ -3162,7 +2192,6 @@ public sealed class World
         }
 
         Spider?.Draw();
-        Physics.Draw();
     }
 
     // --- Queries used by the Bramblekin AI ------------------------------------
@@ -3182,30 +2211,17 @@ public sealed class World
         return false;
     }
 
-    /// <summary>The first God's Shadow that a body of <paramref name="bodyRadius"/> at <paramref name="point"/> is under, if any.</summary>
-    public GodShadow? ShadowOver(Vector3 point, float bodyRadius)
-    {
-        foreach (var shadow in Miracles.ActiveShadows)
-        {
-            if (shadow.Overlaps(point, bodyRadius))
-                return shadow;
-        }
-        return null;
-    }
-
     /// <summary>
-    /// Dibs: a shard can be gathered if nobody is carrying it, it isn't
+    /// Dibs: a shard can be gathered if nobody is carrying it, and it isn't
     /// claimed by a different Bramblekin actively pursuing it (see
-    /// <see cref="FoodShard.ClaimedBy"/>), and no God's Shadow is over it
-    /// (walking in there would be suicidal). Rocks never cover shards — they
+    /// <see cref="FoodShard.ClaimedBy"/>). Rocks never cover shards — they
     /// shove them aside — but the blocked check stays as a safety net for a
     /// shard wedged somewhere unreachable.
     /// </summary>
     public bool IsAvailable(FoodShard shard, Bramblekin claimant) =>
         !shard.IsCarried
         && (shard.ClaimedBy is null || shard.ClaimedBy == claimant)
-        && !IsBlocked(shard.Position, 0f)
-        && ShadowOver(shard.Position, FoodShard.Radius) is null;
+        && !IsBlocked(shard.Position, 0f);
 
     /// <summary>The 20-Meter Territory Rule: whether <paramref name="claimant"/> has anything to gather, preferring <paramref name="home"/>'s territory but falling back to the wider map.</summary>
     public bool HasAvailableFoodFor(Bramblekin claimant, VillageHeart? home) => NearestAvailableShard(claimant.Position, claimant, home) is not null;
@@ -3308,12 +2324,11 @@ public sealed class World
         village.FoodStored = Math.Min(village.FoodStored + 1, village.MaxFoodCapacity);
     }
 
-    /// <summary>Tycoon Economy Dibs: same rules as <see cref="IsAvailable(FoodShard, Bramblekin)"/> — nobody carrying it, unclaimed (or claimed by <paramref name="claimant"/>) and clear of any God's Shadow.</summary>
+    /// <summary>Tycoon Economy Dibs: same rules as <see cref="IsAvailable(FoodShard, Bramblekin)"/> — nobody carrying it, unclaimed (or claimed by <paramref name="claimant"/>).</summary>
     public bool IsAvailable(AmberNode amber, Bramblekin claimant) =>
         !amber.IsCarried
         && (amber.ClaimedBy is null || amber.ClaimedBy == claimant)
-        && !IsBlocked(amber.Position, 0f)
-        && ShadowOver(amber.Position, AmberNode.Radius) is null;
+        && !IsBlocked(amber.Position, 0f);
 
     /// <summary>
     /// Tycoon Economy: Strict Border Control (see <see cref="IsForeignTerritory"/>)
@@ -3364,8 +2379,8 @@ public sealed class World
         village.AmberStored++;
     }
 
-    /// <summary>A Fang can be picked up if no God's Shadow is over it — it's never carried or claimed, just touched and gone.</summary>
-    public bool IsAvailable(SpiderFang fang) => !IsBlocked(fang.Position, 0f) && ShadowOver(fang.Position, SpiderFang.Radius) is null;
+    /// <summary>A Fang can always be picked up — it's never carried or claimed, just touched and gone.</summary>
+    public bool IsAvailable(SpiderFang fang) => !IsBlocked(fang.Position, 0f);
 
     public bool HasAvailableFang => Fangs.Any(IsAvailable);
 
@@ -3403,8 +2418,8 @@ public sealed class World
             _pendingFangRemovals.Add(fang);
     }
 
-    /// <summary>A Chitin piece can be picked up if no God's Shadow is over it — same rule as a Fang.</summary>
-    public bool IsAvailable(Chitin chitin) => !IsBlocked(chitin.Position, 0f) && ShadowOver(chitin.Position, Chitin.Radius) is null;
+    /// <summary>A Chitin piece can always be picked up — same rule as a Fang.</summary>
+    public bool IsAvailable(Chitin chitin) => !IsBlocked(chitin.Position, 0f);
 
     public bool HasAvailableChitin => Chitins.Any(IsAvailable);
 
@@ -3472,7 +2487,10 @@ public sealed class World
     /// Parallel Progress note): whenever Population is still below the Housing
     /// System's <see cref="VillageHeart.MaxPopulation"/> — entirely decoupled
     /// from MaxFoodCapacity/Granaries now — the Village Heart spends Food
-    /// Stored on new Bramblekin as soon as it reaches <see cref="FoodPerSprout"/>.
+    /// Stored on new Bramblekin as soon as it reaches <see cref="FoodSproutThreshold"/>
+    /// — a Growth Buffer well above the <see cref="FoodPerSprout"/> cost itself,
+    /// so a sprout always leaves a safety buffer of Food Stored behind rather
+    /// than spending the colony down to the edge of starvation.
     /// Strictly Enforced: Food is deducted and a Bramblekin spawned only
     /// when doing so still keeps Population below MaxPopulation, checked
     /// fresh on every single iteration via a local running count rather
@@ -3496,7 +2514,7 @@ public sealed class World
             // strictly below MaxPopulation.
             if (projectedPopulation >= village.MaxPopulation)
                 return;
-            if (village.FoodStored < FoodPerSprout)
+            if (village.FoodStored < FoodSproutThreshold)
                 return;
 
             village.FoodStored -= FoodPerSprout;
@@ -3540,13 +2558,15 @@ public sealed class World
     }
 
     /// <summary>
-    /// Auto-Construction (Spore Farm): a one-time build. Once Population
-    /// reaches <see cref="SporeFarmPopulationThreshold"/>, at least one
-    /// Granary already exists, and the village doesn't already have a Spore
-    /// Farm (finished or under construction), the Village Heart hoards
-    /// Food Stored until it can afford <see cref="SporeFarmFoodCost"/>,
-    /// then places a Spore Farm Blueprint close to its own centre. Never
-    /// queued a second time once one exists.
+    /// Auto-Construction (Spore Farm) — Scaling Domestic Farms: up to
+    /// <see cref="MaxSporeFarmsPerVillage"/> Spore Farms per Village Heart, one
+    /// more queued every time Population crosses another multiple of
+    /// <see cref="SporeFarmPopulationThreshold"/> (1st at 10 Population, 2nd at
+    /// 20, 3rd at 30, 4th at 40) — requires at least one Granary already up,
+    /// and a Growth Buffer of its own: the Village Heart hoards Food Stored
+    /// until it reaches <see cref="FoodSproutThreshold"/> before spending
+    /// <see cref="SporeFarmFoodCost"/> of it on the next Blueprint, so farm
+    /// expansion never itself starves the colony.
     /// </summary>
     private void UpdateAutoSporeFarm(VillageHeart village)
     {
@@ -3554,10 +2574,13 @@ public sealed class World
             return;
         if (!Buildings.Any(b => b.Kind == BuildingKind.Granary && b.FactionID == village.FactionID))
             return; // Needs at least one Granary up first.
-        if (Buildings.Any(b => b.Kind == BuildingKind.SporeFarm && b.FactionID == village.FactionID) ||
-            Blueprints.Any(b => b.Kind == BuildingKind.SporeFarm && b.FactionID == village.FactionID))
-            return; // Already have one, finished or in progress.
-        if (village.FoodStored < SporeFarmFoodCost)
+
+        int sporeFarmCount = Buildings.Count(b => b.Kind == BuildingKind.SporeFarm && b.FactionID == village.FactionID)
+            + Blueprints.Count(b => b.Kind == BuildingKind.SporeFarm && b.FactionID == village.FactionID);
+        int targetSporeFarmCount = Math.Min(village.Population / SporeFarmPopulationThreshold, MaxSporeFarmsPerVillage);
+        if (sporeFarmCount >= targetSporeFarmCount)
+            return; // Already have (or are building) enough for the current Population.
+        if (village.FoodStored < FoodSproutThreshold)
             return; // Still hoarding.
 
         Vector3? spot = RandomPointNearVillage(village, SporeFarmPlacementRadius, Building.SporeFarmRadius + 0.2f);
@@ -3825,7 +2848,6 @@ public sealed class World
             UpkeepTimer = UpkeepInterval + SchismUpkeepGracePeriod,
         };
         Villages.Add(village);
-        Physics.AddStaticBox(village.Bounds);
         RebuildObstacles();
 
         migration.MarkFounded();
@@ -3847,16 +2869,15 @@ public sealed class World
     /// new Faction 0 (green) Village Heart at <paramref name="groundPoint"/>,
     /// with <see cref="GenesisGathererCount"/> Gatherers spawned right
     /// beside it so it isn't left standing empty. Called from
-    /// <see cref="MiracleInput"/>'s tap handling once it's confirmed the
-    /// world is dead — Free Extinction Recovery: no Faith cost, since a
-    /// totally extinct world has nobody left worshipping to ever regenerate
-    /// Faith with in the first place.
+    /// <see cref="WorldTapInput"/>'s tap handling once it's confirmed the
+    /// world is dead — Free Extinction Recovery: an autonomous simulation
+    /// still needs some way back from total extinction rather than sitting
+    /// on a permanently empty map forever.
     /// </summary>
     public void Genesis(Vector3 groundPoint)
     {
         var village = new VillageHeart(groundPoint, factionId: 0, factionColor: new Color(40, 180, 90, 255), Rng);
         Villages.Add(village);
-        Physics.AddStaticBox(village.Bounds);
         RebuildObstacles();
 
         for (int i = 0; i < GenesisGathererCount; i++)
@@ -3971,7 +2992,7 @@ public sealed class World
         for (int attempt = 0; attempt < 30; attempt++)
         {
             candidate = Terrain.RandomPoint(Rng, edgeMargin);
-            if (IsBlocked(candidate, clearance) || ShadowOver(candidate, clearance) is not null)
+            if (IsBlocked(candidate, clearance))
                 continue;
             if (IsInsideAnyTerritory(candidate))
                 continue;
@@ -4084,14 +3105,14 @@ public sealed class World
         Births++;
     }
 
-    /// <summary>A random point on the terrain that isn't inside an obstacle or under a shadow.</summary>
+    /// <summary>A random point on the terrain that isn't inside an obstacle.</summary>
     public Vector3 RandomFreePoint(float clearance, float edgeMargin)
     {
         Vector3 candidate = Vector3.Zero;
         for (int attempt = 0; attempt < 30; attempt++)
         {
             candidate = Terrain.RandomPoint(Rng, edgeMargin);
-            if (!IsBlocked(candidate, clearance) && ShadowOver(candidate, clearance) is null)
+            if (!IsBlocked(candidate, clearance))
                 return candidate;
         }
         return candidate; // Practically unreachable: obstacles cover a tiny fraction of the map.
@@ -4099,31 +3120,12 @@ public sealed class World
 
     // --- Internals ----------------------------------------------------------------
 
-    /// <summary>
-    /// Collects the solid circles on the ground: the village, plus every
-    /// pebble low enough to block a walker (a pebble still falling from 10 m
-    /// shouldn't make anyone swerve). A pebble that has nearly shrunk away
-    /// (see PhysicsObject's end-of-life shrink) is skipped too, so
-    /// Bramblekin start walking through the spot as it fades rather than
-    /// stopping dead at an invisible speck.
-    /// </summary>
+    /// <summary>Collects the solid circles on the ground: every Village Heart's footprint.</summary>
     private void RebuildObstacles()
     {
         _obstacles.Clear();
         foreach (var village in Villages)
             _obstacles.Add(village.Obstacle);
-
-        for (int i = Physics.Objects.Count - 1; i >= 0; i--)
-        {
-            PhysicsObject? pebble = Physics.Objects[i];
-            // Defensive: obstacle avoidance must never see a null/garbage
-            // entry here, however this list is populated in the future.
-            if (pebble is null || pebble.Radius <= 0.01f)
-                continue;
-
-            if (pebble.Position.Y - pebble.Radius < Bramblekin.BodyHeight)
-                _obstacles.Add(new Obstacle(new Vector2(pebble.Position.X, pebble.Position.Z), pebble.Radius));
-        }
     }
 
     /// <summary>
@@ -4166,30 +3168,6 @@ public sealed class World
                 Math.Clamp(position.X, -half, half),
                 Terrain.GroundHeight,
                 Math.Clamp(position.Y, -half, half));
-        }
-    }
-
-    /// <summary>The Miracle Action: a pebble landing on or right next to any Acorn on the map cracks it open.</summary>
-    private void CrackAcornOnImpact()
-    {
-        if (Acorns.Count == 0 || Physics.Impacts.Count == 0)
-            return;
-
-        for (int i = Acorns.Count - 1; i >= 0; i--)
-        {
-            Acorn acorn = Acorns[i];
-            foreach (var impact in Physics.Impacts)
-            {
-                float crackDistance = impact.Body.Radius + Acorn.Radius + AcornCrackSlack;
-                float dx = impact.Point.X - acorn.Position.X;
-                float dz = impact.Point.Z - acorn.Position.Z;
-                if (dx * dx + dz * dz > crackDistance * crackDistance)
-                    continue;
-
-                SpawnFoodShards(acorn.Position, impact.Body);
-                Acorns.RemoveAt(i);
-                break;
-            }
         }
     }
 
@@ -4280,90 +3258,10 @@ public sealed class World
     }
 
     /// <summary>
-    /// Scatters the shards in a ring around the pebble that cracked the acorn,
-    /// just outside it, so none end up buried under the rock. The first shard
-    /// flies out on the acorn's side; the others are spaced evenly round.
-    /// Queued rather than added directly: this runs from inside World.Update
-    /// before the Colony pass, and the new shards should only become visible
-    /// to gatherers on a clean iteration next frame.
-    /// </summary>
-    private void SpawnFoodShards(Vector3 acornPosition, PhysicsObject pebble)
-    {
-        float dx = acornPosition.X - pebble.Position.X;
-        float dz = acornPosition.Z - pebble.Position.Z;
-        float baseAngle = dx * dx + dz * dz > 1e-6f ? MathF.Atan2(dz, dx) : (float)(Rng.NextDouble() * MathF.Tau);
-        float distance = pebble.Radius + FoodShard.Radius + 0.35f;
-
-        for (int i = 0; i < ShardsPerAcorn; i++)
-        {
-            float angle = baseAngle + i * MathF.Tau / ShardsPerAcorn;
-            var position = new Vector3(
-                pebble.Position.X + MathF.Cos(angle) * distance,
-                Terrain.GroundHeight,
-                pebble.Position.Z + MathF.Sin(angle) * distance);
-
-            // Keep shards on the terrain even if the acorn was near an edge.
-            float half = Terrain.Size / 2f - Bramblekin.EdgeMargin;
-            position.X = Math.Clamp(position.X, -half, half);
-            position.Z = Math.Clamp(position.Z, -half, half);
-            _pendingShardSpawns.Add(new FoodShard(position));
-        }
-    }
-
-    /// <summary>
-    /// The high-skill reward: a pebble whose centre lands right on top of the
-    /// Wolf Spider crushes it. (A spider staring at a distraction, or
-    /// feeding, stands still — that's the moment to strike.) This check runs
-    /// every frame from World.Update() itself, entirely outside the spider's
-    /// own state machine (WolfSpider.Update()) — so it applies no matter what
-    /// the spider is doing, Tumbled included. A stunned spider lying on its
-    /// side is not an invincible one.
-    /// </summary>
-    private void SquishSpiderOnImpact()
-    {
-        if (Spider is null)
-            return;
-
-        foreach (var impact in Physics.Impacts)
-        {
-            if (GroundMover.HorizontalDistance(impact.Point, Spider.Position) <= SquishRadius)
-            {
-                DespawnSpider();
-                return;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Miracle Allegiance: a pebble whose centre lands within
-    /// <see cref="SquishRadius"/> of a living Bramblekin — any faction,
-    /// Gatherer or Militia alike — squishes it outright, same as a direct
-    /// hit on the Wolf Spider. Gives the player a way to personally
-    /// intervene in a Border War (or just thin out an overcrowded faction)
-    /// rather than only ever helping colonies along.
-    /// </summary>
-    private void SquishBramblekinOnImpact()
-    {
-        if (Physics.Impacts.Count == 0)
-            return;
-
-        foreach (var impact in Physics.Impacts)
-        {
-            for (int i = Colony.Count - 1; i >= 0; i--)
-            {
-                Bramblekin bramblekin = Colony[i];
-                if (!bramblekin.IsDead && GroundMover.HorizontalDistance(impact.Point, bramblekin.Position) <= SquishRadius)
-                    Kill(bramblekin);
-            }
-        }
-    }
-
-    /// <summary>
     /// Sustained Combat: applies Militia poke damage to the spider and, if
-    /// that brings its Health to 0, kills it outright — the same
-    /// despawn/respawn-timer path as a direct pebble hit. Purely a Health
-    /// mutation otherwise: never touches State, so it can never wake a
-    /// Tumbled spider early (see the hard lock in WolfSpider.Update()).
+    /// that brings its Health to 0, kills it outright via the same
+    /// despawn/respawn-timer path. Purely a Health mutation otherwise: never
+    /// touches State.
     /// </summary>
     public void DamageSpider(int amount)
     {
@@ -4379,8 +3277,7 @@ public sealed class World
     /// Removes the spider, leaves a splat where it stood, and drops one
     /// Spider Fang and one Chitin right where it died — Individual Equipment's
     /// raw materials (see <see cref="ConsumeFang"/>/<see cref="ConsumeChitin"/>)
-    /// — then starts the respawn timer. Shared by a pebble squish and a
-    /// Health-based kill, so every death drops a pair.
+    /// — then starts the respawn timer.
     /// </summary>
     private void DespawnSpider()
     {
@@ -4391,7 +3288,6 @@ public sealed class World
         _pendingFangSpawns.Add(new SpiderFang(Spider.Position));
         _pendingChitinSpawns.Add(new Chitin(Spider.Position));
         Spider = null;
-        SpidersCrushed++;
         SpiderRespawnTimer = SpiderRespawnDelay;
     }
 
@@ -4455,7 +3351,7 @@ public sealed class World
 /// </summary>
 public enum FactionTrait
 {
-    /// <summary>1 Militia per 3 Gatherers (Population / 4).</summary>
+    /// <summary>1 Militia per 5 Gatherers (Population / 6).</summary>
     Balanced,
 
     /// <summary>1 Militia per 2 Gatherers (Population / 3) — highly aggressive.</summary>
@@ -4498,7 +3394,7 @@ public sealed class VillageHeart
     /// <summary>Centre of the footprint on the ground.</summary>
     public Vector3 Center { get; }
 
-    /// <summary>The solid box pebbles collide with.</summary>
+    /// <summary>The Village Heart's bounding box, used for obstacle/collision checks.</summary>
     public BoundingBox Bounds { get; }
 
     /// <summary>
@@ -4583,13 +3479,13 @@ public sealed class VillageHeart
 
     /// <summary>
     /// Extinction: no one left (<see cref="Population"/> is 0) and not even
-    /// enough Food Stored to Auto-Sprout a single replacement (<see cref="World.FoodPerSprout"/>)
+    /// enough Food Stored to Auto-Sprout a single replacement (<see cref="World.FoodSproutThreshold"/>)
     /// — this faction is done for good. An Extinct Village Heart stops
     /// functioning entirely (see the per-village loop in <see cref="World.Update"/>):
     /// no Upkeep, no Auto-Anything. It still stands, and can still be found
     /// and razed by Base Razing, until then.
     /// </summary>
-    public bool IsExtinct => Population == 0 && FoodStored < World.FoodPerSprout;
+    public bool IsExtinct => Population == 0 && FoodStored < World.FoodSproutThreshold;
 
     public VillageHeart(Vector3 center, int factionId, Color factionColor, Random rng)
     {
@@ -4705,11 +3601,10 @@ public sealed class Migration
 
 /// <summary>
 /// The Acorn puzzle object: too hard for a single Bramblekin to open alone.
-/// A Pebble-Drop miracle still cracks one outright, or up to
-/// <see cref="MaxClaimants"/> Chitin-Mallet Gatherers can claim and crack
-/// one together — Cooperative Acorn Cracking (see <see cref="World.NearestClaimableAcorn"/>/
-/// <see cref="World.Update"/>'s coop-crack check). Either way it shatters
-/// into Food Shards.
+/// Up to <see cref="MaxClaimants"/> Chitin-Mallet Gatherers can claim and
+/// crack one together — Cooperative Acorn Cracking (see <see cref="World.NearestClaimableAcorn"/>/
+/// <see cref="World.Update"/>'s coop-crack check). Shatters into Food
+/// Shards once enough progress has been made.
 /// </summary>
 public sealed class Acorn
 {
@@ -4830,10 +3725,10 @@ public sealed class AmberNode
 /// <summary>Where a Food Shard came from — purely cosmetic, it's worth the same 1 food either way.</summary>
 public enum FoodShardKind
 {
-    /// <summary>Cracked from an Acorn (by a Pebble-Drop) or dropped by a hunted Aphid. Orange.</summary>
+    /// <summary>Cracked from an Acorn (Cooperative Acorn Cracking) or dropped by a hunted Aphid. Orange.</summary>
     Cracked,
 
-    /// <summary>Passive Foraging: a wild Berry, grabbable without spending Faith. Red.</summary>
+    /// <summary>Passive Foraging: a wild Berry. Red.</summary>
     Berry,
 }
 
@@ -4850,13 +3745,6 @@ public sealed class FoodShard
 
     /// <summary>Where it came from. Only affects colour; it's worth the same 1 food regardless.</summary>
     public FoodShardKind Kind { get; }
-
-    /// <summary>
-    /// Ground-plane sliding speed. Zero at rest; a Gust sets it, and World's
-    /// shard-physics step bleeds it off with friction each frame. Ignored
-    /// while carried.
-    /// </summary>
-    public Vector3 Velocity { get; set; }
 
     /// <summary>
     /// Dibs: the one Bramblekin currently pursuing this shard, if any — see
@@ -5242,7 +4130,7 @@ public sealed class GroundMover
 
     /// <summary>
     /// Instantly displaces the body by <paramref name="offset"/> — e.g. a
-    /// Gust knockback — then re-clamps it to the terrain and pushes it back
+    /// Warning Shove — then re-clamps it to the terrain and pushes it back
     /// out of any obstacle the displacement landed it inside, exactly as
     /// normal movement would. Doesn't touch the current target/detour or
     /// stuck-detection: whatever the body was doing, it keeps doing it from
@@ -5454,7 +4342,7 @@ public enum BramblekinState
     /// </summary>
     Cracking,
 
-    /// <summary>Running at 3x speed from a God's Shadow or a predator.</summary>
+    /// <summary>Running at 3x speed from a predator, or from a Warning Shove.</summary>
     Fleeing,
 
     /// <summary>
@@ -5514,10 +4402,7 @@ public enum BramblekinRole
 /// them directly; each runs a small state machine, checked in priority order
 /// every frame:
 ///
-///   1. God's Shadow (always wins, every role): standing under a shadow drops
-///      any carried food and sends it Fleeing at 3x speed to the nearest safe
-///      spot — even with a spider on its tail.
-///   2. The 20-Meter Territory Rule: a Militia unit only Defends against the
+///   1. The 20-Meter Territory Rule: a Militia unit only Defends against the
 ///      Wolf Spider, or Hunts an Aphid, while that hostile is within
 ///      <see cref="World.TerritoryTargetingRadius"/> of its own Village
 ///      Heart — see <see cref="World.SpawnSpiderNearVillage"/>'s organic
@@ -5530,13 +4415,13 @@ public enum BramblekinRole
 ///      Shove first) any specific foreign Gatherer it's caught stealing
 ///      food from its own territory (see <see cref="TrespassingAgainst"/>)
 ///      — every other faction is otherwise completely ignored.
-///   3. Village Building (Gatherers only), then Individual Equipment (an
+///   2. Village Building (Gatherers only), then Individual Equipment (an
 ///      un-upgraded Militia fetching a Fang, or Gatherer fetching Chitin —
 ///      see <see cref="HasFangPike"/>/<see cref="HasChitinMallet"/>), then
 ///      Economy (Gathering food, prioritizing the 20 m Territory Rule
 ///      before the wider map) or Hunting (Militia) override wandering in
 ///      that priority order.
-///   4. Wandering: Walking to a random free point, Pausing 2 s, repeat.
+///   3. Wandering: Walking to a random free point, Pausing 2 s, repeat.
 ///      Shared by both roles as the default idle behaviour.
 ///
 /// Gathering and Returning Bramblekin shake the ground; that is what the Wolf
@@ -5562,7 +4447,7 @@ public sealed class Bramblekin
     /// <summary>How long a Bramblekin rests after reaching a target, in seconds.</summary>
     public const float PauseDuration = 2f;
 
-    /// <summary>Collision radius in meters: used against pebbles, the village and shadows.</summary>
+    /// <summary>Collision radius in meters: used against the village and other obstacles.</summary>
     public const float BodyRadius = 0.25f;
 
     /// <summary>Total body height in meters, including the rounded ends.</summary>
@@ -5574,16 +4459,12 @@ public sealed class Bramblekin
     /// <summary>
     /// Fear Aura: a Wolf Spider closer than this (m) sends the Bramblekin
     /// running. Deliberately a little shorter than the spider's pounce range,
-    /// so a hunting spider gets the jump on distracted workers — which is why
-    /// the player's pebble distraction matters.
+    /// so a hunting spider gets the jump on distracted workers.
     /// </summary>
     public const float FearRadius = 2.0f;
 
     /// <summary>How far past the Fear Aura a frightened Bramblekin aims to run, in meters.</summary>
     private const float PredatorFleeMargin = 3f;
-
-    /// <summary>Extra clearance beyond the shadow's edge when picking an escape point.</summary>
-    private const float SafetyMargin = 0.5f;
 
     /// <summary>
     /// Within this distance of a shard, it is picked up. Forgiving on
@@ -5961,10 +4842,10 @@ public sealed class Bramblekin
         if (_pokeCooldown > 0f)
             _pokeCooldown -= deltaTime;
 
-        // --- 0. The Schism (absolute priority, above even God's Shadow):
-        // a Pioneer ignores food, blueprints and enemies alike and paths
-        // straight for its Migration's Target. Nothing else in this method
-        // runs while Migrating — see UpdateMigrating.
+        // --- 0. The Schism (absolute priority): a Pioneer ignores food,
+        // blueprints and enemies alike and paths straight for its
+        // Migration's Target. Nothing else in this method runs while
+        // Migrating — see UpdateMigrating.
         if (State == BramblekinState.Migrating)
         {
             UpdateMigrating(deltaTime, world);
@@ -5975,19 +4856,6 @@ public sealed class Bramblekin
 
         VillageHeart? home = world.VillageFor(FactionID);
 
-        // --- 1. God's Shadow (absolute priority) ------------------------------
-        // A shadow flight only replans if its escape point has since been
-        // covered by a newer shadow or blocked by a rock.
-        GodShadow? threat = world.ShadowOver(Position, BodyRadius);
-        if (threat is not null)
-        {
-            if (State != BramblekinState.Fleeing || !IsSafeSpot(_target, world))
-            {
-                DropCarried();
-                _target = FindEscapePoint(threat, world);
-                SetState(BramblekinState.Fleeing);
-            }
-        }
         // --- 2. The 20-Meter Territory Rule: Militia only engage the Wolf
         // Spider while it's within TerritoryTargetingRadius of their own
         // Village Heart — organic roaming means it spends most of its time
@@ -6001,7 +4869,7 @@ public sealed class Bramblekin
         // checked here — ahead of 2a/2b/2c/2d below in the same if/else-if
         // chain — it already completely overrides any rival-faction target
         // the instant it's true, full stop.
-        else if (Role == BramblekinRole.Militia && world.Spider is { } spider && home is not null &&
+        if (Role == BramblekinRole.Militia && world.Spider is { } spider && home is not null &&
                  GroundMover.HorizontalDistance(spider.Position, home.Center) <= World.TerritoryTargetingRadius)
         {
             _combatTarget = null;
@@ -6336,26 +5204,12 @@ public sealed class Bramblekin
             SetState(BramblekinState.Gathering);
     }
 
-    /// <summary>
-    /// The Gust's effect on a Bramblekin: an immediate, gentle shove in the
-    /// wind's direction. Never touches <see cref="State"/> or its current
-    /// target — it's just physically moved a little, same as running into
-    /// a pebble that suddenly appeared underfoot.
-    /// </summary>
-    public void ApplyWindPush(Vector3 push, World world)
-    {
-        if (IsDead)
-            return;
-
-        _mover.Nudge(push, world);
-    }
-
     /// <summary>Instant displacement (m) a Warning Shove knocks a caught trespasser back by.</summary>
     private const float WarningShoveDistance = 1.2f;
 
     /// <summary>
-    /// The Warning Shove (Thievery): unlike <see cref="ApplyWindPush"/>,
-    /// this DOES interrupt whatever this Bramblekin was doing — a defending
+    /// The Warning Shove (Thievery): this interrupts whatever this
+    /// Bramblekin was doing — a defending
     /// Militia unit just caught it red-handed. Knocks it directly away from
     /// <paramref name="shovedFrom"/>, drops whatever it was carrying
     /// (clearing <see cref="TrespassingAgainst"/> with it — see
@@ -6496,8 +5350,7 @@ public sealed class Bramblekin
         // The claim may have gone stale since last frame -- the Acorn
         // already shattered (handled via OnAcornShattered, which should
         // already have moved us out of this state, but a stray call path
-        // is cheap to guard against) or was cracked outright by a direct
-        // Pebble-Drop hit.
+        // is cheap to guard against).
         if (_claimedAcorn is not { } acorn || !world.Acorns.Contains(acorn))
         {
             _claimedAcorn = null;
@@ -6852,8 +5705,8 @@ public sealed class Bramblekin
 
     /// <summary>
     /// A Pioneer's entire world while Migrating: path straight for its
-    /// Migration's Target, oblivious to food, blueprints, the Wolf Spider
-    /// and God's Shadow alike (see the hard lock at the top of Update()).
+    /// Migration's Target, oblivious to food, blueprints and the Wolf
+    /// Spider alike (see the hard lock at the top of Update()).
     /// The moment ANY Pioneer bound to the same Migration founds the new
     /// Village Heart — not just this one — it drops Migrating for good on
     /// this check and reverts to ordinary AI; since its FactionID already
@@ -6908,8 +5761,7 @@ public sealed class Bramblekin
             return;
         }
 
-        // No-spawn zones: RandomFreePoint never picks a spot inside a rock,
-        // the village, or a God's Shadow.
+        // No-spawn zones: RandomFreePoint never picks a spot inside the village.
         _target = world.RandomFreePoint(BodyRadius + 0.1f, EdgeMargin);
         SetState(BramblekinState.Walking);
     }
@@ -6971,13 +5823,6 @@ public sealed class Bramblekin
 
     // --- Fleeing ------------------------------------------------------------------
 
-    /// <summary>
-    /// Picks the closest safe spot just outside <paramref name="threat"/>:
-    /// straight away from the shadow's centre if possible.
-    /// </summary>
-    private Vector3 FindEscapePoint(GodShadow threat, World world) =>
-        FindSafePointAround(threat.Center, threat.Radius + BodyRadius + SafetyMargin, world);
-
     /// <summary>A safe spot directly away from a predator, well outside its Fear Aura.</summary>
     private Vector3 FindPointAwayFrom(Vector3 predator, World world) =>
         FindSafePointAround(predator, FearRadius + PredatorFleeMargin, world);
@@ -7026,9 +5871,9 @@ public sealed class Bramblekin
             Math.Clamp(danger.Z + MathF.Sin(baseAngle) * distance, -half, half));
     }
 
-    /// <summary>Not under a shadow and not inside a rock or the village.</summary>
+    /// <summary>Not inside a rock or the village.</summary>
     private static bool IsSafeSpot(Vector3 point, World world) =>
-        world.ShadowOver(point, BodyRadius) is null && !world.IsBlocked(point, BodyRadius);
+        !world.IsBlocked(point, BodyRadius);
 }
 
 // =============================================================================
@@ -7050,13 +5895,13 @@ public enum SpiderState
     /// <summary>Getting its legs back under it after a pounce.</summary>
     Recovering,
 
-    /// <summary>Distracted by a pebble impact: goes to the spot and stares at it.</summary>
+    /// <summary>Dormant: no longer reachable now that the player's pebble-impact distraction has been removed.</summary>
     Investigating,
 
     /// <summary>Eating a catch: stays put and ignores everything for a while.</summary>
     Feeding,
 
-    /// <summary>Knocked over by a Gust while Hunting or Pouncing: stunned, does nothing for a few seconds.</summary>
+    /// <summary>Dormant: no longer reachable now that the player's Gust has been removed.</summary>
     Tumbled,
 }
 
@@ -7072,23 +5917,12 @@ public enum SpiderState
 /// Feeding caps how fast it can kill: without it every victim's dropped
 /// food lures the next gatherer in, and the colony dies in a chain.
 ///
-/// The player's counter is a pebble: any hard landing within
-/// <see cref="ImpactHearingRadius"/> is a far stronger vibration than a
-/// Bramblekin's footsteps, so the spider instantly abandons whatever it was
-/// doing (even mid-pounce) and goes to investigate the impact, staring at
-/// it for 3 s before resuming its prowl.
-///
-/// A second counter, The Gust, always knocks it back physically; if it was
-/// actively Hunting or Pouncing, that shove also tumbles it — stunned,
-/// doing nothing — for <see cref="TumbledDuration"/> seconds, a strict lock
-/// (see the early return at the top of Update()): nothing, not even taking
-/// Poke damage, can end it early.
-///
-/// Sustained Combat: Militia don't just block a Pounce any more — see
-/// Bramblekin's Defending state, they close in and Poke it (damage, on a
-/// fast cooldown) whenever they're in range, stunned or not. While awake
-/// (not Tumbled) and a Militia unit gets close enough, it Bites back on its
-/// own cooldown. Health reaching 0, from either side, is death.
+/// This is a pure, zero-intervention simulation: there is no player lever
+/// left to pull against it. Its only counter is Sustained Combat — see
+/// Bramblekin's Defending state, Militia close in and Poke it (damage, on a
+/// fast cooldown) whenever they're in range. When a Militia unit gets close
+/// enough it Bites back on its own cooldown. Health reaching 0, from either
+/// side, is death.
 /// </summary>
 public sealed class WolfSpider
 {
@@ -7098,7 +5932,7 @@ public sealed class WolfSpider
     /// <summary>How far (m) it can feel a gathering/returning Bramblekin's footsteps.</summary>
     public const float VibrationRadius = 7f;
 
-    /// <summary>How far (m) it can feel a pebble slam into the ground — much further than footsteps.</summary>
+    /// <summary>Dormant: was how far (m) it could feel a pebble slam into the ground, back when the player had a pebble to drop.</summary>
     public const float ImpactHearingRadius = 12f;
 
     /// <summary>Distance (m) at which a hunting spider launches its pounce.</summary>
@@ -7113,7 +5947,7 @@ public sealed class WolfSpider
     private const float StareDuration = 3f;
     private const float FeedDuration = 20f;
 
-    /// <summary>How long a Gust-tumbled spider is stunned for, in seconds.</summary>
+    /// <summary>Dormant: was how long a Gust-tumbled spider was stunned for, in seconds, back when the player had a Gust to cast.</summary>
     public const float TumbledDuration = 4f;
 
     /// <summary>Hit points out of <see cref="MaxHealth"/>.</summary>
@@ -7184,9 +6018,10 @@ public sealed class WolfSpider
     {
         _mover.Idle();
 
-        // Tumbled is a hard lock, checked and handled before anything else
-        // in this method — the prey safety net, the pebble-thud distraction,
-        // the Bite retaliation below, every bit of vision/AI. Nothing can
+        // Tumbled is a dormant hard lock (nothing triggers it any more, now
+        // that the player's Gust is gone), checked and handled before
+        // anything else in this method — the prey safety net, the Bite
+        // retaliation below, every bit of vision/AI. Nothing can
         // re-target, re-notice, retaliate or otherwise step on the stun
         // early — not even taking Poke damage (TakeDamage is a pure Health
         // mutation that never touches State); the only way out is the timer
@@ -7224,16 +6059,6 @@ public sealed class WolfSpider
             _prey = null;
             if (State == SpiderState.Hunting)
                 StartProwling();
-        }
-
-        // --- The Distraction: a pebble impact trumps everything but a meal ----
-        foreach (var impact in State == SpiderState.Feeding ? [] : world.Physics.Impacts)
-        {
-            if (GroundMover.HorizontalDistance(Position, impact.Point) <= ImpactHearingRadius)
-            {
-                StartInvestigating(impact.Point);
-                break;
-            }
         }
 
         switch (State)
@@ -7282,26 +6107,6 @@ public sealed class WolfSpider
 
         if (_mover.IsMoving)
             _walkCycle += deltaTime * (State == SpiderState.Pouncing ? 30f : 12f);
-    }
-
-    /// <summary>
-    /// The Gust's counter to the spider: always a strong physical knockback.
-    /// If it was actively Hunting or Pouncing, the shove also interrupts
-    /// that — dropping any tracked prey and knocking it into the Tumbled
-    /// (stunned) state for <see cref="TumbledDuration"/> seconds before it
-    /// resets to Prowling. Caught in any other state, it's simply shoved;
-    /// whatever it was doing (prowling, staring, eating) carries on.
-    /// </summary>
-    public void ApplyWindPush(Vector3 push, World world)
-    {
-        _mover.Nudge(push, world);
-
-        if (State is SpiderState.Hunting or SpiderState.Pouncing)
-        {
-            _prey = null;
-            _timer = TumbledDuration;
-            SetState(SpiderState.Tumbled);
-        }
     }
 
     // --- States ---------------------------------------------------------------------
