@@ -40,7 +40,6 @@ Yes, miracles can crush your own units. Treating the Bramblekin as immune to phy
 
 ## Predators & Prey AI
 *   **The Wolf Spider (Ground Stalker):** Hunts via a "vibration grid" triggered by Bramblekin carrying heavy resources. Players can counter by dropping pebbles as seismic decoys or flipping the spider with The Gust.
-*   **The Robin (AoE Boss):** Telegraphs its landing with a massive shadow. It rapid-fires pecks at moving targets. Players must ensure the village has physical canopy cover or use The Sunbeam as a flashbang to break its targeting.
 *   **The Scurry System (Prey AI):** Predators emit a "Fear Aura." Unarmed Bramblekin enter Panic Mode, drop their cargo to increase speed, and run to objects tagged `Cover_Small`. If trapped, they may "Play Dead" to drop off the targeting array.
 
 ## Mid-Game: Militarization & Defenses
@@ -86,7 +85,7 @@ The simulation economy will be expanded with new resources, buildings, and entit
 ## Win and Loss Conditions
 The game operates on a seasonal timer, pushing the colony toward a definitive endgame rather than an endless sandbox.
 
-*   **The Loss Condition (Extinction):** The game ends if the Bramblekin population drops to zero, or if the Village Heart (the original terra-cotta pot or seedling they built around) is destroyed by a rival faction or boss event.
+*   **The Loss Condition (Extinction):** The game ends if the Bramblekin population drops to zero, or if the Village Heart (the original terra-cotta pot or seedling they built around) is destroyed by a rival faction.
 *   **The Win Condition (The Great Migration):** The ultimate realization is that the backyard is too hostile to sustain a massive, permanent civilization. The overarching goal is to build The Ark before Winter arrives.
     *   *The Objective:* Gather exorbitant amounts of rare, guarded resources (like silk, specific light-weight bark, and dandelion parachutes) to construct a massive wind-ship.
     *   *The Climax:* Launching the Ark triggers an endless wave of predators and rival factions desperate to steal the vessel. You must expend all your Faith defending the launch platform until the wind catches the Ark, carrying the Bramblekin over the fence to the "Promised Land" (winning the game).

@@ -67,11 +67,7 @@ The game is a pure God Game: the player's only lever on the world is a miracle (
 *   ✅ **Task 4: Base Razing & Refugees.** Defeated Village Hearts drop 10 Food Shards. Surviving Gatherers of the destroyed base attempt to flee 30m away to plant a new Refugee base; if the map is full, they are slated for future assimilation.
 *   ✅ **Task 5: Survival Failsafes.** The Apex Predator (Spider) overrides all faction wars ('Enemy of my Enemy'). If all bases are destroyed, the player can tap anywhere for a Free Genesis Seed to restart the world.
 
-## Phase 4: Late-Game Bosses (Next Design Steps)
-*   ⬜ **Design The Lawnmower Event:** A massive, scrolling environmental hazard. It forces the player to rapidly dig trenches, build underground bunkers, and sacrifice surface structures to save the population.
-*   ⬜ **Design The Stray Cat Event:** A stealth/distraction encounter. The cat acts as an invincible entity; the player must use miracles (dropping acorns on metal cans, rustling distant bushes with The Gust) to misdirect the cat's attention while the village stays dead silent.
-
-## Phase 5: Deepening the Simulation
+## Phase 4: Deepening the Simulation
 *   ⬜ **Neutral Factions & Trade:** Design wandering merchant bugs (like a heavily armored Rhinoceros Beetle caravan) where players can trade surplus resources for rare tech.
 *   ⬜ **Currency & Trade:** Implement 'Amber' sap nodes as a minable universal currency. Add a 'Trading Post' building where factions can post automated buy/sell orders, and a 'Merchant' unit to physically walk between neutral factions to execute trades.
 *   ⬜ **Advanced RPG Crafting:** Expand the Armory and Tech Tree. Introduce the 'Stag Beetle' (drops Chitin for Militia +Max HP Chestplates) and 'Silkworm' (drops Silk for Gatherer speed/carry upgrades). Allow asymmetric tech unlocking where different factions invent different tech first.
