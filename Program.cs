@@ -174,6 +174,7 @@ public static class Game
             speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
             DrawFaithMeter(world.Faith);
             DrawColonyPanel(world);
+            DrawGenesisPrompt(world);
             DrawHud(input, world);
 
             Raylib.EndDrawing();
@@ -356,6 +357,33 @@ public static class Game
                            : village.BuildersAreInspired ? new Color(60, 130, 70, 255)
                            : ink;
         Raylib.DrawText(morale, x, 26 + lineHeight * 3, fontSize, moraleColor);
+    }
+
+    /// <summary>
+    /// Genesis: once <see cref="World.IsWorldExtinct"/>, blinks a large
+    /// center-screen prompt (twice a second, driven off <see cref="Raylib.GetTime"/>
+    /// so it needs no state of its own) telling the player to tap anywhere
+    /// to reseed the world. The actual tap handling lives in
+    /// <see cref="MiracleInput.HandlePress"/>/TryGenesis.
+    /// </summary>
+    private static void DrawGenesisPrompt(World world)
+    {
+        if (!world.IsWorldExtinct)
+            return;
+        if ((int)(Raylib.GetTime() * 2) % 2 != 0)
+            return; // Blink: visible for half of every second.
+
+        const int titleSize = 44, subtitleSize = 28;
+        string title = "World Dead.";
+        string subtitle = $"Tap anywhere to Seed new Life (Cost: {(int)MiracleManager.GenesisFaithCost} Faith)";
+        int titleWidth = Raylib.MeasureText(title, titleSize);
+        int subtitleWidth = Raylib.MeasureText(subtitle, subtitleSize);
+        int centerX = Raylib.GetScreenWidth() / 2;
+        int centerY = Raylib.GetScreenHeight() / 2;
+
+        var color = new Color(200, 40, 40, 255);
+        Raylib.DrawText(title, centerX - titleWidth / 2, centerY - titleSize, titleSize, color);
+        Raylib.DrawText(subtitle, centerX - subtitleWidth / 2, centerY + 8, subtitleSize, color);
     }
 
     /// <summary>
@@ -1080,6 +1108,17 @@ public sealed class MiracleInput
     /// </summary>
     public void HandlePress(Vector2 screenPosition, Camera3D camera, World world, UiButton pebbleButton, UiButton gustButton)
     {
+        // --- Genesis: the world is dead (every Village Heart gone) --
+        // nothing below matters with nobody left to gather, build or fight,
+        // so a tap anywhere on the ground reseeds it instead (Faith
+        // allowing) rather than falling through to the usual miracle/UI
+        // handling.
+        if (world.IsWorldExtinct)
+        {
+            TryGenesis(screenPosition, camera, world);
+            return;
+        }
+
         // --- UI layer ------------------------------------------------------
         if (pebbleButton.Contains(screenPosition))
         {
@@ -1128,6 +1167,27 @@ public sealed class MiracleInput
                 }
                 break;
         }
+    }
+
+    /// <summary>
+    /// Genesis: raycasts the tap onto the terrain and, if it lands and the
+    /// player can afford <see cref="MiracleManager.GenesisFaithCost"/>
+    /// Faith, spends it and reseeds the world right there. A tap that
+    /// misses the terrain, or lands without enough Faith banked, is simply
+    /// ignored — the blinking prompt (<see cref="Game.DrawGenesisPrompt"/>)
+    /// stays up and the player just tries again once Faith regenerates.
+    /// </summary>
+    private void TryGenesis(Vector2 screenPosition, Camera3D camera, World world)
+    {
+        if (world.Faith < MiracleManager.GenesisFaithCost)
+            return;
+
+        Vector3? groundPoint = PickGround(camera, world.Terrain, screenPosition);
+        if (groundPoint is null)
+            return;
+
+        world.TrySpendFaith(MiracleManager.GenesisFaithCost);
+        world.Genesis(groundPoint.Value);
     }
 
     /// <summary>Raycasts the tap onto the terrain and, if it lands, spends Faith and casts the Pebble-Drop.</summary>
@@ -1420,6 +1480,9 @@ public sealed class MiracleManager
 
     /// <summary>Faith spent per Gust.</summary>
     public const float GustFaithCost = 10f;
+
+    /// <summary>Genesis: Faith spent to reseed the world from total extinction — see <see cref="World.Genesis"/>.</summary>
+    public const float GenesisFaithCost = 50f;
 
     /// <summary>How long the wind-streak visual plays for, in seconds.</summary>
     public const float GustVisualDuration = 1f;
@@ -1802,11 +1865,21 @@ public sealed class World
     /// </summary>
     public int SelectedFactionID { get; set; }
 
-    /// <summary>The Village Heart <see cref="SelectedFactionID"/> currently points at, if that faction still exists (a Village Heart is never removed once founded, so in practice this is always non-null once the game has started).</summary>
+    /// <summary>The Village Heart <see cref="SelectedFactionID"/> currently points at, if that faction still exists (null once it's been razed — see <see cref="DestroyVillageHeart"/> — or, transiently, right after Genesis reseeds Faction 0 from total extinction).</summary>
     public VillageHeart? SelectedVillage => VillageFor(SelectedFactionID);
 
     /// <summary>How near a tap has to land to a Village Heart's centre to select its faction — generous, well beyond the 1.6m footprint, since it's meant to catch an imprecise finger tap.</summary>
     public const float FactionSelectionRadius = 2.5f;
+
+    /// <summary>
+    /// Genesis: true once every Village Heart is gone — a dead end no
+    /// autonomous system (Auto-Sprout, the Job Manager, anything) can ever
+    /// climb out of on its own. See <see cref="MiracleInput"/>'s tap
+    /// handling (which reseeds Faction 0 via <see cref="Genesis"/> once the
+    /// player can afford it) and <see cref="Game.DrawGenesisPrompt"/> for
+    /// what happens while this holds.
+    /// </summary>
+    public bool IsWorldExtinct => Villages.Count == 0;
 
     /// <summary>
     /// Contextual Faction UI: a single tap on or very near a Village
@@ -2145,6 +2218,24 @@ public sealed class World
         VillageHeart? other = VillageFor(otherFactionId);
         return other is not null && other.ParentFactionID == home.FactionID;
     }
+
+    /// <summary>
+    /// The 'Enemy of My Enemy' Protocol — Temporary Truce: whether the Wolf
+    /// Spider is actively a threat (Hunting or Pouncing, not just ambling
+    /// through or feeding) within <see cref="TerritoryTargetingRadius"/> of
+    /// <paramref name="home"/>. While true, that faction's Militia calls a
+    /// truce on every rival faction — see the guards on Border Wars and
+    /// Base Razing in <see cref="Bramblekin.Update"/> — so the whole tribe
+    /// can throw itself at the common enemy instead of a neighbour. Apex
+    /// Priority (a Militia unit always Defends against any spider merely
+    /// present in the ring, whatever its state) is the separate, broader
+    /// rule already enforced by that same priority chain's ordering; this
+    /// is the narrower, additional gate specifically on the Border
+    /// Wars/Base Razing side of it.
+    /// </summary>
+    public bool IsSpiderActivelyThreateningTerritory(VillageHeart? home) =>
+        home is not null && Spider is { State: SpiderState.Hunting or SpiderState.Pouncing } spider &&
+        GroundMover.HorizontalDistance(spider.Position, home.Center) <= TerritoryTargetingRadius;
 
     /// <summary>
     /// Base Razing: whether any living enemy Bramblekin (any role) is
@@ -3051,6 +3142,39 @@ public sealed class World
         migration.MarkFounded();
         migration.Origin.HasActiveMigration = false;
         return village;
+    }
+
+    /// <summary>Gatherers Genesis instantly spawns beside the new Village Heart, so the economy can restart immediately.</summary>
+    private const int GenesisGathererCount = 2;
+
+    /// <summary>How far (m) from the new Village Heart's centre a Genesis Gatherer may land.</summary>
+    private const float GenesisSpawnRadius = 3f;
+
+    /// <summary>
+    /// Genesis: the player's one lever to recover from total extinction —
+    /// every Village Heart gone means no Job Manager, no Auto-Sprout,
+    /// nothing left to run the game's economy on its own (see the
+    /// Extinction check in <see cref="Update"/>). Instantly founds a brand
+    /// new Faction 0 (green) Village Heart at <paramref name="groundPoint"/>,
+    /// with <see cref="GenesisGathererCount"/> Gatherers spawned right
+    /// beside it so it isn't left standing empty. Called from
+    /// <see cref="MiracleInput"/>'s tap handling once it's confirmed the
+    /// world is dead and the player can afford <see cref="MiracleManager.GenesisFaithCost"/>
+    /// Faith.
+    /// </summary>
+    public void Genesis(Vector3 groundPoint)
+    {
+        var village = new VillageHeart(groundPoint, factionId: 0, factionColor: new Color(40, 180, 90, 255), Rng);
+        Villages.Add(village);
+        Physics.AddStaticBox(village.Bounds);
+        RebuildObstacles();
+
+        for (int i = 0; i < GenesisGathererCount; i++)
+        {
+            Vector3 spot = RandomPointNearVillage(village, GenesisSpawnRadius, Bramblekin.BodyRadius + 0.1f)
+                           ?? RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin);
+            Colony.Add(new Bramblekin(spot, Rng, village.FactionID, village.FactionColor));
+        }
     }
 
     /// <summary>
@@ -4839,6 +4963,12 @@ public sealed class Bramblekin
         // Militia keeps adjusting where it's standing as the spider moves.
         // A Gatherer's Fear Aura is unaffected by territory: it flees on
         // sight within FearRadius regardless of where either of them is.
+        // The 'Enemy of My Enemy' Protocol — Apex Priority: this check is
+        // unconditional on the spider's own State (any spider merely
+        // present in the ring, whatever it's doing, wins), and being
+        // checked here — ahead of 2b/2c below in the same if/else-if chain
+        // — it already completely overrides any rival-faction target the
+        // instant it's true, full stop.
         else if (Role == BramblekinRole.Militia && world.Spider is { } spider && home is not null &&
                  GroundMover.HorizontalDistance(spider.Position, home.Center) <= World.TerritoryTargetingRadius)
         {
@@ -4854,8 +4984,14 @@ public sealed class Bramblekin
         // Militia still has to answer a rival Bramblekin (Gatherer or
         // Militia) trespassing within their own Village Heart's territory
         // ring. Same absolute priority tier and the same Defending state as
-        // the spider fight above — see UpdateDefending for the actual chase/poke.
+        // the spider fight above — see UpdateDefending for the actual
+        // chase/poke. The 'Enemy of My Enemy' Protocol — Temporary Truce:
+        // guarded against a spider that's actively Hunting/Pouncing nearby
+        // (see IsSpiderActivelyThreateningTerritory) on top of Apex
+        // Priority above, so a common-enemy emergency always wins even in
+        // the narrower window that check alone wouldn't have caught.
         else if (Role == BramblekinRole.Militia && home is not null &&
+                 !world.IsSpiderActivelyThreateningTerritory(home) &&
                  world.NearestEnemyBramblekinInTerritory(this, home) is { } enemy)
         {
             _combatTarget = enemy;
@@ -4871,8 +5007,11 @@ public sealed class Bramblekin
         // 20m aggro radius of an enemy Village Heart, with no living enemy
         // Bramblekin also in that radius (a live threat always comes
         // first — see 2b above, which already claims this frame if one's
-        // in range), paths in and Pokes it down instead.
+        // in range), paths in and Pokes it down instead. Temporary Truce
+        // applies here too: a spider actively threatening home calls off
+        // Base Razing just like Border Wars.
         else if (Role == BramblekinRole.Militia &&
+                 !world.IsSpiderActivelyThreateningTerritory(home) &&
                  world.NearestEnemyVillageHeartInRange(Position, FactionID, World.TerritoryTargetingRadius) is { } enemyHeart &&
                  !world.HasLivingEnemyBramblekinNear(Position, FactionID, World.TerritoryTargetingRadius))
         {

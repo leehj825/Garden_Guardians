@@ -73,6 +73,7 @@ The game is a pure God Game: the player's only lever on the world is a miracle (
 ## Phase 5: Deepening the Simulation
 *   ⬜ **Neutral Factions & Trade:** Design wandering merchant bugs (like a heavily armored Rhinoceros Beetle caravan) where players can trade surplus resources for rare tech.
 *   ⬜ **Ecosystem Cascades:** Design the systemic chain reactions. If the player kills too many spiders, the aphid population explodes and eats the farms. If it rains too much, the Gloomkin territory expands faster. Force the player to manage the balance, not just win wars.
+*   ⬜ **Diplomacy & Greed Systems:** Design a full diplomacy layer on top of today's instant Faction Warfare between Schism-split tribes. Default Peace between rivals instead of automatic hostility; a Resource Greed loop (the Beggar & the Raider) where a starving tribe first sends a Diplomat to beg a hoarding neighbor before launching a desperate raid if the player doesn't broker a share; Territorial Greed, where two factions' 20 m territory rings physically overlapping turns the intersection into a contested warzone; and Thievery, where a single Gatherer caught stealing from a rival's territory and killed by their Militia permanently declares war between those two Factions. See `Garden_Guardians_Design.md`'s "Diplomacy & Greed" section for the full write-up.
 
 ## Design Doc Mechanics Not Yet Scheduled
 These are in `Garden_Guardians_Design.md` but have no roadmap task yet:
