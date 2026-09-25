@@ -1615,11 +1615,17 @@ public readonly record struct Obstacle(Vector2 Center, float Radius);
 /// </summary>
 public sealed class World
 {
-    /// <summary>Seconds between checks that top the Acorn population back up to <see cref="MaxAcorns"/>.</summary>
-    private const float AcornSpawnInterval = 6f;
+    /// <summary>
+    /// Food Abundance: seconds between checks that top the Acorn population
+    /// back up to <see cref="MaxAcorns"/> — shortened from 6s so the map
+    /// replenishes fast enough that a whole cluster of tribes isn't
+    /// competing over the same trickle, and the map's dominant faction can't
+    /// simply out-gather everyone else before food ever reaches the rest.
+    /// </summary>
+    private const float AcornSpawnInterval = 4f;
 
-    /// <summary>Most Acorns allowed on the map at once, per faction — richly populated across the full 60x60 map rather than one at a time.</summary>
-    private const int MaxAcornsPerFaction = 5;
+    /// <summary>Food Abundance: most Acorns allowed on the map at once, per faction — raised from 5 so the full 60x60 map stays richly populated as more tribes compete for it.</summary>
+    private const int MaxAcornsPerFaction = 8;
 
     /// <summary>
     /// Dynamic Ecosystem Scaling: the map-wide Acorn cap grows with the number of
@@ -1693,11 +1699,11 @@ public sealed class World
     /// <summary>One-time knockback (m) the Wolf Spider gets from a Gust.</summary>
     public const float SpiderGustKnockback = 3f;
 
-    /// <summary>How often a wild Berry appears, in seconds — fast enough to richly populate the whole 60x60 map.</summary>
-    public const float BerrySpawnInterval = 3f;
+    /// <summary>Food Abundance: how often a wild Berry appears, in seconds — shortened from 3s so a multi-tribe map keeps a steady supply flowing to everyone, not just whichever faction gets there first.</summary>
+    public const float BerrySpawnInterval = 2f;
 
-    /// <summary>Most Berries allowed on the map (loose or carried) at once, per faction.</summary>
-    public const int MaxBerriesPerFaction = 18;
+    /// <summary>Food Abundance: most Berries allowed on the map (loose or carried) at once, per faction — raised from 18 so food is actually scattered widely enough for every tribe to find its own, rather than one dominant faction hoovering up the map's whole supply.</summary>
+    public const int MaxBerriesPerFaction = 24;
 
     /// <summary>
     /// Dynamic Ecosystem Scaling: the map-wide Berry cap grows with the number of
@@ -1738,9 +1744,6 @@ public sealed class World
     /// = 260 MaxFoodCapacity at the cap.
     /// </summary>
     public const int MaxGranaries = 25;
-
-    /// <summary>Storage Phase: a Village Heart queues a Granary once its Food Stored comes within this many Food of its current MaxFoodCapacity.</summary>
-    private const int GranaryStorageTriggerMargin = 5;
 
     /// <summary>The Housing System: Food Stored spent to place a Tent blueprint.</summary>
     public const int TentFoodCost = 8;
@@ -1793,11 +1796,14 @@ public sealed class World
     /// <summary>How far (m) from the Village Heart a Spore Farm may be placed — kept close, near the village's centre.</summary>
     private const float SporeFarmPlacementRadius = 5f;
 
-    /// <summary>Tycoon Economy: seconds between each Amber spawn attempt — scarce on purpose, far slower than Berries or Acorns.</summary>
-    public const float AmberSpawnInterval = 20f;
+    /// <summary>Tycoon Economy + Food Abundance: seconds between each Amber spawn attempt — still slower than Berries or Acorns (Amber stays a scarcer, higher-value find), but shortened from 20s so a multi-tribe map doesn't leave most factions without a realistic shot at ever finding one.</summary>
+    public const float AmberSpawnInterval = 15f;
 
-    /// <summary>Tycoon Economy: the most Amber allowed on the map (loose or carried) at once, map-wide rather than per faction — Amber stays scarce even as the map fills with tribes.</summary>
-    public const int MaxAmberOnMap = 3;
+    /// <summary>Tycoon Economy: most Amber allowed on the map at once, per faction — kept scarce per faction, but scaling with the number of active <see cref="Villages"/> (same Dynamic Ecosystem Scaling as <see cref="MaxAcornsPerFaction"/>/<see cref="MaxBerriesPerFaction"/>) so a crowded map isn't still capped at a single-tribe's worth that only whichever faction is already dominant ever reaches first.</summary>
+    private const int MaxAmberPerFaction = 2;
+
+    /// <summary>The map-wide Amber cap — see <see cref="MaxAmberPerFaction"/>. Never scales below a single faction's worth.</summary>
+    private int MaxAmberOnMap => MaxAmberPerFaction * Math.Max(1, Villages.Count);
 
     /// <summary>Population needed before a Village Heart will queue a Trading Post — see <see cref="World.UpdateAutoTradingPost"/>.</summary>
     public const int TradingPostPopulationThreshold = 15;
@@ -2952,16 +2958,28 @@ public sealed class World
             //    MaxPopulation now, not MaxFoodCapacity/Granaries — once a
             //    tribe hits its housing ceiling, it saves toward a Tent
             //    instead of sprouting.
-            // 2. Growth Phase (UpdateAutoSprout): otherwise, sprout new
-            //    Bramblekin until Food Stored runs out or MaxPopulation is
-            //    reached.
-            // 3. Storage Phase (UpdateAutoGranary): fully decoupled from
-            //    Population — purely a function of how full the silo is —
-            //    so it can fire in the very same frame as Housing or Growth
-            //    without conflicting with either.
+            // 2. Storage Phase (UpdateAutoGranary): checked BEFORE Growth on
+            //    purpose — Parallel Progress: a flat, always-attainable Food
+            //    Stored threshold (just GranaryFoodCost, not "close to
+            //    MaxFoodCapacity") gets first claim on any surplus, so
+            //    Wealth Accumulation actually happens alongside population
+            //    growth instead of only once growth stalls out at
+            //    MaxPopulation. Checking Growth first would have starved
+            //    this every single frame Growth is still active: Growth's
+            //    own while-loop is greedy, so it would drain Food Stored
+            //    back under GranaryFoodCost before Storage ever got a look
+            //    at it, and a Granary would never get queued until the
+            //    tribe was already fully grown — exactly the "food storage
+            //    doesn't grow until population does" gating this fixes.
+            // 3. Growth Phase (UpdateAutoSprout): sprouts new Bramblekin
+            //    with whatever Food Stored the Storage Phase left behind,
+            //    until that runs out or MaxPopulation is reached. A Granary
+            //    only ever claims its flat cost once per Granary queued, so
+            //    this still gets the lion's share of continuous food income
+            //    the rest of the time.
             UpdateAutoTent(village);
-            UpdateAutoSprout(village);
             UpdateAutoGranary(village);
+            UpdateAutoSprout(village);
 
             // Auxiliary Auto-Construction: population-gated one-time builds
             // that ride on top of the three phases above rather than being
@@ -3449,8 +3467,9 @@ public sealed class World
     }
 
     /// <summary>
-    /// Auto-Sprout — the Growth Phase, checked second (see <see cref="Update"/>'s
-    /// per-village loop): whenever Population is still below the Housing
+    /// Auto-Sprout — the Growth Phase, checked third (see <see cref="Update"/>'s
+    /// per-village loop, after the Storage Phase — see <see cref="UpdateAutoGranary"/>'s
+    /// Parallel Progress note): whenever Population is still below the Housing
     /// System's <see cref="VillageHeart.MaxPopulation"/> — entirely decoupled
     /// from MaxFoodCapacity/Granaries now — the Village Heart spends Food
     /// Stored on new Bramblekin as soon as it reaches <see cref="FoodPerSprout"/>.
@@ -3487,31 +3506,33 @@ public sealed class World
     }
 
     /// <summary>
-    /// Auto-Construction (Granaries) — the Storage Phase, checked third (see
-    /// <see cref="Update"/>'s per-village loop) and now fully decoupled from
-    /// Population/Housing: a Granary purely expands wealth capacity, it
-    /// no longer gates or is gated by Auto-Sprout. Once Food Stored comes
-    /// within <see cref="GranaryStorageTriggerMargin"/> of the current
-    /// MaxFoodCapacity, the Village Heart hoards Food Stored until it can
-    /// afford <see cref="GranaryFoodCost"/>, then places a Granary Blueprint
-    /// at a random unoccupied spot within <see cref="GranaryPlacementRadius"/>
-    /// meters of itself. Completing it permanently raises MaxFoodCapacity
-    /// (see <see cref="CompleteBlueprint"/>), reopening headroom for the
-    /// Trading Post/Amber economy. Guarded so at most one Auto-Granary is
-    /// ever queued at a time, and capped at <see cref="MaxGranaries"/> total
-    /// so the village can't spam Granaries forever — once it hits the cap,
-    /// this simply stops firing.
+    /// Auto-Construction (Granaries) — the Storage Phase, checked second
+    /// (see <see cref="Update"/>'s per-village loop), fully decoupled from
+    /// Population/Housing: a Granary purely expands wealth capacity, it no
+    /// longer gates or is gated by Auto-Sprout. Parallel Progress: triggers
+    /// on a flat, always-attainable threshold — simply affording
+    /// <see cref="GranaryFoodCost"/> — rather than needing Food Stored to
+    /// approach the current MaxFoodCapacity, and is checked BEFORE the
+    /// Growth Phase each frame so it gets first claim on any real surplus.
+    /// A Granary this cheap, checked this early, banks steadily right
+    /// alongside population growth instead of only once growth stalls out
+    /// at MaxPopulation. Once affordable, the Village Heart places a
+    /// Granary Blueprint at a random unoccupied spot within
+    /// <see cref="GranaryPlacementRadius"/> meters of itself. Completing it
+    /// permanently raises MaxFoodCapacity (see <see cref="CompleteBlueprint"/>),
+    /// reopening headroom for the Trading Post/Amber economy. Guarded so at
+    /// most one Auto-Granary is ever queued at a time, and capped at
+    /// <see cref="MaxGranaries"/> total so the village can't spam Granaries
+    /// forever — once it hits the cap, this simply stops firing.
     /// </summary>
     private void UpdateAutoGranary(VillageHeart village)
     {
         if (Buildings.Count(b => b.Kind == BuildingKind.Granary && b.FactionID == village.FactionID) >= MaxGranaries)
             return; // Capped: never queue another Granary.
-        if (village.FoodStored < village.MaxFoodCapacity - GranaryStorageTriggerMargin)
-            return; // Storage Phase not triggered: plenty of room left in the silo.
         if (Blueprints.Any(b => b.Kind == BuildingKind.Granary && b.FactionID == village.FactionID))
             return; // Already building one; don't queue a second.
         if (village.FoodStored < GranaryFoodCost)
-            return; // Saving Phase: still hoarding.
+            return; // Saving Phase: still hoarding toward the next Granary.
 
         Vector3? spot = RandomPointNearVillage(village, GranaryPlacementRadius, Building.GranaryRadius + 0.2f);
         if (spot is { } point)
@@ -3765,25 +3786,42 @@ public sealed class World
     /// <see cref="Bramblekin.BecomePioneer"/> — normally exactly
     /// <see cref="SchismPioneerCount"/>, one fewer per any Pioneer lost en
     /// route), so the new tribe never reads as a lone, starving founder.
+    ///
+    /// The Founding Housing Fix: MaxPopulation is seeded to at least that
+    /// same Population, not left at VillageHeart's plain-founding default of
+    /// 10. Population always starts well above 10 here (normally 20) — if
+    /// MaxPopulation were left at 10, UpdateAutoTent's Housing Phase would
+    /// see the tribe as instantly "overcrowded" the moment it lands and
+    /// immediately pull every single Gatherer off food duty into a
+    /// back-to-back Tent-building spree (up to 6 Tents, to climb from 10 to
+    /// the new tribe's actual headcount) — spending down its starting Food
+    /// Stored on Tent costs while gathering zero food income, at exactly the
+    /// moment it's most exposed (thin reserves, no located food nearby yet).
+    /// That's the real starvation death spiral behind a freshly-split tribe
+    /// grinding down toward 1 population and never recovering: not a bad
+    /// transfer, but new housing debt the transfer itself creates.
+    ///
     /// UpkeepTimer starts <see cref="SchismUpkeepGracePeriod"/> seconds
-    /// beyond the normal cycle, so it isn't taxed the moment it lands.
-    /// Then immediately starts running its own autonomous economy loop
-    /// alongside every other entry in <see cref="Villages"/>. Default Peace
-    /// means it starts out diplomatically at peace with every other faction,
-    /// the parent it split from included — no separate peace-grace-period
-    /// timer needed on top of the Upkeep one above. Marks the Migration
-    /// founded so every Pioneer bound to it — not just the one that
-    /// triggered this — drops Migrating for good on its very next Update()
-    /// (see <see cref="Bramblekin.UpdateMigrating"/>), and clears the
-    /// origin's <see cref="VillageHeart.HasActiveMigration"/> so it's free
-    /// to schism again once it re-crowds.
+    /// beyond the normal cycle, so it isn't taxed the moment it lands. Then
+    /// immediately starts running its own autonomous economy loop alongside
+    /// every other entry in <see cref="Villages"/>. Default Peace means it
+    /// starts out diplomatically at peace with every other faction, the
+    /// parent it split from included — no separate peace-grace-period timer
+    /// needed on top of the Upkeep one above. Marks the Migration founded so
+    /// every Pioneer bound to it — not just the one that triggered this —
+    /// drops Migrating for good on its very next Update() (see
+    /// <see cref="Bramblekin.UpdateMigrating"/>), and clears the origin's
+    /// <see cref="VillageHeart.HasActiveMigration"/> so it's free to schism
+    /// again once it re-crowds.
     /// </summary>
     public VillageHeart FoundVillage(Migration migration)
     {
+        int foundingPopulation = Colony.Count(b => !b.IsDead && b.FactionID == migration.NewFactionID);
         var village = new VillageHeart(migration.Target, migration.NewFactionID, migration.NewFactionColor, Rng)
         {
             FoodStored = migration.FoodAmount,
-            Population = Colony.Count(b => !b.IsDead && b.FactionID == migration.NewFactionID),
+            Population = foundingPopulation,
+            MaxPopulation = Math.Max(10, foundingPopulation),
             UpkeepTimer = UpkeepInterval + SchismUpkeepGracePeriod,
         };
         Villages.Add(village);
