@@ -2487,24 +2487,38 @@ public sealed class World
     private const int VillageHeartLootShardCount = 10;
 
     /// <summary>
-    /// Base Razing: a Village Heart reduced to 0 Health is conquered —
-    /// removed from <see cref="Villages"/> outright (same direct-mutation
-    /// pattern as <see cref="CompleteBlueprint"/>'s Blueprints.Remove; this
-    /// only ever runs from within the Colony loop, well before Villages is
-    /// next enumerated this frame, so there's no concurrent-modification
-    /// risk), taking every Granary, Spore Patch and Blueprint sharing its
-    /// FactionID down with it, and shattering into <see cref="VillageHeartLootShardCount"/>
-    /// loose Food Shards scattered around its footprint. Its own Colony
+    /// Shared cleanup for a Village Heart that's gone for good, one way or
+    /// another: removes it from <see cref="Villages"/> outright (same
+    /// direct-mutation pattern as <see cref="CompleteBlueprint"/>'s
+    /// Blueprints.Remove) and takes every Granary, Spore Patch and
+    /// Blueprint sharing its FactionID down with it. Its own Colony
     /// survives as suddenly homeless refugees — <see cref="VillageFor"/>
-    /// simply returns null for them from here on.
+    /// simply returns null for them from here on. Callers add whatever's
+    /// specific to how it ended — Base Razing's loot/splat
+    /// (<see cref="DestroyVillageHeart"/>), or nothing at all for a
+    /// starved-out Ghost Town (see the per-village loop in <see cref="Update"/>).
+    /// </summary>
+    private void RemoveVillageAndItsBuildings(VillageHeart village)
+    {
+        Villages.Remove(village);
+        Buildings.RemoveAll(b => b.FactionID == village.FactionID);
+        Blueprints.RemoveAll(b => b.FactionID == village.FactionID);
+    }
+
+    /// <summary>
+    /// Base Razing: a Village Heart reduced to 0 Health is conquered —
+    /// this only ever runs from within the Colony loop, well before
+    /// Villages is next enumerated this frame, so there's no
+    /// concurrent-modification risk — shattering into
+    /// <see cref="VillageHeartLootShardCount"/> loose Food Shards scattered
+    /// around its footprint on top of the shared cleanup above.
     /// </summary>
     private void DestroyVillageHeart(VillageHeart village)
     {
-        if (!Villages.Remove(village))
+        if (!Villages.Contains(village))
             return; // Already razed this frame by another poke landing the same instant.
 
-        Buildings.RemoveAll(b => b.FactionID == village.FactionID);
-        Blueprints.RemoveAll(b => b.FactionID == village.FactionID);
+        RemoveVillageAndItsBuildings(village);
 
         float half = Terrain.Size / 2f - Bramblekin.EdgeMargin;
         for (int i = 0; i < VillageHeartLootShardCount; i++)
@@ -2667,10 +2681,11 @@ public sealed class World
         for (int i = Colony.Count - 1; i >= 0; i--)
             Colony[i].Update(deltaTime, this);
 
-        // Cooperative Acorn Cracking: checked once here, after the Colony
-        // loop has moved everyone this frame, so a claiming Gatherer's
-        // Position is fully up to date before the three-way touch check.
-        UpdateAcornCoopCrack();
+        // Continuous Cracking: checked once here, after the Colony loop has
+        // added every Cracking Gatherer's own contribution for the frame,
+        // so several claimants finishing an Acorn off in the same frame can
+        // never cause a double-shatter.
+        UpdateAcornCracking();
 
         Spider?.Update(deltaTime, this);
 
@@ -2678,8 +2693,9 @@ public sealed class World
         // Auto-Conscription, War Weariness, Upkeep and Auto-Construction
         // entirely off its own Population/FoodStored/MaxFoodCapacity/Morale
         // — one faction starving or booming never touches another's.
-        foreach (var village in Villages)
+        for (int villageIndex = Villages.Count - 1; villageIndex >= 0; villageIndex--)
         {
+            VillageHeart village = Villages[villageIndex];
             UpdateJobManager(village);
             UpdateMorale(village, deltaTime);
             village.DamageFlashTimer = MathF.Max(0f, village.DamageFlashTimer - deltaTime);
@@ -2708,12 +2724,20 @@ public sealed class World
                 }
             }
 
-            // Extinction: nobody left, and not even enough Food Stored to
-            // Auto-Sprout a single replacement -- this faction is done.
-            // Stops functioning entirely: no Upkeep, no Auto-Anything. It
-            // still stands (and can still be found and razed) until then.
+            // Ghost Town Cleanup: nobody left, and not even enough Food
+            // Stored to Auto-Sprout a single replacement -- this faction is
+            // done for good. Actually removed outright now (rather than
+            // just left standing inert forever), taking its Granaries and
+            // Spore Patches down with it (see RemoveVillageAndItsBuildings)
+            // -- otherwise a starvation wipeout could never bring
+            // World.IsWorldExtinct (Villages.Count == 0) true, and Genesis
+            // would never have anything to trigger on. Iterated backwards
+            // by index specifically so removing an entry mid-loop is safe.
             if (village.IsExtinct)
+            {
+                RemoveVillageAndItsBuildings(village);
                 continue;
+            }
 
             // Upkeep is the survival tax: it gets first claim on Food Stored,
             // ahead of anything discretionary, and can cost a Bramblekin its
@@ -3360,7 +3384,7 @@ public sealed class World
         _floatingTexts.Add((position, text, color, FloatingTextDuration));
 
     /// <summary>A random point within <paramref name="maxRadius"/> meters of <paramref name="village"/> that isn't blocked. Null if nothing opened up in a handful of tries.</summary>
-    private Vector3? RandomPointNearVillage(VillageHeart village, float maxRadius, float clearance)
+    public Vector3? RandomPointNearVillage(VillageHeart village, float maxRadius, float clearance)
     {
         float minRadius = village.Obstacle.Radius + 0.5f;
         for (int attempt = 0; attempt < 20; attempt++)
@@ -3622,33 +3646,25 @@ public sealed class World
     }
 
     /// <summary>
-    /// Cooperative Acorn Cracking: once <see cref="Acorn.MaxClaimants"/>
-    /// Chitin-Mallet Gatherers are all actually touching the same Acorn, it
-    /// shatters into <see cref="ShardsPerAcorn"/> Food Shards scattered
-    /// around it. Checked once a frame, after the Colony loop has moved
-    /// everyone, so every claimant's Position is current.
+    /// Continuous Cracking: shatters any Acorn whose CrackProgress has
+    /// reached its CrackThreshold — checked once a frame, after the Colony
+    /// loop has added every Cracking Gatherer's contribution for the frame,
+    /// so several claimants finishing it off in the same frame can never
+    /// cause a double-shatter. The Shatter Trigger: explicitly hands every
+    /// claimant back from Cracking to Gathering (see Bramblekin.OnAcornShattered)
+    /// so they immediately call dibs on the fresh Food Shards instead of
+    /// idling with a now-dangling Acorn reference.
     /// </summary>
-    private void UpdateAcornCoopCrack()
+    private void UpdateAcornCracking()
     {
-        float contactDistance = Bramblekin.BodyRadius + Acorn.Radius + AcornCoopContactMargin;
-
         for (int i = Acorns.Count - 1; i >= 0; i--)
         {
             Acorn acorn = Acorns[i];
-            if (acorn.Claimants.Count < Acorn.MaxClaimants)
+            if (acorn.CrackProgress < acorn.CrackThreshold)
                 continue;
 
-            bool allTouching = true;
-            foreach (var claimant in acorn.Claimants)
-            {
-                if (claimant.IsDead || GroundMover.HorizontalDistance(claimant.Position, acorn.Position) > contactDistance)
-                {
-                    allTouching = false;
-                    break;
-                }
-            }
-            if (!allTouching)
-                continue;
+            foreach (Bramblekin claimant in acorn.Claimants)
+                claimant.OnAcornShattered();
 
             ScatterFoodShardsAround(acorn.Position, ShardsPerAcorn, Acorn.Radius + FoodShard.Radius + 0.35f);
             Acorns.RemoveAt(i);
@@ -4073,6 +4089,20 @@ public sealed class Acorn
 
     /// <summary>Cooperative Acorn Cracking: at most this many Chitin-Mallet Gatherers may claim the same Acorn at once.</summary>
     public const int MaxClaimants = 3;
+
+    /// <summary>
+    /// Continuous Cracking: how far this Acorn's shatter has progressed.
+    /// Every Chitin-Mallet Gatherer actually touching it while Cracking
+    /// adds its own cracking speed to this every frame (see
+    /// <see cref="Bramblekin.UpdateCracking"/>), so claimants' rates simply
+    /// add together — more Gatherers means it breaks proportionally
+    /// faster, rather than needing all <see cref="MaxClaimants"/> to show
+    /// up before anything happens at all.
+    /// </summary>
+    public float CrackProgress { get; set; }
+
+    /// <summary>CrackProgress needed to shatter this Acorn — see <see cref="CrackProgress"/>.</summary>
+    public float CrackThreshold { get; } = 100f;
 
     public Vector3 Position { get; }
 
@@ -4656,6 +4686,15 @@ public enum BramblekinState
     /// <summary>Carrying a Food Shard back to the Village Heart.</summary>
     Returning,
 
+    /// <summary>
+    /// Continuous Cracking: a Chitin-Mallet Gatherer pathing to (and, once
+    /// touching, steadily adding its cracking speed to) a claimed Acorn —
+    /// see <see cref="Bramblekin.UpdateCracking"/>. Up to <see cref="Acorn.MaxClaimants"/>
+    /// Gatherers can be in this state on the same Acorn at once, their
+    /// rates simply adding together.
+    /// </summary>
+    Cracking,
+
     /// <summary>Running at 3x speed from a God's Shadow or a predator.</summary>
     Fleeing,
 
@@ -4797,6 +4836,9 @@ public sealed class Bramblekin
     /// </summary>
     private const float PickupDistance = 0.8f;
 
+    /// <summary>Continuous Cracking: how much this Gatherer alone adds to a touched Acorn's CrackProgress per second — see <see cref="UpdateCracking"/>.</summary>
+    private const float CrackRatePerGatherer = 20f;
+
     /// <summary>Within this distance of a Spider Fang, it is picked up — see <see cref="PickupDistance"/>'s High-Speed Physics note.</summary>
     private const float FangPickupDistance = 0.8f;
 
@@ -4843,6 +4885,19 @@ public sealed class Bramblekin
     /// permanently "crowding around" the Heart without ever landing a hit.
     /// </summary>
     private const float BuildingAttackRange = 3.5f;
+
+    /// <summary>
+    /// The Militia Leash: how far (m) a Militia unit may stray from its own
+    /// Village Heart while Chasing (Defending) or Attacking (Raiding)
+    /// before it breaks off entirely and heads straight home instead,
+    /// letting the target escape. Deliberately a hair past
+    /// <see cref="World.TerritoryTargetingRadius"/> (20m) — a moving
+    /// target right at that boundary, or an obstacle detour, can easily
+    /// drag a chasing unit slightly past it without this being a runaway
+    /// pursuit — while still keeping Militia from ever wandering off to
+    /// fight across the whole map.
+    /// </summary>
+    private const float MilitiaLeashDistance = 22f;
 
     /// <summary>Cooldown (s) between pokes — rapid, so Militia can wail on a spider (especially a Tumbled one) quickly.</summary>
     private const float PokeCooldownDuration = 1.0f;
@@ -5323,6 +5378,10 @@ public sealed class Bramblekin
                 UpdateGathering(deltaTime, world, home);
                 break;
 
+            case BramblekinState.Cracking:
+                UpdateCracking(deltaTime, world);
+                break;
+
             case BramblekinState.Returning:
                 UpdateReturning(deltaTime, world, home);
                 break;
@@ -5341,7 +5400,7 @@ public sealed class Bramblekin
                 break;
 
             case BramblekinState.Raiding:
-                UpdateRaiding(deltaTime, world);
+                UpdateRaiding(deltaTime, world, home);
                 break;
 
             case BramblekinState.Building:
@@ -5458,6 +5517,22 @@ public sealed class Bramblekin
     }
 
     /// <summary>
+    /// The Shatter Trigger: called once by <see cref="World.UpdateAcornCracking"/>
+    /// for every claimant the instant their shared Acorn's CrackProgress
+    /// crosses its CrackThreshold. Explicitly drops the now-gone Acorn as a
+    /// target (no need to release the claim slot itself — the whole Acorn
+    /// is being discarded) and hands this Gatherer straight back to
+    /// Gathering, so it immediately calls dibs on one of the Food Shards
+    /// the shatter just dropped rather than idling on a dangling reference.
+    /// </summary>
+    public void OnAcornShattered()
+    {
+        _claimedAcorn = null;
+        if (State == BramblekinState.Cracking)
+            SetState(BramblekinState.Gathering);
+    }
+
+    /// <summary>
     /// The Gust's effect on a Bramblekin: an immediate, gentle shove in the
     /// wind's direction. Never touches <see cref="State"/> or its current
     /// target — it's just physically moved a little, same as running into
@@ -5503,27 +5578,17 @@ public sealed class Bramblekin
 
     private void UpdateGathering(float deltaTime, World world, VillageHeart? home)
     {
-        // Cooperative Acorn Cracking: only a Chitin-Mallet Gatherer ever
-        // targets a whole Acorn, and only while it still holds (or can still
-        // grab) one of its MaxClaimants slots. Re-checked every frame: the
-        // old claim may have been cracked out from under us (by a pebble, or
-        // by the coop-crack shatter itself) since last frame.
-        if (_claimedAcorn is not null && !world.Acorns.Contains(_claimedAcorn))
-            ReleaseAcornClaim();
-
-        if (HasChitinMallet)
+        // Continuous Cracking: only a Chitin-Mallet Gatherer ever targets a
+        // whole Acorn, and only while it can still claim one of its
+        // MaxClaimants slots. Claiming one hands off to the Cracking state
+        // entirely — see UpdateCracking for the walk-there/add-progress
+        // loop and World.UpdateAcornCracking for the actual shatter.
+        if (HasChitinMallet && world.NearestClaimableAcorn(Position, this) is { } acorn && acorn.TryClaim(this))
         {
-            Acorn? acorn = _claimedAcorn ?? world.NearestClaimableAcorn(Position, this);
-            if (acorn is not null && acorn.TryClaim(this))
-            {
-                ReleaseFoodClaim(); // Switching to the Acorn this frame — don't leave a stale claim on whatever shard we were chasing.
-                _claimedAcorn = acorn;
-                float contactDistance = BodyRadius + Acorn.Radius + World.AcornCoopContactMargin;
-                if (GroundMover.HorizontalDistance(Position, acorn.Position) > contactDistance)
-                    _mover.MoveTowards(acorn.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
-                // Else: standing at the Acorn, cracking it together — World checks the 3-claimant shatter condition every frame.
-                return;
-            }
+            ReleaseFoodClaim(); // Switching to the Acorn this frame — don't leave a stale claim on whatever shard we were chasing.
+            _claimedAcorn = acorn;
+            SetState(BramblekinState.Cracking);
+            return;
         }
 
         FoodShard? shard = world.NearestAvailableShard(Position, this, home);
@@ -5562,6 +5627,44 @@ public sealed class Bramblekin
         }
 
         _mover.MoveTowards(shard.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+    }
+
+    /// <summary>
+    /// Continuous Cracking: an Acorn is a mining node, not a switch three
+    /// Gatherers all have to flip at once — paths to the claimed Acorn and,
+    /// once touching, steadily adds <see cref="CrackRatePerGatherer"/> to
+    /// its <see cref="Acorn.CrackProgress"/> every frame. Up to
+    /// <see cref="Acorn.MaxClaimants"/> Gatherers can be doing this on the
+    /// same Acorn at once — their rates simply add together, so it breaks
+    /// proportionally faster the more show up (20/s alone takes 5s for the
+    /// default 100 CrackThreshold; two together take 2.5s; three, ~1.7s)
+    /// rather than nothing happening at all until every slot is full. The
+    /// actual shatter is handled centrally, once a frame, by
+    /// <see cref="World.UpdateAcornCracking"/> — see
+    /// <see cref="OnAcornShattered"/> for the hand-off back to Gathering.
+    /// </summary>
+    private void UpdateCracking(float deltaTime, World world)
+    {
+        // The claim may have gone stale since last frame -- the Acorn
+        // already shattered (handled via OnAcornShattered, which should
+        // already have moved us out of this state, but a stray call path
+        // is cheap to guard against) or was cracked outright by a direct
+        // Pebble-Drop hit.
+        if (_claimedAcorn is not { } acorn || !world.Acorns.Contains(acorn))
+        {
+            _claimedAcorn = null;
+            SetState(BramblekinState.Gathering);
+            return;
+        }
+
+        float contactDistance = BodyRadius + Acorn.Radius + World.AcornCoopContactMargin;
+        if (GroundMover.HorizontalDistance(Position, acorn.Position) > contactDistance)
+        {
+            _mover.MoveTowards(acorn.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+            return;
+        }
+
+        acorn.CrackProgress += CrackRatePerGatherer * deltaTime;
     }
 
     private void UpdateReturning(float deltaTime, World world, VillageHeart? home)
@@ -5633,6 +5736,23 @@ public sealed class Bramblekin
 
     private void UpdateDefending(float deltaTime, World world, VillageHeart? home)
     {
+        // The Militia Leash: over-extended past MilitiaLeashDistance from
+        // home, drop whatever's being chased and head straight back —
+        // moves toward home directly (rather than only setting State and
+        // waiting for the Walking case to pick it up next frame) so this
+        // unit reliably makes progress home even if another priority-chain
+        // branch (Border Wars, Base Razing) tries to re-claim it into
+        // Defending again before it arrives; only once it's back inside
+        // the leash does a fresh chase actually stick.
+        if (home is not null && GroundMover.HorizontalDistance(Position, home.Center) > MilitiaLeashDistance)
+        {
+            _combatTarget = null;
+            _target = home.Center;
+            SetState(BramblekinState.Walking);
+            _mover.MoveTowards(_target, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+            return;
+        }
+
         bool spiderInTerritory = home is not null && world.Spider is { } spiderCheck &&
                                   GroundMover.HorizontalDistance(spiderCheck.Position, home.Center) <= World.TerritoryTargetingRadius;
 
@@ -5721,10 +5841,22 @@ public sealed class Bramblekin
     /// wins — the outer priority chain picks it up as Border Wars/home
     /// defense next frame instead) or the target Heart is razed (by this
     /// unit's own killing blow or anyone else's) or simply falls out of
-    /// range.
+    /// range. The Militia Leash: also breaks off (see UpdateDefending's own
+    /// copy of this same check) if this unit itself has strayed past
+    /// MilitiaLeashDistance from home, regardless of how close the target
+    /// still is.
     /// </summary>
-    private void UpdateRaiding(float deltaTime, World world)
+    private void UpdateRaiding(float deltaTime, World world, VillageHeart? home)
     {
+        if (home is not null && GroundMover.HorizontalDistance(Position, home.Center) > MilitiaLeashDistance)
+        {
+            _raidTarget = null;
+            _target = home.Center;
+            SetState(BramblekinState.Walking);
+            _mover.MoveTowards(_target, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+            return;
+        }
+
         if (_raidTarget is null || !world.Villages.Contains(_raidTarget) ||
             GroundMover.HorizontalDistance(Position, _raidTarget.Center) > World.TerritoryTargetingRadius ||
             world.HasLivingHostileBramblekinNear(Position, FactionID, World.TerritoryTargetingRadius))
@@ -5894,6 +6026,22 @@ public sealed class Bramblekin
 
     private void StartWandering(World world)
     {
+        // The Militia Leash: a Militia unit's default wander destination
+        // never drifts outside its own borders, unlike a Gatherer's
+        // map-wide roam — strictly within World.TerritoryTargetingRadius of
+        // its own Village Heart. Falls back to standing at home outright
+        // (never the map-wide point below) if nothing opens up nearby, and
+        // to the ordinary map-wide wander if it has no home at all (a
+        // homeless refugee, e.g. after Base Razing, has no border left to
+        // keep).
+        VillageHeart? home = Role == BramblekinRole.Militia ? world.VillageFor(FactionID) : null;
+        if (home is not null)
+        {
+            _target = world.RandomPointNearVillage(home, World.TerritoryTargetingRadius, BodyRadius + 0.1f) ?? home.Center;
+            SetState(BramblekinState.Walking);
+            return;
+        }
+
         // No-spawn zones: RandomFreePoint never picks a spot inside a rock,
         // the village, or a God's Shadow.
         _target = world.RandomFreePoint(BodyRadius + 0.1f, EdgeMargin);
@@ -5911,15 +6059,17 @@ public sealed class Bramblekin
     /// claim releases it — the single hook every transition already goes
     /// through, so a Gatherer scared off mid-Gathering (Fleeing), promoted
     /// to Militia (Building/Gathering -> Pausing), or simply re-tasked to
-    /// Building doesn't leave a shard/Aphid/Acorn locked out forever.
+    /// Building doesn't leave a shard/Aphid/Acorn locked out forever. The
+    /// Acorn claim specifically survives a Gathering &lt;-&gt; Cracking
+    /// transition either way — those two states are just "chasing an
+    /// Acorn" and "actively cracking it," not a change of target.
     /// </summary>
     private void SetState(BramblekinState state)
     {
         if (state != BramblekinState.Gathering)
-        {
             ReleaseFoodClaim();
+        if (state != BramblekinState.Gathering && state != BramblekinState.Cracking)
             ReleaseAcornClaim();
-        }
         if (state != BramblekinState.Hunting)
             ReleaseAphidClaim();
 
