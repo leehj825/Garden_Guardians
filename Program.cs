@@ -1764,10 +1764,28 @@ public sealed class World
     /// <summary>
     /// Desperation Mode: once a Village Heart's Food Stored drops below
     /// this, its Gatherers stop preferring food within <see cref="TerritoryTargetingRadius"/>
-    /// and instead track the nearest unclaimed food anywhere on the map —
-    /// starving is worse than a long walk home.
+    /// and instead track the nearest unclaimed food anywhere within
+    /// <see cref="MaxGatherSearchRadius"/> — starving is worse than a walk,
+    /// but the walk still isn't unlimited (see <see cref="MaxGatherSearchRadius"/>).
     /// </summary>
     public const int DesperationFoodThreshold = 5;
+
+    /// <summary>
+    /// Maximum Search Radius: a Gatherer never even considers a Food Shard
+    /// or Acorn further than this from its current position, full stop —
+    /// not a preference like <see cref="TerritoryTargetingRadius"/>, a hard
+    /// cutoff with no last-resort exception. This is what actually stops a
+    /// freshly-split Schism splinter's Gatherers from trekking all the way
+    /// back to the parent tribe's base: without a hard ceiling, the parent's
+    /// food was still technically the nearest *available* food on the whole
+    /// map (everything closer already claimed, or just not there yet), and
+    /// the Danger Penalty (see <see cref="ForeignTerritoryPenaltyFor"/>) is
+    /// only a soft tie-breaker, not a distance limit. See
+    /// <see cref="NearestAvailableShard"/>/<see cref="NearestClaimableAcorn"/>;
+    /// coming up empty sends the Gatherer to <see cref="Bramblekin.StartWanderingNearHome"/>
+    /// instead, to wait out its own Spore Farm's next Berry.
+    /// </summary>
+    public const float MaxGatherSearchRadius = 25f;
 
     /// <summary>
     /// Dibs failsafe: a Food Shard claimed but not actually picked up within
@@ -3013,41 +3031,43 @@ public sealed class World
     /// <summary>The 20-Meter Territory Rule: whether <paramref name="claimant"/> has anything to gather, preferring <paramref name="home"/>'s territory but falling back to the wider map.</summary>
     public bool HasAvailableFoodFor(Bramblekin claimant, VillageHeart? home) => NearestAvailableShard(claimant.Position, claimant, home) is not null;
 
-    /// <summary>Safe Gathering (The Danger Penalty): the artificial distance a border-crossing food/Acorn target gets saddled with for comparison purposes, so a Gatherer only ever picks it over safe wild food or its own domestic Spore Farm when literally nothing safe is left anywhere on the map.</summary>
+    /// <summary>Safe Gathering (The Danger Penalty): the artificial distance a border-crossing food/Acorn target gets saddled with for comparison purposes, so a Gatherer only ever picks it over safe wild food or its own domestic Spore Farm when literally nothing safe is left within <see cref="MaxGatherSearchRadius"/>.</summary>
     private const float ForeignTerritoryPenalty = 1000f;
 
     /// <summary>
-    /// Safe Gathering (The Danger Penalty): the true (non-squared) distance
-    /// from <paramref name="from"/> to <paramref name="point"/>, plus
-    /// <see cref="ForeignTerritoryPenalty"/> if <paramref name="point"/>
-    /// falls strictly inside another faction's <see cref="TerritoryTargetingRadius"/>
-    /// (20m) territory ring — a Gatherer's own faction's territory never
-    /// counts as foreign, so its own doorstep or its own Spore Farm are
-    /// never penalized. Shared by <see cref="NearestAvailableShard"/> and
+    /// Safe Gathering (The Danger Penalty): <see cref="ForeignTerritoryPenalty"/>
+    /// if <paramref name="point"/> falls inside ANY Village Heart's
+    /// <see cref="TerritoryTargetingRadius"/> territory ring other than
+    /// <paramref name="ownFactionId"/>'s own, 0 otherwise. Shares
+    /// <see cref="ForeignTerritoryContaining"/> with the Thievery check for
+    /// one single "whose border is this?" answer — deliberately blind to
+    /// <see cref="VillageHeart.HostileFactions"/>/Default Peace, a Schism
+    /// splinter's shared ancestry with its parent, or anything else that
+    /// makes two factions not currently shoot at each other: a truce means
+    /// "don't attack," never "share food," so the parent tribe's own
+    /// granary is exactly as foreign to a freshly-split Pioneer faction as
+    /// any other rival's. Shared by <see cref="NearestAvailableShard"/> and
     /// <see cref="NearestClaimableAcorn"/> so both "closest Food" searches
-    /// steer the same way around a rival's granary.
+    /// steer the same way around a border.
     /// </summary>
-    private float DangerDistance(Vector3 from, Vector3 point, int ownFactionId)
-    {
-        float distance = Vector3.Distance(from, point);
-        foreach (VillageHeart village in Villages)
-        {
-            if (village.FactionID != ownFactionId && Vector3.Distance(point, village.Center) < TerritoryTargetingRadius)
-                return distance + ForeignTerritoryPenalty;
-        }
-        return distance;
-    }
+    private float ForeignTerritoryPenaltyFor(Vector3 point, int ownFactionId) =>
+        ForeignTerritoryContaining(point, ownFactionId) is not null ? ForeignTerritoryPenalty : 0f;
 
     /// <summary>
     /// The 20-Meter Territory Rule + Dibs + Safe Gathering (The Danger
-    /// Penalty, see <see cref="DangerDistance"/>), sorted by distance:
-    /// among unclaimed (or self-claimed) shards within
+    /// Penalty, see <see cref="ForeignTerritoryPenaltyFor"/>) + Maximum
+    /// Search Radius (see <see cref="MaxGatherSearchRadius"/>), sorted by
+    /// distance: among unclaimed (or self-claimed) shards within
     /// <see cref="TerritoryTargetingRadius"/> of <paramref name="home"/>,
     /// the nearest (danger-adjusted) one to <paramref name="from"/>. Only
     /// if none qualify locally does this fall back to the nearest anywhere
-    /// on the map — a Gatherer always prefers its own doorstep, then safe
-    /// wild food, and only risks a rival's territory as an absolute last
-    /// resort.
+    /// within <see cref="MaxGatherSearchRadius"/> — a Gatherer always
+    /// prefers its own doorstep, then safe wild food, and only risks a
+    /// rival's territory as an absolute last resort — but never travels
+    /// further than <see cref="MaxGatherSearchRadius"/> at all, resort or
+    /// not; a shard outside it is never even considered, so null (nothing
+    /// to gather) is a perfectly normal result once a fresh splinter's
+    /// immediate neighbourhood is picked clean.
     /// </summary>
     public FoodShard? NearestAvailableShard(Vector3 from, Bramblekin claimant, VillageHeart? home)
     {
@@ -3058,7 +3078,7 @@ public sealed class World
         float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
         // Desperation Mode: a starving village can't afford to wait for local food that
         // may not exist, so we skip the local-preference logic entirely and just grab
-        // whatever's nearest anywhere on the map.
+        // whatever's nearest anywhere within MaxGatherSearchRadius.
         bool desperate = home is not null && home.FoodStored < DesperationFoodThreshold;
 
         for (int i = FoodShards.Count - 1; i >= 0; i--)
@@ -3067,7 +3087,11 @@ public sealed class World
             if (!IsAvailable(shard, claimant))
                 continue;
 
-            float distance = DangerDistance(from, shard.Position, claimant.FactionID);
+            float rawDistance = Vector3.Distance(from, shard.Position);
+            if (rawDistance > MaxGatherSearchRadius)
+                continue; // Maximum Search Radius: never even evaluated, last resort or not.
+
+            float distance = rawDistance + ForeignTerritoryPenaltyFor(shard.Position, claimant.FactionID);
             if (distance < bestAnyDistance)
             {
                 bestAny = shard;
@@ -3732,12 +3756,15 @@ public sealed class World
 
     /// <summary>
     /// Cooperative Acorn Cracking + Safe Gathering (The Danger Penalty, see
-    /// <see cref="DangerDistance"/>): the nearest Acorn <paramref name="gatherer"/>
-    /// (a Chitin-Mallet Gatherer) either already holds a claim on or can
-    /// still claim a free slot on — <see cref="Acorn.MaxClaimants"/> may work
-    /// the same Acorn at once. Sorted by danger-adjusted distance like any
-    /// other target, so a Gatherer only cracks an Acorn sitting inside a
-    /// rival's territory once nothing safer is available.
+    /// <see cref="ForeignTerritoryPenaltyFor"/>) + Maximum Search Radius
+    /// (see <see cref="MaxGatherSearchRadius"/>): the nearest Acorn
+    /// <paramref name="gatherer"/> (a Chitin-Mallet Gatherer) either
+    /// already holds a claim on or can still claim a free slot on —
+    /// <see cref="Acorn.MaxClaimants"/> may work the same Acorn at once.
+    /// Sorted by danger-adjusted distance like any other target, so a
+    /// Gatherer only cracks an Acorn sitting inside a rival's territory
+    /// once nothing safer is available within <see cref="MaxGatherSearchRadius"/>
+    /// — an Acorn any further than that is never even considered.
     /// </summary>
     public Acorn? NearestClaimableAcorn(Vector3 from, Bramblekin gatherer)
     {
@@ -3749,7 +3776,11 @@ public sealed class World
             if (!acorn.IsClaimedBy(gatherer) && acorn.Claimants.Count >= Acorn.MaxClaimants)
                 continue;
 
-            float distance = DangerDistance(from, acorn.Position, gatherer.FactionID);
+            float rawDistance = Vector3.Distance(from, acorn.Position);
+            if (rawDistance > MaxGatherSearchRadius)
+                continue; // Maximum Search Radius: never even evaluated, last resort or not.
+
+            float distance = rawDistance + ForeignTerritoryPenaltyFor(acorn.Position, gatherer.FactionID);
             if (distance < bestDistance)
             {
                 best = acorn;
@@ -5268,6 +5299,15 @@ public sealed class Bramblekin
     /// stays — ignoring food, blueprints and enemies alike — until it or
     /// another Pioneer bound to the same <see cref="Migration"/> founds the
     /// new Village Heart (see <see cref="UpdateMigrating"/>).
+    ///
+    /// Brain Wipe: <see cref="ReleaseFoodClaim"/>/<see cref="ReleaseAcornClaim"/>
+    /// below null out this Bramblekin's Food Shard/Acorn target (<c>_claimedShard</c>/
+    /// <c>_claimedAcorn</c>) and cancel its claim on whichever one it was
+    /// still holding at the old, now-foreign Village Heart, all before
+    /// State ever flips to Migrating — a Pioneer's very first frame under
+    /// its new Faction never has a stale pointer back at the parent's
+    /// granary for <see cref="UpdateGathering"/> to pick back up the moment
+    /// it stops Migrating.
     /// </summary>
     public void BecomePioneer(Migration migration)
     {
@@ -5738,7 +5778,12 @@ public sealed class Bramblekin
 
         if (shard is null)
         {
-            StartWandering(world);
+            // Maximum Search Radius: nothing to gather within reach at all
+            // (as opposed to StartWandering's ordinary map-wide roam) --
+            // wait close to home instead of hiking toward whatever's
+            // technically nearest across the whole map; the local Spore
+            // Farm's next Berry is the actual fix, not a long walk.
+            StartWanderingNearHome(world, home);
             return;
         }
 
@@ -6179,6 +6224,29 @@ public sealed class Bramblekin
         // the village, or a God's Shadow.
         _target = world.RandomFreePoint(BodyRadius + 0.1f, EdgeMargin);
         SetState(BramblekinState.Walking);
+    }
+
+    /// <summary>
+    /// Maximum Search Radius: a Gatherer's own equivalent of the Militia
+    /// Leash above, used specifically when <see cref="World.NearestAvailableShard"/>/
+    /// <see cref="World.NearestClaimableAcorn"/> come back completely empty
+    /// (nothing within <see cref="World.MaxGatherSearchRadius"/>) rather
+    /// than the ordinary map-wide <see cref="StartWandering"/>. Waits close
+    /// to <paramref name="home"/> instead — its own Spore Farm's next Berry
+    /// is what actually fixes this, not a long walk toward a target that
+    /// doesn't exist. Falls back to the ordinary map-wide wander if it has
+    /// no home at all (a homeless refugee).
+    /// </summary>
+    private void StartWanderingNearHome(World world, VillageHeart? home)
+    {
+        if (home is not null)
+        {
+            _target = world.RandomPointNearVillage(home, World.TerritoryTargetingRadius, BodyRadius + 0.1f) ?? home.Center;
+            SetState(BramblekinState.Walking);
+            return;
+        }
+
+        StartWandering(world);
     }
 
     private void StartPause()
