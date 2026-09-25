@@ -1755,6 +1755,17 @@ public sealed class World
     public const float TerritoryTargetingRadius = 20f;
 
     /// <summary>
+    /// Base Defense Aggro: any foreign Bramblekin caught within this
+    /// distance of a Village Heart's own centre — much tighter than the
+    /// full <see cref="TerritoryTargetingRadius"/> ring — is treated as an
+    /// immediate, lethal threat regardless of any existing peace or Truce,
+    /// instantly triggering a Blood Feud. This close to the Heart itself,
+    /// there's no such thing as an innocent bystander — see
+    /// <see cref="NearestForeignBramblekinNearHeart"/>.
+    /// </summary>
+    public const float BaseDefenseAggroRadius = 5f;
+
+    /// <summary>
     /// Desperation Mode: once a Village Heart's Food Stored drops below
     /// this, its Gatherers stop preferring food within <see cref="TerritoryTargetingRadius"/>
     /// and instead track the nearest unclaimed food anywhere on the map —
@@ -2240,6 +2251,38 @@ public sealed class World
         GroundMover.HorizontalDistance(spider.Position, home.Center) <= TerritoryTargetingRadius;
 
     /// <summary>
+    /// Base Defense Aggro: the nearest living foreign Bramblekin within
+    /// <see cref="BaseDefenseAggroRadius"/> of <paramref name="home"/>'s own
+    /// centre — checked regardless of any existing Truce or Blood Feud
+    /// status, since a unit standing this close is already effectively
+    /// attacking the base (this is exactly how Base Razing raiders end up
+    /// crowding around a Heart). Finding one is what actually triggers the
+    /// Blood Feud in the first place (see the priority chain in
+    /// <see cref="Bramblekin.Update"/>) — this method itself never mutates
+    /// anything.
+    /// </summary>
+    public Bramblekin? NearestForeignBramblekinNearHeart(VillageHeart home)
+    {
+        Bramblekin? nearest = null;
+        float bestDistanceSquared = BaseDefenseAggroRadius * BaseDefenseAggroRadius;
+
+        for (int i = Colony.Count - 1; i >= 0; i--)
+        {
+            Bramblekin intruder = Colony[i];
+            if (intruder.IsDead || intruder.FactionID == home.FactionID)
+                continue;
+
+            float distanceSquared = Vector3.DistanceSquared(intruder.Position, home.Center);
+            if (distanceSquared > bestDistanceSquared)
+                continue;
+
+            nearest = intruder;
+            bestDistanceSquared = distanceSquared;
+        }
+        return nearest;
+    }
+
+    /// <summary>
     /// Thievery: the nearest OTHER faction's Village Heart whose territory
     /// ring physically contains <paramref name="position"/>, if any —
     /// checked the instant a Gatherer (any faction but
@@ -2427,11 +2470,15 @@ public sealed class World
     /// <summary>
     /// Base Razing: applies Militia poke damage to an enemy Village Heart
     /// and, if that brings its Health to 0, conquers it outright — see
-    /// <see cref="DestroyVillageHeart"/>.
+    /// <see cref="DestroyVillageHeart"/>. Visual Damage Feedback: a floating
+    /// "-N" pop-up on top of the Heart's own red damage flash (see
+    /// <see cref="VillageHeart.TakeDamage"/>) confirms the hit actually
+    /// landed, for debugging Base Razing.
     /// </summary>
     public void DamageVillageHeart(VillageHeart village, int amount)
     {
         village.TakeDamage(amount);
+        QueueFloatingText(village.Center, $"-{amount}", new Color(220, 30, 30, 255));
         if (village.Health <= 0)
             DestroyVillageHeart(village);
     }
@@ -2635,6 +2682,7 @@ public sealed class World
         {
             UpdateJobManager(village);
             UpdateMorale(village, deltaTime);
+            village.DamageFlashTimer = MathF.Max(0f, village.DamageFlashTimer - deltaTime);
 
             // The Blood Feud: every declared war's timer counts down toward
             // 0 regardless of anything else this Village Heart is doing;
@@ -3911,15 +3959,26 @@ public sealed class VillageHeart
             new Vector3(center.X + half, Terrain.GroundHeight + Height, center.Z + half));
     }
 
-    /// <summary>Base Razing: reduces Health, floored at 0. Purely a Health mutation — destruction/loot is World's call, via <see cref="World.DamageVillageHeart"/>.</summary>
-    public void TakeDamage(int amount) => Health = Math.Max(0, Health - amount);
+    /// <summary>How long (s) a landed hit tints the Heart red in <see cref="Draw"/> — debug feedback that Base Razing damage is actually executing.</summary>
+    private const float DamageFlashDuration = 0.3f;
+
+    /// <summary>Counts down from <see cref="DamageFlashDuration"/> after every hit; ticked in <see cref="World.Update"/>.</summary>
+    public float DamageFlashTimer { get; internal set; }
+
+    /// <summary>Base Razing: reduces Health, floored at 0, and starts the red damage flash. Purely a Health mutation otherwise — destruction/loot is World's call, via <see cref="World.DamageVillageHeart"/>.</summary>
+    public void TakeDamage(int amount)
+    {
+        Health = Math.Max(0, Health - amount);
+        DamageFlashTimer = DamageFlashDuration;
+    }
 
     public void Draw()
     {
         DrawTerritoryRing();
 
         var middle = Center + new Vector3(0, Height / 2f, 0);
-        Raylib.DrawCube(middle, Width, Height, Width, new Color(122, 78, 40, 255));
+        Color cubeColor = DamageFlashTimer > 0f ? new Color(210, 40, 40, 255) : new Color(122, 78, 40, 255);
+        Raylib.DrawCube(middle, Width, Height, Width, cubeColor);
         Raylib.DrawCubeWires(middle, Width, Height, Width, new Color(60, 35, 15, 255));
 
         // A small dark doorway on the camera-facing side so it reads as a home.
@@ -4773,6 +4832,18 @@ public sealed class Bramblekin
     /// <summary>Sustained Combat: within this distance of the Wolf Spider, a Defending Militia unit pokes it instead of just closing in.</summary>
     private const float PokeRange = 1.5f;
 
+    /// <summary>
+    /// Base Razing: within this distance of a Village Heart's centre, a
+    /// Raiding Militia unit attacks it instead of just closing in. Much
+    /// more forgiving than <see cref="PokeRange"/>: the Heart's own solid
+    /// Obstacle (radius ~0.96m) plus a walker's BodyRadius already stops
+    /// units short of the exact centre coordinate, and crowding several
+    /// raiders around the same small footprint leaves some of them jostled
+    /// out past a tight range — a real softlock that used to leave raiders
+    /// permanently "crowding around" the Heart without ever landing a hit.
+    /// </summary>
+    private const float BuildingAttackRange = 3.5f;
+
     /// <summary>Cooldown (s) between pokes — rapid, so Militia can wail on a spider (especially a Tumbled one) quickly.</summary>
     private const float PokeCooldownDuration = 1.0f;
 
@@ -5085,14 +5156,35 @@ public sealed class Bramblekin
         // The 'Enemy of My Enemy' Protocol — Apex Priority: this check is
         // unconditional on the spider's own State (any spider merely
         // present in the ring, whatever it's doing, wins), and being
-        // checked here — ahead of 2b/2c below in the same if/else-if chain
-        // — it already completely overrides any rival-faction target the
-        // instant it's true, full stop.
+        // checked here — ahead of 2a/2b/2c/2d below in the same if/else-if
+        // chain — it already completely overrides any rival-faction target
+        // the instant it's true, full stop.
         else if (Role == BramblekinRole.Militia && world.Spider is { } spider && home is not null &&
                  GroundMover.HorizontalDistance(spider.Position, home.Center) <= World.TerritoryTargetingRadius)
         {
             _combatTarget = null;
             _target = ComputeInterceptPoint(spider, home);
+            if (State != BramblekinState.Defending)
+            {
+                DropCarried();
+                SetState(BramblekinState.Defending);
+            }
+        }
+        // --- 2a. Base Defense Aggro: a foreign Bramblekin caught within
+        // World.BaseDefenseAggroRadius of our own Village Heart — right up
+        // against the doorstep, not just somewhere in the wider 20m ring —
+        // is treated as an active attack in progress no matter what peace
+        // or Truce currently holds. Instantly declares a Blood Feud on its
+        // whole faction (World.DeclareBloodFeud) and engages it directly,
+        // rather than waiting for Border Wars/Thievery to notice next
+        // frame — this is what used to leave Base Razing raiders crowding
+        // around a Heart while the defenders looked right through them.
+        else if (Role == BramblekinRole.Militia && home is not null &&
+                 world.NearestForeignBramblekinNearHeart(home) is { } intruder)
+        {
+            world.DeclareBloodFeud(FactionID, intruder.FactionID);
+            _combatTarget = intruder;
+            _target = intruder.Position;
             if (State != BramblekinState.Defending)
             {
                 DropCarried();
@@ -5618,15 +5710,18 @@ public sealed class Bramblekin
     }
 
     /// <summary>
-    /// Blood Feud Base Razing: paths to and Pokes an enemy Village Heart,
-    /// using the exact same Sustained Combat mechanics (PokeRange/PokeDamage/
-    /// UpgradedPokeDamage/PokeCooldownDuration) as UpdateDefending, just
-    /// aimed at <see cref="World.DamageVillageHeart"/> instead of a spider
-    /// or a rival Bramblekin. Stands down the instant a living hostile
-    /// Bramblekin shows up nearby (that always wins — the outer priority
-    /// chain picks it up as Border Wars/home defense next frame instead)
-    /// or the target Heart is razed (by this unit's own killing blow or
-    /// anyone else's) or simply falls out of range.
+    /// Blood Feud Base Razing: paths to and attacks an enemy Village Heart
+    /// — the same Sustained Combat damage/cooldown numbers as UpdateDefending
+    /// (PokeDamage/UpgradedPokeDamage/PokeCooldownDuration), but checked
+    /// against the much more forgiving <see cref="BuildingAttackRange"/>
+    /// rather than <see cref="PokeRange"/>, since a building's solid
+    /// footprint (and a crowd of raiders jostling around it) never lets a
+    /// walker actually reach its exact centre coordinate. Stands down the
+    /// instant a living hostile Bramblekin shows up nearby (that always
+    /// wins — the outer priority chain picks it up as Border Wars/home
+    /// defense next frame instead) or the target Heart is razed (by this
+    /// unit's own killing blow or anyone else's) or simply falls out of
+    /// range.
     /// </summary>
     private void UpdateRaiding(float deltaTime, World world)
     {
@@ -5641,7 +5736,7 @@ public sealed class Bramblekin
 
         _target = _raidTarget.Center;
 
-        if (_pokeCooldown <= 0f && GroundMover.HorizontalDistance(Position, _raidTarget.Center) <= PokeRange)
+        if (_pokeCooldown <= 0f && GroundMover.HorizontalDistance(Position, _raidTarget.Center) <= BuildingAttackRange)
         {
             world.DamageVillageHeart(_raidTarget, HasFangPike ? UpgradedPokeDamage : PokeDamage);
             _pokeCooldown = PokeCooldownDuration;
