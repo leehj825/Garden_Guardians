@@ -157,7 +157,7 @@ public static class Game
             Raylib.ClearBackground(new Color(135, 190, 235, 255)); // Sky blue.
 
             Raylib.BeginMode3D(camera);
-            world.Draw();
+            world.Draw(camera);
             Raylib.EndMode3D();
 
             // 2D overlay (UI) is drawn after EndMode3D so it sits on top.
@@ -223,7 +223,9 @@ public static class Game
         for (int i = 0; i < world.Colony.Count; i++)
         {
             Bramblekin b = world.Colony[i];
-            if (!b.IsDead)
+            // Raylib Culling: a Bramblekin entirely outside the camera's
+            // current view has no business drawing a health bar either.
+            if (!b.IsDead && IsPointOnScreen(camera, b.Position))
                 DrawHealthBar(camera, b.Position + new Vector3(0, Bramblekin.BodyHeight + 0.15f, 0), b.Health, Bramblekin.MaxHealth);
         }
 
@@ -234,6 +236,15 @@ public static class Game
         // same hidden-until-damaged rule as everything else here.
         foreach (VillageHeart village in world.Villages)
             DrawHealthBar(camera, village.Center + new Vector3(0, VillageHeart.Height + 0.3f, 0), village.Health, VillageHeart.MaxHealth);
+    }
+
+    /// <summary>Basic bounds check: true unless <paramref name="worldPosition"/> projects to a screen point entirely outside the camera's current viewport — used to skip health-bar/UI draw calls for off-screen entities.</summary>
+    private static bool IsPointOnScreen(Camera3D camera, Vector3 worldPosition)
+    {
+        const float margin = 40f;
+        Vector2 screen = Raylib.GetWorldToScreen(worldPosition, camera);
+        return screen.X >= -margin && screen.X <= Raylib.GetScreenWidth() + margin &&
+               screen.Y >= -margin && screen.Y <= Raylib.GetScreenHeight() + margin;
     }
 
     /// <summary>A small red-background/green-fill bar at <paramref name="worldPosition"/>'s projected screen point.</summary>
@@ -784,6 +795,9 @@ public readonly record struct Obstacle(Vector2 Center, float Radius);
 /// </summary>
 public sealed class World
 {
+    /// <summary>AI Time-Slicing: increments once per frame at the top of <see cref="Update(float)"/>; a Bramblekin only runs its heavy target-scanning ("Brain") logic on the frame where <c>FrameCounter % 15 == ID % 15</c>, staggering the load evenly across the colony.</summary>
+    public long FrameCounter = 0;
+
     /// <summary>
     /// Food Abundance: seconds between checks that top the Acorn population
     /// back up to <see cref="MaxAcorns"/> — shortened from 6s so the map
@@ -1444,7 +1458,7 @@ public sealed class World
     /// </summary>
     public bool IsSpiderActivelyThreateningTerritory(VillageHeart? home) =>
         home is not null && Spider is { State: SpiderState.Hunting or SpiderState.Pouncing } spider &&
-        GroundMover.HorizontalDistance(spider.Position, home.Center) <= TerritoryTargetingRadius;
+        GroundMover.HorizontalDistanceSquared(spider.Position, home.Center) <= TerritoryTargetingRadius * TerritoryTargetingRadius;
 
     /// <summary>
     /// Base Defense Aggro: the nearest living foreign Bramblekin within
@@ -1910,6 +1924,7 @@ public sealed class World
 
     public void Update(float deltaTime)
     {
+        FrameCounter++;
         UpdateFoodClaimTimeouts(deltaTime);
         RebuildObstacles();
         PushFoodOutOfObstacles();
@@ -2141,7 +2156,24 @@ public sealed class World
         }
     }
 
-    public void Draw()
+    /// <summary>
+    /// Raylib Culling: margin (px) added around the screen rectangle when
+    /// deciding whether a projected point is "on screen" for
+    /// <see cref="IsOnScreen"/> — generous enough that an entity's body
+    /// (which extends a bit past its center point) doesn't visibly pop in
+    /// right at the screen edge.
+    /// </summary>
+    private const float CullScreenMargin = 40f;
+
+    /// <summary>Basic bounds check: true unless <paramref name="worldPosition"/> projects to a screen point entirely outside the camera's current viewport (plus <see cref="CullScreenMargin"/>) — used to skip Raylib draw calls for entities the camera can't currently see at all.</summary>
+    private static bool IsOnScreen(Vector3 worldPosition, Camera3D camera)
+    {
+        Vector2 screen = Raylib.GetWorldToScreen(worldPosition, camera);
+        return screen.X >= -CullScreenMargin && screen.X <= Raylib.GetScreenWidth() + CullScreenMargin &&
+               screen.Y >= -CullScreenMargin && screen.Y <= Raylib.GetScreenHeight() + CullScreenMargin;
+    }
+
+    public void Draw(Camera3D camera)
     {
         Terrain.Draw();
         for (int i = _splats.Count - 1; i >= 0; i--)
@@ -2155,12 +2187,16 @@ public sealed class World
             Villages[i].Draw();
 
         for (int i = Acorns.Count - 1; i >= 0; i--)
-            Acorns[i].Draw();
+        {
+            Acorn acorn = Acorns[i];
+            if (IsOnScreen(acorn.Position, camera))
+                acorn.Draw();
+        }
 
         for (int i = AmberNodes.Count - 1; i >= 0; i--)
         {
             AmberNode amber = AmberNodes[i];
-            if (!amber.IsCarried)
+            if (!amber.IsCarried && IsOnScreen(amber.Position, camera))
                 amber.Draw(amber.Position);
         }
 
@@ -2172,7 +2208,7 @@ public sealed class World
         for (int i = FoodShards.Count - 1; i >= 0; i--)
         {
             FoodShard shard = FoodShards[i];
-            if (!shard.IsCarried)
+            if (!shard.IsCarried && IsOnScreen(shard.Position, camera))
                 shard.Draw(shard.Position);
         }
 
@@ -2194,8 +2230,9 @@ public sealed class World
         // Bramblekin caught a moment ago would still be drawn standing there.
         for (int i = Colony.Count - 1; i >= 0; i--)
         {
-            if (!Colony[i].IsDead)
-                Colony[i].Draw();
+            Bramblekin b = Colony[i];
+            if (!b.IsDead && IsOnScreen(b.Position, camera))
+                b.Draw();
         }
 
         Spider?.Draw();
@@ -2272,10 +2309,11 @@ public sealed class World
     public FoodShard? NearestAvailableShard(Vector3 from, Bramblekin claimant, VillageHeart? home)
     {
         FoodShard? bestLocal = null;
-        float bestLocalDistance = float.MaxValue;
+        float bestLocalDistanceSquared = float.MaxValue;
         FoodShard? bestAny = null;
-        float bestAnyDistance = float.MaxValue;
+        float bestAnyDistanceSquared = float.MaxValue;
         float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
+        float maxGatherSearchRadiusSquared = MaxGatherSearchRadius * MaxGatherSearchRadius;
         // Desperation Mode: a starving village can't afford to wait for local food that
         // may not exist, so we skip the local-preference logic entirely and just grab
         // whatever's nearest anywhere within MaxGatherSearchRadius (still never foreign).
@@ -2289,20 +2327,20 @@ public sealed class World
             if (IsForeignTerritory(shard.Position, claimant.FactionID))
                 continue; // Strict Border Control: off-limits, full stop, no matter how desperate.
 
-            float distance = Vector3.Distance(from, shard.Position);
-            if (distance > MaxGatherSearchRadius)
+            float distanceSquared = Vector3.DistanceSquared(from, shard.Position);
+            if (distanceSquared > maxGatherSearchRadiusSquared)
                 continue; // Maximum Search Radius: never even evaluated, last resort or not.
 
-            if (distance < bestAnyDistance)
+            if (distanceSquared < bestAnyDistanceSquared)
             {
                 bestAny = shard;
-                bestAnyDistance = distance;
+                bestAnyDistanceSquared = distanceSquared;
             }
 
-            if (!desperate && home is not null && distance < bestLocalDistance && Vector3.DistanceSquared(shard.Position, home.Center) <= territoryRadiusSquared)
+            if (!desperate && home is not null && distanceSquared < bestLocalDistanceSquared && Vector3.DistanceSquared(shard.Position, home.Center) <= territoryRadiusSquared)
             {
                 bestLocal = shard;
-                bestLocalDistance = distance;
+                bestLocalDistanceSquared = distanceSquared;
             }
         }
         return desperate ? bestAny : (bestLocal ?? bestAny);
@@ -2350,7 +2388,8 @@ public sealed class World
     public AmberNode? NearestAvailableAmber(Vector3 from, Bramblekin claimant)
     {
         AmberNode? best = null;
-        float bestDistance = float.MaxValue;
+        float bestDistanceSquared = float.MaxValue;
+        float maxGatherSearchRadiusSquared = MaxGatherSearchRadius * MaxGatherSearchRadius;
         for (int i = AmberNodes.Count - 1; i >= 0; i--)
         {
             AmberNode amber = AmberNodes[i];
@@ -2359,14 +2398,14 @@ public sealed class World
             if (IsForeignTerritory(amber.Position, claimant.FactionID))
                 continue; // Strict Border Control: off-limits, full stop.
 
-            float distance = Vector3.Distance(from, amber.Position);
-            if (distance > MaxGatherSearchRadius)
+            float distanceSquared = Vector3.DistanceSquared(from, amber.Position);
+            if (distanceSquared > maxGatherSearchRadiusSquared)
                 continue; // Maximum Search Radius: never even evaluated.
 
-            if (distance < bestDistance)
+            if (distanceSquared < bestDistanceSquared)
             {
                 best = amber;
-                bestDistance = distance;
+                bestDistanceSquared = distanceSquared;
             }
         }
         return best;
@@ -3196,7 +3235,8 @@ public sealed class World
     public Acorn? NearestClaimableAcorn(Vector3 from, Bramblekin gatherer)
     {
         Acorn? best = null;
-        float bestDistance = float.MaxValue;
+        float bestDistanceSquared = float.MaxValue;
+        float maxGatherSearchRadiusSquared = MaxGatherSearchRadius * MaxGatherSearchRadius;
         for (int i = Acorns.Count - 1; i >= 0; i--)
         {
             Acorn acorn = Acorns[i];
@@ -3205,14 +3245,14 @@ public sealed class World
             if (IsForeignTerritory(acorn.Position, gatherer.FactionID))
                 continue; // Strict Border Control: off-limits, full stop.
 
-            float distance = Vector3.Distance(from, acorn.Position);
-            if (distance > MaxGatherSearchRadius)
+            float distanceSquared = Vector3.DistanceSquared(from, acorn.Position);
+            if (distanceSquared > maxGatherSearchRadiusSquared)
                 continue; // Maximum Search Radius: never even evaluated, last resort or not.
 
-            if (distance < bestDistance)
+            if (distanceSquared < bestDistanceSquared)
             {
                 best = acorn;
-                bestDistance = distance;
+                bestDistanceSquared = distanceSquared;
             }
         }
         return best;
@@ -4322,6 +4362,14 @@ public sealed class GroundMover
         float dz = a.Z - b.Z;
         return MathF.Sqrt(dx * dx + dz * dz);
     }
+
+    /// <summary>Squared horizontal distance — avoids the <see cref="MathF.Sqrt"/> in <see cref="HorizontalDistance"/> for threshold comparisons (compare against a squared threshold instead).</summary>
+    public static float HorizontalDistanceSquared(Vector3 a, Vector3 b)
+    {
+        float dx = a.X - b.X;
+        float dz = a.Z - b.Z;
+        return dx * dx + dz * dz;
+    }
 }
 
 // =============================================================================
@@ -4458,6 +4506,11 @@ public enum BramblekinRole
 /// </summary>
 public sealed class Bramblekin
 {
+    private static int _nextId = 0;
+
+    /// <summary>AI Time-Slicing: a stable, evenly-distributed per-unit index used to stagger which frame each Bramblekin runs its expensive Brain (target-scanning) logic on — see <see cref="World.FrameCounter"/>.</summary>
+    public int ID { get; } = _nextId++;
+
     /// <summary>Normal walking speed in m/s. Buffed 50% over the original slow amble so Bramblekin can cross the larger 100x100 m map before Upkeep starves them.</summary>
     public const float WalkSpeed = 1.5f;
 
@@ -4915,7 +4968,7 @@ public sealed class Bramblekin
         // chain — it already completely overrides any rival-faction target
         // the instant it's true, full stop.
         if (Role == BramblekinRole.Militia && world.Spider is { } spider && home is not null &&
-                 GroundMover.HorizontalDistance(spider.Position, home.Center) <= World.TerritoryTargetingRadius)
+                 GroundMover.HorizontalDistanceSquared(spider.Position, home.Center) <= World.TerritoryTargetingRadius * World.TerritoryTargetingRadius)
         {
             _combatTarget = null;
             _target = ComputeInterceptPoint(spider, home);
@@ -4925,101 +4978,23 @@ public sealed class Bramblekin
                 SetState(BramblekinState.Defending);
             }
         }
-        // --- 2a. Base Defense Aggro: a foreign Bramblekin caught within
-        // World.BaseDefenseAggroRadius of our own Village Heart — right up
-        // against the doorstep, not just somewhere in the wider 20m ring —
-        // is treated as an active attack in progress no matter what peace
-        // or Truce currently holds. Instantly declares a Blood Feud on its
-        // whole faction (World.DeclareBloodFeud) and engages it directly,
-        // rather than waiting for Border Wars/Thievery to notice next
-        // frame — this is what used to leave Base Razing raiders crowding
-        // around a Heart while the defenders looked right through them.
-        else if (Role == BramblekinRole.Militia && home is not null &&
-                 world.NearestForeignBramblekinNearHeart(home) is { } intruder)
+        // AI Time-Slicing (the "Brain"): 2a-2d below each scan the full
+        // Colony (and, for 2d, Villages) arrays looking for a threat --
+        // expensive with a large map/colony. Only staggered onto this
+        // unit's own frame (World.FrameCounter % 15 == ID % 15); whatever
+        // _combatTarget/_raidTarget/State it last settled on stays exactly
+        // as-is on the other 14 frames out of 15, and UpdateDefending/
+        // UpdateRaiding (pure Legs — chase, poke, leash checks) keep
+        // running every frame regardless, off the cached target.
+        else if (Role == BramblekinRole.Militia && world.FrameCounter % 15 == ID % 15 &&
+                 TryUpdateMilitiaThreatPriority(world, home))
         {
-            world.DeclareBloodFeud(FactionID, intruder.FactionID);
-            _combatTarget = intruder;
-            _target = intruder.Position;
-            if (State != BramblekinState.Defending)
-            {
-                DropCarried();
-                SetState(BramblekinState.Defending);
-            }
-        }
-        // --- 2b. Blood Feud Border Wars: with no Wolf Spider to answer, a
-        // faction's Militia still has to answer a Bramblekin (Gatherer or
-        // Militia) of a faction it's actually at declared war with (see
-        // VillageHeart.HostileFactions) trespassing within their own
-        // Village Heart's territory ring. Default Peace: any other
-        // faction's Bramblekin is completely ignored here, full stop — see
-        // World.NearestHostileBramblekinInTerritory. Same absolute priority
-        // tier and the same Defending state as the spider fight above — see
-        // UpdateDefending for the actual chase/poke. The 'Enemy of My
-        // Enemy' Protocol — Temporary Truce: guarded against a spider
-        // that's actively Hunting/Pouncing nearby (see
-        // IsSpiderActivelyThreateningTerritory) on top of Apex Priority
-        // above, so a common-enemy emergency always wins even in the
-        // narrower window that check alone wouldn't have caught.
-        else if (Role == BramblekinRole.Militia && home is not null &&
-                 !world.IsSpiderActivelyThreateningTerritory(home) &&
-                 world.NearestHostileBramblekinInTerritory(home) is { } enemy)
-        {
-            _combatTarget = enemy;
-            _target = enemy.Position;
-            if (State != BramblekinState.Defending)
-            {
-                DropCarried();
-                SetState(BramblekinState.Defending);
-            }
-        }
-        // --- 2c. Thievery Response: Default Peace still allows for a
-        // surgical, single-target response — a foreign Gatherer caught
-        // physically picking up food inside our own territory (see
-        // Bramblekin.TrespassingAgainst / World.NearestTrespasserInTerritory)
-        // gets singled out and confronted, without declaring war on its
-        // whole faction. UpdateDefending resolves it as a non-lethal
-        // Warning Shove unless the confrontation itself escalates into a
-        // Blood Feud (an armed trespasser, or one that lands a hit back).
-        // Checked after Blood Feud Border Wars: an already-hostile
-        // faction's trespassing Gatherer is just an enemy in our territory
-        // by then, not merely a thief to warn off.
-        else if (Role == BramblekinRole.Militia && home is not null &&
-                 !world.IsSpiderActivelyThreateningTerritory(home) &&
-                 world.NearestTrespasserInTerritory(home) is { } trespasser)
-        {
-            _combatTarget = trespasser;
-            _target = trespasser.Position;
-            if (State != BramblekinState.Defending)
-            {
-                DropCarried();
-                SetState(BramblekinState.Defending);
-            }
-        }
-        // --- 2d. Blood Feud Base Razing: opportunistic offense rather than
-        // home defense -- a Militia unit that's simply wandered within its
-        // own 20m aggro radius of a Village Heart it's actually at declared
-        // war with, with no living hostile Bramblekin also in that radius
-        // (a live threat always comes first — see 2b above, which already
-        // claims this frame if one's in range), paths in and Pokes it down
-        // instead. Default Peace: any faction with no declared Blood Feud
-        // is never a valid Raiding target. Temporary Truce applies here
-        // too: a spider actively threatening home calls off Base Razing
-        // just like Border Wars.
-        else if (Role == BramblekinRole.Militia &&
-                 !world.IsSpiderActivelyThreateningTerritory(home) &&
-                 world.NearestHostileVillageHeartInRange(Position, FactionID, World.TerritoryTargetingRadius) is { } enemyHeart &&
-                 !world.HasLivingHostileBramblekinNear(Position, FactionID, World.TerritoryTargetingRadius))
-        {
-            _raidTarget = enemyHeart;
-            _target = enemyHeart.Center;
-            if (State != BramblekinState.Raiding)
-            {
-                DropCarried();
-                SetState(BramblekinState.Raiding);
-            }
+            // Handled inside TryUpdateMilitiaThreatPriority, which already
+            // set _combatTarget/_raidTarget/_target/State for whichever of
+            // 2a-2d matched.
         }
         else if (Role != BramblekinRole.Militia && world.Spider is { } nearSpider &&
-                 GroundMover.HorizontalDistance(Position, nearSpider.Position) < FearRadius)
+                 GroundMover.HorizontalDistanceSquared(Position, nearSpider.Position) < FearRadius * FearRadius)
         {
             DropCarried();
             _target = FindPointAwayFrom(nearSpider.Position, world);
@@ -5111,6 +5086,116 @@ public sealed class Bramblekin
                 UpdateEquipping(deltaTime, world);
                 break;
         }
+    }
+
+    /// <summary>
+    /// The Brain half of the Militia threat-priority chain (2a-2d, split
+    /// out of <see cref="Update"/> so the whole thing can be gated behind
+    /// the AI Time-Slice check there): Base Defense Aggro, Blood Feud
+    /// Border Wars, Thievery Response, then Blood Feud Base Razing, in that
+    /// priority order. Sets <see cref="_combatTarget"/>/<see cref="_raidTarget"/>/
+    /// <see cref="_target"/>/<see cref="State"/> and returns true the
+    /// instant any one of them matches; returns false (touching nothing)
+    /// if none do, leaving whatever this unit was already doing in place.
+    /// </summary>
+    private bool TryUpdateMilitiaThreatPriority(World world, VillageHeart? home)
+    {
+        // --- 2a. Base Defense Aggro: a foreign Bramblekin caught within
+        // World.BaseDefenseAggroRadius of our own Village Heart — right up
+        // against the doorstep, not just somewhere in the wider 20m ring —
+        // is treated as an active attack in progress no matter what peace
+        // or Truce currently holds. Instantly declares a Blood Feud on its
+        // whole faction (World.DeclareBloodFeud) and engages it directly,
+        // rather than waiting for Border Wars/Thievery to notice next
+        // frame — this is what used to leave Base Razing raiders crowding
+        // around a Heart while the defenders looked right through them.
+        if (home is not null && world.NearestForeignBramblekinNearHeart(home) is { } intruder)
+        {
+            world.DeclareBloodFeud(FactionID, intruder.FactionID);
+            _combatTarget = intruder;
+            _target = intruder.Position;
+            if (State != BramblekinState.Defending)
+            {
+                DropCarried();
+                SetState(BramblekinState.Defending);
+            }
+            return true;
+        }
+        // --- 2b. Blood Feud Border Wars: with no Wolf Spider to answer, a
+        // faction's Militia still has to answer a Bramblekin (Gatherer or
+        // Militia) of a faction it's actually at declared war with (see
+        // VillageHeart.HostileFactions) trespassing within their own
+        // Village Heart's territory ring. Default Peace: any other
+        // faction's Bramblekin is completely ignored here, full stop — see
+        // World.NearestHostileBramblekinInTerritory. Same absolute priority
+        // tier and the same Defending state as the spider fight above — see
+        // UpdateDefending for the actual chase/poke. The 'Enemy of My
+        // Enemy' Protocol — Temporary Truce: guarded against a spider
+        // that's actively Hunting/Pouncing nearby (see
+        // IsSpiderActivelyThreateningTerritory) on top of Apex Priority
+        // above, so a common-enemy emergency always wins even in the
+        // narrower window that check alone wouldn't have caught.
+        if (home is not null &&
+            !world.IsSpiderActivelyThreateningTerritory(home) &&
+            world.NearestHostileBramblekinInTerritory(home) is { } enemy)
+        {
+            _combatTarget = enemy;
+            _target = enemy.Position;
+            if (State != BramblekinState.Defending)
+            {
+                DropCarried();
+                SetState(BramblekinState.Defending);
+            }
+            return true;
+        }
+        // --- 2c. Thievery Response: Default Peace still allows for a
+        // surgical, single-target response — a foreign Gatherer caught
+        // physically picking up food inside our own territory (see
+        // Bramblekin.TrespassingAgainst / World.NearestTrespasserInTerritory)
+        // gets singled out and confronted, without declaring war on its
+        // whole faction. UpdateDefending resolves it as a non-lethal
+        // Warning Shove unless the confrontation itself escalates into a
+        // Blood Feud (an armed trespasser, or one that lands a hit back).
+        // Checked after Blood Feud Border Wars: an already-hostile
+        // faction's trespassing Gatherer is just an enemy in our territory
+        // by then, not merely a thief to warn off.
+        if (home is not null &&
+            !world.IsSpiderActivelyThreateningTerritory(home) &&
+            world.NearestTrespasserInTerritory(home) is { } trespasser)
+        {
+            _combatTarget = trespasser;
+            _target = trespasser.Position;
+            if (State != BramblekinState.Defending)
+            {
+                DropCarried();
+                SetState(BramblekinState.Defending);
+            }
+            return true;
+        }
+        // --- 2d. Blood Feud Base Razing: opportunistic offense rather than
+        // home defense -- a Militia unit that's simply wandered within its
+        // own 20m aggro radius of a Village Heart it's actually at declared
+        // war with, with no living hostile Bramblekin also in that radius
+        // (a live threat always comes first — see 2b above, which already
+        // claims this frame if one's in range), paths in and Pokes it down
+        // instead. Default Peace: any faction with no declared Blood Feud
+        // is never a valid Raiding target. Temporary Truce applies here
+        // too: a spider actively threatening home calls off Base Razing
+        // just like Border Wars.
+        if (!world.IsSpiderActivelyThreateningTerritory(home) &&
+            world.NearestHostileVillageHeartInRange(Position, FactionID, World.TerritoryTargetingRadius) is { } enemyHeart &&
+            !world.HasLivingHostileBramblekinNear(Position, FactionID, World.TerritoryTargetingRadius))
+        {
+            _raidTarget = enemyHeart;
+            _target = enemyHeart.Center;
+            if (State != BramblekinState.Raiding)
+            {
+                DropCarried();
+                SetState(BramblekinState.Raiding);
+            }
+            return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -5282,114 +5367,141 @@ public sealed class Bramblekin
 
     private void UpdateGathering(float deltaTime, World world, VillageHeart? home)
     {
-        // Continuous Cracking: only a Chitin-Mallet Gatherer ever targets a
-        // whole Acorn, and only while it can still claim one of its
-        // MaxClaimants slots. Claiming one hands off to the Cracking state
-        // entirely — see UpdateCracking for the walk-there/add-progress
-        // loop and World.UpdateAcornCracking for the actual shatter.
-        //
-        // Efficiency Check: an upgraded Gatherer doesn't blindly beeline for
-        // every claimable Acorn in reach — it only commits when the Acorn
-        // is genuinely the smarter catch, i.e. no loose Food Shard sitting
-        // closer that it would otherwise walk straight past. A shard tied
-        // (or a wash) with the Acorn still favors cracking, since a group
-        // Acorn generally out-yields a single shard once a few Gatherers
-        // pile on.
-        if (HasChitinMallet && world.NearestClaimableAcorn(Position, this) is { } acorn)
+        // AI Time-Slicing (the "Brain"): the target searches below scan the
+        // full FoodShards/AmberNodes/Acorns arrays, which gets expensive
+        // with a large map and colony. Only one in every 15 Bramblekin runs
+        // this scan on any given frame (staggered by ID), so the aggregate
+        // cost stays flat regardless of colony size. Whatever was claimed
+        // last scan (_claimedAmber/_claimedShard) is cached and kept below,
+        // so on off-frames this unit still walks to, and picks up, its
+        // existing target every frame — only the re-scan itself is gated.
+        if (world.FrameCounter % 15 == ID % 15)
         {
-            FoodShard? nearestShard = world.NearestAvailableShard(Position, this, home);
-            bool acornIsSmarterChoice = nearestShard is null ||
-                GroundMover.HorizontalDistance(Position, acorn.Position) <= GroundMover.HorizontalDistance(Position, nearestShard.Position);
-
-            if (acornIsSmarterChoice && acorn.TryClaim(this))
+            // Continuous Cracking: only a Chitin-Mallet Gatherer ever targets a
+            // whole Acorn, and only while it can still claim one of its
+            // MaxClaimants slots. Claiming one hands off to the Cracking state
+            // entirely — see UpdateCracking for the walk-there/add-progress
+            // loop and World.UpdateAcornCracking for the actual shatter.
+            //
+            // Efficiency Check: an upgraded Gatherer doesn't blindly beeline for
+            // every claimable Acorn in reach — it only commits when the Acorn
+            // is genuinely the smarter catch, i.e. no loose Food Shard sitting
+            // closer that it would otherwise walk straight past. A shard tied
+            // (or a wash) with the Acorn still favors cracking, since a group
+            // Acorn generally out-yields a single shard once a few Gatherers
+            // pile on.
+            if (HasChitinMallet && world.NearestClaimableAcorn(Position, this) is { } acorn)
             {
-                ReleaseFoodClaim(); // Switching to the Acorn this frame — don't leave a stale claim on whatever shard we were chasing.
-                _claimedAcorn = acorn;
-                SetState(BramblekinState.Cracking);
-                return;
+                FoodShard? nearestShard = world.NearestAvailableShard(Position, this, home);
+                bool acornIsSmarterChoice = nearestShard is null ||
+                    GroundMover.HorizontalDistanceSquared(Position, acorn.Position) <= GroundMover.HorizontalDistanceSquared(Position, nearestShard.Position);
+
+                if (acornIsSmarterChoice && acorn.TryClaim(this))
+                {
+                    ReleaseFoodClaim(); // Switching to the Acorn this frame — don't leave a stale claim on whatever shard we were chasing.
+                    _claimedAcorn = acorn;
+                    SetState(BramblekinState.Cracking);
+                    return;
+                }
+            }
+
+            // Tycoon Economy — Maslow's Hierarchy: a well-fed village's
+            // Gatherers chase Amber (wealth) ahead of wild food; a hungry one
+            // ignores Amber completely and falls straight through to the Food
+            // Shard logic below. Same Safe Gathering (Danger Penalty) and
+            // Maximum Search Radius rules as any other target — see
+            // World.NearestAvailableAmber.
+            bool wellFed = home is not null && home.FoodStored >= home.MaxFoodCapacity / 2;
+            AmberNode? amber = wellFed ? world.NearestAvailableAmber(Position, this) : null;
+            if (amber is not null)
+            {
+                if (amber != _claimedAmber)
+                {
+                    ReleaseAmberClaim();
+                    _claimedAmber = amber;
+                    amber.ClaimedBy = this;
+                    amber.ClaimTimer = 0f;
+                }
+            }
+            else
+            {
+                ReleaseAmberClaim(); // Not well-fed, or nothing to chase — don't leave a stale claim behind.
+            }
+
+            if (_claimedAmber is null)
+            {
+                FoodShard? shard = world.NearestAvailableShard(Position, this, home);
+                if (shard != _claimedShard)
+                {
+                    ReleaseFoodClaim();
+                    _claimedShard = shard;
+                    if (shard is not null)
+                    {
+                        shard.ClaimedBy = this;
+                        shard.ClaimTimer = 0f;
+                    }
+                }
+
+                if (shard is null)
+                {
+                    // Maximum Search Radius: nothing to gather within reach at all
+                    // (as opposed to StartWandering's ordinary map-wide roam) --
+                    // wait close to home instead of hiking toward whatever's
+                    // technically nearest across the whole map; the local Spore
+                    // Farm's next Berry is the actual fix, not a long walk.
+                    StartWanderingNearHome(world, home);
+                    return;
+                }
             }
         }
 
-        // Tycoon Economy — Maslow's Hierarchy: a well-fed village's
-        // Gatherers chase Amber (wealth) ahead of wild food; a hungry one
-        // ignores Amber completely and falls straight through to the Food
-        // Shard logic below. Same Safe Gathering (Danger Penalty) and
-        // Maximum Search Radius rules as any other target — see
-        // World.NearestAvailableAmber.
-        bool wellFed = home is not null && home.FoodStored >= home.MaxFoodCapacity / 2;
-        AmberNode? amber = wellFed ? world.NearestAvailableAmber(Position, this) : null;
-        if (amber is not null)
+        // Continuous Legs: whichever target is currently cached (found this
+        // frame's scan, or a still-valid one from up to 14 frames ago) is
+        // walked toward and, on arrival, picked up, every single frame —
+        // never gated by the time-slice above.
+        if (_claimedAmber is { } cachedAmber)
         {
-            if (amber != _claimedAmber)
+            if (GroundMover.HorizontalDistance(Position, cachedAmber.Position) <= PickupDistance)
             {
-                ReleaseAmberClaim();
-                _claimedAmber = amber;
-                amber.ClaimedBy = this;
-                amber.ClaimTimer = 0f;
-            }
-
-            if (GroundMover.HorizontalDistance(Position, amber.Position) <= PickupDistance)
-            {
-                amber.IsCarried = true;
-                amber.ClaimedBy = null;
+                cachedAmber.IsCarried = true;
+                cachedAmber.ClaimedBy = null;
                 _claimedAmber = null;
-                _carriedAmber = amber;
+                _carriedAmber = cachedAmber;
 
                 // Same Thievery rule as a stolen Food Shard: an Amber node
                 // sitting inside a rival's 20m border flags us as a caught
                 // trespasser the instant we pick it up.
-                TrespassingAgainst = world.ForeignTerritoryContaining(amber.Position, FactionID);
+                TrespassingAgainst = world.ForeignTerritoryContaining(cachedAmber.Position, FactionID);
 
                 SetState(BramblekinState.Returning);
                 return;
             }
 
-            _mover.MoveTowards(amber.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+            _mover.MoveTowards(cachedAmber.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
             return;
         }
-        ReleaseAmberClaim(); // Not well-fed, or nothing to chase — don't leave a stale claim behind.
 
-        FoodShard? shard = world.NearestAvailableShard(Position, this, home);
-        if (shard != _claimedShard)
+        if (_claimedShard is { } cachedShard)
         {
-            ReleaseFoodClaim();
-            _claimedShard = shard;
-            if (shard is not null)
+            if (GroundMover.HorizontalDistance(Position, cachedShard.Position) <= PickupDistance)
             {
-                shard.ClaimedBy = this;
-                shard.ClaimTimer = 0f;
+                cachedShard.IsCarried = true;
+                cachedShard.ClaimedBy = null;
+                _claimedShard = null;
+                _carried = cachedShard;
+
+                // Thievery: caught in the act the instant the shard we just
+                // grabbed turns out to be sitting inside someone else's 20m
+                // border -- flags us for that specific faction's Militia to
+                // single out, whatever the wider peace between us still holds.
+                TrespassingAgainst = world.ForeignTerritoryContaining(cachedShard.Position, FactionID);
+
+                SetState(BramblekinState.Returning);
+                return;
             }
+
+            _mover.MoveTowards(cachedShard.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
         }
-
-        if (shard is null)
-        {
-            // Maximum Search Radius: nothing to gather within reach at all
-            // (as opposed to StartWandering's ordinary map-wide roam) --
-            // wait close to home instead of hiking toward whatever's
-            // technically nearest across the whole map; the local Spore
-            // Farm's next Berry is the actual fix, not a long walk.
-            StartWanderingNearHome(world, home);
-            return;
-        }
-
-        if (GroundMover.HorizontalDistance(Position, shard.Position) <= PickupDistance)
-        {
-            shard.IsCarried = true;
-            shard.ClaimedBy = null;
-            _claimedShard = null;
-            _carried = shard;
-
-            // Thievery: caught in the act the instant the shard we just
-            // grabbed turns out to be sitting inside someone else's 20m
-            // border -- flags us for that specific faction's Militia to
-            // single out, whatever the wider peace between us still holds.
-            TrespassingAgainst = world.ForeignTerritoryContaining(shard.Position, FactionID);
-
-            SetState(BramblekinState.Returning);
-            return;
-        }
-
-        _mover.MoveTowards(shard.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
     }
 
     /// <summary>
@@ -5524,7 +5636,7 @@ public sealed class Bramblekin
         // branch (Border Wars, Base Razing) tries to re-claim it into
         // Defending again before it arrives; only once it's back inside
         // the leash does a fresh chase actually stick.
-        if (home is not null && GroundMover.HorizontalDistance(Position, home.Center) > MilitiaLeashDistance)
+        if (home is not null && GroundMover.HorizontalDistanceSquared(Position, home.Center) > MilitiaLeashDistance * MilitiaLeashDistance)
         {
             _combatTarget = null;
             _target = home.Center;
@@ -5534,7 +5646,7 @@ public sealed class Bramblekin
         }
 
         bool spiderInTerritory = home is not null && world.Spider is { } spiderCheck &&
-                                  GroundMover.HorizontalDistance(spiderCheck.Position, home.Center) <= World.TerritoryTargetingRadius;
+                                  GroundMover.HorizontalDistanceSquared(spiderCheck.Position, home.Center) <= World.TerritoryTargetingRadius * World.TerritoryTargetingRadius;
 
         if (home is not null && spiderInTerritory)
         {
@@ -5567,7 +5679,7 @@ public sealed class Bramblekin
         // ring. Re-checked every frame since they may flee, die, or simply
         // wander back out.
         if (home is not null && _combatTarget is { IsDead: false } enemy &&
-            GroundMover.HorizontalDistance(enemy.Position, home.Center) <= World.TerritoryTargetingRadius)
+            GroundMover.HorizontalDistanceSquared(enemy.Position, home.Center) <= World.TerritoryTargetingRadius * World.TerritoryTargetingRadius)
         {
             _target = enemy.Position;
 
@@ -5628,7 +5740,7 @@ public sealed class Bramblekin
     /// </summary>
     private void UpdateRaiding(float deltaTime, World world, VillageHeart? home)
     {
-        if (home is not null && GroundMover.HorizontalDistance(Position, home.Center) > MilitiaLeashDistance)
+        if (home is not null && GroundMover.HorizontalDistanceSquared(Position, home.Center) > MilitiaLeashDistance * MilitiaLeashDistance)
         {
             _raidTarget = null;
             _target = home.Center;
@@ -5638,7 +5750,7 @@ public sealed class Bramblekin
         }
 
         if (_raidTarget is null || !world.Villages.Contains(_raidTarget) ||
-            GroundMover.HorizontalDistance(Position, _raidTarget.Center) > World.TerritoryTargetingRadius ||
+            GroundMover.HorizontalDistanceSquared(Position, _raidTarget.Center) > World.TerritoryTargetingRadius * World.TerritoryTargetingRadius ||
             world.HasLivingHostileBramblekinNear(Position, FactionID, World.TerritoryTargetingRadius))
         {
             _raidTarget = null;
@@ -5671,33 +5783,46 @@ public sealed class Bramblekin
 
     private void UpdateHunting(float deltaTime, World world, VillageHeart? home)
     {
-        // The 20-Meter Territory Rule: nothing to hunt without a home village.
-        // Re-pick the nearest live, unclaimed Aphid every frame: another
-        // Militia unit may have already caught (or claimed) ours, or it may
-        // simply have wandered off/out of territory.
-        Aphid? aphid = home is null ? null : world.NearestLiveAphidNearVillage(Position, this, home);
-        if (aphid != _claimedAphid)
+        // AI Time-Slicing (the "Brain"): re-picking the nearest live,
+        // unclaimed Aphid scans the whole Aphids array, so — same as
+        // UpdateGathering — it's only re-run on this unit's staggered
+        // frame; the cached _claimedAphid keeps being chased every frame
+        // in between.
+        if (world.FrameCounter % 15 == ID % 15)
         {
-            ReleaseAphidClaim();
-            _claimedAphid = aphid;
-            if (aphid is not null)
-                aphid.ClaimedBy = this;
+            // The 20-Meter Territory Rule: nothing to hunt without a home village.
+            // Another Militia unit may have already caught (or claimed) ours, or
+            // it may simply have wandered off/out of territory.
+            Aphid? aphid = home is null ? null : world.NearestLiveAphidNearVillage(Position, this, home);
+            if (aphid != _claimedAphid)
+            {
+                ReleaseAphidClaim();
+                _claimedAphid = aphid;
+                if (aphid is not null)
+                    aphid.ClaimedBy = this;
+            }
+
+            if (aphid is null)
+            {
+                StartWandering(world);
+                return;
+            }
         }
 
-        if (aphid is null)
+        if (_claimedAphid is not { } cachedAphid)
         {
             StartWandering(world);
             return;
         }
 
-        if (GroundMover.HorizontalDistance(Position, aphid.Position) <= HuntContactDistance)
+        if (GroundMover.HorizontalDistance(Position, cachedAphid.Position) <= HuntContactDistance)
         {
-            world.KillAphid(aphid);
+            world.KillAphid(cachedAphid);
             _claimedAphid = null;
-            return; // Re-targets (or wanders) fresh next frame.
+            return; // Re-targets (or wanders) fresh next scan.
         }
 
-        _mover.MoveTowards(aphid.Position, HuntSpeed, deltaTime, world, p => IsSafeSpot(p, world));
+        _mover.MoveTowards(cachedAphid.Position, HuntSpeed, deltaTime, world, p => IsSafeSpot(p, world));
     }
 
     // --- Individual Equipment (RPG-Style) --------------------------------------------
@@ -6198,7 +6323,7 @@ public sealed class WolfSpider
         // explicitly: a killed Bramblekin's removal from Colony is deferred
         // to the end of the frame, so Contains() alone can't tell it's gone.
         if (_prey is null || _prey.IsDead || !world.Colony.Contains(_prey) ||
-            GroundMover.HorizontalDistance(Position, _prey.Position) > VibrationRadius * 1.5f)
+            GroundMover.HorizontalDistanceSquared(Position, _prey.Position) > (VibrationRadius * 1.5f) * (VibrationRadius * 1.5f))
         {
             _prey = null;
         }
@@ -6347,7 +6472,7 @@ public sealed class WolfSpider
     private Bramblekin? FindPrey(World world)
     {
         Bramblekin? best = null;
-        float bestDistance = VibrationRadius;
+        float bestDistanceSquared = VibrationRadius * VibrationRadius;
         for (int i = world.Colony.Count - 1; i >= 0; i--)
         {
             Bramblekin bramblekin = world.Colony[i];
@@ -6356,11 +6481,11 @@ public sealed class WolfSpider
             if (bramblekin.IsDead || !bramblekin.IsVibrating)
                 continue;
 
-            float distance = GroundMover.HorizontalDistance(Position, bramblekin.Position);
-            if (distance <= bestDistance)
+            float distanceSquared = GroundMover.HorizontalDistanceSquared(Position, bramblekin.Position);
+            if (distanceSquared <= bestDistanceSquared)
             {
                 best = bramblekin;
-                bestDistance = distance;
+                bestDistanceSquared = distanceSquared;
             }
         }
         return best;
@@ -6370,18 +6495,18 @@ public sealed class WolfSpider
     private Bramblekin? NearestMilitiaInRange(World world, float range)
     {
         Bramblekin? best = null;
-        float bestDistance = range;
+        float bestDistanceSquared = range * range;
         for (int i = world.Colony.Count - 1; i >= 0; i--)
         {
             Bramblekin bramblekin = world.Colony[i];
             if (bramblekin.IsDead || bramblekin.Role != BramblekinRole.Militia)
                 continue;
 
-            float distance = GroundMover.HorizontalDistance(Position, bramblekin.Position);
-            if (distance <= bestDistance)
+            float distanceSquared = GroundMover.HorizontalDistanceSquared(Position, bramblekin.Position);
+            if (distanceSquared <= bestDistanceSquared)
             {
                 best = bramblekin;
-                bestDistance = distance;
+                bestDistanceSquared = distanceSquared;
             }
         }
         return best;
@@ -6559,18 +6684,18 @@ public sealed class Aphid
     private Bramblekin? NearestCloseBramblekin(World world)
     {
         Bramblekin? nearest = null;
-        float bestDistance = FleeTriggerRadius;
+        float bestDistanceSquared = FleeTriggerRadius * FleeTriggerRadius;
         for (int i = world.Colony.Count - 1; i >= 0; i--)
         {
             Bramblekin bramblekin = world.Colony[i];
             if (bramblekin.IsDead)
                 continue;
 
-            float distance = GroundMover.HorizontalDistance(Position, bramblekin.Position);
-            if (distance <= bestDistance)
+            float distanceSquared = GroundMover.HorizontalDistanceSquared(Position, bramblekin.Position);
+            if (distanceSquared <= bestDistanceSquared)
             {
                 nearest = bramblekin;
-                bestDistance = distance;
+                bestDistanceSquared = distanceSquared;
             }
         }
         return nearest;
