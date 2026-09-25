@@ -375,7 +375,7 @@ public static class Game
 
         const int titleSize = 44, subtitleSize = 28;
         string title = "World Dead.";
-        string subtitle = $"Tap anywhere to Seed new Life (Cost: {(int)MiracleManager.GenesisFaithCost} Faith)";
+        string subtitle = "Tap anywhere to Seed new Life (Free)";
         int titleWidth = Raylib.MeasureText(title, titleSize);
         int subtitleWidth = Raylib.MeasureText(subtitle, subtitleSize);
         int centerX = Raylib.GetScreenWidth() / 2;
@@ -1170,23 +1170,22 @@ public sealed class MiracleInput
     }
 
     /// <summary>
-    /// Genesis: raycasts the tap onto the terrain and, if it lands and the
-    /// player can afford <see cref="MiracleManager.GenesisFaithCost"/>
-    /// Faith, spends it and reseeds the world right there. A tap that
-    /// misses the terrain, or lands without enough Faith banked, is simply
-    /// ignored — the blinking prompt (<see cref="Game.DrawGenesisPrompt"/>)
-    /// stays up and the player just tries again once Faith regenerates.
+    /// Free Extinction Recovery: raycasts the tap onto the terrain and, if
+    /// it lands, reseeds the world right there — no Faith cost. Total
+    /// extinction already means <see cref="World.Faith"/> has no Shrines or
+    /// Morale left worshipping it, so gating the player's only way back
+    /// behind the very resource extinction stops generating would be a hard
+    /// lock; Genesis only ever runs from <see cref="World.IsWorldExtinct"/>
+    /// in the first place; a tap that misses the terrain is simply ignored
+    /// — the blinking prompt (<see cref="Game.DrawGenesisPrompt"/>) stays up
+    /// and the player just taps again.
     /// </summary>
     private void TryGenesis(Vector2 screenPosition, Camera3D camera, World world)
     {
-        if (world.Faith < MiracleManager.GenesisFaithCost)
-            return;
-
         Vector3? groundPoint = PickGround(camera, world.Terrain, screenPosition);
         if (groundPoint is null)
             return;
 
-        world.TrySpendFaith(MiracleManager.GenesisFaithCost);
         world.Genesis(groundPoint.Value);
     }
 
@@ -1481,9 +1480,6 @@ public sealed class MiracleManager
     /// <summary>Faith spent per Gust.</summary>
     public const float GustFaithCost = 10f;
 
-    /// <summary>Genesis: Faith spent to reseed the world from total extinction — see <see cref="World.Genesis"/>.</summary>
-    public const float GenesisFaithCost = 50f;
-
     /// <summary>How long the wind-streak visual plays for, in seconds.</summary>
     public const float GustVisualDuration = 1f;
 
@@ -1728,14 +1724,14 @@ public sealed class World
     /// <summary>The most Granaries the Village Heart will ever build on its own — caps MaxFoodCapacity at 10 + 3*10 = 40.</summary>
     public const int MaxGranaries = 3;
 
-    /// <summary>Food Stored spent to place a Spore Patch blueprint.</summary>
-    public const int SporePatchFoodCost = 10;
+    /// <summary>Food Stored spent to place a Spore Farm blueprint.</summary>
+    public const int SporeFarmFoodCost = 10;
 
-    /// <summary>Population needed before the Village Heart will build a Spore Patch.</summary>
-    public const int SporePatchPopulationThreshold = 12;
+    /// <summary>Population needed before the Village Heart will build a Spore Farm — the Domestic Spore Farm: a big tribe's internal food loop, so its Gatherers don't need to cross the map for every Berry. Lowered from 15 so it lands early enough to actually save a struggling tribe, not just reward one that's already thriving.</summary>
+    public const int SporeFarmPopulationThreshold = 10;
 
-    /// <summary>How far (m) from the Village Heart a Spore Patch may be placed — kept close, near the village's centre.</summary>
-    private const float SporePatchPlacementRadius = 2.5f;
+    /// <summary>How far (m) from the Village Heart a Spore Farm may be placed — kept close, near the village's centre.</summary>
+    private const float SporeFarmPlacementRadius = 5f;
 
     /// <summary>How often (seconds) the Village Heart pays its Upkeep food tax.</summary>
     private const float UpkeepInterval = 15f;
@@ -1768,10 +1764,28 @@ public sealed class World
     /// <summary>
     /// Desperation Mode: once a Village Heart's Food Stored drops below
     /// this, its Gatherers stop preferring food within <see cref="TerritoryTargetingRadius"/>
-    /// and instead track the nearest unclaimed food anywhere on the map —
-    /// starving is worse than a long walk home.
+    /// and instead track the nearest unclaimed food anywhere within
+    /// <see cref="MaxGatherSearchRadius"/> — starving is worse than a walk,
+    /// but the walk still isn't unlimited (see <see cref="MaxGatherSearchRadius"/>).
     /// </summary>
     public const int DesperationFoodThreshold = 5;
+
+    /// <summary>
+    /// Maximum Search Radius: a Gatherer never even considers a Food Shard
+    /// or Acorn further than this from its current position, full stop —
+    /// not a preference like <see cref="TerritoryTargetingRadius"/>, a hard
+    /// cutoff with no last-resort exception. This is what actually stops a
+    /// freshly-split Schism splinter's Gatherers from trekking all the way
+    /// back to the parent tribe's base: without a hard ceiling, the parent's
+    /// food was still technically the nearest *available* food on the whole
+    /// map (everything closer already claimed, or just not there yet), and
+    /// the Danger Penalty (see <see cref="ForeignTerritoryPenaltyFor"/>) is
+    /// only a soft tie-breaker, not a distance limit. See
+    /// <see cref="NearestAvailableShard"/>/<see cref="NearestClaimableAcorn"/>;
+    /// coming up empty sends the Gatherer to <see cref="Bramblekin.StartWanderingNearHome"/>
+    /// instead, to wait out its own Spore Farm's next Berry.
+    /// </summary>
+    public const float MaxGatherSearchRadius = 25f;
 
     /// <summary>
     /// Dibs failsafe: a Food Shard claimed but not actually picked up within
@@ -1788,8 +1802,11 @@ public sealed class World
     /// <summary>The Blood Feud: how long (s) a declared war lasts before peace is automatically restored — see <see cref="DeclareBloodFeud"/>.</summary>
     public const float BloodFeudDurationSeconds = 120f;
 
-    /// <summary>How far (m) a Migration Target must be from every existing Village Heart.</summary>
-    private const float MinMigrationDistance = 30f;
+    /// <summary>Strict Migration Distance: how far (m) a Migration Target must be from every existing Village Heart — kept comfortably outside a 20m territory ring plus its neighbour's so a fresh Schism splinter doesn't spawn straight into a Border War.</summary>
+    private const float MinMigrationDistance = 35f;
+
+    /// <summary>How many random coordinates <see cref="RandomMigrationTarget"/>/<see cref="RandomRefugeeTarget"/> try before giving up on a clean gap.</summary>
+    private const int MigrationTargetAttempts = 50;
 
     /// <summary>The palette a new Schism faction's colour is drawn from, cycling once all four are in use.</summary>
     private static readonly Color[] SchismFactionColors =
@@ -2470,17 +2487,18 @@ public sealed class World
     /// <summary>
     /// Base Razing: applies Militia poke damage to an enemy Village Heart
     /// and, if that brings its Health to 0, conquers it outright — see
-    /// <see cref="DestroyVillageHeart"/>. Visual Damage Feedback: a floating
-    /// "-N" pop-up on top of the Heart's own red damage flash (see
-    /// <see cref="VillageHeart.TakeDamage"/>) confirms the hit actually
-    /// landed, for debugging Base Razing.
+    /// <see cref="DestroyVillageHeart"/>, which needs <paramref name="attackerFactionId"/>
+    /// (the raider's own FactionID) on hand for the Refugee Protocol's
+    /// Assimilation branch. Visual Damage Feedback: a floating "-N" pop-up
+    /// on top of the Heart's own red damage flash (see <see cref="VillageHeart.TakeDamage"/>)
+    /// confirms the hit actually landed, for debugging Base Razing.
     /// </summary>
-    public void DamageVillageHeart(VillageHeart village, int amount)
+    public void DamageVillageHeart(VillageHeart village, int amount, int attackerFactionId)
     {
         village.TakeDamage(amount);
         QueueFloatingText(village.Center, $"-{amount}", new Color(220, 30, 30, 255));
         if (village.Health <= 0)
-            DestroyVillageHeart(village);
+            DestroyVillageHeart(village, attackerFactionId);
     }
 
     /// <summary>Loose Food Shards a razed Village Heart shatters into for the victors to claim.</summary>
@@ -2490,7 +2508,7 @@ public sealed class World
     /// Shared cleanup for a Village Heart that's gone for good, one way or
     /// another: removes it from <see cref="Villages"/> outright (same
     /// direct-mutation pattern as <see cref="CompleteBlueprint"/>'s
-    /// Blueprints.Remove) and takes every Granary, Spore Patch and
+    /// Blueprints.Remove) and takes every Granary, Spore Farm and
     /// Blueprint sharing its FactionID down with it. Its own Colony
     /// survives as suddenly homeless refugees — <see cref="VillageFor"/>
     /// simply returns null for them from here on. Callers add whatever's
@@ -2511,13 +2529,16 @@ public sealed class World
     /// Villages is next enumerated this frame, so there's no
     /// concurrent-modification risk — shattering into
     /// <see cref="VillageHeartLootShardCount"/> loose Food Shards scattered
-    /// around its footprint on top of the shared cleanup above.
+    /// around its footprint on top of the shared cleanup above, then
+    /// running the Refugee Protocol (see <see cref="RunRefugeeProtocol"/>)
+    /// for whichever of its own Gatherers are still alive.
     /// </summary>
-    private void DestroyVillageHeart(VillageHeart village)
+    private void DestroyVillageHeart(VillageHeart village, int attackerFactionId)
     {
         if (!Villages.Contains(village))
             return; // Already razed this frame by another poke landing the same instant.
 
+        int razedFactionId = village.FactionID;
         RemoveVillageAndItsBuildings(village);
 
         float half = Terrain.Size / 2f - Bramblekin.EdgeMargin;
@@ -2532,6 +2553,43 @@ public sealed class World
         }
 
         _splats.Add((village.Center, SplatDuration));
+
+        RunRefugeeProtocol(village, razedFactionId, attackerFactionId);
+    }
+
+    /// <summary>
+    /// The Refugee Protocol: Base Razing no longer means instant death for
+    /// the losing side's Gatherers. First tries <see cref="RandomRefugeeTarget"/>
+    /// for empty ground far from every surviving Village Heart — if one
+    /// exists, every surviving Gatherer of the razed faction becomes a
+    /// Pioneer (exactly like a Schism splinter, reusing <see cref="Bramblekin.BecomePioneer"/>
+    /// so they ignore hostiles and everything else while fleeing) bound for
+    /// it, to plant a brand new Village Heart from scratch. If the map has
+    /// no safe ground left at all, they surrender instead: Assimilation
+    /// switches every survivor straight into <paramref name="attackerFactionId"/>'s
+    /// faction and colour on the spot. Militia aren't covered here — this
+    /// only ever runs on the losing side's remaining Gatherers, per the
+    /// design.
+    /// </summary>
+    private void RunRefugeeProtocol(VillageHeart razedVillage, int razedFactionId, int attackerFactionId)
+    {
+        List<Bramblekin> survivors = Colony.Where(b => !b.IsDead && b.FactionID == razedFactionId && b.Role == BramblekinRole.Gatherer).ToList();
+        if (survivors.Count == 0)
+            return;
+
+        if (RandomRefugeeTarget() is { } safeSpot)
+        {
+            int newFactionId = _nextSchismFactionId++;
+            Color newFactionColor = SchismFactionColors[(newFactionId - 1) % SchismFactionColors.Length];
+            var migration = new Migration(newFactionId, newFactionColor, safeSpot, razedVillage, survivors.Count, foodAmount: 0);
+            foreach (Bramblekin refugee in survivors)
+                refugee.BecomePioneer(migration);
+        }
+        else if (VillageFor(attackerFactionId) is { } conqueror)
+        {
+            foreach (Bramblekin refugee in survivors)
+                refugee.Assimilate(attackerFactionId, conqueror.FactionColor);
+        }
     }
 
     /// <summary>
@@ -2728,7 +2786,7 @@ public sealed class World
             // Stored to Auto-Sprout a single replacement -- this faction is
             // done for good. Actually removed outright now (rather than
             // just left standing inert forever), taking its Granaries and
-            // Spore Patches down with it (see RemoveVillageAndItsBuildings)
+            // Spore Farms down with it (see RemoveVillageAndItsBuildings)
             // -- otherwise a starvation wipeout could never bring
             // World.IsWorldExtinct (Villages.Count == 0) true, and Genesis
             // would never have anything to trigger on. Iterated backwards
@@ -2761,9 +2819,9 @@ public sealed class World
             // halves of the same Population-vs-MaxFoodCapacity comparison (see
             // UpdateAutoSprout's Growth Phase and UpdateAutoGranary's Saving
             // Phase), so between them the village is always either growing or
-            // banking toward more room to grow. The Spore Patch is a one-time,
+            // banking toward more room to grow. The Spore Farm is a one-time,
             // population-gated addition on top of that cycle.
-            UpdateAutoSporePatch(village);
+            UpdateAutoSporeFarm(village);
             UpdateAutoGranary(village);
             UpdateAutoSprout(village);
 
@@ -2771,7 +2829,7 @@ public sealed class World
             // off a new faction of its own rather than just capping out.
             UpdateSchism(village);
         }
-        UpdateSporePatchIncome(deltaTime);
+        UpdateSporeFarmIncome(deltaTime);
 
         UpdateAcornSpawn(deltaTime);
         UpdateSpiderRespawn(deltaTime);
@@ -2973,12 +3031,43 @@ public sealed class World
     /// <summary>The 20-Meter Territory Rule: whether <paramref name="claimant"/> has anything to gather, preferring <paramref name="home"/>'s territory but falling back to the wider map.</summary>
     public bool HasAvailableFoodFor(Bramblekin claimant, VillageHeart? home) => NearestAvailableShard(claimant.Position, claimant, home) is not null;
 
+    /// <summary>Safe Gathering (The Danger Penalty): the artificial distance a border-crossing food/Acorn target gets saddled with for comparison purposes, so a Gatherer only ever picks it over safe wild food or its own domestic Spore Farm when literally nothing safe is left within <see cref="MaxGatherSearchRadius"/>.</summary>
+    private const float ForeignTerritoryPenalty = 1000f;
+
     /// <summary>
-    /// The 20-Meter Territory Rule + Dibs, sorted by distance: among
-    /// unclaimed (or self-claimed) shards within <see cref="TerritoryTargetingRadius"/>
-    /// of <paramref name="home"/>, the nearest one to <paramref name="from"/>.
-    /// Only if none qualify locally does this fall back to the nearest
-    /// anywhere on the map — a Gatherer always prefers its own doorstep.
+    /// Safe Gathering (The Danger Penalty): <see cref="ForeignTerritoryPenalty"/>
+    /// if <paramref name="point"/> falls inside ANY Village Heart's
+    /// <see cref="TerritoryTargetingRadius"/> territory ring other than
+    /// <paramref name="ownFactionId"/>'s own, 0 otherwise. Shares
+    /// <see cref="ForeignTerritoryContaining"/> with the Thievery check for
+    /// one single "whose border is this?" answer — deliberately blind to
+    /// <see cref="VillageHeart.HostileFactions"/>/Default Peace, a Schism
+    /// splinter's shared ancestry with its parent, or anything else that
+    /// makes two factions not currently shoot at each other: a truce means
+    /// "don't attack," never "share food," so the parent tribe's own
+    /// granary is exactly as foreign to a freshly-split Pioneer faction as
+    /// any other rival's. Shared by <see cref="NearestAvailableShard"/> and
+    /// <see cref="NearestClaimableAcorn"/> so both "closest Food" searches
+    /// steer the same way around a border.
+    /// </summary>
+    private float ForeignTerritoryPenaltyFor(Vector3 point, int ownFactionId) =>
+        ForeignTerritoryContaining(point, ownFactionId) is not null ? ForeignTerritoryPenalty : 0f;
+
+    /// <summary>
+    /// The 20-Meter Territory Rule + Dibs + Safe Gathering (The Danger
+    /// Penalty, see <see cref="ForeignTerritoryPenaltyFor"/>) + Maximum
+    /// Search Radius (see <see cref="MaxGatherSearchRadius"/>), sorted by
+    /// distance: among unclaimed (or self-claimed) shards within
+    /// <see cref="TerritoryTargetingRadius"/> of <paramref name="home"/>,
+    /// the nearest (danger-adjusted) one to <paramref name="from"/>. Only
+    /// if none qualify locally does this fall back to the nearest anywhere
+    /// within <see cref="MaxGatherSearchRadius"/> — a Gatherer always
+    /// prefers its own doorstep, then safe wild food, and only risks a
+    /// rival's territory as an absolute last resort — but never travels
+    /// further than <see cref="MaxGatherSearchRadius"/> at all, resort or
+    /// not; a shard outside it is never even considered, so null (nothing
+    /// to gather) is a perfectly normal result once a fresh splinter's
+    /// immediate neighbourhood is picked clean.
     /// </summary>
     public FoodShard? NearestAvailableShard(Vector3 from, Bramblekin claimant, VillageHeart? home)
     {
@@ -2989,7 +3078,7 @@ public sealed class World
         float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
         // Desperation Mode: a starving village can't afford to wait for local food that
         // may not exist, so we skip the local-preference logic entirely and just grab
-        // whatever's nearest anywhere on the map.
+        // whatever's nearest anywhere within MaxGatherSearchRadius.
         bool desperate = home is not null && home.FoodStored < DesperationFoodThreshold;
 
         for (int i = FoodShards.Count - 1; i >= 0; i--)
@@ -2998,7 +3087,11 @@ public sealed class World
             if (!IsAvailable(shard, claimant))
                 continue;
 
-            float distance = Vector3.DistanceSquared(from, shard.Position);
+            float rawDistance = Vector3.Distance(from, shard.Position);
+            if (rawDistance > MaxGatherSearchRadius)
+                continue; // Maximum Search Radius: never even evaluated, last resort or not.
+
+            float distance = rawDistance + ForeignTerritoryPenaltyFor(shard.Position, claimant.FactionID);
             if (distance < bestAnyDistance)
             {
                 bestAny = shard;
@@ -3161,29 +3254,29 @@ public sealed class World
     }
 
     /// <summary>
-    /// Auto-Construction (Spore Patch): a one-time build. Once Population
-    /// reaches <see cref="SporePatchPopulationThreshold"/>, at least one
+    /// Auto-Construction (Spore Farm): a one-time build. Once Population
+    /// reaches <see cref="SporeFarmPopulationThreshold"/>, at least one
     /// Granary already exists, and the village doesn't already have a Spore
-    /// Patch (finished or under construction), the Village Heart hoards
-    /// Food Stored until it can afford <see cref="SporePatchFoodCost"/>,
-    /// then places a Spore Patch Blueprint close to its own centre. Never
+    /// Farm (finished or under construction), the Village Heart hoards
+    /// Food Stored until it can afford <see cref="SporeFarmFoodCost"/>,
+    /// then places a Spore Farm Blueprint close to its own centre. Never
     /// queued a second time once one exists.
     /// </summary>
-    private void UpdateAutoSporePatch(VillageHeart village)
+    private void UpdateAutoSporeFarm(VillageHeart village)
     {
-        if (village.Population < SporePatchPopulationThreshold)
+        if (village.Population < SporeFarmPopulationThreshold)
             return;
         if (!Buildings.Any(b => b.Kind == BuildingKind.Granary && b.FactionID == village.FactionID))
             return; // Needs at least one Granary up first.
-        if (Buildings.Any(b => b.Kind == BuildingKind.SporePatch && b.FactionID == village.FactionID) ||
-            Blueprints.Any(b => b.Kind == BuildingKind.SporePatch && b.FactionID == village.FactionID))
+        if (Buildings.Any(b => b.Kind == BuildingKind.SporeFarm && b.FactionID == village.FactionID) ||
+            Blueprints.Any(b => b.Kind == BuildingKind.SporeFarm && b.FactionID == village.FactionID))
             return; // Already have one, finished or in progress.
-        if (village.FoodStored < SporePatchFoodCost)
+        if (village.FoodStored < SporeFarmFoodCost)
             return; // Still hoarding.
 
-        Vector3? spot = RandomPointNearVillage(village, SporePatchPlacementRadius, Building.SporePatchRadius + 0.2f);
+        Vector3? spot = RandomPointNearVillage(village, SporeFarmPlacementRadius, Building.SporeFarmRadius + 0.2f);
         if (spot is { } point)
-            TryPlaceBlueprint(village, point, BuildingKind.SporePatch);
+            TryPlaceBlueprint(village, point, BuildingKind.SporeFarm);
     }
 
     /// <summary>
@@ -3257,17 +3350,58 @@ public sealed class World
             pioneer.BecomePioneer(migration);
     }
 
-    /// <summary>A random point at least <see cref="MinMigrationDistance"/> meters from every existing Village Heart — a Schism's destination.</summary>
+    /// <summary>
+    /// Strict Migration Distance: a random point at least
+    /// <see cref="MinMigrationDistance"/> meters from every existing
+    /// Village Heart — a Schism's destination. Overcrowding Fallback: if
+    /// none of <see cref="MigrationTargetAttempts"/> random tries lands
+    /// clean, the 60x60 map is genuinely too crowded for a gap that wide,
+    /// so settle for the least-bad candidate tried (the one furthest from
+    /// its nearest Village Heart) and accept that territorial war with a
+    /// close neighbour is now unavoidable.
+    /// </summary>
     private Vector3 RandomMigrationTarget()
     {
-        Vector3 candidate = Vector3.Zero;
-        for (int attempt = 0; attempt < 30; attempt++)
+        Vector3 best = Vector3.Zero;
+        float bestDistance = -1f;
+        for (int attempt = 0; attempt < MigrationTargetAttempts; attempt++)
         {
-            candidate = Terrain.RandomPoint(Rng, margin: 2f);
-            if (Villages.All(v => Vector3.Distance(candidate, v.Center) >= MinMigrationDistance))
+            Vector3 candidate = Terrain.RandomPoint(Rng, margin: 2f);
+            float nearestVillage = Villages.Count == 0 ? float.MaxValue : Villages.Min(v => Vector3.Distance(candidate, v.Center));
+            if (nearestVillage >= MinMigrationDistance)
+                return candidate;
+
+            if (nearestVillage > bestDistance)
+            {
+                bestDistance = nearestVillage;
+                best = candidate;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>The Refugee Protocol: how far (m) from every surviving Village Heart a razed faction's resettlement point must land.</summary>
+    private const float RefugeeSafeDistance = 30f;
+
+    /// <summary>
+    /// The Refugee Protocol: a random point at least
+    /// <see cref="RefugeeSafeDistance"/> meters from every surviving
+    /// Village Heart, for a just-razed faction's Gatherers to flee to and
+    /// found a new Village Heart from scratch. Unlike <see cref="RandomMigrationTarget"/>
+    /// there is no furthest-point fallback here — a null result means the
+    /// map is genuinely full of other tribes, and <see cref="DestroyVillageHeart"/>
+    /// falls back to Assimilation instead of sending refugees to their
+    /// deaths in someone else's territory.
+    /// </summary>
+    private Vector3? RandomRefugeeTarget()
+    {
+        for (int attempt = 0; attempt < MigrationTargetAttempts; attempt++)
+        {
+            Vector3 candidate = Terrain.RandomPoint(Rng, margin: 2f);
+            if (Villages.All(v => Vector3.Distance(candidate, v.Center) >= RefugeeSafeDistance))
                 return candidate;
         }
-        return candidate; // Fallback: the map's too crowded for a clean gap — found it wherever the last attempt landed.
+        return null;
     }
 
     /// <summary>
@@ -3315,8 +3449,9 @@ public sealed class World
     /// with <see cref="GenesisGathererCount"/> Gatherers spawned right
     /// beside it so it isn't left standing empty. Called from
     /// <see cref="MiracleInput"/>'s tap handling once it's confirmed the
-    /// world is dead and the player can afford <see cref="MiracleManager.GenesisFaithCost"/>
-    /// Faith.
+    /// world is dead — Free Extinction Recovery: no Faith cost, since a
+    /// totally extinct world has nobody left worshipping to ever regenerate
+    /// Faith with in the first place.
     /// </summary>
     public void Genesis(Vector3 groundPoint)
     {
@@ -3334,11 +3469,11 @@ public sealed class World
     }
 
     /// <summary>
-    /// Passive Income: every finished Spore Patch spawns a Berry (Food
-    /// Shard) directly on top of itself every <see cref="Building.SporePatchInterval"/>
+    /// Passive Income: every finished Spore Farm spawns a Berry (Food
+    /// Shard) directly on top of itself every <see cref="Building.SporeFarmInterval"/>
     /// seconds, for Gatherers to pick up and deliver like any other food.
     /// </summary>
-    private void UpdateSporePatchIncome(float deltaTime)
+    private void UpdateSporeFarmIncome(float deltaTime)
     {
         for (int i = Buildings.Count - 1; i >= 0; i--)
         {
@@ -3426,14 +3561,14 @@ public sealed class World
 
     /// <summary>
     /// Village Building: spends the Blueprint kind's Food cost (<see cref="GranaryFoodCost"/>
-    /// or <see cref="SporePatchFoodCost"/>) to place a Blueprint owned by
+    /// or <see cref="SporeFarmFoodCost"/>) to place a Blueprint owned by
     /// <paramref name="village"/>'s Faction at <paramref name="groundPoint"/>
-    /// — called by the Village Heart's own Auto-Construction (<see cref="UpdateAutoGranary"/>/<see cref="UpdateAutoSporePatch"/>).
+    /// — called by the Village Heart's own Auto-Construction (<see cref="UpdateAutoGranary"/>/<see cref="UpdateAutoSporeFarm"/>).
     /// Returns false (and spends nothing) if there isn't enough Food Stored.
     /// </summary>
     public bool TryPlaceBlueprint(VillageHeart village, Vector3 groundPoint, BuildingKind kind = BuildingKind.Granary)
     {
-        int cost = kind == BuildingKind.Granary ? GranaryFoodCost : SporePatchFoodCost;
+        int cost = kind == BuildingKind.Granary ? GranaryFoodCost : SporeFarmFoodCost;
         if (village.FoodStored < cost)
             return false;
 
@@ -3471,8 +3606,8 @@ public sealed class World
     /// its requirement: removes the site and adds the completed Building,
     /// carrying over the Blueprint's Faction. A finished Granary permanently
     /// raises its owning Village Heart's MaxFoodCapacity; a finished Spore
-    /// Patch raises nothing but starts its own passive-income timer (see
-    /// <see cref="UpdateSporePatchIncome"/>). Called from inside a
+    /// Farm raises nothing but starts its own passive-income timer (see
+    /// <see cref="UpdateSporeFarmIncome"/>). Called from inside a
     /// Bramblekin's own Update() (itself inside World's reverse for-loop
     /// over Colony), but mutates Blueprints/Buildings directly rather than
     /// through a pending queue: nothing else iterates either list while the
@@ -3620,10 +3755,16 @@ public sealed class World
     }
 
     /// <summary>
-    /// Cooperative Acorn Cracking: the nearest Acorn <paramref name="gatherer"/>
-    /// (a Chitin-Mallet Gatherer) either already holds a claim on or can
-    /// still claim a free slot on — <see cref="Acorn.MaxClaimants"/> may work
-    /// the same Acorn at once. Sorted by distance like any other target.
+    /// Cooperative Acorn Cracking + Safe Gathering (The Danger Penalty, see
+    /// <see cref="ForeignTerritoryPenaltyFor"/>) + Maximum Search Radius
+    /// (see <see cref="MaxGatherSearchRadius"/>): the nearest Acorn
+    /// <paramref name="gatherer"/> (a Chitin-Mallet Gatherer) either
+    /// already holds a claim on or can still claim a free slot on —
+    /// <see cref="Acorn.MaxClaimants"/> may work the same Acorn at once.
+    /// Sorted by danger-adjusted distance like any other target, so a
+    /// Gatherer only cracks an Acorn sitting inside a rival's territory
+    /// once nothing safer is available within <see cref="MaxGatherSearchRadius"/>
+    /// — an Acorn any further than that is never even considered.
     /// </summary>
     public Acorn? NearestClaimableAcorn(Vector3 from, Bramblekin gatherer)
     {
@@ -3635,7 +3776,11 @@ public sealed class World
             if (!acorn.IsClaimedBy(gatherer) && acorn.Claimants.Count >= Acorn.MaxClaimants)
                 continue;
 
-            float distance = Vector3.DistanceSquared(from, acorn.Position);
+            float rawDistance = Vector3.Distance(from, acorn.Position);
+            if (rawDistance > MaxGatherSearchRadius)
+                continue; // Maximum Search Radius: never even evaluated, last resort or not.
+
+            float distance = rawDistance + ForeignTerritoryPenaltyFor(acorn.Position, gatherer.FactionID);
             if (distance < bestDistance)
             {
                 best = acorn;
@@ -4271,13 +4416,13 @@ public enum BuildingKind
     /// <summary>Permanently raises <see cref="World.MaxFoodCapacity"/> by <see cref="World.GranaryFoodBonus"/>.</summary>
     Granary,
 
-    /// <summary>Passive Income: spawns a Berry on top of itself every <see cref="Building.SporePatchInterval"/> seconds.</summary>
-    SporePatch,
+    /// <summary>Passive Income: spawns a Berry on top of itself every <see cref="Building.SporeFarmInterval"/> seconds.</summary>
+    SporeFarm,
 }
 
 /// <summary>
 /// A finished piece of Village Building: either a Granary (permanently
-/// raises the food cap) or a Spore Patch (a flat mushroom bed that spawns
+/// raises the food cap) or a Spore Farm (a flat mushroom bed that spawns
 /// Berries on a timer — see <see cref="TickSporeTimer"/>).
 /// </summary>
 public sealed class Building
@@ -4285,11 +4430,12 @@ public sealed class Building
     public const float GranaryRadius = 0.7f;
     public const float GranaryHeight = 1.1f;
 
-    public const float SporePatchRadius = 1.0f;
-    private const float SporePatchHeight = 0.05f;
+    /// <summary>Large enough, and drawn in a saturated Dark Green well off the grass-green ground plane's hue (see <see cref="Draw"/>), to read as an obviously distinct landmark rather than blending into the terrain.</summary>
+    public const float SporeFarmRadius = 1.6f;
+    private const float SporeFarmHeight = 0.12f;
 
-    /// <summary>Seconds between each Berry a finished Spore Patch spawns on top of itself. Buffed further (10s -> 5s -> 4s) to keep established bases' baseline survival ahead of the Upkeep tax.</summary>
-    public const float SporePatchInterval = 4f;
+    /// <summary>Seconds between each Berry a finished Spore Farm spawns on top of itself — fast enough that a large tribe's Gatherers have a safe, internal food loop and never need to cross the map for every Berry.</summary>
+    public const float SporeFarmInterval = 2.5f;
 
     public BuildingKind Kind { get; }
     public Vector3 Position { get; }
@@ -4300,8 +4446,8 @@ public sealed class Building
     /// <summary>The owning faction's colour.</summary>
     public Color FactionColor { get; }
 
-    /// <summary>Counts down to the next Berry. Only meaningful for a Spore Patch.</summary>
-    private float _sporeTimer = SporePatchInterval;
+    /// <summary>Counts down to the next Berry. Only meaningful for a Spore Farm.</summary>
+    private float _sporeTimer = SporeFarmInterval;
 
     public Building(Vector3 position, BuildingKind kind, int factionId, Color factionColor)
     {
@@ -4312,24 +4458,24 @@ public sealed class Building
     }
 
     /// <summary>The footprint radius (m) a Blueprint/Building of this kind actually occupies on the ground.</summary>
-    public static float RadiusFor(BuildingKind kind) => kind == BuildingKind.Granary ? GranaryRadius : SporePatchRadius;
+    public static float RadiusFor(BuildingKind kind) => kind == BuildingKind.Granary ? GranaryRadius : SporeFarmRadius;
 
     /// <summary>
-    /// A Spore Patch's passive-income clock: counts down by
+    /// A Spore Farm's passive-income clock: counts down by
     /// <paramref name="deltaTime"/> and, once it reaches zero, resets and
     /// returns true so <see cref="World"/> can spawn a Berry on top of it.
     /// Always false for a Granary.
     /// </summary>
     public bool TickSporeTimer(float deltaTime)
     {
-        if (Kind != BuildingKind.SporePatch)
+        if (Kind != BuildingKind.SporeFarm)
             return false;
 
         _sporeTimer -= deltaTime;
         if (_sporeTimer > 0f)
             return false;
 
-        _sporeTimer += SporePatchInterval;
+        _sporeTimer += SporeFarmInterval;
         return true;
     }
 
@@ -4343,10 +4489,13 @@ public sealed class Building
             return;
         }
 
-        // Spore Patch: a flat green/brown mushroom bed, barely raised off the ground.
-        var patchCenter = Position + new Vector3(0, SporePatchHeight / 2f, 0);
-        Raylib.DrawCylinder(patchCenter, SporePatchRadius, SporePatchRadius, SporePatchHeight, 20, new Color(95, 130, 55, 255));
-        Raylib.DrawCylinderWires(patchCenter, SporePatchRadius, SporePatchRadius, SporePatchHeight, 20, new Color(70, 55, 30, 255));
+        // Spore Farm: a large, saturated Dark Green disc, deliberately far
+        // enough from the grass-green ground plane's own hue (86, 150, 60)
+        // that it reads as an obvious landmark at a glance rather than
+        // blending in.
+        var patchCenter = Position + new Vector3(0, SporeFarmHeight / 2f, 0);
+        Raylib.DrawCylinder(patchCenter, SporeFarmRadius, SporeFarmRadius, SporeFarmHeight, 24, new Color(20, 95, 35, 255));
+        Raylib.DrawCylinderWires(patchCenter, SporeFarmRadius, SporeFarmRadius, SporeFarmHeight, 24, new Color(10, 45, 15, 255));
     }
 }
 
@@ -4362,7 +4511,7 @@ public sealed class Blueprint
 {
     public BuildingKind Kind { get; }
 
-    /// <summary>Construction Progress needed to finish — 10 for a Granary, 15 for a Spore Patch.</summary>
+    /// <summary>Construction Progress needed to finish — 10 for a Granary, 15 for a Spore Farm.</summary>
     public float ProgressRequired => Kind == BuildingKind.Granary ? 10f : 15f;
 
     public Vector3 Position { get; }
@@ -4394,7 +4543,7 @@ public sealed class Blueprint
         var wire = new Color(210, 200, 70, 200);
 
         float radius = Building.RadiusFor(Kind);
-        // A Spore Patch is nearly flat when finished, but a full-height wireframe (like a Granary's)
+        // A Spore Farm is nearly flat when finished, but a full-height wireframe (like a Granary's)
         // still reads clearly as "a site under construction" while it fills in.
         float fullHeight = Kind == BuildingKind.Granary ? Building.GranaryHeight : 0.3f;
 
@@ -5150,6 +5299,15 @@ public sealed class Bramblekin
     /// stays — ignoring food, blueprints and enemies alike — until it or
     /// another Pioneer bound to the same <see cref="Migration"/> founds the
     /// new Village Heart (see <see cref="UpdateMigrating"/>).
+    ///
+    /// Brain Wipe: <see cref="ReleaseFoodClaim"/>/<see cref="ReleaseAcornClaim"/>
+    /// below null out this Bramblekin's Food Shard/Acorn target (<c>_claimedShard</c>/
+    /// <c>_claimedAcorn</c>) and cancel its claim on whichever one it was
+    /// still holding at the old, now-foreign Village Heart, all before
+    /// State ever flips to Migrating — a Pioneer's very first frame under
+    /// its new Faction never has a stale pointer back at the parent's
+    /// granary for <see cref="UpdateGathering"/> to pick back up the moment
+    /// it stops Migrating.
     /// </summary>
     public void BecomePioneer(Migration migration)
     {
@@ -5163,6 +5321,21 @@ public sealed class Bramblekin
         _migration = migration;
         _target = migration.Target;
         SetState(BramblekinState.Migrating);
+    }
+
+    /// <summary>
+    /// The Refugee Protocol's Assimilation branch: called on a Base Razing
+    /// survivor when <see cref="World.RunRefugeeProtocol"/> can't find any
+    /// safe ground left to resettle on. Surrenders outright — no Migrating
+    /// detour, no Pioneer status, just an immediate switch into the
+    /// conquering faction's colour and FactionID, wherever the fight left
+    /// it standing. The very next Update() picks up its new home's food,
+    /// blueprints and defense needs like it had always belonged there.
+    /// </summary>
+    public void Assimilate(int factionId, Color factionColor)
+    {
+        FactionID = factionId;
+        FactionColor = factionColor;
     }
 
     public void Update(float deltaTime, World world)
@@ -5605,7 +5778,12 @@ public sealed class Bramblekin
 
         if (shard is null)
         {
-            StartWandering(world);
+            // Maximum Search Radius: nothing to gather within reach at all
+            // (as opposed to StartWandering's ordinary map-wide roam) --
+            // wait close to home instead of hiking toward whatever's
+            // technically nearest across the whole map; the local Spore
+            // Farm's next Berry is the actual fix, not a long walk.
+            StartWanderingNearHome(world, home);
             return;
         }
 
@@ -5870,7 +6048,7 @@ public sealed class Bramblekin
 
         if (_pokeCooldown <= 0f && GroundMover.HorizontalDistance(Position, _raidTarget.Center) <= BuildingAttackRange)
         {
-            world.DamageVillageHeart(_raidTarget, HasFangPike ? UpgradedPokeDamage : PokeDamage);
+            world.DamageVillageHeart(_raidTarget, HasFangPike ? UpgradedPokeDamage : PokeDamage, FactionID);
             _pokeCooldown = PokeCooldownDuration;
         }
 
@@ -6046,6 +6224,29 @@ public sealed class Bramblekin
         // the village, or a God's Shadow.
         _target = world.RandomFreePoint(BodyRadius + 0.1f, EdgeMargin);
         SetState(BramblekinState.Walking);
+    }
+
+    /// <summary>
+    /// Maximum Search Radius: a Gatherer's own equivalent of the Militia
+    /// Leash above, used specifically when <see cref="World.NearestAvailableShard"/>/
+    /// <see cref="World.NearestClaimableAcorn"/> come back completely empty
+    /// (nothing within <see cref="World.MaxGatherSearchRadius"/>) rather
+    /// than the ordinary map-wide <see cref="StartWandering"/>. Waits close
+    /// to <paramref name="home"/> instead — its own Spore Farm's next Berry
+    /// is what actually fixes this, not a long walk toward a target that
+    /// doesn't exist. Falls back to the ordinary map-wide wander if it has
+    /// no home at all (a homeless refugee).
+    /// </summary>
+    private void StartWanderingNearHome(World world, VillageHeart? home)
+    {
+        if (home is not null)
+        {
+            _target = world.RandomPointNearVillage(home, World.TerritoryTargetingRadius, BodyRadius + 0.1f) ?? home.Center;
+            SetState(BramblekinState.Walking);
+            return;
+        }
+
+        StartWandering(world);
     }
 
     private void StartPause()
