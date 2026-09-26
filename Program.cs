@@ -467,7 +467,7 @@ public static class Game
 
             // A dark drop-shadow, offset a couple pixels, for contrast
             // against a bright sky/terrain background.
-            Raylib.DrawText(text, x + 2, y + 2, fontSize, new Color(0, 0, 0, alpha));
+            Raylib.DrawText(text, x + 2, y + 2, fontSize, new Color((byte)0, (byte)0, (byte)0, alpha));
             Raylib.DrawText(text, x, y, fontSize, faded);
         }
     }
@@ -3211,9 +3211,9 @@ public sealed class World
         {
             var (position, timeLeft) = _debugBeams[i];
             byte alpha = (byte)(200 * Math.Clamp(timeLeft / DebugBeamDuration, 0f, 1f));
-            Color beamColor = new(255, 0, 200, alpha);
+            Color beamColor = new((byte)255, (byte)0, (byte)200, alpha);
             Raylib.DrawCylinder(position, 1.75f, 1.75f, 100f, 16, beamColor);
-            Raylib.DrawCylinderWires(position, 1.75f, 1.75f, 100f, 16, new Color(255, 255, 255, alpha));
+            Raylib.DrawCylinderWires(position, 1.75f, 1.75f, 100f, 16, new Color((byte)255, (byte)255, (byte)255, alpha));
         }
 
         for (int i = Villages.Count - 1; i >= 0; i--)
