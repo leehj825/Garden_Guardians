@@ -2336,6 +2336,16 @@ public sealed class World
     private const float BuilderStallWarningThresholdSeconds = 8f;
 
     /// <summary>
+    /// Parallel Construction: how many Builders a single Village Heart may
+    /// staff at once, one per simultaneously-queued Blueprint up to this
+    /// cap — see <see cref="UpdateJobManager"/>. Keeps a tribe that queues
+    /// several buildings at once from leaving every Blueprint but the first
+    /// completely untouched, while still stopping a tribe with a large
+    /// backlog from stripping every last Gatherer off food duty at once.
+    /// </summary>
+    private const int MaxConcurrentBuilders = 3;
+
+    /// <summary>
     /// The Job Manager: each Village Heart's own autonomous quartermaster.
     /// Every frame it recomputes its own faction's Population — strictly
     /// its own FactionID's living Bramblekin, never any other faction's —
@@ -2385,7 +2395,16 @@ public sealed class World
         else if (current > village.MilitiaTarget)
             NearestByRole(village, BramblekinRole.Militia)?.DemoteToGatherer(this);
 
-        int builderTarget = HasIncompleteBlueprintFor(village.FactionID) ? 1 : 0;
+        // One Builder per simultaneously-queued Blueprint (up to
+        // MaxConcurrentBuilders): a flat cap of 1 regardless of Blueprint
+        // count left every Blueprint after the first sitting untouched,
+        // looking permanently stuck, until the sole Builder serially worked
+        // its way down the list — a fast-growing tribe that queues several
+        // buildings at once (Tent + Granary + Trading Post, say) could
+        // never actually keep pace. Still capped, so a tribe with a dozen
+        // queued buildings doesn't strip every last Gatherer off food duty.
+        int incompleteBlueprints = Blueprints.Count(b => b.FactionID == village.FactionID);
+        int builderTarget = Math.Min(incompleteBlueprints, MaxConcurrentBuilders);
         int currentBuilders = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Builder);
         if (currentBuilders < builderTarget)
         {
