@@ -95,6 +95,30 @@ public static class Game
     /// </summary>
     private static float _timeScale = 1f;
 
+    /// <summary>
+    /// Responsive UI: the screen width every hardcoded UI pixel constant
+    /// (the Debug Time Scale buttons' geometry, in particular) was
+    /// originally designed/tuned against. <see cref="UiScale"/> divides the
+    /// CURRENT screen width by this to get a single scale factor those
+    /// constants are multiplied by, so the UI stays proportionally sized —
+    /// and, crucially, stays tappable in exactly the place it's drawn — on
+    /// any screen instead of only the one it was designed for.
+    /// </summary>
+    private const float ReferenceScreenWidth = 1920f;
+
+    /// <summary>Current screen width divided by <see cref="ReferenceScreenWidth"/> — see its doc comment.</summary>
+    private static float UiScale => Raylib.GetScreenWidth() / ReferenceScreenWidth;
+
+    /// <summary>
+    /// The large font size the "[CRUSADE]"/"[NEW TRIBE]" broadcast banner
+    /// (see <see cref="DrawGlobalAlerts"/>) uses. The Faction Ledger panel
+    /// (<see cref="DrawColonyPanel"/>) and the bottom stats bar
+    /// (<see cref="DrawHud"/>) are standardized to this same constant
+    /// instead of their own separate magic numbers, so all three can never
+    /// silently drift out of sync with each other again.
+    /// </summary>
+    private const int BroadcastFontSize = 48;
+
     public static void Run(GamePlatform platform)
     {
         if (platform == GamePlatform.Desktop)
@@ -137,13 +161,15 @@ public static class Game
         world.SpawnSpiderNearVillage();
         var input = new WorldTapInput();
         var touchCamera = new TouchCameraController();
-        // Debug Time Scale buttons: 3x their old size (50x44 -> 150x132) so
-        // they're comfortably tappable on a mobile screen; SpeedButtonGap
+        // Debug Time Scale buttons: originally sized for a 1920px-wide
+        // reference screen (3x their old 50x44 base, i.e. 150x132, so
+        // they're comfortably tappable on a mobile screen); SpeedButtonGap
         // is the width of the "Nx" label panel DrawSpeedLabel draws between
-        // them, scaled to match.
-        const int speedButtonWidth = 150, speedButtonHeight = 132, speedButtonGap = 180;
-        var speedDownButton = new UiButton(new Rectangle(20, 20, speedButtonWidth, speedButtonHeight));
-        var speedUpButton = new UiButton(new Rectangle(20 + speedButtonWidth + speedButtonGap, 20, speedButtonWidth, speedButtonHeight));
+        // them. Recomputed every frame from the CURRENT screen size (via
+        // UiScale below) rather than once at startup, so resizing/rotating
+        // the window keeps both the drawn buttons and their click-detection
+        // rectangles perfectly in sync — see step 1 below, which checks
+        // clicks against these same, freshly-scaled rectangles.
 
         // --- Main loop -------------------------------------------------------
         while (!Raylib.WindowShouldClose())
@@ -155,6 +181,21 @@ public static class Game
             //    Target and pinch to zoom. Runs before the tap input below
             //    so the rest of the frame sees an already-settled camera.
             touchCamera.Update(ref camera, world.Terrain.Size / 2f);
+
+            // Responsive UI: the Debug Time Scale buttons' geometry (and the
+            // "Nx" label panel between them) is recomputed from the CURRENT
+            // screen size every frame, via the shared UiScale factor, rather
+            // than fixed once at startup. Both the click-detection below and
+            // the Draw calls further down use these SAME rectangles, so the
+            // visible buttons and their tappable areas can never drift apart.
+            float uiScale = UiScale;
+            int speedButtonWidth = (int)(150 * uiScale);
+            int speedButtonHeight = (int)(132 * uiScale);
+            int speedButtonGap = (int)(180 * uiScale);
+            int speedButtonMargin = (int)(20 * uiScale);
+            var speedDownButton = new UiButton(new Rectangle(speedButtonMargin, speedButtonMargin, speedButtonWidth, speedButtonHeight));
+            var speedUpButton = new UiButton(new Rectangle(speedButtonMargin + speedButtonWidth + speedButtonGap, speedButtonMargin, speedButtonWidth, speedButtonHeight));
+            var speedLabelBounds = new Rectangle(speedButtonMargin + speedButtonWidth, speedButtonMargin, speedButtonGap, speedButtonHeight);
 
             // 1) Input: Pure Simulation — the player has no lever on the
             //    world any more. Conscription, Sprouting and Village
@@ -193,7 +234,7 @@ public static class Game
             DrawHealthBars(camera, world);
             DrawFloatingTexts(camera, world);
             speedDownButton.Draw("-", highlighted: false, disabled: _timeScale <= TimeScaleSteps[0]);
-            DrawSpeedLabel();
+            DrawSpeedLabel(speedLabelBounds, uiScale);
             speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
             DrawColonyPanel(world);
             DrawGenesisPrompt(world);
@@ -228,11 +269,16 @@ public static class Game
     }
 
     /// <summary>The current speed ("5x"), on a small panel in the gap between the +/- buttons — gold once sped up.</summary>
-    private static void DrawSpeedLabel()
+    private static void DrawSpeedLabel(Rectangle bounds, float uiScale)
     {
-        // Kept in sync with the 3x-scaled speedDownButton/speedUpButton
-        // layout in Run: this panel fills the gap between them exactly.
-        const int fontSize = 64, x = 170, width = 180, y = 20, height = 132;
+        // Responsive UI: bounds is the exact same, freshly-scaled rectangle
+        // Run computes each frame for this gap between speedDownButton and
+        // speedUpButton (see UiScale), so this panel keeps filling that gap
+        // exactly regardless of screen size; only the font size (not tied to
+        // a UiButton's own height like the +/- labels are) needs its own
+        // scale multiply here.
+        int fontSize = (int)(64 * uiScale);
+        int x = (int)bounds.X, y = (int)bounds.Y, width = (int)bounds.Width, height = (int)bounds.Height;
         Raylib.DrawRectangle(x, y, width, height, PanelFill);
         Raylib.DrawRectangleLines(x, y, width, height, PanelInk);
 
@@ -328,11 +374,14 @@ public static class Game
         if (village is null)
             return; // No faction founded yet.
 
-        // UI Text Scaling: bumped from 24px so the Faction Ledger reads on a
-        // mobile screen; width/lineHeight below already derive the panel's
-        // background rectangle from fontSize/lineHeight, so it grows to fit
-        // automatically.
-        const int fontSize = 32, lineHeight = 40;
+        // UI Text Scaling: standardized to BroadcastFontSize, the same size
+        // used by the "[CRUSADE]"/"[NEW TRIBE]" broadcast banner (see
+        // DrawGlobalAlerts), so every large piece of on-screen UI text reads
+        // consistently; lineHeight scales proportionally with it rather than
+        // staying at its old, smaller-font value. width/lineHeight below
+        // already derive the panel's background rectangle from
+        // fontSize/lineHeight, so it grows to fit automatically.
+        const int fontSize = BroadcastFontSize, lineHeight = BroadcastFontSize + 8;
         int militia = world.Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
         int builders = world.Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Builder);
         string tierSuffix = village.Tier >= 2 ? " [Town]" : "";
@@ -441,6 +490,18 @@ public static class Game
     /// <see cref="DrawMonumentAlerts"/>'s permanent banner, and fades out
     /// over its own <see cref="World.GlobalAlertDuration"/> lifetime rather
     /// than sitting there forever.
+    ///
+    /// UI Visibility, Part 3: "[CRUSADE]"-tagged alerts specifically are kept
+    /// out of this on-screen banner (the player never sees them drawn here)
+    /// while "[NEW TRIBE]"/"[SPOILS]" etc. still are. QueueGlobalAlert is one
+    /// generic method shared by every alert type with no separate tag field,
+    /// so rather than widen its signature just to hide one category, this
+    /// filters by the "[CRUSADE]" text prefix already baked into that
+    /// alert's message at its single call site — the least invasive way to
+    /// single Crusade broadcasts out. The entries themselves are untouched
+    /// (still queued, aged and expired normally in World.GlobalAlerts, and
+    /// still hit their own Raylib.TraceLog call at the point they're
+    /// queued) — only this 2D DrawText rendering is skipped for them.
     /// </summary>
     private static void DrawGlobalAlerts(World world)
     {
@@ -449,8 +510,10 @@ public static class Game
 
         // Part 3, UI Visibility: bumped well past the previous 32px so the
         // "[NEW TRIBE] ... has sprouted!" banner is actually readable at a
-        // glance, not just a size nudge.
-        const int fontSize = 48, lineHeight = 56;
+        // glance, not just a size nudge. This is the canonical
+        // BroadcastFontSize other large UI text (the Faction Ledger panel,
+        // the bottom stats bar) is standardized to as well.
+        const int fontSize = BroadcastFontSize, lineHeight = BroadcastFontSize + 8;
         int screenWidth = Raylib.GetScreenWidth();
         int topOffset = world.CompletedMonuments.Count > 0
             ? world.CompletedMonuments.Count * 44 + 20
@@ -459,6 +522,9 @@ public static class Game
         for (int i = 0; i < world.GlobalAlerts.Count; i++)
         {
             (string text, Color color, float timeLeft) = world.GlobalAlerts[i];
+            if (text.StartsWith("[CRUSADE]", StringComparison.Ordinal))
+                continue; // Hidden on-screen; still logged via TraceLog at its call site.
+
             byte alpha = (byte)(255 * Math.Clamp(timeLeft / World.GlobalAlertDuration, 0f, 1f));
             Color faded = new(color.R, color.G, color.B, alpha);
             int textWidth = Raylib.MeasureText(text, fontSize);
@@ -504,11 +570,14 @@ public static class Game
     {
         int Count(BramblekinState state) => world.Colony.Count(b => b.State == state);
 
-        // UI Text Scaling: bumped from 20px so it reads on a mobile screen
-        // held at arm's length; a background bar goes underneath both lines
-        // so the now-larger text stays legible over a busy map instead of
-        // the plain transparent overlay it used to sit on.
-        const int fontSize = 26, lineHeight = 30;
+        // UI Text Scaling: standardized to BroadcastFontSize (the same size
+        // as the "[CRUSADE]"/"[NEW TRIBE]" banner and the Faction Ledger
+        // panel — see its doc comment) so it reads on a mobile screen held
+        // at arm's length; a background bar goes underneath both lines,
+        // sized off fontSize/lineHeight below, so the now-larger text stays
+        // legible over a busy map instead of the plain transparent overlay
+        // it used to sit on.
+        const int fontSize = BroadcastFontSize, lineHeight = BroadcastFontSize + 8;
         int y = Raylib.GetScreenHeight() - (lineHeight * 2 + 20);
         int barWidth = Raylib.GetScreenWidth();
         int barHeight = lineHeight * 2 + 20;
