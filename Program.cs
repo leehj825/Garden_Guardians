@@ -888,16 +888,80 @@ public sealed class Terrain
         return ray.Position + ray.Direction * t;
     }
 
-    public void Draw()
-    {
-        // Solid grass plane, then a 1 m grid slightly above it to avoid
-        // z-fighting between the two.
-        Raylib.DrawPlane(new Vector3(0, GroundHeight, 0), new Vector2(Size, Size), new Color(86, 150, 60, 255));
+    /// <summary>
+    /// Part 3, The Lush 3D Lawn: edge length (m) of each ground cell the
+    /// hilly lawn is drawn in — 2x2m, per the spec.
+    /// </summary>
+    private const float CellSize = 2f;
 
-        Rlgl.PushMatrix();
-        Rlgl.Translatef(0, GroundHeight + 0.01f, 0);
-        Raylib.DrawGrid((int)Size, 1f);
-        Rlgl.PopMatrix();
+    /// <summary>Forest Green — the lawn's primary mowed-grass color.</summary>
+    private static readonly Color GrassA = new(34, 139, 34, 255);
+
+    /// <summary>Olive Drab — the lawn's secondary checkerboard color.</summary>
+    private static readonly Color GrassB = new(107, 142, 35, 255);
+
+    /// <summary>Brown dirt patch color, scattered deterministically across the lawn.</summary>
+    private static readonly Color Dirt = new(120, 85, 55, 255);
+
+    /// <summary>
+    /// Deterministic (not System.Random) hash of a cell's integer indices,
+    /// so the lawn's dirt-patch pattern is stable and reproducible frame to
+    /// frame rather than flickering.
+    /// </summary>
+    private static uint CellHash(int cx, int cz)
+    {
+        unchecked
+        {
+            uint h = (uint)(cx * 374761393 + cz * 668265263);
+            h = (h ^ (h >> 13)) * 1274126177;
+            return h ^ (h >> 16);
+        }
+    }
+
+    /// <summary>
+    /// Part 3 + Part 2: draws the 100x100m lawn as a grid of 2x2m cells from
+    /// -50 to 50 on X/Z, using <see cref="World.GetHeightAt"/> for each
+    /// corner's elevation so the lawn reads as rolling hills, and skipping
+    /// any cell whose center is beyond <paramref name="renderRadius"/> of
+    /// <paramref name="cameraTarget"/> (Part 2's mandatory distance cull —
+    /// terrain is by far the most expensive thing drawn every frame).
+    /// </summary>
+    public void Draw(Vector3 cameraTarget, float renderRadius)
+    {
+        float half = Size / 2f;
+        float renderRadiusSq = renderRadius * renderRadius;
+
+        for (float x = -half; x < half; x += CellSize)
+        {
+            for (float z = -half; z < half; z += CellSize)
+            {
+                float centerX = x + CellSize / 2f;
+                float centerZ = z + CellSize / 2f;
+                float dx = centerX - cameraTarget.X;
+                float dz = centerZ - cameraTarget.Z;
+                if (dx * dx + dz * dz > renderRadiusSq)
+                    continue; // Part 2: distance-culled — never drawn, never costs a frame.
+
+                float x0 = x, x1 = x + CellSize, z0 = z, z1 = z + CellSize;
+                var p00 = new Vector3(x0, World.GetHeightAt(x0, z0), z0);
+                var p10 = new Vector3(x1, World.GetHeightAt(x1, z0), z0);
+                var p01 = new Vector3(x0, World.GetHeightAt(x0, z1), z1);
+                var p11 = new Vector3(x1, World.GetHeightAt(x1, z1), z1);
+
+                int cx = (int)MathF.Floor(x / CellSize);
+                int cz = (int)MathF.Floor(z / CellSize);
+                uint hash = CellHash(cx, cz);
+
+                // Deterministic brown dirt patch roughly one cell in twelve;
+                // otherwise a checkerboard of the two greens.
+                Color color = (hash % 12 == 0) ? Dirt : (((cx + cz) & 1) == 0 ? GrassA : GrassB);
+
+                // Two triangles, upward-facing winding (counter-clockwise
+                // when viewed from above/+Y).
+                Raylib.DrawTriangle3D(p00, p01, p11, color);
+                Raylib.DrawTriangle3D(p00, p11, p10, color);
+            }
+        }
     }
 }
 
@@ -1127,6 +1191,25 @@ public sealed class SpatialGrid<T>
 
 public sealed class World
 {
+    /// <summary>
+    /// Part 1, The Terrain Height Function: procedural rolling-hills
+    /// elevation at any (x, z) ground coordinate, via a stacked
+    /// sine/cosine formula. Deterministic and stateless — the same (x, z)
+    /// always yields the same height, so it can be called freely from
+    /// rendering, spawning and grounding code alike without ever needing to
+    /// be cached.
+    /// </summary>
+    public static float GetHeightAt(float x, float z)
+    {
+        if (!float.IsFinite(x) || !float.IsFinite(z))
+            return 0f;
+
+        return MathF.Sin(x * 0.1f) * 2.0f + MathF.Cos(z * 0.1f) * 2.0f + MathF.Sin((x + z) * 0.05f) * 1.5f;
+    }
+
+    /// <summary>Part 6, Grounding Entities: snaps <paramref name="position"/>'s Y onto the terrain's height at its (x, z).</summary>
+    public static Vector3 Grounded(Vector3 position) => new(position.X, GetHeightAt(position.X, position.Z), position.Z);
+
     /// <summary>AI Time-Slicing: increments once per frame at the top of <see cref="Update(float)"/>; a Bramblekin only runs its heavy target-scanning ("Brain") logic on the frame where <c>FrameCounter % 15 == ID % 15</c>, staggering the load evenly across the colony.</summary>
     public long FrameCounter = 0;
 
@@ -1662,6 +1745,9 @@ public sealed class World
     /// <summary>Finished structures: Granaries, which permanently raise <see cref="VillageHeart.MaxFoodCapacity"/>.</summary>
     public List<Building> Buildings { get; } = new();
 
+    /// <summary>Part 4, Oversized Garden Props: static decorative scenery scattered across the map — see <see cref="SpawnGardenProps"/>.</summary>
+    public List<GardenProp> GardenProps { get; } = new();
+
     /// <summary>Bramblekin lost to predators so far.</summary>
     public int Casualties { get; private set; }
 
@@ -1721,6 +1807,37 @@ public sealed class World
 
         for (int i = 0; i < MaxAphids; i++)
             Aphids.Add(new Aphid(RandomFreePoint(Aphid.BodyRadius, Aphid.EdgeMargin), rng));
+
+        SpawnGardenProps();
+    }
+
+    /// <summary>Part 4, Oversized Garden Props: how many static decorations to scatter across the map.</summary>
+    private const int GardenPropCount = 40;
+
+    /// <summary>Part 4: no prop spawns within this many meters of the map's origin, keeping the starting area clear.</summary>
+    private const float GardenPropCenterExclusionRadius = 10f;
+
+    /// <summary>
+    /// Part 4, Oversized Garden Props: scatters <see cref="GardenPropCount"/>
+    /// Pebbles/Twigs/Dandelions randomly across the 100x100 map, avoiding a
+    /// <see cref="GardenPropCenterExclusionRadius"/>m radius around the
+    /// origin. Part 6: every prop's Y is snapped onto the terrain the
+    /// instant it's placed.
+    /// </summary>
+    private void SpawnGardenProps()
+    {
+        int attempts = 0;
+        while (GardenProps.Count < GardenPropCount && attempts < GardenPropCount * 20)
+        {
+            attempts++;
+            Vector3 candidate = Terrain.RandomPoint(Rng, margin: 1f);
+            if (candidate.X * candidate.X + candidate.Z * candidate.Z < GardenPropCenterExclusionRadius * GardenPropCenterExclusionRadius)
+                continue;
+
+            var kind = (GardenPropKind)Rng.Next(3);
+            float rotation = (float)(Rng.NextDouble() * MathF.Tau);
+            GardenProps.Add(new GardenProp(Grounded(candidate), kind, rotation, Rng));
+        }
     }
 
     /// <summary>Object Pooling: activates the first inactive slot in <see cref="Acorns"/> at <paramref name="position"/>, or silently does nothing if the pool is exhausted.</summary>
@@ -2860,9 +2977,28 @@ public sealed class World
                screen.Y >= -CullScreenMargin && screen.Y <= Raylib.GetScreenHeight() + CullScreenMargin;
     }
 
+    /// <summary>
+    /// Part 2, Frustum/Distance Culling: nothing culled from drawing here
+    /// is ever gated in Update — every entity keeps simulating exactly as
+    /// before regardless of what the camera can currently see. Radius (m),
+    /// measured in 2D (X/Z) from <see cref="Camera3D.Target"/>, beyond
+    /// which Bramblekin, Food, Acorns, GardenProps and Buildings are simply
+    /// not drawn — terrain and prop rendering is by far the most expensive
+    /// part of a frame, so this cull is mandatory, not optional polish.
+    /// </summary>
+    public const float RenderRadius = 60.0f;
+
+    /// <summary>Part 2: true if <paramref name="worldPosition"/> is within <see cref="RenderRadius"/> (2D, X/Z) of the camera's target.</summary>
+    private static bool IsWithinRenderRadius(Vector3 worldPosition, Camera3D camera)
+    {
+        float dx = worldPosition.X - camera.Target.X;
+        float dz = worldPosition.Z - camera.Target.Z;
+        return dx * dx + dz * dz <= RenderRadius * RenderRadius;
+    }
+
     public void Draw(Camera3D camera)
     {
-        Terrain.Draw();
+        Terrain.Draw(camera.Target, RenderRadius);
         for (int i = _splats.Count - 1; i >= 0; i--)
         {
             var (position, timeLeft) = _splats[i];
@@ -2873,6 +3009,13 @@ public sealed class World
         for (int i = Villages.Count - 1; i >= 0; i--)
             Villages[i].Draw();
 
+        for (int i = GardenProps.Count - 1; i >= 0; i--)
+        {
+            GardenProp prop = GardenProps[i];
+            if (IsWithinRenderRadius(prop.Position, camera) && IsOnScreen(prop.Position, camera))
+                prop.Draw();
+        }
+
         // Object Pooling: Acorns/AmberNodes/FoodShards are fixed-size pools
         // pre-allocated up to their map caps — most slots sit inactive at
         // any given time, so every rendering (and targeting) loop over them
@@ -2880,7 +3023,7 @@ public sealed class World
         for (int i = Acorns.Count - 1; i >= 0; i--)
         {
             Acorn acorn = Acorns[i];
-            if (acorn.IsActive && IsOnScreen(acorn.Position, camera))
+            if (acorn.IsActive && IsWithinRenderRadius(acorn.Position, camera) && IsOnScreen(acorn.Position, camera))
                 acorn.Draw();
         }
 
@@ -2892,14 +3035,18 @@ public sealed class World
         }
 
         for (int i = Buildings.Count - 1; i >= 0; i--)
-            Buildings[i].Draw();
+        {
+            Building building = Buildings[i];
+            if (IsWithinRenderRadius(building.Position, camera))
+                building.Draw();
+        }
         for (int i = Blueprints.Count - 1; i >= 0; i--)
             Blueprints[i].Draw();
 
         for (int i = FoodShards.Count - 1; i >= 0; i--)
         {
             FoodShard shard = FoodShards[i];
-            if (shard.IsActive && !shard.IsCarried && IsOnScreen(shard.Position, camera))
+            if (shard.IsActive && !shard.IsCarried && IsWithinRenderRadius(shard.Position, camera) && IsOnScreen(shard.Position, camera))
                 shard.Draw(shard.Position);
         }
 
@@ -2922,7 +3069,7 @@ public sealed class World
         for (int i = Colony.Count - 1; i >= 0; i--)
         {
             Bramblekin b = Colony[i];
-            if (!b.IsDead && IsOnScreen(b.Position, camera))
+            if (!b.IsDead && IsWithinRenderRadius(b.Position, camera) && IsOnScreen(b.Position, camera))
                 b.Draw();
         }
 
@@ -4167,10 +4314,9 @@ public sealed class World
                 }
             }
 
-            shard.Position = new Vector3(
-                Math.Clamp(position.X, -half, half),
-                Terrain.GroundHeight,
-                Math.Clamp(position.Y, -half, half));
+            float shardX = Math.Clamp(position.X, -half, half);
+            float shardZ = Math.Clamp(position.Y, -half, half);
+            shard.Position = new Vector3(shardX, GetHeightAt(shardX, shardZ), shardZ);
         }
     }
 
@@ -4571,14 +4717,14 @@ public sealed class VillageHeart
 
     public VillageHeart(Vector3 center, int factionId, Color factionColor, Random rng)
     {
-        Center = center;
+        Center = World.Grounded(center); // Part 6: snap onto the hilly terrain.
         FactionID = factionId;
         FactionColor = factionColor;
         Trait = (FactionTrait)rng.Next(3);
         float half = Width / 2f;
         Bounds = new BoundingBox(
-            new Vector3(center.X - half, Terrain.GroundHeight, center.Z - half),
-            new Vector3(center.X + half, Terrain.GroundHeight + Height, center.Z + half));
+            new Vector3(Center.X - half, Center.Y, Center.Z - half),
+            new Vector3(Center.X + half, Center.Y + Height, Center.Z + half));
     }
 
     /// <summary>How long (s) a landed hit tints the Heart red in <see cref="Draw"/> — debug feedback that Base Razing damage is actually executing.</summary>
@@ -4594,37 +4740,72 @@ public sealed class VillageHeart
         DamageFlashTimer = DamageFlashDuration;
     }
 
+    /// <summary>
+    /// Part 5, Thematic Architecture: a Village Heart reads as a large
+    /// glowing mushroom — a pale stalk topped with a dome cap squashed
+    /// (via Rlgl scaling) from a full sphere — pulsating with the faction's
+    /// own color driven off <see cref="Raylib.GetTime"/>. A Tier 2 Town
+    /// Center keeps the existing "larger + gold trim" distinction, now as a
+    /// wider cap and a gold ring around the stalk. Purely cosmetic:
+    /// Obstacle/Bounds/Width stay the const footprint, so collision and
+    /// delivery distance are unaffected.
+    /// </summary>
     public void Draw()
     {
         DrawTerritoryRing();
 
-        // Village Improvements: a Town Center (Tier 2) draws noticeably
-        // larger than a plain Village Heart, with a gold trim band — purely
-        // cosmetic (Obstacle/Bounds/Width stay the const footprint, so
-        // collision and delivery distance are unaffected).
         bool isTownCenter = Tier >= 2;
         float scale = isTownCenter ? 1.5f : 1f;
-        float width = Width * scale;
-        float height = Height * scale;
+        float stalkRadius = Width * 0.35f * scale;
+        float stalkHeight = Height * 0.8f * scale;
+        float capRadius = Width * 0.85f * scale;
 
-        var middle = Center + new Vector3(0, height / 2f, 0);
-        Color cubeColor = DamageFlashTimer > 0f ? new Color(210, 40, 40, 255) : new Color(122, 78, 40, 255);
-        Raylib.DrawCube(middle, width, height, width, cubeColor);
-        Raylib.DrawCubeWires(middle, width, height, width, new Color(60, 35, 15, 255));
+        // The pulse: faction color breathing between ~60% and 100%
+        // brightness on a slow sine wave.
+        float pulse = 0.6f + 0.4f * (0.5f + 0.5f * MathF.Sin((float)Raylib.GetTime() * 2.0f));
+        Color capColor = DamageFlashTimer > 0f
+            ? new Color(210, 40, 40, 255)
+            : new Color(
+                (byte)Math.Clamp(FactionColor.R * pulse, 0, 255),
+                (byte)Math.Clamp(FactionColor.G * pulse, 0, 255),
+                (byte)Math.Clamp(FactionColor.B * pulse, 0, 255),
+                (byte)255);
+
+        var stalkColor = new Color(235, 225, 200, 255);
+        var stalkEdge = new Color(150, 140, 115, 220);
+
+        // Stalk.
+        var stalkCenter = Center + new Vector3(0, stalkHeight / 2f, 0);
+        Raylib.DrawCylinder(stalkCenter, stalkRadius, stalkRadius * 1.15f, stalkHeight, 14, stalkColor);
+        Raylib.DrawCylinderWires(stalkCenter, stalkRadius, stalkRadius * 1.15f, stalkHeight, 14, stalkEdge);
 
         if (isTownCenter)
         {
-            // A gold/stone trim band wrapped around the top — the visual
-            // tell that this tribe has upgraded past a plain Village Heart.
-            var trimCenter = Center + new Vector3(0, height * 0.85f, 0);
+            // A gold trim ring around the stalk — the Tier 2 tell, carried
+            // over from the old cube's gold band.
+            var ringCenter = Center + new Vector3(0, stalkHeight * 0.7f, 0);
             var trim = new Color(215, 175, 60, 255);
-            Raylib.DrawCube(trimCenter, width * 1.05f, height * 0.12f, width * 1.05f, trim);
-            Raylib.DrawCubeWires(trimCenter, width * 1.05f, height * 0.12f, width * 1.05f, new Color(120, 90, 20, 255));
+            Raylib.DrawCylinder(ringCenter, stalkRadius * 1.25f, stalkRadius * 1.25f, stalkHeight * 0.12f, 14, trim);
         }
 
-        // A small dark doorway on the camera-facing side so it reads as a home.
-        var door = Center + new Vector3(width / 2f + 0.01f, 0.3f, 0);
-        Raylib.DrawCube(door, 0.02f, 0.6f, 0.45f, new Color(45, 25, 10, 255));
+        // Cap: a full sphere squashed flat into a mushroom dome via Rlgl
+        // scaling, glowing with the pulsating faction color.
+        var capCenter = Center + new Vector3(0, stalkHeight, 0);
+        Rlgl.PushMatrix();
+        Rlgl.Translatef(capCenter.X, capCenter.Y, capCenter.Z);
+        Rlgl.Scalef(1f, 0.55f, 1f);
+        Raylib.DrawSphere(Vector3.Zero, capRadius, capColor);
+        Raylib.DrawSphereWires(Vector3.Zero, capRadius, 12, 12, new Color(30, 25, 15, 120));
+        Rlgl.PopMatrix();
+
+        // A scattering of pale spots on the cap, mushroom-style.
+        var spotColor = new Color(255, 255, 255, 160);
+        for (int i = 0; i < 5; i++)
+        {
+            float angle = i * MathF.Tau / 5f;
+            var spot = capCenter + new Vector3(MathF.Cos(angle) * capRadius * 0.6f, capRadius * 0.12f, MathF.Sin(angle) * capRadius * 0.6f);
+            Raylib.DrawSphere(spot, capRadius * 0.12f, spotColor);
+        }
     }
 
     /// <summary>
@@ -4750,7 +4931,7 @@ public sealed class Acorn
     /// <summary>Object Pooling: reuses this pool slot as a freshly spawned Acorn at <paramref name="groundPoint"/>, resetting every bit of its previous state.</summary>
     public void Activate(Vector3 groundPoint)
     {
-        Position = groundPoint;
+        Position = World.Grounded(groundPoint); // Part 6: snap onto the hilly terrain.
         CrackProgress = 0f;
         _claimants.Clear();
         IsActive = true;
@@ -4850,7 +5031,7 @@ public sealed class AmberNode
     /// <summary>Object Pooling: reuses this pool slot as a freshly spawned Amber node at <paramref name="groundPoint"/>, resetting every bit of its previous state.</summary>
     public void Activate(Vector3 groundPoint)
     {
-        Position = groundPoint;
+        Position = World.Grounded(groundPoint); // Part 6: snap onto the hilly terrain.
         IsCarried = false;
         ClaimedBy = null;
         ClaimTimer = 0f;
@@ -4949,7 +5130,7 @@ public sealed class FoodShard
     /// <summary>Object Pooling: reuses this pool slot as a freshly spawned Food Shard at <paramref name="groundPoint"/>, resetting every bit of its previous state.</summary>
     public void Activate(Vector3 groundPoint, FoodShardKind kind = FoodShardKind.Cracked)
     {
-        Position = groundPoint;
+        Position = World.Grounded(groundPoint); // Part 6: snap onto the hilly terrain.
         Kind = kind;
         IsCarried = false;
         ClaimedBy = null;
@@ -4988,7 +5169,7 @@ public sealed class SpiderFang
     /// <summary>Resting spot on the ground (y = GroundHeight).</summary>
     public Vector3 Position { get; }
 
-    public SpiderFang(Vector3 groundPoint) => Position = groundPoint;
+    public SpiderFang(Vector3 groundPoint) => Position = World.Grounded(groundPoint); // Part 6: snap onto the hilly terrain.
 
     public void Draw()
     {
@@ -5021,7 +5202,7 @@ public sealed class Chitin
     /// <summary>Resting spot on the ground (y = GroundHeight).</summary>
     public Vector3 Position { get; }
 
-    public Chitin(Vector3 groundPoint) => Position = groundPoint;
+    public Chitin(Vector3 groundPoint) => Position = World.Grounded(groundPoint); // Part 6: snap onto the hilly terrain.
 
     /// <summary>A small grey chitin plate lying on the ground.</summary>
     public void Draw()
@@ -5029,6 +5210,119 @@ public sealed class Chitin
         var center = Position + new Vector3(0, Radius * 0.6f, 0);
         Raylib.DrawCube(center, Radius * 1.6f, Radius * 0.7f, Radius * 1.3f, new Color(150, 150, 150, 255));
         Raylib.DrawCubeWires(center, Radius * 1.6f, Radius * 0.7f, Radius * 1.3f, new Color(90, 90, 95, 255));
+    }
+}
+
+// =============================================================================
+//  Part 4: Oversized Garden Props
+// =============================================================================
+
+/// <summary>Which kind of static <see cref="GardenProp"/> decoration this is.</summary>
+public enum GardenPropKind
+{
+    /// <summary>A large gray pebble/rock — a hemisphere pressed into the lawn.</summary>
+    Pebble,
+
+    /// <summary>A long brown twig lying flat, randomly rotated.</summary>
+    Twig,
+
+    /// <summary>A tall dandelion/flower — a green stem topped with a large yellow or white puff, towering over Bramblekin scale.</summary>
+    Dandelion,
+}
+
+/// <summary>
+/// Part 4, Oversized Garden Props: a static piece of backyard scenery — a
+/// Pebble, a lying Twig, or a towering Dandelion — scattered across the map
+/// by <see cref="World.SpawnGardenProps"/>. Purely decorative: no Update,
+/// no collision, only Draw (and Part 2/6's culling/grounding, applied by
+/// the caller and at construction respectively).
+/// </summary>
+public sealed class GardenProp
+{
+    public Vector3 Position { get; }
+    public GardenPropKind Kind { get; }
+
+    /// <summary>Random facing (radians) — mainly meaningful for a Twig lying flat.</summary>
+    private readonly float _rotation;
+
+    /// <summary>Twig length (m), randomized per-instance so the map doesn't read as identical copies.</summary>
+    private readonly float _twigLength;
+
+    /// <summary>Whether this Dandelion's puff is yellow (a true dandelion) or white (a seed-head/dandelion clock).</summary>
+    private readonly bool _isYellow;
+
+    /// <summary>Per-instance size variation (0.8-1.3x), so a field of the same prop kind doesn't look copy-pasted.</summary>
+    private readonly float _scale;
+
+    public GardenProp(Vector3 groundPosition, GardenPropKind kind, float rotation, Random rng)
+    {
+        Position = groundPosition;
+        Kind = kind;
+        _rotation = rotation;
+        _twigLength = 0.6f + (float)rng.NextDouble() * 0.9f;
+        _isYellow = rng.NextDouble() < 0.7;
+        _scale = 0.8f + (float)rng.NextDouble() * 0.5f;
+    }
+
+    public void Draw()
+    {
+        switch (Kind)
+        {
+            case GardenPropKind.Pebble:
+                DrawPebble();
+                break;
+            case GardenPropKind.Twig:
+                DrawTwig();
+                break;
+            case GardenPropKind.Dandelion:
+                DrawDandelion();
+                break;
+        }
+    }
+
+    /// <summary>A large gray hemisphere-ish rock, oversized against a Bramblekin.</summary>
+    private void DrawPebble()
+    {
+        float radius = 0.5f * _scale;
+        var stone = new Color(130, 130, 135, 255);
+        var stoneEdge = new Color(80, 80, 85, 200);
+        var center = Position + new Vector3(0, radius * 0.55f, 0);
+
+        // Squash a full sphere into a rock-like dome via Rlgl scaling.
+        Rlgl.PushMatrix();
+        Rlgl.Translatef(center.X, center.Y, center.Z);
+        Rlgl.Scalef(1f, 0.6f, 1f);
+        Raylib.DrawSphere(Vector3.Zero, radius, stone);
+        Raylib.DrawSphereWires(Vector3.Zero, radius, 8, 8, stoneEdge);
+        Rlgl.PopMatrix();
+    }
+
+    /// <summary>A long brown cylinder lying flat on the ground, randomly rotated — DrawCylinderEx avoids any manual rotation matrix.</summary>
+    private void DrawTwig()
+    {
+        float length = _twigLength * _scale;
+        float radius = 0.05f * _scale;
+        var brown = new Color(101, 67, 33, 255);
+
+        var half = new Vector3(MathF.Cos(_rotation), 0, MathF.Sin(_rotation)) * (length / 2f);
+        Vector3 start = Position + new Vector3(0, radius, 0) - half;
+        Vector3 end = Position + new Vector3(0, radius, 0) + half;
+        Raylib.DrawCylinderEx(start, end, radius, radius * 0.7f, 8, brown);
+    }
+
+    /// <summary>A tall green stem topped with a large fluffy sphere — towers well above Bramblekin scale.</summary>
+    private void DrawDandelion()
+    {
+        float stemHeight = 1.4f * _scale;
+        float stemRadius = 0.04f * _scale;
+        float puffRadius = 0.35f * _scale;
+        var stemColor = new Color(60, 130, 40, 255);
+        Color puffColor = _isYellow ? new Color(250, 210, 40, 255) : new Color(245, 245, 235, 220);
+
+        var stemBase = Position;
+        var stemTop = Position + new Vector3(0, stemHeight, 0);
+        Raylib.DrawCylinder(stemBase, stemRadius, stemRadius, stemHeight, 8, stemColor);
+        Raylib.DrawSphere(stemTop + new Vector3(0, puffRadius * 0.6f, 0), puffRadius, puffColor);
     }
 }
 
@@ -5118,7 +5412,7 @@ public sealed class Building
 
     public Building(Vector3 position, BuildingKind kind, int factionId, Color factionColor)
     {
-        Position = position;
+        Position = World.Grounded(position); // Part 6: snap onto the hilly terrain.
         Kind = kind;
         FactionID = factionId;
         FactionColor = factionColor;
@@ -5200,39 +5494,42 @@ public sealed class Building
 
         if (Kind == BuildingKind.Tent)
         {
-            // A small white/grey dome — a cone (full radius at the base
-            // tapering to a point on top) reads as a simple canvas tent,
-            // small and plain enough not to compete visually with the
-            // three "real" buildings. DrawCylinder's first radius is the
-            // TOP face and its second is the BOTTOM — swapped here (top
-            // 0, bottom TentRadius) so the point is up and the wide base
-            // sits on the ground, not the upside-down funnel a same-order
-            // copy of the Monument capstone's cone briefly was.
-            var canvas = new Color(235, 235, 230, 255);
-            var canvasEdge = new Color(150, 150, 145, 220);
+            // Part 5: a Leaf Tent — a green triangular pyramid (sides=3,
+            // radiusTop=0), bug-scale housing folded from a single big
+            // leaf. DrawCylinder's first radius is the TOP face and the
+            // second is the BOTTOM — 0 on top, TentRadius on the bottom, so
+            // the point is up and the wide base sits on the ground.
+            var leaf = new Color(70, 140, 55, 255);
+            var leafEdge = new Color(35, 80, 30, 220);
             var tentCenter = Position + new Vector3(0, TentHeight / 2f, 0);
-            Raylib.DrawCylinder(tentCenter, 0f, TentRadius, TentHeight, 16, canvas);
-            Raylib.DrawCylinderWires(tentCenter, 0f, TentRadius, TentHeight, 16, canvasEdge);
+            Raylib.DrawCylinder(tentCenter, 0f, TentRadius, TentHeight, 3, leaf);
+            Raylib.DrawCylinderWires(tentCenter, 0f, TentRadius, TentHeight, 3, leafEdge);
             return;
         }
 
         if (Kind == BuildingKind.Cabin)
         {
-            // A small log-brown box with a dark peaked roof — reads as a
-            // sturdier permanent cottage, distinct from the Tent's plain
-            // canvas cone it replaces once a tribe reaches Tier 2.
-            var walls = new Color(120, 85, 55, 255);
-            var wallsEdge = new Color(70, 48, 28, 255);
-            float wallHeight = CabinHeight * 0.65f;
-            var wallCenter = Position + new Vector3(0, wallHeight / 2f, 0);
-            Raylib.DrawCube(wallCenter, CabinRadius * 1.6f, wallHeight, CabinRadius * 1.6f, walls);
-            Raylib.DrawCubeWires(wallCenter, CabinRadius * 1.6f, wallHeight, CabinRadius * 1.6f, wallsEdge);
+            // Part 5: an Acorn Shell — a brown dome (a sphere squashed
+            // flat via Rlgl scaling) set on a small stem-cap rim, reading
+            // as a sturdier permanent home, distinct from the Tent's Leaf
+            // Tent it replaces once a tribe reaches Tier 2.
+            var shell = new Color(150, 100, 55, 255);
+            var shellEdge = new Color(90, 58, 30, 220);
+            float domeRadius = CabinRadius * 0.95f;
+            var domeCenter = Position + new Vector3(0, domeRadius * 0.55f, 0);
 
-            float roofHeight = CabinHeight - wallHeight;
-            var roofCenter = Position + new Vector3(0, wallHeight + roofHeight / 2f, 0);
-            var roof = new Color(70, 45, 35, 255);
-            Raylib.DrawCylinder(roofCenter, 0f, CabinRadius * 1.15f, roofHeight, 4, roof);
-            Raylib.DrawCylinderWires(roofCenter, 0f, CabinRadius * 1.15f, roofHeight, 4, new Color(40, 25, 18, 255));
+            Rlgl.PushMatrix();
+            Rlgl.Translatef(domeCenter.X, domeCenter.Y, domeCenter.Z);
+            Rlgl.Scalef(1f, 0.75f, 1f);
+            Raylib.DrawSphere(Vector3.Zero, domeRadius, shell);
+            Raylib.DrawSphereWires(Vector3.Zero, domeRadius, 10, 10, shellEdge);
+            Rlgl.PopMatrix();
+
+            // The acorn's textured cap rim, at the base.
+            var rimCenter = Position + new Vector3(0, domeRadius * 0.18f, 0);
+            var rim = new Color(115, 75, 35, 255);
+            Raylib.DrawCylinder(rimCenter, domeRadius * 1.05f, domeRadius * 0.9f, domeRadius * 0.35f, 12, rim);
+            Raylib.DrawCylinderWires(rimCenter, domeRadius * 1.05f, domeRadius * 0.9f, domeRadius * 0.35f, 12, new Color(70, 45, 20, 255));
             return;
         }
 
@@ -5331,7 +5628,7 @@ public sealed class Blueprint
 
     public Blueprint(Vector3 position, BuildingKind kind, int factionId, Color factionColor)
     {
-        Position = position;
+        Position = World.Grounded(position); // Part 6: snap onto the hilly terrain.
         Kind = kind;
         FactionID = factionId;
         FactionColor = factionColor;
@@ -5992,8 +6289,8 @@ public sealed class Bramblekin
     /// <summary>The Schism: set the instant this Bramblekin becomes a Pioneer (see <see cref="BecomePioneer"/>), cleared the instant it stops Migrating (see <see cref="UpdateMigrating"/>).</summary>
     private Migration? _migration;
 
-    /// <summary>Feet position on the ground (y = GroundHeight).</summary>
-    public Vector3 Position => _mover.Position;
+    /// <summary>Feet position on the ground — Part 6: terrain-aware; X/Z come from the flat-Y GroundMover but Y is snapped to World.GetHeightAt every read, so movement math stays flat while the rendered/queried position hikes up and down hills.</summary>
+    public Vector3 Position => World.Grounded(_mover.Position);
 
     public BramblekinState State { get; private set; }
 
@@ -7721,7 +8018,8 @@ public sealed class WolfSpider
     private float _walkCycle;              // Leg animation phase.
     private float _biteCooldown;
 
-    public Vector3 Position => _mover.Position;
+    /// <summary>Part 6: terrain-aware, same treatment as Bramblekin/Aphid — Y is snapped to World.GetHeightAt every read.</summary>
+    public Vector3 Position => World.Grounded(_mover.Position);
 
     public SpiderState State { get; private set; } = SpiderState.Prowling;
 
@@ -8179,8 +8477,8 @@ public sealed class Aphid
     private Vector3 _target;
     private float _pauseTimer;
 
-    /// <summary>Feet position on the ground (y = GroundHeight).</summary>
-    public Vector3 Position => _mover.Position;
+    /// <summary>Feet position on the ground — Part 6: terrain-aware; X/Z come from the flat-Y GroundMover but Y is snapped to World.GetHeightAt every read, so movement math stays flat while the rendered/queried position hikes up and down hills.</summary>
+    public Vector3 Position => World.Grounded(_mover.Position);
 
     /// <summary>True once caught by a Militia unit. Removal from World.Aphids is deferred to the end of the frame.</summary>
     public bool IsDead { get; private set; }
