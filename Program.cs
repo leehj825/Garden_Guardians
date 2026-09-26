@@ -7053,6 +7053,39 @@ public sealed class Bramblekin
     /// <summary>Total body height in meters, including the rounded ends.</summary>
     public const float BodyHeight = 0.9f;
 
+    /// <summary>
+    /// Cached Body Model: a single cylinder <see cref="Model"/> reused by
+    /// every Bramblekin's <see cref="Draw"/> call via
+    /// <see cref="Raylib.DrawModelEx"/>, instead of each unit calling
+    /// <see cref="Raylib.DrawCylinder"/>/<see cref="Raylib.DrawCapsule"/>
+    /// every frame — those immediate-mode calls regenerate their vertex
+    /// geometry on the CPU on every single call, which is the real cost at
+    /// hundreds of units; a cached <see cref="Model"/>'s mesh is built once
+    /// and only re-uploaded to the GPU as a transform, not rebuilt. Lazily
+    /// built on first use (not eagerly in a static initializer) so it can
+    /// never run before <see cref="Raylib.InitWindow"/> has created a GPU
+    /// context — building/uploading a Mesh before that would crash.
+    /// </summary>
+    private static Model _bodyModel;
+
+    private static bool _bodyModelReady;
+
+    /// <summary>
+    /// Builds <see cref="_bodyModel"/> the first time any Bramblekin draws.
+    /// A plain cylinder — this raylib-cs build has no GenMeshCapsule — sized
+    /// to <see cref="BodyRadius"/>/<see cref="BodyHeight"/>, the same visual
+    /// footprint the old capsule body used.
+    /// </summary>
+    private static void EnsureBodyModel()
+    {
+        if (_bodyModelReady)
+            return;
+
+        Mesh mesh = Raylib.GenMeshCylinder(BodyRadius, BodyHeight, 8);
+        _bodyModel = Raylib.LoadModelFromMesh(mesh);
+        _bodyModelReady = true;
+    }
+
     /// <summary>How far from the terrain edge targets are kept, in meters.</summary>
     public const float EdgeMargin = 0.5f;
 
@@ -7926,12 +7959,28 @@ public sealed class Bramblekin
         var shadowCenter = new Vector3(Position.X, Position.Y + 0.02f, Position.Z);
         Raylib.DrawCircle3D(shadowCenter, BodyRadius * 1.3f, new Vector3(1, 0, 0), 90f, new Color(0, 0, 0, 90));
 
-        // A capsule standing upright: DrawCapsule takes the centres of its two
-        // hemispherical ends, so inset them by the radius.
-        var bottom = Position + new Vector3(0, BodyRadius, 0);
+        // Cached-Model body: a cylinder tilted to the terrain's own surface
+        // normal, exactly the same GetNormalAt acos/axis-angle math used for
+        // VillageHeart/Building/GardenProp — DrawModelEx's rotationAngle is
+        // in degrees, unlike the Matrix4x4 path an earlier (reverted) GPU
+        // instancing attempt needed in radians. GenMeshCylinder's mesh runs
+        // from local y=0 (base) to y=BodyHeight (top), not centered, so it
+        // naturally pivots flush on the ground at Position (already
+        // terrain-snapped — see the Position getter) with no extra Y-offset.
+        EnsureBodyModel();
+        Vector3 normal = World.GetNormalAt(Position.X, Position.Z);
+        Vector3 axis = Vector3.Cross(Vector3.UnitY, normal);
+        float angleDegrees = 0f;
+        if (axis.LengthSquared() > 1e-6f)
+        {
+            angleDegrees = MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.UnitY, normal), -1f, 1f)) * (180f / MathF.PI);
+        }
+        else
+        {
+            axis = Vector3.UnitY; // Flat ground: any axis is fine at a 0-degree rotation.
+        }
+        Raylib.DrawModelEx(_bodyModel, Position, axis, angleDegrees, Vector3.One, color);
         var top = Position + new Vector3(0, BodyHeight - BodyRadius, 0);
-        Raylib.DrawCapsule(bottom, top, BodyRadius, 8, 4, color);
-        Raylib.DrawCapsuleWires(bottom, top, BodyRadius, 8, 4, new Color(0, 0, 0, 50));
 
         // Follow-up Part 3: a small FactionColor highlight riding on top of
         // the head, so a whole swarm's tribe reads at an instant glance
