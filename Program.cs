@@ -8399,12 +8399,23 @@ public sealed class Bramblekin
         if (Role == BramblekinRole.Militia && world.Spider is { } spider && home is not null &&
                  GroundMover.HorizontalDistanceSquared(spider.Position, home.Center) <= home.TerritoryRadius * home.TerritoryRadius)
         {
-            _combatTarget = null;
-            _target = ComputeInterceptPoint(spider, home);
-            if (State != BramblekinState.Defending)
+            // Individual Equipment detour: a genuinely closer, unclaimed
+            // Spider Fang is grabbed on the way rather than charging into
+            // the fight bare-pike-handed — but only when it's actually
+            // closer than the spider itself, not a blanket gear-first rule.
+            if (State is not BramblekinState.Defending && ShouldDetourForCloserFang(world, spider.Position))
             {
-                DropCarried();
-                SetState(BramblekinState.Defending);
+                SetState(BramblekinState.Equipping);
+            }
+            else
+            {
+                _combatTarget = null;
+                _target = ComputeInterceptPoint(spider, home);
+                if (State != BramblekinState.Defending)
+                {
+                    DropCarried();
+                    SetState(BramblekinState.Defending);
+                }
             }
         }
         // AI Time-Slicing (the "Brain"): 2a-2d below each scan the full
@@ -8457,8 +8468,15 @@ public sealed class Bramblekin
 
         // --- 3c. Militia hunts Aphids within the 20-Meter Territory Rule, when it has no spider to fight -----------
         if (Role == BramblekinRole.Militia && State is BramblekinState.Walking or BramblekinState.Pausing &&
-            home is not null && world.HasHuntableAphidNearVillage(this, home))
-            SetState(BramblekinState.Hunting);
+            home is not null && world.NearestLiveAphidNearVillage(Position, this, home) is { } huntableAphid)
+        {
+            // Individual Equipment detour: same "grab it if it's actually
+            // closer" rule as the Spider Defending branch above.
+            if (ShouldDetourForCloserFang(world, huntableAphid.Position))
+                SetState(BramblekinState.Equipping);
+            else
+                SetState(BramblekinState.Hunting);
+        }
 
         // --- 3d. Invasion & Conquest: an otherwise-idle Militia unit picks
         // up its own faction's shared marching order the instant one
@@ -8554,6 +8572,39 @@ public sealed class Bramblekin
     /// instant any one of them matches; returns false (touching nothing)
     /// if none do, leaving whatever this unit was already doing in place.
     /// </summary>
+    /// <summary>
+    /// Individual Equipment vs. Combat — the "grab the Fang on the way"
+    /// detour: an un-upgraded Militia unit (<see cref="HasFangPike"/> still
+    /// false) about to commit to a combat/hunt State this frame first
+    /// checks whether the nearest unclaimed <see cref="SpiderFang"/> (see
+    /// <see cref="World.NearestAvailableFang"/>) is actually closer to this
+    /// unit's own <see cref="Bramblekin.Position"/> than the enemy/target it
+    /// was about to engage at <paramref name="engagementTargetPosition"/>.
+    /// Strictly closer, and compared with the same horizontal-only
+    /// <see cref="GroundMover.HorizontalDistanceSquared"/> convention every
+    /// other proximity check in this file uses — not full 3D distance. This
+    /// is a one-shot gate checked only from branches that fire while NOT
+    /// already Equipping (see the surrounding if/else-if chain in
+    /// <see cref="Update"/>), so once the detour is taken and
+    /// <see cref="UpdateEquipping"/> commits to walking to that Fang, this
+    /// check simply doesn't run again until the unit is back to idle or
+    /// facing a fresh threat next frame — no risk of ping-ponging back and
+    /// forth between Equipping and combat as either target's distance
+    /// shifts frame to frame.
+    /// </summary>
+    private bool ShouldDetourForCloserFang(World world, Vector3 engagementTargetPosition)
+    {
+        if (Role != BramblekinRole.Militia || HasFangPike)
+            return false;
+
+        SpiderFang? fang = world.NearestAvailableFang(Position);
+        if (fang is null)
+            return false;
+
+        return GroundMover.HorizontalDistanceSquared(Position, fang.Position) <
+               GroundMover.HorizontalDistanceSquared(Position, engagementTargetPosition);
+    }
+
     private bool TryUpdateMilitiaThreatPriority(World world, VillageHeart? home)
     {
         // --- 2a. Base Defense Aggro: a foreign Bramblekin caught within
