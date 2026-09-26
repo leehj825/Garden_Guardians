@@ -8158,7 +8158,14 @@ public sealed class Bramblekin
 
         Role = BramblekinRole.Militia;
         DropCarried();
-        if (State is BramblekinState.Gathering or BramblekinState.Returning or BramblekinState.Building)
+        // Interrupt whatever the old Role was doing, whatever State that
+        // was — dispatch in Update() runs off State, not Role, so a unit
+        // left in e.g. Defending/Hunting/Invading/Looting/Fleeing after this
+        // promotion would keep running that old behavior forever, never
+        // actually acting as a Militia despite Role already having changed
+        // (miscounting Militia Target as met while the unit does nothing of
+        // the sort). Only skip the reset if it's already idle.
+        if (State is not (BramblekinState.Walking or BramblekinState.Pausing))
             StartPause();
     }
 
@@ -8233,7 +8240,15 @@ public sealed class Bramblekin
         ReleaseFoodClaim();
         ReleaseAcornClaim();
         ReleaseAmberClaim();
-        if (State is BramblekinState.Gathering or BramblekinState.Returning or BramblekinState.Cracking or BramblekinState.Equipping)
+        // Same reasoning as PromoteToMilitia's own reset: dispatch runs off
+        // State, not Role, so a unit left in Defending/Hunting/Invading/
+        // Looting/Fleeing etc. after this promotion would never actually
+        // reach UpdateBuilding — it'd keep running its old behavior forever
+        // while still counting toward currentBuilders, permanently starving
+        // this faction's real Builder Conscription need without ever
+        // visibly failing (Builder Conscription sees its target already
+        // "met" by a unit that in practice never lays a single brick).
+        if (State is not (BramblekinState.Walking or BramblekinState.Pausing))
             StartPause();
     }
 
