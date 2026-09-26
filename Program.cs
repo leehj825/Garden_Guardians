@@ -3604,10 +3604,41 @@ public sealed class World
             float angle = (float)(Rng.NextDouble() * MathF.Tau);
             float radius = minRadius + (float)Rng.NextDouble() * MathF.Max(maxRadius - minRadius, 0f);
             var point = village.Center + new Vector3(MathF.Cos(angle) * radius, 0, MathF.Sin(angle) * radius);
-            if (!IsBlocked(point, clearance) && Terrain.Contains(point, 0f))
+            if (!IsBlocked(point, clearance) && !OverlapsExistingBuilding(point, clearance) && Terrain.Contains(point, 0f))
                 return point;
         }
         return null;
+    }
+
+    /// <summary>
+    /// No More Crowded Villages: true if placing a new Blueprint of
+    /// <paramref name="clearance"/> footprint radius at <paramref name="point"/>
+    /// would overlap any Building already standing or Blueprint already
+    /// under construction, on any faction's land. Checked by
+    /// <see cref="RandomPointNearVillage"/> alongside <see cref="IsBlocked"/>
+    /// (which only ever knew about Village Hearts, never other buildings)
+    /// so a freshly auto-placed Tent/Granary/Spore Farm/Trading
+    /// Post/Brewery/Monument can never land on top of one that's already
+    /// there.
+    /// </summary>
+    private bool OverlapsExistingBuilding(Vector3 point, float clearance)
+    {
+        var p = new Vector2(point.X, point.Z);
+        for (int i = Buildings.Count - 1; i >= 0; i--)
+        {
+            Building building = Buildings[i];
+            float reach = Building.RadiusFor(building.Kind) + clearance;
+            if (Vector2.DistanceSquared(p, new Vector2(building.Position.X, building.Position.Z)) < reach * reach)
+                return true;
+        }
+        for (int i = Blueprints.Count - 1; i >= 0; i--)
+        {
+            Blueprint blueprint = Blueprints[i];
+            float reach = Building.RadiusFor(blueprint.Kind) + clearance;
+            if (Vector2.DistanceSquared(p, new Vector2(blueprint.Position.X, blueprint.Position.Z)) < reach * reach)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>True if <paramref name="point"/> falls inside ANY Village Heart's own (Cultural Borders — wealth-scaled, see <see cref="VillageHeart.TerritoryRadius"/>) ring, regardless of faction.</summary>
@@ -4821,14 +4852,19 @@ public sealed class Building
 
         if (Kind == BuildingKind.Tent)
         {
-            // A small white/grey dome — a cone (full radius tapering to a
-            // point) reads as a simple canvas tent, small and plain enough
-            // not to compete visually with the three "real" buildings.
+            // A small white/grey dome — a cone (full radius at the base
+            // tapering to a point on top) reads as a simple canvas tent,
+            // small and plain enough not to compete visually with the
+            // three "real" buildings. DrawCylinder's first radius is the
+            // TOP face and its second is the BOTTOM — swapped here (top
+            // 0, bottom TentRadius) so the point is up and the wide base
+            // sits on the ground, not the upside-down funnel a same-order
+            // copy of the Monument capstone's cone briefly was.
             var canvas = new Color(235, 235, 230, 255);
             var canvasEdge = new Color(150, 150, 145, 220);
             var tentCenter = Position + new Vector3(0, TentHeight / 2f, 0);
-            Raylib.DrawCylinder(tentCenter, TentRadius, 0f, TentHeight, 16, canvas);
-            Raylib.DrawCylinderWires(tentCenter, TentRadius, 0f, TentHeight, 16, canvasEdge);
+            Raylib.DrawCylinder(tentCenter, 0f, TentRadius, TentHeight, 16, canvas);
+            Raylib.DrawCylinderWires(tentCenter, 0f, TentRadius, TentHeight, 16, canvasEdge);
             return;
         }
 
@@ -4865,12 +4901,17 @@ public sealed class Building
                 float baseRadius = MonumentRadius * (1f - tier * 0.3f);
                 float topRadius = MonumentRadius * (1f - (tier + 1) * 0.3f);
                 var tierCenter = Position + new Vector3(0, tierHeight * tier + tierHeight / 2f, 0);
-                Raylib.DrawCylinder(tierCenter, baseRadius, topRadius, tierHeight, 4, stone);
-                Raylib.DrawCylinderWires(tierCenter, baseRadius, topRadius, tierHeight, 4, stoneEdge);
+                // DrawCylinder takes (radiusTop, radiusBottom) in that
+                // order — topRadius/baseRadius first here, or the tier
+                // renders upside down (wide top, narrow bottom).
+                Raylib.DrawCylinder(tierCenter, topRadius, baseRadius, tierHeight, 4, stone);
+                Raylib.DrawCylinderWires(tierCenter, topRadius, baseRadius, tierHeight, 4, stoneEdge);
             }
 
             var capstone = Position + new Vector3(0, MonumentHeight + 0.3f, 0);
-            Raylib.DrawCylinder(capstone, MonumentRadius * 0.15f, 0f, 0.6f, 4, new Color(255, 203, 0, 255));
+            // Point up, wide base merging into the top tier — same
+            // (radiusTop, radiusBottom) order as everywhere else here.
+            Raylib.DrawCylinder(capstone, 0f, MonumentRadius * 0.15f, 0.6f, 4, new Color(255, 203, 0, 255));
             return;
         }
 
