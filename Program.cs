@@ -1244,6 +1244,26 @@ public sealed class World
         return MathF.Sin(x * 0.1f) * 2.0f + MathF.Cos(z * 0.1f) * 2.0f + MathF.Sin((x + z) * 0.05f) * 1.5f;
     }
 
+    /// <summary>
+    /// Follow-up Part 3, Surface-Normal Tilting: the terrain's outward
+    /// surface normal at (x, z), found via finite differences — sampling
+    /// <see cref="GetHeightAt"/> a small step to either side on both axes
+    /// and using the resulting slope to build a normalized normal vector.
+    /// Used to tilt buildings/props (see <see cref="VillageHeart.Draw"/>,
+    /// <see cref="Building.Draw"/>'s Tent/Cabin cases, and
+    /// <see cref="GardenProp.Draw"/>) so they sit flush on a hillside
+    /// instead of just being lifted straight up out of it.
+    /// </summary>
+    public static Vector3 GetNormalAt(float x, float z)
+    {
+        const float offset = 0.1f;
+        float L = GetHeightAt(x - offset, z);
+        float R = GetHeightAt(x + offset, z);
+        float B = GetHeightAt(x, z - offset);
+        float F = GetHeightAt(x, z + offset);
+        return Vector3.Normalize(new Vector3(L - R, 2.0f * offset, B - F));
+    }
+
     /// <summary>Part 6, Grounding Entities: snaps <paramref name="position"/>'s Y onto the terrain's height at its (x, z).</summary>
     public static Vector3 Grounded(Vector3 position) => new(position.X, GetHeightAt(position.X, position.Z), position.Z);
 
@@ -4829,8 +4849,22 @@ public sealed class VillageHeart
         var stalkColor = new Color(235, 225, 200, 255);
         var stalkEdge = new Color(150, 140, 115, 220);
 
-        // Stalk.
-        var stalkCenter = Center + new Vector3(0, stalkHeight / 2f, 0);
+        // Follow-up Part 3, Surface-Normal Tilting: fetch the ground normal
+        // at this Heart's own (x, z) and build the axis/angle that tilts a
+        // straight-up mushroom to match the slope, so its base rests flush
+        // on the hillside instead of visually sinking into it.
+        Vector3 normal = World.GetNormalAt(Center.X, Center.Z);
+        Vector3 axis = Vector3.Cross(Vector3.UnitY, normal);
+        float angle = MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.UnitY, normal), -1.0f, 1.0f)) * (180.0f / MathF.PI);
+
+        Rlgl.PushMatrix();
+        Rlgl.Translatef(Center.X, World.GetHeightAt(Center.X, Center.Z), Center.Z);
+        if (axis.Length() > 0.001f)
+            Rlgl.Rotatef(angle, axis.X, axis.Y, axis.Z);
+
+        // Stalk — everything below is now drawn in local space, with the
+        // whole mushroom's own local origin (0,0,0) resting on the dirt.
+        var stalkCenter = new Vector3(0, stalkHeight / 2f, 0);
         Raylib.DrawCylinder(stalkCenter, stalkRadius, stalkRadius * 1.15f, stalkHeight, 14, stalkColor);
         Raylib.DrawCylinderWires(stalkCenter, stalkRadius, stalkRadius * 1.15f, stalkHeight, 14, stalkEdge);
 
@@ -4838,14 +4872,14 @@ public sealed class VillageHeart
         {
             // A gold trim ring around the stalk — the Tier 2 tell, carried
             // over from the old cube's gold band.
-            var ringCenter = Center + new Vector3(0, stalkHeight * 0.7f, 0);
+            var ringCenter = new Vector3(0, stalkHeight * 0.7f, 0);
             var trim = new Color(215, 175, 60, 255);
             Raylib.DrawCylinder(ringCenter, stalkRadius * 1.25f, stalkRadius * 1.25f, stalkHeight * 0.12f, 14, trim);
         }
 
         // Cap: a full sphere squashed flat into a mushroom dome via Rlgl
         // scaling, glowing with the pulsating faction color.
-        var capCenter = Center + new Vector3(0, stalkHeight, 0);
+        var capCenter = new Vector3(0, stalkHeight, 0);
         Rlgl.PushMatrix();
         Rlgl.Translatef(capCenter.X, capCenter.Y, capCenter.Z);
         Rlgl.Scalef(1f, 0.55f, 1f);
@@ -4857,10 +4891,12 @@ public sealed class VillageHeart
         var spotColor = new Color(255, 255, 255, 160);
         for (int i = 0; i < 5; i++)
         {
-            float angle = i * MathF.Tau / 5f;
-            var spot = capCenter + new Vector3(MathF.Cos(angle) * capRadius * 0.6f, capRadius * 0.12f, MathF.Sin(angle) * capRadius * 0.6f);
+            float spotAngle = i * MathF.Tau / 5f;
+            var spot = capCenter + new Vector3(MathF.Cos(spotAngle) * capRadius * 0.6f, capRadius * 0.12f, MathF.Sin(spotAngle) * capRadius * 0.6f);
             Raylib.DrawSphere(spot, capRadius * 0.12f, spotColor);
         }
+
+        Rlgl.PopMatrix();
     }
 
     /// <summary>
@@ -5338,20 +5374,43 @@ public sealed class GardenProp
         }
     }
 
+    /// <summary>
+    /// Follow-up Part 3, Surface-Normal Tilting: pushes an Rlgl matrix
+    /// translated to this prop's ground position and rotated to match the
+    /// terrain's surface normal there, then translated locally up by
+    /// <paramref name="halfHeight"/> so the shape's local origin (0,0,0)
+    /// rests un-buried on the dirt. Caller draws its primitive(s) at local
+    /// origin and then calls <see cref="Rlgl.PopMatrix"/>.
+    /// </summary>
+    private void PushGroundedTiltMatrix(float halfHeight)
+    {
+        Vector3 normal = World.GetNormalAt(Position.X, Position.Z);
+        Vector3 axis = Vector3.Cross(Vector3.UnitY, normal);
+        float angle = MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.UnitY, normal), -1.0f, 1.0f)) * (180.0f / MathF.PI);
+
+        Rlgl.PushMatrix();
+        Rlgl.Translatef(Position.X, World.GetHeightAt(Position.X, Position.Z), Position.Z);
+        if (axis.Length() > 0.001f)
+            Rlgl.Rotatef(angle, axis.X, axis.Y, axis.Z);
+        Rlgl.Translatef(0, halfHeight, 0);
+    }
+
     /// <summary>A large gray hemisphere-ish rock, oversized against a Bramblekin.</summary>
     private void DrawPebble()
     {
         float radius = 0.5f * _scale;
         var stone = new Color(130, 130, 135, 255);
         var stoneEdge = new Color(80, 80, 85, 200);
-        var center = Position + new Vector3(0, radius * 0.55f, 0);
+
+        PushGroundedTiltMatrix(radius * 0.55f);
 
         // Squash a full sphere into a rock-like dome via Rlgl scaling.
         Rlgl.PushMatrix();
-        Rlgl.Translatef(center.X, center.Y, center.Z);
         Rlgl.Scalef(1f, 0.6f, 1f);
         Raylib.DrawSphere(Vector3.Zero, radius, stone);
         Raylib.DrawSphereWires(Vector3.Zero, radius, 8, 8, stoneEdge);
+        Rlgl.PopMatrix();
+
         Rlgl.PopMatrix();
     }
 
@@ -5362,10 +5421,14 @@ public sealed class GardenProp
         float radius = 0.05f * _scale;
         var brown = new Color(101, 67, 33, 255);
 
+        PushGroundedTiltMatrix(radius);
+
         var half = new Vector3(MathF.Cos(_rotation), 0, MathF.Sin(_rotation)) * (length / 2f);
-        Vector3 start = Position + new Vector3(0, radius, 0) - half;
-        Vector3 end = Position + new Vector3(0, radius, 0) + half;
+        Vector3 start = -half;
+        Vector3 end = half;
         Raylib.DrawCylinderEx(start, end, radius, radius * 0.7f, 8, brown);
+
+        Rlgl.PopMatrix();
     }
 
     /// <summary>A tall green stem topped with a large fluffy sphere — towers well above Bramblekin scale.</summary>
@@ -5377,10 +5440,14 @@ public sealed class GardenProp
         var stemColor = new Color(60, 130, 40, 255);
         Color puffColor = _isYellow ? new Color(250, 210, 40, 255) : new Color(245, 245, 235, 220);
 
-        var stemBase = Position;
-        var stemTop = Position + new Vector3(0, stemHeight, 0);
+        PushGroundedTiltMatrix(stemHeight / 2f);
+
+        var stemBase = new Vector3(0, -stemHeight / 2f, 0);
+        var stemTop = new Vector3(0, stemHeight / 2f, 0);
         Raylib.DrawCylinder(stemBase, stemRadius, stemRadius, stemHeight, 8, stemColor);
         Raylib.DrawSphere(stemTop + new Vector3(0, puffRadius * 0.6f, 0), puffRadius, puffColor);
+
+        Rlgl.PopMatrix();
     }
 }
 
@@ -5533,6 +5600,29 @@ public sealed class Building
         return true;
     }
 
+    /// <summary>
+    /// Follow-up Part 3, Surface-Normal Tilting: pushes an Rlgl matrix
+    /// translated to this Building's ground position and rotated to match
+    /// the terrain's surface normal there. Callers draw their primitive(s)
+    /// at whatever LOCAL offset from (0,0,0) they previously used relative
+    /// to <see cref="Position"/>, then call <see cref="Rlgl.PopMatrix"/>.
+    /// Only used by the Tent and Cabin cases — the Housing System's small
+    /// shapes that visibly clip into a sloped hillside; the larger, flatter
+    /// buildings (Granary, Trading Post, Brewery, Monument) are out of
+    /// scope and keep drawing straight at <see cref="Position"/>.
+    /// </summary>
+    private void PushGroundedTiltMatrix()
+    {
+        Vector3 normal = World.GetNormalAt(Position.X, Position.Z);
+        Vector3 axis = Vector3.Cross(Vector3.UnitY, normal);
+        float angle = MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.UnitY, normal), -1.0f, 1.0f)) * (180.0f / MathF.PI);
+
+        Rlgl.PushMatrix();
+        Rlgl.Translatef(Position.X, World.GetHeightAt(Position.X, Position.Z), Position.Z);
+        if (axis.Length() > 0.001f)
+            Rlgl.Rotatef(angle, axis.X, axis.Y, axis.Z);
+    }
+
     public void Draw()
     {
         if (Kind == BuildingKind.Granary)
@@ -5567,9 +5657,12 @@ public sealed class Building
             // high-contrast dried-leaves/straw structure against the green map.
             var leaf = new Color(210, 180, 140, 255);
             var leafEdge = new Color(140, 110, 75, 220);
-            var tentCenter = Position + new Vector3(0, TentHeight / 2f, 0);
+            var tentCenter = new Vector3(0, TentHeight / 2f, 0);
+
+            PushGroundedTiltMatrix();
             Raylib.DrawCylinder(tentCenter, 0f, TentRadius, TentHeight, 3, leaf);
             Raylib.DrawCylinderWires(tentCenter, 0f, TentRadius, TentHeight, 3, leafEdge);
+            Rlgl.PopMatrix();
             return;
         }
 
@@ -5584,7 +5677,9 @@ public sealed class Building
             var shell = new Color(222, 196, 160, 255);
             var shellEdge = new Color(150, 122, 90, 220);
             float domeRadius = CabinRadius * 0.95f;
-            var domeCenter = Position + new Vector3(0, domeRadius * 0.55f, 0);
+            var domeCenter = new Vector3(0, domeRadius * 0.55f, 0);
+
+            PushGroundedTiltMatrix();
 
             Rlgl.PushMatrix();
             Rlgl.Translatef(domeCenter.X, domeCenter.Y, domeCenter.Z);
@@ -5594,10 +5689,12 @@ public sealed class Building
             Rlgl.PopMatrix();
 
             // The acorn's textured cap rim, at the base.
-            var rimCenter = Position + new Vector3(0, domeRadius * 0.18f, 0);
+            var rimCenter = new Vector3(0, domeRadius * 0.18f, 0);
             var rim = new Color(115, 75, 35, 255);
             Raylib.DrawCylinder(rimCenter, domeRadius * 1.05f, domeRadius * 0.9f, domeRadius * 0.35f, 12, rim);
             Raylib.DrawCylinderWires(rimCenter, domeRadius * 1.05f, domeRadius * 0.9f, domeRadius * 0.35f, 12, new Color(70, 45, 20, 255));
+
+            Rlgl.PopMatrix();
             return;
         }
 
