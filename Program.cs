@@ -2454,6 +2454,47 @@ public sealed class World
         }
     }
 
+    /// <summary>Seconds a claimed Blueprint may go without progress before <see cref="UpdateBlueprintStallTimers"/> treats it as a genuine stall rather than ordinary travel time to the site.</summary>
+    private const float BlueprintProgressStallThresholdSeconds = 15f;
+
+    /// <summary>
+    /// Builder Stall Detector (Progress side): catches the failure mode
+    /// <see cref="UpdateJobManager"/>'s own stall warning cannot —  a
+    /// Blueprint that DOES have a Builder claiming it (so Conscription
+    /// itself is working, currentBuilders looks correct) but that Builder
+    /// still isn't registering any actual <see cref="Blueprint.AddProgress"/>
+    /// — e.g. stuck against an obstacle, repeatedly interrupted by Fleeing a
+    /// Wolf Spider, or any other reason its own State never reaches
+    /// <see cref="Bramblekin.UpdateBuilding"/>'s contact check. Ticks every
+    /// Blueprint's own wall-clock timer once per frame regardless of claim
+    /// status, and once a CLAIMED site crosses the threshold, logs a single
+    /// diagnostic naming the claimant's current State and live distance to
+    /// the site — the exact information needed to tell "stuck approaching"
+    /// (State still Building, but distance never shrinks) from "distracted"
+    /// (State is something else entirely, e.g. Fleeing) from "no claim at
+    /// all" (already covered separately by <see cref="UpdateJobManager"/>).
+    /// </summary>
+    private void UpdateBlueprintStallTimers(float deltaTime)
+    {
+        for (int i = Blueprints.Count - 1; i >= 0; i--)
+        {
+            Blueprint blueprint = Blueprints[i];
+            blueprint.TickStallTimer(deltaTime);
+
+            if (blueprint.ClaimedBy is not { IsDead: false } claimant)
+                continue; // Unclaimed — UpdateJobManager's own stall warning already covers this case.
+
+            if (blueprint.SecondsSinceProgress < BlueprintProgressStallThresholdSeconds || blueprint.ProgressStallWarned)
+                continue;
+
+            blueprint.ProgressStallWarned = true;
+            float distance = GroundMover.HorizontalDistance(claimant.Position, blueprint.Position);
+            string stallMessage = $"[BUILDER PROGRESS STALL] Tribe {blueprint.FactionID}'s {blueprint.Kind} has had a Builder for {blueprint.SecondsSinceProgress:F0}s with zero progress! (Builder State: {claimant.State}, distance: {distance:F1}m, Progress: {blueprint.Progress:F1}/{blueprint.ProgressRequired:F0})";
+            Raylib.TraceLog(TraceLogLevel.Warning, stallMessage);
+            Game.AddEventLog(stallMessage);
+        }
+    }
+
     /// <summary>
     /// War Weariness: Morale drains at <see cref="MoraleLossPerSecondTerrorized"/>
     /// per second while the spider is actively Hunting or Pouncing — the two
@@ -3427,6 +3468,7 @@ public sealed class World
         // so several claimants finishing an Acorn off in the same frame can
         // never cause a double-shatter.
         UpdateAcornCracking();
+        UpdateBlueprintStallTimers(deltaTime);
 
         Spider?.Update(deltaTime, this);
 
@@ -7226,6 +7268,23 @@ public sealed class Blueprint
     /// </summary>
     public Bramblekin? ClaimedBy { get; set; }
 
+    /// <summary>
+    /// Builder Stall Detector (Progress side): seconds since this site last
+    /// saw ANY <see cref="AddProgress"/> call, whether or not it currently
+    /// has a Builder. Unlike <see cref="VillageHeart.BuilderNeedTimer"/>
+    /// (which only ever catches "zero Builders assigned at all"), this
+    /// catches the OTHER failure mode: a Builder genuinely assigned and
+    /// claiming this site, yet never actually getting close enough to
+    /// register progress — stuck against an obstacle, fleeing a Wolf
+    /// Spider, or any other reason its own State keeps it from ever
+    /// reaching <see cref="Bramblekin.UpdateBuilding"/>'s contact check.
+    /// Reset to 0 every time <see cref="AddProgress"/> is actually called.
+    /// </summary>
+    public float SecondsSinceProgress { get; private set; }
+
+    /// <summary>One-shot latch so <see cref="World.UpdateJobManager"/>'s progress-stall warning only logs once per stall episode — see <see cref="SecondsSinceProgress"/>.</summary>
+    public bool ProgressStallWarned { get; set; }
+
     public Blueprint(Vector3 position, BuildingKind kind, int factionId, Color factionColor)
     {
         Position = World.Grounded(position); // Part 6: snap onto the hilly terrain.
@@ -7234,7 +7293,15 @@ public sealed class Blueprint
         FactionColor = factionColor;
     }
 
-    public void AddProgress(float amount) => Progress = MathF.Min(Progress + amount, ProgressRequired);
+    /// <summary>Advances the wall-clock stall timer regardless of whether this site is currently claimed — called once per frame from <see cref="World.Update"/>'s Blueprint upkeep.</summary>
+    public void TickStallTimer(float deltaTime) => SecondsSinceProgress += deltaTime;
+
+    public void AddProgress(float amount)
+    {
+        Progress = MathF.Min(Progress + amount, ProgressRequired);
+        SecondsSinceProgress = 0f;
+        ProgressStallWarned = false;
+    }
 
     /// <summary>A translucent wireframe at full size, filled in from the ground up as Construction Progress advances.</summary>
     public void Draw()
