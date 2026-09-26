@@ -7096,14 +7096,12 @@ internal static class BramblekinRenderer
         if (_initialized)
             return;
 
-        // Raylib-cs 8.1.0 doesn't expose GenMeshCapsule (the native raylib
-        // build this project links against predates it), so the instanced
-        // body uses a plain cylinder mesh as the closest available
-        // primitive — a deliberate, visible approximation of the old
-        // rounded-capsule silhouette, matching Bramblekin.BodyHeight/Radius.
-        // GenMeshCylinder's vertices run from local y=0 (base) to
-        // y=BodyHeight (top), not centered — see Add()'s translation.
-        Mesh mesh = Raylib.GenMeshCylinder(Bramblekin.BodyRadius, Bramblekin.BodyHeight, 8);
+        // GenMeshCapsule's "height" is the cylindrical mid-section length
+        // between the two hemispherical caps, not the capsule's total
+        // height — so subtract the two end radii from BodyHeight to match
+        // the old bottom/top-inset-by-radius DrawCapsule call exactly.
+        float midHeight = Bramblekin.BodyHeight - 2f * Bramblekin.BodyRadius;
+        Mesh mesh = Raylib.GenMeshCapsule(Bramblekin.BodyRadius, midHeight, 8, 4);
         _model = Raylib.LoadModelFromMesh(mesh);
         _initialized = true;
     }
@@ -7120,11 +7118,10 @@ internal static class BramblekinRenderer
     /// FactionColor's batch. The transform combines the exact same
     /// GetNormalAt acos/axis-angle terrain-tilt math used for
     /// VillageHeart/Building/GardenProp, plus a translation to this unit's
-    /// ground position. Unlike a capsule mesh, GenMeshCylinder's vertices
-    /// run from local y=0 (base) to y=BodyHeight (top) rather than being
-    /// centered on the origin, so no extra half-height offset is added here
-    /// — translating straight to ground height already puts the base flush
-    /// on the dirt, matching where the old DrawCapsule call's bottom sat.
+    /// ground position with the same local Y-offset (BodyHeight / 2, so the
+    /// capsule's vertical center — GenMeshCapsule's mesh is centered on its
+    /// own local origin — lands where the old bottom/top-inset draw call
+    /// put the capsule) the immediate-mode path used.
     /// </summary>
     public static void Add(Bramblekin b)
     {
@@ -7144,8 +7141,8 @@ internal static class BramblekinRenderer
             : Matrix4x4.Identity;
 
         float groundY = World.GetHeightAt(b.Position.X, b.Position.Z);
-        var basePosition = new Vector3(b.Position.X, groundY, b.Position.Z);
-        Matrix4x4 transform = rotation * Matrix4x4.CreateTranslation(basePosition);
+        var center = new Vector3(b.Position.X, groundY + Bramblekin.BodyHeight / 2f, b.Position.Z);
+        Matrix4x4 transform = rotation * Matrix4x4.CreateTranslation(center);
 
         uint key = PackColor(b.FactionColor);
         if (!_batches.TryGetValue(key, out Batch? batch))
