@@ -1817,6 +1817,8 @@ public sealed class World
     /// <summary>Object Pooling: queued (position, kind) spawn requests, applied by activating a pool slot at flush time rather than constructing a FoodShard up front — see <see cref="CommitPendingChanges"/>.</summary>
     private readonly List<(Vector3 Position, FoodShardKind Kind)> _pendingShardSpawns = new();
     private readonly List<FoodShard> _pendingShardRemovals = new();
+    /// <summary>Spoils of War: queued Amber Node spawn positions, applied by activating a pool slot at flush time — see <see cref="ScatterSpoils"/> and <see cref="_pendingShardSpawns"/>'s own Food equivalent.</summary>
+    private readonly List<Vector3> _pendingAmberSpawns = new();
     private readonly List<AmberNode> _pendingAmberRemovals = new();
     private readonly List<Aphid> _pendingAphidSpawns = new();
     private readonly List<Aphid> _pendingAphidRemovals = new();
@@ -2685,16 +2687,23 @@ public sealed class World
     /// and its buildings are torn down outright and its remaining
     /// population is killed rather than annexed. Farther-out conquests
     /// still take the ordinary Vassal path below unchanged.
+    ///
+    /// Returns whether <paramref name="target"/> was actually Razed (true)
+    /// rather than Vassalized (false, including the no-op case where the
+    /// invader has no Village Heart of its own any more) — Spoils of War's
+    /// Looter AI (see <see cref="Bramblekin.TryStartLooting"/>) only ever
+    /// kicks in on the Razed outcome, since a Vassal's stores aren't lost
+    /// at all.
     /// </summary>
-    public void ConquerVillage(VillageHeart target, int invaderFactionId)
+    public bool ConquerVillage(VillageHeart target, int invaderFactionId)
     {
         if (VillageFor(invaderFactionId) is not { } capital)
-            return; // The would-be conqueror has no Village Heart of its own any more.
+            return false; // The would-be conqueror has no Village Heart of its own any more.
 
         if (Vector3.DistanceSquared(target.Center, capital.Center) <= RazeInsteadOfVassalRadius * RazeInsteadOfVassalRadius)
         {
             RazeConqueredVillage(target, capital);
-            return;
+            return true;
         }
 
         target.IsVassal = true;
@@ -2716,7 +2725,23 @@ public sealed class World
         }
 
         QueueFloatingText(target.Center, "Conquered!", capital.FactionColor);
+        return false;
     }
+
+    /// <summary>Spoils of War: the fraction of a Razed Village Heart's banked Food/Amber that spills out as physical loot rather than simply vanishing — see <see cref="RazeConqueredVillage"/>.</summary>
+    public const float SpoilsDropFraction = 0.5f;
+
+    /// <summary>Spoils of War: tight jitter radius (m) around a Razed base's <see cref="VillageHeart.Center"/> that its loot is scattered within — deliberately small, so it reads as "the ruins" rather than a wide debris field.</summary>
+    public const float SpoilsScatterRadius = 4f;
+
+    /// <summary>Spoils of War: hard cap on individual Food Shards spawned from a single Razed base's stores, so a very wealthy tribe's stash doesn't dump hundreds of shards on the ground at once — comfortably inside <see cref="FoodShardPoolCapacity"/>.</summary>
+    private const int MaxSpoilsFoodShards = 15;
+
+    /// <summary>Spoils of War: hard cap on individual Amber Nodes spawned from a single Razed base's stores — kept lower than <see cref="MaxSpoilsFoodShards"/> since Amber is already the map's scarcer, more valuable resource.</summary>
+    private const int MaxSpoilsAmberNodes = 4;
+
+    /// <summary>Spoils of War: how far past <see cref="SpoilsScatterRadius"/> a victorious Militia's Looter scan (see <see cref="Bramblekin.TryStartLooting"/>) still searches around a base it just helped Raze, giving it a little slack over the tight scatter itself.</summary>
+    public const float SpoilsLootScanRadius = SpoilsScatterRadius + 6f;
 
     /// <summary>
     /// Map Density Control: the too-close-to-annex branch of
@@ -2725,13 +2750,36 @@ public sealed class World
     /// <see cref="RemoveVillageAndItsBuildings"/> cleanup (same helper
     /// <see cref="DestroyVillageHeart"/> uses for ordinary Base Razing), then
     /// kills every remaining living Bramblekin still on its roster outright
-    /// — no Refugee Protocol, no loot shatter, no Vassal Tribute. This is
-    /// the one path that actively removes a whole faction (and its footprint)
-    /// from the map rather than just changing who it answers to.
+    /// — no Refugee Protocol, no Vassal Tribute. This is the one path that
+    /// actively removes a whole faction (and its footprint) from the map
+    /// rather than just changing who it answers to.
+    ///
+    /// Spoils of War: before the stores are gone for good, <see cref="SpoilsDropFraction"/>
+    /// of whatever <paramref name="target"/> had Stored in Food/Amber spills
+    /// out as physical loot around its <see cref="VillageHeart.Center"/> —
+    /// see <see cref="ScatterSpoils"/> — for the invader's own Militia to
+    /// scavenge (<see cref="Bramblekin.TryStartLooting"/>/<see cref="Bramblekin.UpdateLooting"/>)
+    /// rather than the razed wealth simply vanishing.
+    ///
+    /// Same-Frame Double-Raze Guard: two of the invader's own Militia can
+    /// both land the killing blow the same frame (both see
+    /// <see cref="LivingMilitiaCountFor"/> hit zero before either one's
+    /// <see cref="ConquerVillage"/> call actually runs) — the early-out
+    /// below (mirroring <see cref="DestroyVillageHeart"/>'s own guard)
+    /// stops the second call from re-running the cleanup and, critically,
+    /// re-scattering a second helping of spoils out of stores that are
+    /// already gone.
     /// </summary>
     private void RazeConqueredVillage(VillageHeart target, VillageHeart invaderCapital)
     {
+        if (!Villages.Contains(target))
+            return; // Already razed this frame by another Militia landing the same instant.
+
         int razedFactionId = target.FactionID;
+        int foodSpoils = Math.Min((int)(target.FoodStored * SpoilsDropFraction), MaxSpoilsFoodShards);
+        int amberSpoils = Math.Min((int)(target.AmberStored * SpoilsDropFraction), MaxSpoilsAmberNodes);
+        Vector3 ruins = target.Center;
+
         RemoveVillageAndItsBuildings(target);
 
         for (int i = Colony.Count - 1; i >= 0; i--)
@@ -2741,8 +2789,54 @@ public sealed class World
                 Kill(b);
         }
 
+        ScatterSpoils(ruins, foodSpoils, amberSpoils);
+
         QueueFloatingText(target.Center, "Razed!", invaderCapital.FactionColor);
         Raylib.TraceLog(TraceLogLevel.Info, $"[RAZE] Tribe {invaderCapital.FactionID} razed Tribe {razedFactionId}'s Village Heart (too close to their own capital) to clear map space.");
+
+        if (foodSpoils > 0 || amberSpoils > 0)
+        {
+            QueueFloatingText(ruins + new Vector3(0, 1f, 0), $"+{foodSpoils} Food, +{amberSpoils} Amber", invaderCapital.FactionColor);
+            Raylib.TraceLog(TraceLogLevel.Info, $"[SPOILS] {foodSpoils} Food and {amberSpoils} Amber scattered from the ruins of Tribe {razedFactionId}'s Village Heart.");
+        }
+    }
+
+    /// <summary>
+    /// Spoils of War: activates up to <paramref name="foodSpoils"/> loose
+    /// Food Shard pool slots and <paramref name="amberSpoils"/> Amber Node
+    /// pool slots, jittered within <see cref="SpoilsScatterRadius"/> of
+    /// <paramref name="center"/> and Y-snapped onto the terrain (via
+    /// <see cref="FoodShard.Activate"/>/<see cref="AmberNode.Activate"/>,
+    /// which both call <see cref="Grounded(Vector3)"/> internally). These
+    /// are ordinary ownerless, unclaimed spawns — whichever faction's
+    /// Militia (or Gatherer) reaches them first gets them, same as any
+    /// other Food/Amber on the map.
+    ///
+    /// Deferred Spawning: this runs from deep inside the Colony loop
+    /// (<see cref="RazeConqueredVillage"/> &lt;- <see cref="ConquerVillage"/>
+    /// &lt;- <see cref="Bramblekin.UpdateInvading"/>, itself inside this
+    /// frame's Colony iteration), so — same reasoning as every other
+    /// mid-loop spawn in this file — the actual pool activation is queued
+    /// (<see cref="_pendingShardSpawns"/>/<see cref="_pendingAmberSpawns"/>)
+    /// and only applied once, at <see cref="CommitPendingChanges"/> time.
+    /// </summary>
+    private void ScatterSpoils(Vector3 center, int foodSpoils, int amberSpoils)
+    {
+        for (int i = 0; i < foodSpoils; i++)
+        {
+            float angle = (float)(Rng.NextDouble() * MathF.Tau);
+            float distance = (float)Rng.NextDouble() * SpoilsScatterRadius;
+            Vector3 position = center + new Vector3(MathF.Cos(angle), 0, MathF.Sin(angle)) * distance;
+            _pendingShardSpawns.Add((position, FoodShardKind.Cracked));
+        }
+
+        for (int i = 0; i < amberSpoils; i++)
+        {
+            float angle = (float)(Rng.NextDouble() * MathF.Tau);
+            float distance = (float)Rng.NextDouble() * SpoilsScatterRadius;
+            Vector3 position = center + new Vector3(MathF.Cos(angle), 0, MathF.Sin(angle)) * distance;
+            _pendingAmberSpawns.Add(position);
+        }
     }
 
     /// <summary>
@@ -3194,6 +3288,14 @@ public sealed class World
             _pendingShardSpawns.Clear();
         }
 
+        // Spoils of War: same deferred-spawn treatment as the Food Shards above.
+        if (_pendingAmberSpawns.Count > 0)
+        {
+            foreach (Vector3 position in _pendingAmberSpawns)
+                ActivateAmberNode(position);
+            _pendingAmberSpawns.Clear();
+        }
+
         if (_pendingAmberRemovals.Count > 0)
         {
             for (int i = _pendingAmberRemovals.Count - 1; i >= 0; i--)
@@ -3573,6 +3675,74 @@ public sealed class World
         if (!_pendingAmberRemovals.Contains(amber))
             _pendingAmberRemovals.Add(amber);
         village.AmberStored++;
+    }
+
+    /// <summary>
+    /// Spoils of War: the Looter AI's own version of <see cref="NearestAvailableAmber"/>
+    /// — same Dibs (<see cref="IsAvailable(AmberNode, Bramblekin)"/>) and
+    /// same <see cref="SpatialGrid{T}"/> query, but bounded to an explicit
+    /// <paramref name="radius"/> around <paramref name="area"/> (the ruins
+    /// of a just-Razed Village Heart — see <see cref="SpoilsLootScanRadius"/>)
+    /// rather than the whole-map <see cref="MaxGatherSearchRadius"/>, and
+    /// with no Strict Border Control check: the razed base's own territory
+    /// is already gone by the time this is ever called (<see cref="RazeConqueredVillage"/>
+    /// removes it from <see cref="Villages"/> first), so there is no
+    /// foreign border left to violate.
+    /// </summary>
+    public AmberNode? NearestUnclaimedAmberNear(Vector3 area, Bramblekin claimant, float radius)
+    {
+        AmberNode? best = null;
+        float bestDistanceSquared = float.MaxValue;
+        float radiusSquared = radius * radius;
+        _amberGrid.QueryNearby(area, _amberQueryBuffer);
+        for (int i = _amberQueryBuffer.Count - 1; i >= 0; i--)
+        {
+            AmberNode amber = _amberQueryBuffer[i];
+            if (!IsAvailable(amber, claimant))
+                continue;
+
+            float distanceSquared = Vector3.DistanceSquared(area, amber.Position);
+            if (distanceSquared > radiusSquared)
+                continue;
+
+            if (distanceSquared < bestDistanceSquared)
+            {
+                best = amber;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Spoils of War: the Looter AI's own version of <see cref="NearestAvailableShard"/>
+    /// — see <see cref="NearestUnclaimedAmberNear"/> for why this is a
+    /// separate, radius-bounded, border-check-free search rather than a
+    /// reuse of the ordinary Gathering one.
+    /// </summary>
+    public FoodShard? NearestUnclaimedShardNear(Vector3 area, Bramblekin claimant, float radius)
+    {
+        FoodShard? best = null;
+        float bestDistanceSquared = float.MaxValue;
+        float radiusSquared = radius * radius;
+        _foodGrid.QueryNearby(area, _foodQueryBuffer);
+        for (int i = _foodQueryBuffer.Count - 1; i >= 0; i--)
+        {
+            FoodShard shard = _foodQueryBuffer[i];
+            if (!IsAvailable(shard, claimant))
+                continue;
+
+            float distanceSquared = Vector3.DistanceSquared(area, shard.Position);
+            if (distanceSquared > radiusSquared)
+                continue;
+
+            if (distanceSquared < bestDistanceSquared)
+            {
+                best = shard;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+        return best;
     }
 
     /// <summary>A Fang can always be picked up — it's never carried or claimed, just touched and gone.</summary>
@@ -6917,6 +7087,17 @@ public enum BramblekinState
     /// </summary>
     Invading,
 
+    /// <summary>
+    /// Spoils of War: Militia only — the moment this unit's own
+    /// Invasion/Crusade effort just Razed its target (see
+    /// <see cref="Bramblekin.UpdateInvading"/>/<see cref="Bramblekin.TryStartLooting"/>),
+    /// it paths to whichever unclaimed Food Shard or Amber Node it found
+    /// scattered in the ruins, picks it up, then hands off to the ordinary
+    /// <see cref="Bramblekin.UpdateReturning"/> to carry it home. See
+    /// <see cref="Bramblekin.UpdateLooting"/>.
+    /// </summary>
+    Looting,
+
     /// <summary>Merchant only: walking to the nearest foreign Trading Post to execute this trip's trade — see <see cref="Bramblekin.UpdateMerchant"/>.</summary>
     TravelingToMarket,
 
@@ -7777,6 +7958,10 @@ public sealed class Bramblekin
                 UpdateInvading(deltaTime, world, home);
                 break;
 
+            case BramblekinState.Looting:
+                UpdateLooting(deltaTime, world, home);
+                break;
+
             case BramblekinState.Building:
                 UpdateBuilding(deltaTime, world);
                 break;
@@ -8588,6 +8773,13 @@ public sealed class Bramblekin
     /// defender's side — this method only ever checks whether that combat
     /// has finished the job (<see cref="World.LivingMilitiaCountFor"/> hits
     /// zero) and, if so, Conquers the target outright.
+    ///
+    /// Spoils of War: when that Conquest actually Razes the target (rather
+    /// than annexing it as a Vassal — see <see cref="World.ConquerVillage"/>'s
+    /// own return value), this unit doesn't just immediately march home
+    /// empty-handed — <see cref="TryStartLooting"/> gets first crack at
+    /// sending it after whatever loot Part 1 just scattered in the ruins
+    /// before falling through to the ordinary <see cref="StartWandering"/>.
     /// </summary>
     private void UpdateInvading(float deltaTime, World world, VillageHeart? home)
     {
@@ -8615,9 +8807,11 @@ public sealed class Bramblekin
         {
             if (world.LivingMilitiaCountFor(target.FactionID) == 0)
             {
-                world.ConquerVillage(target, FactionID);
+                Vector3 ruins = target.Center;
+                bool wasRazed = world.ConquerVillage(target, FactionID);
                 _invasionTarget = null;
-                StartWandering(world);
+                if (!wasRazed || !TryStartLooting(world, ruins, home))
+                    StartWandering(world);
             }
             // Defenders still standing: hold position right at the gate —
             // no poking, no Health damage, just presence — and wait for
@@ -8626,6 +8820,123 @@ public sealed class Bramblekin
         }
 
         _mover.MoveTowards(_target, DefendSpeed, deltaTime, world, p => IsSafeSpot(p, world));
+    }
+
+    /// <summary>
+    /// Spoils of War: called the instant this Militia's own Invasion/Crusade
+    /// effort has just Razed <paramref name="ruins"/> (see <see cref="UpdateInvading"/>)
+    /// — before marching home empty-handed, scans the immediate area around
+    /// the ruins (<see cref="World.NearestUnclaimedAmberNear"/>/<see cref="World.NearestUnclaimedShardNear"/>,
+    /// both <see cref="SpatialGrid{T}"/>-backed, bounded to <see cref="World.SpoilsLootScanRadius"/>)
+    /// for whatever unclaimed loot Part 1's <see cref="World.ScatterSpoils"/>
+    /// left lying around. Amber is checked first — same Tycoon Economy
+    /// priority an ordinary well-fed Gatherer already gives it in
+    /// <see cref="UpdateGathering"/> — and whichever is found is claimed
+    /// (the same Dibs convention <see cref="_claimedAmber"/>/<see cref="_claimedShard"/>
+    /// already use, so a Gatherer or another Looter can never double up on
+    /// it) before switching to <see cref="BramblekinState.Looting"/>.
+    /// Returns false (the caller falls through to its own
+    /// <see cref="StartWandering"/>) if this unit has no home to carry loot
+    /// back to, or if there's simply nothing left to scavenge — either
+    /// because the razed base had no stores, or another Militia already
+    /// beat it here.
+    /// </summary>
+    private bool TryStartLooting(World world, Vector3 ruins, VillageHeart? home)
+    {
+        if (home is null)
+            return false; // Nowhere to carry loot home to.
+
+        AmberNode? amber = world.NearestUnclaimedAmberNear(ruins, this, World.SpoilsLootScanRadius);
+        if (amber is not null)
+        {
+            _claimedAmber = amber;
+            amber.ClaimedBy = this;
+            amber.ClaimTimer = 0f;
+            SetState(BramblekinState.Looting);
+            return true;
+        }
+
+        FoodShard? shard = world.NearestUnclaimedShardNear(ruins, this, World.SpoilsLootScanRadius);
+        if (shard is not null)
+        {
+            _claimedShard = shard;
+            shard.ClaimedBy = this;
+            shard.ClaimTimer = 0f;
+            SetState(BramblekinState.Looting);
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The Looter AI (Spoils of War): walks to whichever piece of loot
+    /// <see cref="TryStartLooting"/> just claimed (cached in the same
+    /// <see cref="_claimedAmber"/>/<see cref="_claimedShard"/> fields
+    /// Gathering uses) and, on arrival, picks it up exactly the way
+    /// <see cref="UpdateGathering"/> does — then hands off to the ordinary
+    /// <see cref="UpdateReturning"/> to carry it home and deposit it via
+    /// <see cref="World.DeliverAmber"/>/<see cref="World.DeliverFood"/>,
+    /// crediting this Militia's own Capital's stores exactly like any
+    /// Gatherer's delivery would. Unlike a Gatherer's pickup, this never
+    /// sets <see cref="TrespassingAgainst"/> — the ruins it's picking
+    /// through belong to nobody any more. Falls back to
+    /// <see cref="StartWandering"/> — the same standard defense/patrol
+    /// behavior an Invasion normally ends in — if the claimed loot
+    /// despawned or its home village was itself destroyed before this unit
+    /// reached it.
+    /// </summary>
+    private void UpdateLooting(float deltaTime, World world, VillageHeart? home)
+    {
+        if (home is null)
+        {
+            StartWandering(world);
+            return;
+        }
+
+        // Object Pooling: the claimed target may have despawned (its
+        // DespawnTimer ran out) since it was claimed.
+        if (_claimedAmber is { IsActive: false })
+            _claimedAmber = null;
+        if (_claimedShard is { IsActive: false })
+            _claimedShard = null;
+
+        if (_claimedAmber is { } cachedAmber)
+        {
+            if (GroundMover.HorizontalDistance(Position, cachedAmber.Position) <= PickupDistance)
+            {
+                cachedAmber.IsCarried = true;
+                cachedAmber.ClaimedBy = null;
+                _claimedAmber = null;
+                _carriedAmber = cachedAmber;
+                SetState(BramblekinState.Returning);
+                return;
+            }
+
+            _mover.MoveTowards(cachedAmber.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+            return;
+        }
+
+        if (_claimedShard is { } cachedShard)
+        {
+            if (GroundMover.HorizontalDistance(Position, cachedShard.Position) <= PickupDistance)
+            {
+                cachedShard.IsCarried = true;
+                cachedShard.ClaimedBy = null;
+                _claimedShard = null;
+                _carried = cachedShard;
+                SetState(BramblekinState.Returning);
+                return;
+            }
+
+            _mover.MoveTowards(cachedShard.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+            return;
+        }
+
+        // Nothing left to loot (despawned, or another Militia beat us to
+        // it) -- fall back to standard defense/patrol behavior exactly as
+        // an ordinary Invasion ends.
+        StartWandering(world);
     }
 
     /// <summary>
@@ -8968,7 +9279,12 @@ public sealed class Bramblekin
     /// </summary>
     private void SetState(BramblekinState state)
     {
-        if (state != BramblekinState.Gathering)
+        // Spoils of War: Looting reuses _claimedShard/_claimedAmber exactly
+        // like Gathering does (see TryStartLooting/UpdateLooting) — carved
+        // out here for the same reason Gathering is, so claiming the loot
+        // and then switching into Looting doesn't immediately release the
+        // very claim it just made.
+        if (state != BramblekinState.Gathering && state != BramblekinState.Looting)
         {
             ReleaseFoodClaim();
             ReleaseAmberClaim();
