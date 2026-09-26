@@ -676,26 +676,69 @@ public static class Game
         // Readability: scaled by UiScale like the rest of this file's
         // responsive UI (see DrawColonyPanel/DrawHud) rather than a fixed
         // pixel size, so it stays legible at any screen size instead of
-        // shrinking to an unreadable 12px on a dense Android display. Width
-        // is measured from the widest actual log line (not a fixed guess)
-        // so the panel background always fits the larger text with no
-        // clipping and no wasted empty margin either.
+        // shrinking to an unreadable 12px on a dense Android display.
         int fontSize = (int)(18 * UiScale);
         int lineHeight = fontSize + 4;
-        int widestLine = 0;
+
+        // Word-Wrap Fix: a single long entry (e.g. a Crusade log line) used
+        // to render as one raw line stretching most of the way across the
+        // screen, covering other UI. Each stored entry is now greedily
+        // word-wrapped at render time into as many visual lines as it takes
+        // to stay under maxWidth — the underlying _debugLogs list/15-entry
+        // cap (see AddEventLog) is untouched, only how each entry is laid
+        // out here.
+        int maxWidth = (int)(560 * UiScale);
+        var wrappedLines = new List<string>();
         for (int i = 0; i < _debugLogs.Count; i++)
-            widestLine = Math.Max(widestLine, Raylib.MeasureText(_debugLogs[i], fontSize));
+            WrapLine(_debugLogs[i], fontSize, maxWidth, wrappedLines);
+
+        int widestLine = 0;
+        for (int i = 0; i < wrappedLines.Count; i++)
+            widestLine = Math.Max(widestLine, Raylib.MeasureText(wrappedLines[i], fontSize));
 
         int width = widestLine + 16;
-        int height = _debugLogs.Count * lineHeight + 16;
+        int height = wrappedLines.Count * lineHeight + 16;
         int x = 10;
         int y = (Raylib.GetScreenHeight() - height) / 2;
 
         Raylib.DrawRectangle(x, y, width, height, new Color(0, 0, 0, 150));
         Raylib.DrawRectangleLines(x, y, width, height, new Color(255, 255, 255, 60));
 
-        for (int i = 0; i < _debugLogs.Count; i++)
-            Raylib.DrawText(_debugLogs[i], x + 8, y + 8 + i * lineHeight, fontSize, Color.RayWhite);
+        for (int i = 0; i < wrappedLines.Count; i++)
+            Raylib.DrawText(wrappedLines[i], x + 8, y + 8 + i * lineHeight, fontSize, Color.RayWhite);
+    }
+
+    /// <summary>
+    /// Word-Wrap Fix: a simple greedy word-wrap for <see cref="DrawDebugConsole"/>
+    /// — accumulates whitespace-separated words from <paramref name="line"/>
+    /// into a single visual line until adding the next word would push its
+    /// measured width (<see cref="Raylib.MeasureText"/> at <paramref name="fontSize"/>)
+    /// past <paramref name="maxWidth"/>, then starts a new one, appending
+    /// each finished visual line to <paramref name="output"/> in order. A
+    /// single word wider than <paramref name="maxWidth"/> on its own is
+    /// still emitted whole rather than dropped or clipped.
+    /// </summary>
+    private static void WrapLine(string line, int fontSize, int maxWidth, List<string> output)
+    {
+        string[] words = line.Split(' ');
+        var current = new System.Text.StringBuilder();
+        foreach (string word in words)
+        {
+            string candidate = current.Length == 0 ? word : current + " " + word;
+            if (current.Length > 0 && Raylib.MeasureText(candidate, fontSize) > maxWidth)
+            {
+                output.Add(current.ToString());
+                current.Clear();
+                current.Append(word);
+            }
+            else
+            {
+                current.Clear();
+                current.Append(candidate);
+            }
+        }
+        if (current.Length > 0)
+            output.Add(current.ToString());
     }
 }
 
@@ -1842,8 +1885,11 @@ public sealed class World
     /// <summary>Map Density Control: the hard ceiling on simultaneously active Village Hearts (independent capitals — Vassals don't count, they're not their own faction any more). Once <see cref="World.Villages"/> hits this, Schism/Auto-Settler no longer spawn a new faction — see <see cref="UpdateSchism"/>/<see cref="UpdateAutoSettler"/>.</summary>
     public const int MaxActiveFactions = 6;
 
-    /// <summary>Overpopulation Crusades: how many Gatherers are instantly drafted into Militia for a ruthless, nearest-target Crusade when a tribe hits the Schism/Settler trigger but the map is already at <see cref="MaxActiveFactions"/> — see <see cref="LaunchOverpopulationCrusade"/>.</summary>
-    public const int CrusadeMilitiaWaveSize = 8;
+    /// <summary>Overpopulation Crusades: the fraction of this tribe's entire military-eligible force (living Gatherers + Militia) that ends up committed as Militia for a ruthless, nearest-target Crusade when it hits the Schism/Settler trigger but the map is already at <see cref="MaxActiveFactions"/> — deliberately large (three quarters) so a Crusade is "risky": most of the tribe marches out, leaving its home lightly defended, rather than a small flat draft it barely notices. See <see cref="LaunchOverpopulationCrusade"/>.</summary>
+    public const float CrusadeForceFraction = 0.75f;
+
+    /// <summary>Overpopulation Crusades: even a tiny tribe with almost no military-eligible population still commits at least this many Militia — otherwise <see cref="CrusadeForceFraction"/> of a very small headcount could round down to zero and the tribe would never actually crusade. See <see cref="LaunchOverpopulationCrusade"/>.</summary>
+    public const int CrusadeMinimumForce = 2;
 
     // --- Vassal Colonies (Tribute Economy) ---------------------------------------
 
@@ -4510,6 +4556,19 @@ public sealed class World
         // growth. Redirect the same trigger into a Crusade instead.
         if (Villages.Count >= MaxActiveFactions)
         {
+            // The Re-Fire Fix: a Crusade already under way (InvasionTarget
+            // still set from a previous LaunchOverpopulationCrusade call)
+            // must not be re-launched every single frame the trigger
+            // conditions keep holding — Population stays at cap and Food
+            // keeps regenerating above SchismFoodThreshold long after the
+            // first Crusade fires, so without this guard this branch used
+            // to fire dozens of times per second, drafting a fresh wave of
+            // Militia and spending Food every tick. The ongoing war still
+            // runs its course untouched via UpdateInvasionOrders/
+            // CheckInvasionFailure/ConquerVillage — this only blocks a
+            // second, redundant declaration on top of it.
+            if (village.InvasionTarget is not null)
+                return;
             LaunchOverpopulationCrusade(village, SchismPioneerFood);
             return;
         }
@@ -4624,6 +4683,12 @@ public sealed class World
         // to prevent. Crusade instead.
         if (Villages.Count >= MaxActiveFactions)
         {
+            // The Re-Fire Fix: see the identical guard in UpdateSchism above
+            // — a Crusade already in flight (InvasionTarget already set)
+            // must not be re-launched every frame this trigger keeps
+            // holding true.
+            if (village.InvasionTarget is not null)
+                return;
             LaunchOverpopulationCrusade(village, SettlerFoodCost);
             return;
         }
@@ -4653,10 +4718,15 @@ public sealed class World
     /// overcap and a Food surplus banked) with <see cref="World.Villages"/>
     /// already sitting at <see cref="MaxActiveFactions"/> — spawning a new
     /// faction is off the table, so the same Food surplus is spent instead on
-    /// an instant, forced draft: up to <see cref="CrusadeMilitiaWaveSize"/>
-    /// Gatherers are promoted straight to Militia (<see cref="Bramblekin.PromoteToMilitia"/>,
-    /// the same conscription every faction already uses one-at-a-time — just
-    /// applied in one lump here), and this village's own
+    /// an instant, forced draft: enough Gatherers are promoted straight to
+    /// Militia (<see cref="Bramblekin.PromoteToMilitia"/>, the same
+    /// conscription every faction already uses one-at-a-time — just applied
+    /// in one lump here) that roughly <see cref="CrusadeForceFraction"/> of
+    /// this faction's entire military-eligible force (living Gatherers +
+    /// Militia, counting any Militia that already existed before this
+    /// draft) ends up committed to the march — a large field army, by
+    /// design: a Crusade is meant to feel risky, leaving this tribe's home
+    /// lightly defended, not a token gesture. This village's own
     /// <see cref="VillageHeart.InvasionTarget"/> is pointed at the NEAREST
     /// other active Village Heart (excluding this faction's own Vassals,
     /// which are already its territory, not a rival to clear) — ruthless,
@@ -4681,8 +4751,19 @@ public sealed class World
     {
         village.FoodStored -= foodCost;
 
+        // Risky Crusades: size the drafted wave so that roughly
+        // CrusadeForceFraction of the whole eligible force (existing
+        // Militia plus freshly drafted Gatherers) ends up marching — not
+        // CrusadeForceFraction freshly drafted ON TOP of whatever Militia
+        // already existed.
+        int eligible = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID &&
+                                          (b.Role == BramblekinRole.Gatherer || b.Role == BramblekinRole.Militia));
+        int currentMilitia = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
+        int waveTarget = Math.Max(CrusadeMinimumForce, (int)(eligible * CrusadeForceFraction));
+        int toDraft = Math.Max(0, waveTarget - currentMilitia);
+
         int drafted = 0;
-        for (int i = 0; i < CrusadeMilitiaWaveSize; i++)
+        for (int i = 0; i < toDraft; i++)
         {
             Bramblekin? recruit = NearestByRole(village, BramblekinRole.Gatherer);
             if (recruit is null)
@@ -4715,7 +4796,7 @@ public sealed class World
 
         string targetName = village.InvasionTarget is { } t ? FactionColorName(t.FactionColor) : "no one (no rivals left)";
         QueueFloatingText(village.Center, $"[-{foodCost} Food] Overpopulation Crusade!", new Color(220, 30, 30, 255));
-        QueueGlobalAlert($"[CRUSADE] Tribe {village.FactionID} drafts {drafted} Militia and launches a desperate crusade against {targetName}!", village.FactionColor);
+        QueueGlobalAlert($"[CRUSADE] Tribe {village.FactionID} drafts {drafted} Militia (~{(int)(CrusadeForceFraction * 100)}% of its force) and launches a desperate crusade against {targetName}!", village.FactionColor);
         string crusadeMessage = $"[CRUSADE] Tribe {village.FactionID} at Faction Limit ({Villages.Count}/{MaxActiveFactions}) — drafted {drafted} Militia, crusading against {targetName} instead of spawning a new faction.";
         Raylib.TraceLog(TraceLogLevel.Info, crusadeMessage);
         Game.AddEventLog(crusadeMessage);
