@@ -119,6 +119,35 @@ public static class Game
     /// </summary>
     private const int BroadcastFontSize = 48;
 
+    /// <summary>
+    /// On-Screen Debug Console: a rolling log of recent major events
+    /// (Crusades, tribe foundings, Razings, ...) rendered directly on
+    /// screen (see <see cref="DrawDebugConsole"/>) so a developer/tester
+    /// can see what the autonomous simulation is doing without needing
+    /// adb logcat or a desktop console attached. Deliberately separate
+    /// from <see cref="World.GlobalAlerts"/> (short-lived, big, centered
+    /// banners meant for the player) — this is a small, persistent,
+    /// scrolling history meant for debugging.
+    /// </summary>
+    private static readonly List<string> _debugLogs = new();
+
+    /// <summary>Oldest-entries-dropped cap for <see cref="_debugLogs"/> — see <see cref="AddEventLog"/>.</summary>
+    private const int DebugLogCapacity = 15;
+
+    /// <summary>
+    /// Appends <paramref name="message"/> to the on-screen debug console
+    /// (<see cref="_debugLogs"/>/<see cref="DrawDebugConsole"/>), dropping
+    /// the oldest entry once past <see cref="DebugLogCapacity"/>. Called
+    /// alongside (never instead of) the existing <see cref="Raylib.TraceLog"/>
+    /// calls at the same major-event sites, so both logs stay consistent.
+    /// </summary>
+    public static void AddEventLog(string message)
+    {
+        _debugLogs.Add(message);
+        while (_debugLogs.Count > DebugLogCapacity)
+            _debugLogs.RemoveAt(0);
+    }
+
     public static void Run(GamePlatform platform)
     {
         if (platform == GamePlatform.Desktop)
@@ -241,6 +270,7 @@ public static class Game
             DrawMonumentAlerts(world);
             DrawGlobalAlerts(world);
             DrawHud(world);
+            DrawDebugConsole();
 
             Raylib.EndDrawing();
 
@@ -388,22 +418,32 @@ public static class Game
         string vassalSuffix = village.IsVassal ? " (Vassal)" : "";
         string header = $"{FactionColorName(village.FactionColor)} Faction ({village.Trait}){tierSuffix}{vassalSuffix}";
         string food = $"Food Stored: {village.FoodStored} / {village.MaxFoodCapacity}";
-        string population = $"Population: {village.Population} / {village.MaxPopulation}   Militia: {militia}   Builder: {builders}";
+        // Narrow-and-Tall: Population, Militia and Builder used to ride on
+        // one wide "Population: N / M   Militia: N   Builder: N" line; each
+        // now gets its own line below the panel header/food lines instead,
+        // so the panel can be made narrower without clipping.
+        string population = $"Population: {village.Population} / {village.MaxPopulation}";
+        string militiaLine = $"Militia: {militia}";
+        string builderLine = $"Builder: {builders}";
         string morale = $"Morale: {(int)village.Morale}%" +
                          (village.GatherersAreWeary ? " (Weary)" : village.BuildersAreInspired ? " (Inspired)" : "");
         // Tycoon Economy: Amber tacked onto this same panel, in Color.GOLD
         // so the tribe's banked wealth stands out from the survival stats
         // above it at a glance.
-        string amber = $"| Amber: {village.AmberStored}";
+        string amber = $"Amber: {village.AmberStored}";
         // The Nectar Brewery: Nectar gets its own line, in a distinct
         // purple/pink so this civilization buff currency reads apart from
         // Amber's gold at a glance.
         string nectar = $"Nectar: {village.NectarStored}";
-        int width = Math.Max(Raylib.MeasureText(header, fontSize),
-                    Math.Max(Raylib.MeasureText(food, fontSize),
-                    Math.Max(Raylib.MeasureText(population, fontSize),
-                    Math.Max(Raylib.MeasureText(morale, fontSize),
-                    Math.Max(Raylib.MeasureText(amber, fontSize), Raylib.MeasureText(nectar, fontSize))))));
+        string[] lines = { header, food, population, militiaLine, builderLine, morale, amber, nectar };
+
+        // Narrow-and-Tall: a fixed, narrower width (proportional to UiScale,
+        // matching DrawHud's own responsive-sizing convention) instead of
+        // the old width-measured-from-the-widest-line approach, which used
+        // to produce one wide panel per faction; height is still computed
+        // from the line count so it grows automatically as more stat lines
+        // (or, one day, more factions) get added.
+        int width = (int)(420 * UiScale);
         int x = Raylib.GetScreenWidth() - width - 30;
 
         // Color Coding: the panel itself is tinted toward the selected
@@ -415,17 +455,20 @@ public static class Game
         Color ink = BlendToward(PanelInk, village.FactionColor, 0.4f);
 
         const int topPadding = 20, textInset = 30;
-        Raylib.DrawRectangle(x - 12, topPadding - 2, width + 24, lineHeight * 6 + 18, fill);
-        Raylib.DrawRectangleLines(x - 12, topPadding - 2, width + 24, lineHeight * 6 + 18, ink);
+        int height = lineHeight * lines.Length + 18;
+        Raylib.DrawRectangle(x - 12, topPadding - 2, width + 24, height, fill);
+        Raylib.DrawRectangleLines(x - 12, topPadding - 2, width + 24, height, ink);
         Raylib.DrawText(header, x, textInset, fontSize, ink);
         Raylib.DrawText(food, x, textInset + lineHeight, fontSize, ink);
         Raylib.DrawText(population, x, textInset + lineHeight * 2, fontSize, ink);
+        Raylib.DrawText(militiaLine, x, textInset + lineHeight * 3, fontSize, ink);
+        Raylib.DrawText(builderLine, x, textInset + lineHeight * 4, fontSize, ink);
         Color moraleColor = village.GatherersAreWeary ? new Color(170, 60, 40, 255)
                            : village.BuildersAreInspired ? new Color(60, 130, 70, 255)
                            : ink;
-        Raylib.DrawText(morale, x, textInset + lineHeight * 3, fontSize, moraleColor);
-        Raylib.DrawText(amber, x, textInset + lineHeight * 4, fontSize, new Color(255, 203, 0, 255));
-        Raylib.DrawText(nectar, x, textInset + lineHeight * 5, fontSize, new Color(215, 80, 210, 255));
+        Raylib.DrawText(morale, x, textInset + lineHeight * 5, fontSize, moraleColor);
+        Raylib.DrawText(amber, x, textInset + lineHeight * 6, fontSize, new Color(255, 203, 0, 255));
+        Raylib.DrawText(nectar, x, textInset + lineHeight * 7, fontSize, new Color(215, 80, 210, 255));
     }
 
     /// <summary>
@@ -578,27 +621,70 @@ public static class Game
         // legible over a busy map instead of the plain transparent overlay
         // it used to sit on.
         const int fontSize = BroadcastFontSize, lineHeight = BroadcastFontSize + 8;
-        int y = Raylib.GetScreenHeight() - (lineHeight * 2 + 20);
+
+        // UI Visibility, 3-Line Wrap: at BroadcastFontSize, one single wide
+        // line of sim status + entity counts + faction counts ran off the
+        // right edge of the screen. Split into 3 separate strings/DrawText
+        // calls instead (sim status, entity counts, faction counts) so
+        // each line stays a manageable width; the background rectangle's
+        // height is computed from the line count below rather than a
+        // hardcoded constant, so it can't go stale if fontSize ever changes.
+        const int lineCount = 3;
+        int barHeight = lineHeight * lineCount + 20;
+        int y = Raylib.GetScreenHeight() - barHeight + 10;
         int barWidth = Raylib.GetScreenWidth();
-        int barHeight = lineHeight * 2 + 20;
         Raylib.DrawRectangle(0, y - 10, barWidth, barHeight, new Color(0, 0, 0, 90));
 
-        const string hint = "A pure autonomous simulation: no player intervention. Every Village Heart runs itself — sprouting, drafting Militia, farming and building on its own — while Militia trade blows with the spider toe-to-toe.";
-        Raylib.DrawText(hint, 20, y, fontSize, Color.RayWhite);
-        Raylib.DrawText(
+        // Line 1: Sim status.
+        string status = $"Pure autonomous simulation (no player intervention)   Speed: {_timeScale}x   FPS: {Raylib.GetFPS()}";
+        // Line 2: Entity counts.
+        string entities =
             $"Bramblekin: {world.Colony.Count} " +
             $"(gathering {Count(BramblekinState.Gathering)}, returning {Count(BramblekinState.Returning)}, " +
             $"fleeing {Count(BramblekinState.Fleeing)}, defending {Count(BramblekinState.Defending)}, " +
             $"hunting {Count(BramblekinState.Hunting)}, raiding {Count(BramblekinState.Raiding)}, lost {world.Casualties})   " +
-            $"Aphids: {world.Aphids.Count(a => !a.IsDead)}   " +
-            $"Spider: {SpiderStatus(world)}   Sprouted: {world.Births}   FPS: {Raylib.GetFPS()}",
-            20, y + lineHeight, fontSize, Color.RayWhite);
+            $"Aphids: {world.Aphids.Count(a => !a.IsDead)}   Spider: {SpiderStatus(world)}";
+        // Line 3: Faction counts.
+        string factions = $"Sprouted: {world.Births}   Active Factions: {world.Villages.Count}";
+
+        Raylib.DrawText(status, 20, y, fontSize, Color.RayWhite);
+        Raylib.DrawText(entities, 20, y + lineHeight, fontSize, Color.RayWhite);
+        Raylib.DrawText(factions, 20, y + lineHeight * 2, fontSize, Color.RayWhite);
     }
 
     private static string SpiderStatus(World world) =>
         world.Spider is { } spider
             ? spider.State.ToString()
             : $"crushed, returns in {MathF.Ceiling(world.SpiderRespawnTimer)}s";
+
+    /// <summary>
+    /// On-Screen Debug Console: renders <see cref="_debugLogs"/> (see
+    /// <see cref="AddEventLog"/>) as a small, semi-transparent panel on the
+    /// middle-left of the screen — a running history of recent major events
+    /// (Crusades, tribe foundings, Razings, ...) for on-device debugging,
+    /// distinct from <see cref="DrawGlobalAlerts"/>'s big, short-lived,
+    /// centered player-facing banners. Deliberately drawn at a small font
+    /// (not BroadcastFontSize) since this is a developer aid, not primary
+    /// UI. Newest entry at the bottom, oldest at top, matching the natural
+    /// reading order of a scrolling log.
+    /// </summary>
+    private static void DrawDebugConsole()
+    {
+        if (_debugLogs.Count == 0)
+            return;
+
+        const int fontSize = 12, lineHeight = 16;
+        int width = (int)(360 * UiScale);
+        int height = _debugLogs.Count * lineHeight + 16;
+        int x = 10;
+        int y = (Raylib.GetScreenHeight() - height) / 2;
+
+        Raylib.DrawRectangle(x, y, width, height, new Color(0, 0, 0, 150));
+        Raylib.DrawRectangleLines(x, y, width, height, new Color(255, 255, 255, 60));
+
+        for (int i = 0; i < _debugLogs.Count; i++)
+            Raylib.DrawText(_debugLogs[i], x + 8, y + 8 + i * lineHeight, fontSize, Color.RayWhite);
+    }
 }
 
 // =============================================================================
@@ -2717,7 +2803,9 @@ public sealed class World
             return;
 
         string targetName = FactionColorName(target.FactionColor);
-        Raylib.TraceLog(TraceLogLevel.Info, $"[INVASION FAILED] Tribe {village.FactionID}'s war effort was wiped out before reaching the target ({targetName}).");
+        string invasionFailedMessage = $"[INVASION FAILED] Tribe {village.FactionID}'s war effort was wiped out before reaching the target ({targetName}).";
+        Raylib.TraceLog(TraceLogLevel.Info, invasionFailedMessage);
+        Game.AddEventLog(invasionFailedMessage);
         village.InvasionTarget = null;
         village.InvasionIsCrusade = false;
     }
@@ -2941,12 +3029,16 @@ public sealed class World
         ScatterSpoils(ruins, foodSpoils, amberSpoils);
 
         QueueFloatingText(target.Center, "Razed!", invaderCapital.FactionColor);
-        Raylib.TraceLog(TraceLogLevel.Info, $"[RAZE] Tribe {invaderCapital.FactionID} razed Tribe {razedFactionId}'s Village Heart (too close to their own capital) to clear map space.");
+        string razeMessage = $"[RAZE] Tribe {invaderCapital.FactionID} razed Tribe {razedFactionId}'s Village Heart (too close to their own capital) to clear map space.";
+        Raylib.TraceLog(TraceLogLevel.Info, razeMessage);
+        Game.AddEventLog(razeMessage);
 
         if (foodSpoils > 0 || amberSpoils > 0)
         {
             QueueFloatingText(ruins + new Vector3(0, 1f, 0), $"+{foodSpoils} Food, +{amberSpoils} Amber", invaderCapital.FactionColor);
-            Raylib.TraceLog(TraceLogLevel.Info, $"[SPOILS] {foodSpoils} Food and {amberSpoils} Amber scattered from the ruins of Tribe {razedFactionId}'s Village Heart.");
+            string spoilsMessage = $"[SPOILS] {foodSpoils} Food and {amberSpoils} Amber scattered from the ruins of Tribe {razedFactionId}'s Village Heart.";
+            Raylib.TraceLog(TraceLogLevel.Info, spoilsMessage);
+            Game.AddEventLog(spoilsMessage);
         }
     }
 
@@ -4542,7 +4634,9 @@ public sealed class World
         string targetName = village.InvasionTarget is { } t ? FactionColorName(t.FactionColor) : "no one (no rivals left)";
         QueueFloatingText(village.Center, $"[-{foodCost} Food] Overpopulation Crusade!", new Color(220, 30, 30, 255));
         QueueGlobalAlert($"[CRUSADE] Tribe {village.FactionID} drafts {drafted} Militia and launches a desperate crusade against {targetName}!", village.FactionColor);
-        Raylib.TraceLog(TraceLogLevel.Info, $"[CRUSADE] Tribe {village.FactionID} at Faction Limit ({Villages.Count}/{MaxActiveFactions}) — drafted {drafted} Militia, crusading against {targetName} instead of spawning a new faction.");
+        string crusadeMessage = $"[CRUSADE] Tribe {village.FactionID} at Faction Limit ({Villages.Count}/{MaxActiveFactions}) — drafted {drafted} Militia, crusading against {targetName} instead of spawning a new faction.";
+        Raylib.TraceLog(TraceLogLevel.Info, crusadeMessage);
+        Game.AddEventLog(crusadeMessage);
     }
 
     /// <summary>
@@ -4874,7 +4968,15 @@ public sealed class World
         // point always successfully founds its new tribe (see
         // RandomSettlerTarget's own guarantee), so this is unconditional
         // success feedback, not a "did it work?" check.
-        Raylib.TraceLog(TraceLogLevel.Info, $"[FOUNDATION SUCCESS] New {FactionColorName(factionColor)} tribe established!");
+        string foundationMessage = $"[FOUNDATION SUCCESS] New {FactionColorName(factionColor)} tribe established!";
+        Raylib.TraceLog(TraceLogLevel.Info, foundationMessage);
+        // Sprouting: rather than logging every single ordinary Bramblekin
+        // sprout (which would spam the 15-entry cap almost instantly during
+        // healthy growth and drown out everything else), the debug console
+        // only logs this milestone — a Settler successfully founding a
+        // brand-new tribe — which is what "Sprouting" most usefully means
+        // for a developer skimming this log.
+        Game.AddEventLog(foundationMessage);
         QueueGlobalAlert($"[NEW TRIBE] The {FactionColorName(factionColor)} tribe has sprouted!", factionColor);
 
         return village;
