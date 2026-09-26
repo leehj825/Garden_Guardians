@@ -1954,16 +1954,35 @@ public sealed class World
     /// Heart's footprint switches <see cref="SelectedFactionID"/> to that
     /// faction. A miss (too far from every Village Heart) leaves the
     /// current selection alone.
+    ///
+    /// Terrain-Aware Hit-Test: <paramref name="groundPoint"/> comes from an
+    /// actual terrain raycast (<see cref="Game.PickGround"/>), so its Y is
+    /// the live height at the tap's own (x, z) — which can differ from a
+    /// Village Heart's own founding-time <see cref="VillageHeart.Center"/>.Y
+    /// by however much the rolling-hills terrain slopes over
+    /// <see cref="FactionSelectionRadius"/> meters. Comparing full 3D
+    /// distance let that slope eat into the tap tolerance (sometimes almost
+    /// all of it), making some bases nearly unclickable — so this checks
+    /// horizontal (X/Z) distance only, the same
+    /// <see cref="GroundMover.HorizontalDistanceSquared"/> used for every
+    /// other footprint/contact check in the file, ignoring Y entirely.
+    ///
+    /// Tier-Scaled Hit Radius: a Tier 2 Town Center renders its whole model
+    /// 1.5x larger (see <see cref="VillageHeart.Draw"/>'s own
+    /// <c>isTownCenter</c> scale), so its clickable radius grows by the same
+    /// factor rather than leaving a tiny hit-test point inside a much
+    /// bigger dome.
     /// </summary>
     public void TrySelectFactionAt(Vector3 groundPoint)
     {
         VillageHeart? nearest = null;
-        float bestDistanceSquared = FactionSelectionRadius * FactionSelectionRadius;
+        float bestDistanceSquared = float.MaxValue;
 
         foreach (VillageHeart village in Villages)
         {
-            float distanceSquared = Vector3.DistanceSquared(groundPoint, village.Center);
-            if (distanceSquared <= bestDistanceSquared)
+            float radius = FactionSelectionRadius * (village.Tier >= 2 ? 1.5f : 1f);
+            float distanceSquared = GroundMover.HorizontalDistanceSquared(groundPoint, village.Center);
+            if (distanceSquared <= radius * radius && distanceSquared < bestDistanceSquared)
             {
                 nearest = village;
                 bestDistanceSquared = distanceSquared;
@@ -2650,6 +2669,57 @@ public sealed class World
         }
         village.InvasionTarget = best;
         village.InvasionIsCrusade = false;
+        if (best is not null)
+            CommitFactionMilitiaToWar(village);
+    }
+
+    /// <summary>
+    /// Fixed-Roster Invasions: called the instant <see cref="UpdateInvasionOrders"/>
+    /// or <see cref="LaunchOverpopulationCrusade"/> commits <paramref name="village"/>'s
+    /// faction to marching on a brand new <see cref="VillageHeart.InvasionTarget"/>
+    /// — bumps <see cref="VillageHeart.InvasionWarGeneration"/> and stamps
+    /// every currently-living Militia of this faction with that new
+    /// generation number, fixing this specific war's roster once and for
+    /// all. See <see cref="VillageHeart.InvasionWarGeneration"/> for why this
+    /// is the fix for the free-reinforcement loop.
+    /// </summary>
+    private void CommitFactionMilitiaToWar(VillageHeart village)
+    {
+        village.InvasionWarGeneration++;
+        foreach (Bramblekin b in Colony)
+        {
+            if (!b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia)
+                b.CommitToInvasion(village.InvasionWarGeneration);
+        }
+    }
+
+    /// <summary>Fixed-Roster Invasions: how many of <paramref name="village"/>'s Militia are still living AND were actually part of the currently-declared war's committed roster (see <see cref="VillageHeart.InvasionWarGeneration"/>) — as opposed to <see cref="LivingMilitiaCountFor"/>'s unconditional faction-wide count.</summary>
+    private int CommittedInvasionForceCountFor(VillageHeart village) =>
+        Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia &&
+                           b.CommittedWarGeneration == village.InvasionWarGeneration);
+
+    /// <summary>
+    /// Fixed-Roster Invasions: checked once per frame right after
+    /// <see cref="UpdateInvasionOrders"/> for every village with an active
+    /// <see cref="VillageHeart.InvasionTarget"/> — if this war's entire
+    /// committed roster (<see cref="CommittedInvasionForceCountFor"/>) has
+    /// died without ever reaching the target, the invasion has failed: the
+    /// target and Crusade flag are cleared so this faction cleanly resumes
+    /// peacetime behavior (ordinary Militia fall back to defense/patrol)
+    /// rather than leaving a dead war's state lingering. A fresh declaration
+    /// later gets its own new generation and roster, same as any other.
+    /// </summary>
+    private void CheckInvasionFailure(VillageHeart village)
+    {
+        if (village.InvasionTarget is not { } target)
+            return;
+        if (CommittedInvasionForceCountFor(village) > 0)
+            return;
+
+        string targetName = FactionColorName(target.FactionColor);
+        Raylib.TraceLog(TraceLogLevel.Info, $"[INVASION FAILED] Tribe {village.FactionID}'s war effort was wiped out before reaching the target ({targetName}).");
+        village.InvasionTarget = null;
+        village.InvasionIsCrusade = false;
     }
 
     /// <summary>Invasion &amp; Conquest: whether <paramref name="candidate"/> counts as weaker than <paramref name="invader"/> — lower Population, or fewer living Militia, than the invader's own count.</summary>
@@ -3216,6 +3286,11 @@ public sealed class World
             // picks a weaker neighbor to march its idle Militia on — see
             // UpdateInvasionOrders.
             UpdateInvasionOrders(village);
+
+            // Fixed-Roster Invasions: a war whose entire committed roster
+            // has died without reaching the target resets cleanly rather
+            // than lingering — see CheckInvasionFailure.
+            CheckInvasionFailure(village);
 
             // The New Economy AI: three independent phases, checked in a
             // fixed priority order every frame so a phase that spends Food
@@ -4461,6 +4536,8 @@ public sealed class World
 
         village.InvasionTarget = nearestRival;
         village.InvasionIsCrusade = nearestRival is not null;
+        if (nearestRival is not null)
+            CommitFactionMilitiaToWar(village); // Fixed-Roster Invasions: freshly drafted Militia are already promoted above, so this snapshot includes them.
 
         string targetName = village.InvasionTarget is { } t ? FactionColorName(t.FactionColor) : "no one (no rivals left)";
         QueueFloatingText(village.Center, $"[-{foodCost} Food] Overpopulation Crusade!", new Color(220, 30, 30, 255));
@@ -5670,6 +5747,22 @@ public sealed class VillageHeart
     /// this faction's own Morale/Militia count no longer qualifies.
     /// </summary>
     public VillageHeart? InvasionTarget { get; internal set; }
+
+    /// <summary>
+    /// Fixed-Roster Invasions: bumped by <see cref="World.CommitFactionMilitiaToWar"/>
+    /// every time this faction commits to a brand new <see cref="InvasionTarget"/>
+    /// (ordinary Invasion &amp; Conquest or a Crusade alike). Every living
+    /// Militia unit this faction has AT THAT MOMENT is stamped with the new
+    /// value (<see cref="Bramblekin.CommitToInvasion"/>); a Militia promoted
+    /// afterwards — ordinary Job Manager growth keeping pace with rising
+    /// Population, unrelated to this specific war — still carries an older
+    /// generation number and so <see cref="Bramblekin.Update"/>'s Invasion
+    /// pickup block won't let it march on this war. This is what gives each
+    /// declared war a fixed roster decided once, rather than an open-ended
+    /// "any idle Militia while a target happens to be set" rule that could
+    /// otherwise absorb newly-idle Militia forever.
+    /// </summary>
+    public int InvasionWarGeneration { get; internal set; }
 
     /// <summary>
     /// Overpopulation Crusades: true exactly when <see cref="InvasionTarget"/>
@@ -7579,6 +7672,27 @@ public sealed class Bramblekin
     /// </summary>
     private bool _isCrusading;
 
+    /// <summary>
+    /// Fixed-Roster Invasions: the <see cref="VillageHeart.InvasionWarGeneration"/>
+    /// this unit was actually part of when its home faction last committed
+    /// to a war (<see cref="World.CommitFactionMilitiaToWar"/>), stamped via
+    /// <see cref="CommitToInvasion"/>. Defaults to -1 so a unit that's never
+    /// been drafted into any war never matches a fresh faction's generation
+    /// 0. <see cref="Update"/>'s Invasion pickup block only lets this unit
+    /// march on its home's current <see cref="VillageHeart.InvasionTarget"/>
+    /// when this equals <see cref="VillageHeart.InvasionWarGeneration"/> —
+    /// closing the free-reinforcement loop where any newly-idle Militia,
+    /// including one promoted well after a war was declared, would
+    /// otherwise silently join it for free.
+    /// </summary>
+    private int _committedWarGeneration = -1;
+
+    /// <summary>Fixed-Roster Invasions: this unit's currently-committed war generation — see <see cref="_committedWarGeneration"/>.</summary>
+    internal int CommittedWarGeneration => _committedWarGeneration;
+
+    /// <summary>Fixed-Roster Invasions: stamps this unit as part of the roster for war generation <paramref name="generation"/> — called only from <see cref="World.CommitFactionMilitiaToWar"/>.</summary>
+    internal void CommitToInvasion(int generation) => _committedWarGeneration = generation;
+
     /// <summary>The Schism: set the instant this Bramblekin becomes a Pioneer (see <see cref="BecomePioneer"/>), cleared the instant it stops Migrating (see <see cref="UpdateMigrating"/>).</summary>
     private Migration? _migration;
 
@@ -8032,8 +8146,13 @@ public sealed class Bramblekin
         // World.UpdateInvasionOrders once that faction is both high-Morale
         // and militarily dominant (Militia count > InvasionMilitiaThreshold).
         // Lowest Militia priority: defense/hunting above it always wins.
+        // Fixed-Roster Invasions: only a Militia unit actually stamped as
+        // part of THIS war's committed roster (see _committedWarGeneration)
+        // may pick the order up — a Militia promoted after the war was
+        // already declared carries an older generation number and simply
+        // stays idle/wandering instead of joining for free.
         if (Role == BramblekinRole.Militia && State is BramblekinState.Walking or BramblekinState.Pausing &&
-            home?.InvasionTarget is { } invasionTarget)
+            home?.InvasionTarget is { } invasionTarget && _committedWarGeneration == home.InvasionWarGeneration)
         {
             _invasionTarget = invasionTarget;
             _isCrusading = home.InvasionIsCrusade;
