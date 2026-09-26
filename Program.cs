@@ -145,9 +145,10 @@ public static class Game
         {
             float rawDeltaTime = MathF.Min(Raylib.GetFrameTime(), MaxDeltaTime);
 
-            // 0) Mobile camera: one-finger drag pans, two-finger pinch zooms.
-            //    Runs before the tap input below so the rest of the frame
-            //    sees an already-settled camera.
+            // 0) Spectator Camera: one finger (or a held mouse button) drags
+            //    to pan, two fingers twist to rotate around the current
+            //    Target and pinch to zoom. Runs before the tap input below
+            //    so the rest of the frame sees an already-settled camera.
             touchCamera.Update(ref camera, world.Terrain.Size / 2f);
 
             // 1) Input: Pure Simulation — the player has no lever on the
@@ -155,9 +156,10 @@ public static class Game
             //    Building are all the Village Heart's own business, run
             //    autonomously inside world.Update() below. The only taps
             //    left are inspecting a faction and Genesis (see
-            //    WorldTapInput). The Debug Time Scale +/- buttons are
-            //    checked first and, if hit, swallow the click so it never
-            //    also lands as a ground tap.
+            //    WorldTapInput, which only fires on a clean release that
+            //    never turned into a pan). The Debug Time Scale +/- buttons
+            //    are checked first and, if hit, swallow the click so it
+            //    never also lands as a ground tap.
             bool mousePressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
             Vector2 mousePosition = Raylib.GetMousePosition();
             if (mousePressed && speedDownButton.Contains(mousePosition))
@@ -317,7 +319,11 @@ public static class Game
         if (village is null)
             return; // No faction founded yet.
 
-        const int fontSize = 24, lineHeight = 30;
+        // UI Text Scaling: bumped from 24px so the Faction Ledger reads on a
+        // mobile screen; width/lineHeight below already derive the panel's
+        // background rectangle from fontSize/lineHeight, so it grows to fit
+        // automatically.
+        const int fontSize = 32, lineHeight = 40;
         int militia = world.Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
         int builders = world.Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Builder);
         string header = $"{FactionColorName(village.FactionColor)} Faction ({village.Trait})";
@@ -343,16 +349,17 @@ public static class Game
         Color fill = BlendToward(PanelFill, village.FactionColor, 0.4f);
         Color ink = BlendToward(PanelInk, village.FactionColor, 0.4f);
 
-        Raylib.DrawRectangle(x - 12, 18, width + 24, lineHeight * 5 + 14, fill);
-        Raylib.DrawRectangleLines(x - 12, 18, width + 24, lineHeight * 5 + 14, ink);
-        Raylib.DrawText(header, x, 26, fontSize, ink);
-        Raylib.DrawText(food, x, 26 + lineHeight, fontSize, ink);
-        Raylib.DrawText(population, x, 26 + lineHeight * 2, fontSize, ink);
+        const int topPadding = 20, textInset = 30;
+        Raylib.DrawRectangle(x - 12, topPadding - 2, width + 24, lineHeight * 5 + 18, fill);
+        Raylib.DrawRectangleLines(x - 12, topPadding - 2, width + 24, lineHeight * 5 + 18, ink);
+        Raylib.DrawText(header, x, textInset, fontSize, ink);
+        Raylib.DrawText(food, x, textInset + lineHeight, fontSize, ink);
+        Raylib.DrawText(population, x, textInset + lineHeight * 2, fontSize, ink);
         Color moraleColor = village.GatherersAreWeary ? new Color(170, 60, 40, 255)
                            : village.BuildersAreInspired ? new Color(60, 130, 70, 255)
                            : ink;
-        Raylib.DrawText(morale, x, 26 + lineHeight * 3, fontSize, moraleColor);
-        Raylib.DrawText(amber, x, 26 + lineHeight * 4, fontSize, new Color(255, 203, 0, 255));
+        Raylib.DrawText(morale, x, textInset + lineHeight * 3, fontSize, moraleColor);
+        Raylib.DrawText(amber, x, textInset + lineHeight * 4, fontSize, new Color(255, 203, 0, 255));
     }
 
     /// <summary>
@@ -414,9 +421,18 @@ public static class Game
     {
         int Count(BramblekinState state) => world.Colony.Count(b => b.State == state);
 
-        int y = Raylib.GetScreenHeight() - 60;
+        // UI Text Scaling: bumped from 20px so it reads on a mobile screen
+        // held at arm's length; a background bar goes underneath both lines
+        // so the now-larger text stays legible over a busy map instead of
+        // the plain transparent overlay it used to sit on.
+        const int fontSize = 26, lineHeight = 30;
+        int y = Raylib.GetScreenHeight() - (lineHeight * 2 + 20);
+        int barWidth = Raylib.GetScreenWidth();
+        int barHeight = lineHeight * 2 + 20;
+        Raylib.DrawRectangle(0, y - 10, barWidth, barHeight, new Color(0, 0, 0, 90));
+
         const string hint = "A pure autonomous simulation: no player intervention. Every Village Heart runs itself — sprouting, drafting Militia, farming and building on its own — while Militia trade blows with the spider toe-to-toe.";
-        Raylib.DrawText(hint, 20, y, 20, Color.DarkGray);
+        Raylib.DrawText(hint, 20, y, fontSize, Color.RayWhite);
         Raylib.DrawText(
             $"Bramblekin: {world.Colony.Count} " +
             $"(gathering {Count(BramblekinState.Gathering)}, returning {Count(BramblekinState.Returning)}, " +
@@ -424,7 +440,7 @@ public static class Game
             $"hunting {Count(BramblekinState.Hunting)}, raiding {Count(BramblekinState.Raiding)}, lost {world.Casualties})   " +
             $"Aphids: {world.Aphids.Count(a => !a.IsDead)}   " +
             $"Spider: {SpiderStatus(world)}   Sprouted: {world.Births}   FPS: {Raylib.GetFPS()}",
-            20, y + 26, 20, Color.DarkGray);
+            20, y + lineHeight, fontSize, Color.RayWhite);
     }
 
     private static string SpiderStatus(World world) =>
@@ -438,15 +454,16 @@ public static class Game
 // =============================================================================
 
 /// <summary>
-/// Mobile camera controls layered on top of the fixed isometric view. A
-/// single finger is reserved entirely for World interaction — UI clicks and
-/// <see cref="WorldTapInput"/>'s taps — and never moves the camera. Only a
-/// two-finger gesture drives the camera: the
-/// midpoint's drag pans it across the terrain's X/Z plane, and the pinch
-/// distance's change moves it closer to or further from its Target. Both
-/// translate <see cref="Camera3D.Position"/> and <see cref="Camera3D.Target"/>
-/// together, so the viewing angle never changes — only where it's centred
-/// and how far back it sits.
+/// The Spectator Camera: a Google Maps-style controller for the fixed
+/// overhead view — Pure Simulation means the player has no lever on the
+/// world any more, just on how they're looking at it. One finger (or a
+/// held left mouse button, for testing on desktop) drags to pan across the
+/// terrain's X/Z plane; two fingers twisting around each other rotates the
+/// whole world around the camera's own Target on the Y axis; two fingers
+/// pinching in/out still zooms, exactly as before. <see cref="WorldTapInput"/>
+/// still gets a clean, undragged tap for faction-select/Genesis — see its
+/// own drag-threshold check — so this and that never fight over the same
+/// touch.
 /// </summary>
 public sealed class TouchCameraController
 {
@@ -468,43 +485,80 @@ public sealed class TouchCameraController
     /// <summary>Keeps the Target from panning off the playable terrain, in meters from its edge.</summary>
     private const float PanEdgeMargin = 5f;
 
-    private Vector2 _previousMidpoint;
-    private float _previousPinchDistance;
+    // Camera-gesture state, tracked frame to frame. One controller is
+    // constructed once in Game.Run and lives for the whole session, so
+    // instance fields here serve exactly the same purpose static fields
+    // would in a single long-running loop, without reaching for actual
+    // global/static mutable state.
+    private Vector2 _lastTouchPos;
+    private bool _isOneFingerGesture;
+
+    private float _lastTouchAngle;
+    private float _lastPinchDistance;
     private bool _isTwoFingerGesture;
 
     public void Update(ref Camera3D camera, float worldHalfSize)
     {
         int touchCount = Raylib.GetTouchPointCount();
 
-        // Two fingers only: a single touch belongs entirely to WorldTapInput
-        // (UI buttons, faction-select/Genesis taps) and must never also pan
-        // the camera underneath it.
-        if (touchCount == 2)
+        if (touchCount >= 2)
         {
-            Vector2 first = Raylib.GetTouchPosition(0);
-            Vector2 second = Raylib.GetTouchPosition(1);
-            Vector2 midpoint = (first + second) / 2f;
-            float distance = Vector2.Distance(first, second);
-
-            if (_isTwoFingerGesture)
-            {
-                Pan(ref camera, midpoint - _previousMidpoint);
-                Zoom(ref camera, distance - _previousPinchDistance);
-            }
-
-            _previousMidpoint = midpoint;
-            _previousPinchDistance = distance;
-            _isTwoFingerGesture = true;
+            UpdateTwoFingerGesture(ref camera);
+            _isOneFingerGesture = false; // A second finger landing mid-pan shouldn't jump-pan once it lifts back to one.
         }
         else
         {
+            UpdateOneFingerPan(ref camera, touchCount);
             _isTwoFingerGesture = false;
         }
 
         ClampTargetToWorld(ref camera, worldHalfSize);
     }
 
-    /// <summary>Translates Position and Target together across the ground plane, following the two-finger midpoint.</summary>
+    /// <summary>
+    /// One-Finger Panning: follows a single touch, or (for desktop testing)
+    /// a held left mouse button — Raylib maps a primary touch to the left
+    /// mouse button anyway, so touchCount == 1 and IsMouseButtonDown both
+    /// read true together on an actual phone; this just means either is
+    /// enough to drive it.
+    /// </summary>
+    private void UpdateOneFingerPan(ref Camera3D camera, int touchCount)
+    {
+        bool isDown = touchCount == 1 || Raylib.IsMouseButtonDown(MouseButton.Left);
+        if (!isDown)
+        {
+            _isOneFingerGesture = false;
+            return;
+        }
+
+        Vector2 currentPos = touchCount == 1 ? Raylib.GetTouchPosition(0) : Raylib.GetMousePosition();
+        if (_isOneFingerGesture)
+            Pan(ref camera, currentPos - _lastTouchPos);
+
+        _lastTouchPos = currentPos;
+        _isOneFingerGesture = true;
+    }
+
+    /// <summary>Two-Finger Rotation + the old pinch-zoom, both read off the same two touch points.</summary>
+    private void UpdateTwoFingerGesture(ref Camera3D camera)
+    {
+        Vector2 first = Raylib.GetTouchPosition(0);
+        Vector2 second = Raylib.GetTouchPosition(1);
+        float angle = MathF.Atan2(second.Y - first.Y, second.X - first.X);
+        float distance = Vector2.Distance(first, second);
+
+        if (_isTwoFingerGesture)
+        {
+            Rotate(ref camera, angle - _lastTouchAngle);
+            Zoom(ref camera, distance - _lastPinchDistance);
+        }
+
+        _lastTouchAngle = angle;
+        _lastPinchDistance = distance;
+        _isTwoFingerGesture = true;
+    }
+
+    /// <summary>Translates Position and Target together across the ground plane, following the drag.</summary>
     private static void Pan(ref Camera3D camera, Vector2 screenDelta)
     {
         if (screenDelta == Vector2.Zero)
@@ -520,8 +574,8 @@ public sealed class TouchCameraController
         if (forwardXZ.LengthSquared() > 1e-6f) forwardXZ = Vector3.Normalize(forwardXZ);
         if (rightXZ.LengthSquared() > 1e-6f) rightXZ = Vector3.Normalize(rightXZ);
 
-        // Scale by how far back the camera is sitting, so a pinch-zoomed-out
-        // view (which shows more ground per pixel) still pans at a matching
+        // Scale by how far back the camera is sitting, so a zoomed-out view
+        // (which shows more ground per pixel) still pans at a matching
         // on-screen speed instead of feeling sluggish.
         float distance = Vector3.Distance(camera.Position, camera.Target);
         float metersPerPixel = distance * 0.0016f;
@@ -531,6 +585,27 @@ public sealed class TouchCameraController
         Vector3 worldDelta = (-rightXZ * screenDelta.X + forwardXZ * screenDelta.Y) * metersPerPixel;
         camera.Position += worldDelta;
         camera.Target += worldDelta;
+    }
+
+    /// <summary>
+    /// Two-Finger Rotation: spins Position around Target strictly on the Y
+    /// axis by <paramref name="angleDelta"/> radians (standard 2D rotation
+    /// applied to the X/Z offset) — the world appears to turn beneath a
+    /// camera that stays locked on the same focus point, height unchanged.
+    /// </summary>
+    private static void Rotate(ref Camera3D camera, float angleDelta)
+    {
+        if (angleDelta == 0f)
+            return;
+
+        Vector3 offset = camera.Position - camera.Target;
+        float cos = MathF.Cos(angleDelta);
+        float sin = MathF.Sin(angleDelta);
+        var rotatedOffset = new Vector3(
+            offset.X * cos - offset.Z * sin,
+            offset.Y,
+            offset.X * sin + offset.Z * cos);
+        camera.Position = camera.Target + rotatedOffset;
     }
 
     /// <summary>Moves Position along the Target->Position axis: fingers spreading apart zooms in.</summary>
@@ -669,19 +744,48 @@ public sealed class Terrain
 /// </summary>
 public sealed class WorldTapInput
 {
-    /// <summary>Polls the mouse/touch and handles this frame's press, if any.</summary>
+    /// <summary>
+    /// One-Finger Panning claimed the left mouse button/primary touch for
+    /// the Spectator Camera (see <see cref="TouchCameraController"/>), so a
+    /// press that turns into a drag past this many pixels is a pan, not a
+    /// tap — <see cref="HandlePress"/> only fires on release, and only if
+    /// the press never crossed this threshold.
+    /// </summary>
+    private const float TapDragThreshold = 12f;
+
+    private Vector2 _pressStartPosition;
+    private bool _isPressing;
+    private bool _exceededDragThreshold;
+
+    /// <summary>Polls the mouse/touch and handles a clean tap-and-release, if one just finished.</summary>
     public void Update(Camera3D camera, World world)
     {
         // Raylib maps a primary touch to the left mouse button, so the same
         // code path serves desktop clicks and phone taps.
         if (Raylib.IsMouseButtonPressed(MouseButton.Left))
-            HandlePress(Raylib.GetMousePosition(), camera, world);
+        {
+            _isPressing = true;
+            _exceededDragThreshold = false;
+            _pressStartPosition = Raylib.GetMousePosition();
+        }
+        else if (_isPressing && Raylib.IsMouseButtonDown(MouseButton.Left))
+        {
+            if (!_exceededDragThreshold && Vector2.Distance(Raylib.GetMousePosition(), _pressStartPosition) > TapDragThreshold)
+                _exceededDragThreshold = true;
+        }
+        else if (_isPressing && Raylib.IsMouseButtonReleased(MouseButton.Left))
+        {
+            _isPressing = false;
+            if (!_exceededDragThreshold)
+                HandlePress(Raylib.GetMousePosition(), camera, world);
+        }
     }
 
     /// <summary>
-    /// Handles the start of a press at <paramref name="screenPosition"/>.
-    /// Public so input can be driven directly, from a test harness or an
-    /// alternate input source.
+    /// Handles a completed tap at <paramref name="screenPosition"/> — called
+    /// from <see cref="Update"/> on release, once it's confirmed the press
+    /// never turned into a pan. Public so input can be driven directly, from
+    /// a test harness or an alternate input source.
     /// </summary>
     public void HandlePress(Vector2 screenPosition, Camera3D camera, World world)
     {
