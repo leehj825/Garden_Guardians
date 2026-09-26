@@ -1667,6 +1667,17 @@ public sealed class World
     /// <summary>Invasion &amp; Conquest: a faction needs more living Militia than this before it will ever march on a weaker neighbor — see <see cref="UpdateInvasionOrders"/>.</summary>
     public const int InvasionMilitiaThreshold = 10;
 
+    /// <summary>Trait-Driven Warfare: a <see cref="FactionTrait.Militaristic"/> faction's own, dramatically lower version of <see cref="InvasionMilitiaThreshold"/> — see <see cref="UpdateInvasionOrders"/>.</summary>
+    public const int MilitaristicInvasionMilitiaThreshold = 4;
+
+    // --- Map Density Hard Caps (Overpopulation Crusades) -------------------------
+
+    /// <summary>Map Density Control: the hard ceiling on simultaneously active Village Hearts (independent capitals — Vassals don't count, they're not their own faction any more). Once <see cref="World.Villages"/> hits this, Schism/Auto-Settler no longer spawn a new faction — see <see cref="UpdateSchism"/>/<see cref="UpdateAutoSettler"/>.</summary>
+    public const int MaxActiveFactions = 6;
+
+    /// <summary>Overpopulation Crusades: how many Gatherers are instantly drafted into Militia for a blind Crusade when a tribe hits the Schism/Settler trigger but the map is already at <see cref="MaxActiveFactions"/> — see <see cref="LaunchOverpopulationCrusade"/>.</summary>
+    public const int CrusadeMilitiaWaveSize = 8;
+
     // --- Vassal Colonies (Tribute Economy) ---------------------------------------
 
     /// <summary>Vassal Colonies: seconds between each automatic Tribute payment to a Vassal's Capital — see <see cref="World.Update"/>'s per-village loop.</summary>
@@ -2520,20 +2531,32 @@ public sealed class World
     /// </summary>
     private void UpdateInvasionOrders(VillageHeart village)
     {
+        bool militaristic = village.Trait == FactionTrait.Militaristic;
         int ourMilitia = LivingMilitiaCountFor(village.FactionID);
-        if (village.Morale < HighMoraleThreshold || ourMilitia <= InvasionMilitiaThreshold)
+
+        // Trait-Driven Warfare: a Militaristic tribe has a dramatically
+        // lower Militia bar to clear, and no Morale gate at all — an
+        // Invasive tribe attacks because it wants to, not because it's
+        // thriving.
+        int militiaThreshold = militaristic ? MilitaristicInvasionMilitiaThreshold : InvasionMilitiaThreshold;
+        bool moraleOk = militaristic || village.Morale >= HighMoraleThreshold;
+        if (!moraleOk || ourMilitia <= militiaThreshold)
         {
             village.InvasionTarget = null;
             return;
         }
 
-        // Already marching on someone who's still a valid, still-weaker target.
+        // Already marching on someone who's still a valid target. A
+        // Militaristic tribe doesn't care whether its current target is
+        // still weaker than it — it committed to the nearest rival and
+        // sees it through; everyone else keeps re-checking relative
+        // strength every call.
         if (village.InvasionTarget is { } current && Villages.Contains(current) &&
             !(current.IsVassal && current.CapitalFactionID == village.FactionID) &&
-            IsWeakerThan(current, village, ourMilitia))
+            (militaristic || IsWeakerThan(current, village, ourMilitia)))
             return;
 
-        VillageHeart? weakest = null;
+        VillageHeart? best = null;
         float bestDistanceSquared = float.MaxValue;
         foreach (VillageHeart candidate in Villages)
         {
@@ -2541,17 +2564,20 @@ public sealed class World
                 continue;
             if (candidate.IsVassal && candidate.CapitalFactionID == village.FactionID)
                 continue; // Already ours.
-            if (!IsWeakerThan(candidate, village, ourMilitia))
+            // Trait-Driven Warfare: Militaristic ignores relative strength
+            // entirely and picks the nearest rival regardless; everyone
+            // else still only ever picks on someone weaker.
+            if (!militaristic && !IsWeakerThan(candidate, village, ourMilitia))
                 continue;
 
             float distanceSquared = Vector3.DistanceSquared(village.Center, candidate.Center);
             if (distanceSquared < bestDistanceSquared)
             {
-                weakest = candidate;
+                best = candidate;
                 bestDistanceSquared = distanceSquared;
             }
         }
-        village.InvasionTarget = weakest;
+        village.InvasionTarget = best;
     }
 
     /// <summary>Invasion &amp; Conquest: whether <paramref name="candidate"/> counts as weaker than <paramref name="invader"/> — lower Population, or fewer living Militia, than the invader's own count.</summary>
@@ -2631,6 +2657,9 @@ public sealed class World
         RunRefugeeProtocol(village, razedFactionId, attackerFactionId);
     }
 
+    /// <summary>Map Density Control: how close (in meters) a conquered Village Heart has to be to its invader's own capital before it's Razed outright instead of taken as a Vassal — see <see cref="ConquerVillage"/>.</summary>
+    public const float RazeInsteadOfVassalRadius = 25f;
+
     /// <summary>
     /// Vassal Colonies: Invasion &amp; Conquest's alternative to Base Razing
     /// — <paramref name="target"/> is NOT destroyed, has no loot shatter,
@@ -2647,11 +2676,26 @@ public sealed class World
     /// reassigning their FactionID (which would collide with
     /// <see cref="VillageFor"/> ever finding this specific Village Heart
     /// again as anyone's home).
+    ///
+    /// Map Density Control — Razing vs. Vassalizing: a Vassal left standing
+    /// right on the invader's own doorstep (within
+    /// <see cref="RazeInsteadOfVassalRadius"/> meters of <paramref name="invaderFactionId"/>'s
+    /// own Village Heart) is just clutter, not useful territory, so this
+    /// branches to <see cref="RazeConqueredVillage"/> instead — the target
+    /// and its buildings are torn down outright and its remaining
+    /// population is killed rather than annexed. Farther-out conquests
+    /// still take the ordinary Vassal path below unchanged.
     /// </summary>
     public void ConquerVillage(VillageHeart target, int invaderFactionId)
     {
         if (VillageFor(invaderFactionId) is not { } capital)
             return; // The would-be conqueror has no Village Heart of its own any more.
+
+        if (Vector3.DistanceSquared(target.Center, capital.Center) <= RazeInsteadOfVassalRadius * RazeInsteadOfVassalRadius)
+        {
+            RazeConqueredVillage(target, capital);
+            return;
+        }
 
         target.IsVassal = true;
         target.CapitalFactionID = invaderFactionId;
@@ -2672,6 +2716,33 @@ public sealed class World
         }
 
         QueueFloatingText(target.Center, "Conquered!", capital.FactionColor);
+    }
+
+    /// <summary>
+    /// Map Density Control: the too-close-to-annex branch of
+    /// <see cref="ConquerVillage"/> — clears <paramref name="target"/> and
+    /// every one of its Buildings/Blueprints via the shared
+    /// <see cref="RemoveVillageAndItsBuildings"/> cleanup (same helper
+    /// <see cref="DestroyVillageHeart"/> uses for ordinary Base Razing), then
+    /// kills every remaining living Bramblekin still on its roster outright
+    /// — no Refugee Protocol, no loot shatter, no Vassal Tribute. This is
+    /// the one path that actively removes a whole faction (and its footprint)
+    /// from the map rather than just changing who it answers to.
+    /// </summary>
+    private void RazeConqueredVillage(VillageHeart target, VillageHeart invaderCapital)
+    {
+        int razedFactionId = target.FactionID;
+        RemoveVillageAndItsBuildings(target);
+
+        for (int i = Colony.Count - 1; i >= 0; i--)
+        {
+            Bramblekin b = Colony[i];
+            if (!b.IsDead && b.FactionID == razedFactionId)
+                Kill(b);
+        }
+
+        QueueFloatingText(target.Center, "Razed!", invaderCapital.FactionColor);
+        Raylib.TraceLog(TraceLogLevel.Info, $"[RAZE] Tribe {invaderCapital.FactionID} razed Tribe {razedFactionId}'s Village Heart (too close to their own capital) to clear map space.");
     }
 
     /// <summary>
@@ -3935,6 +4006,16 @@ public sealed class World
         if (village.FoodStored < SchismFoodThreshold)
             return; // The Split Fix: 100 Food is plenty to send a party off safely — no need to wait for a full silo.
 
+        // Map Density Control: the True Schism would otherwise found yet
+        // another independent faction — with the map already at
+        // MaxActiveFactions, that's clutter and lost frame time, not
+        // growth. Redirect the same trigger into a Crusade instead.
+        if (Villages.Count >= MaxActiveFactions)
+        {
+            LaunchOverpopulationCrusade(village, SchismPioneerFood);
+            return;
+        }
+
         int totalGatherers = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Gatherer);
         int totalMilitia = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
         int totalLiving = totalGatherers + totalMilitia;
@@ -4039,6 +4120,16 @@ public sealed class World
         if (Colony.Any(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Settler))
             return; // Already got one on the road.
 
+        // Map Density Control: same reasoning as UpdateSchism above — with
+        // the map already at MaxActiveFactions, dispatching a Settler to
+        // found yet another faction is exactly the clutter Part 3 exists
+        // to prevent. Crusade instead.
+        if (Villages.Count >= MaxActiveFactions)
+        {
+            LaunchOverpopulationCrusade(village, SettlerFoodCost);
+            return;
+        }
+
         village.FoodStored -= SettlerFoodCost;
         village.Population = Math.Max(0, village.Population - SettlerPopulationCost);
 
@@ -4056,6 +4147,50 @@ public sealed class World
         var settler = new Bramblekin(spot, Rng, village.FactionID, village.FactionColor);
         settler.BecomeSettler(RandomSettlerTarget(village.Center), newFactionId, newFactionColor);
         _pendingBramblekinSpawns.Add(settler);
+    }
+
+    /// <summary>
+    /// Map Density Control — Overpopulation Crusades: the Faction Limit's
+    /// fallback for a tribe that's hit the Schism/Settler trigger (Population
+    /// overcap and a Food surplus banked) with <see cref="World.Villages"/>
+    /// already sitting at <see cref="MaxActiveFactions"/> — spawning a new
+    /// faction is off the table, so the same Food surplus is spent instead on
+    /// an instant, forced draft: up to <see cref="CrusadeMilitiaWaveSize"/>
+    /// Gatherers are promoted straight to Militia (<see cref="Bramblekin.PromoteToMilitia"/>,
+    /// the same conscription every faction already uses one-at-a-time — just
+    /// applied in one lump here), and this village's own
+    /// <see cref="VillageHeart.InvasionTarget"/> is pointed at a uniformly
+    /// random OTHER active Village Heart, "blind" — unlike the ordinary
+    /// Invasion &amp; Conquest AI (see <see cref="UpdateInvasionOrders"/>) this
+    /// never checks whether the target is actually weaker. The freshly
+    /// drafted Militia pick the order up the same way any other idle Militia
+    /// does (<see cref="Bramblekin.Update"/>'s Invasion priority) and march
+    /// out immediately. Composes with Part 2: a Militaristic faction hitting
+    /// the cap crusades exactly the same way — this check only ever looks at
+    /// <see cref="World.Villages"/>.Count, never at <see cref="FactionTrait"/>.
+    /// </summary>
+    private void LaunchOverpopulationCrusade(VillageHeart village, int foodCost)
+    {
+        village.FoodStored -= foodCost;
+
+        int drafted = 0;
+        for (int i = 0; i < CrusadeMilitiaWaveSize; i++)
+        {
+            Bramblekin? recruit = NearestByRole(village, BramblekinRole.Gatherer);
+            if (recruit is null)
+                break; // Ran out of spare Gatherers to draft — take whatever wave we got.
+            recruit.PromoteToMilitia();
+            drafted++;
+        }
+
+        List<VillageHeart> rivals = Villages.Where(v => v.FactionID != village.FactionID).ToList();
+        if (rivals.Count > 0)
+            village.InvasionTarget = rivals[Rng.Next(rivals.Count)];
+
+        string targetName = village.InvasionTarget is { } t ? FactionColorName(t.FactionColor) : "no one (no rivals left)";
+        QueueFloatingText(village.Center, $"[-{foodCost} Food] Overpopulation Crusade!", new Color(220, 30, 30, 255));
+        QueueGlobalAlert($"[CRUSADE] Tribe {village.FactionID} drafts {drafted} Militia and launches a desperate crusade against {targetName}!", village.FactionColor);
+        Raylib.TraceLog(TraceLogLevel.Info, $"[CRUSADE] Tribe {village.FactionID} at Faction Limit ({Villages.Count}/{MaxActiveFactions}) — drafted {drafted} Militia, crusading against {targetName} instead of spawning a new faction.");
     }
 
     /// <summary>
