@@ -137,8 +137,13 @@ public static class Game
         world.SpawnSpiderNearVillage();
         var input = new WorldTapInput();
         var touchCamera = new TouchCameraController();
-        var speedDownButton = new UiButton(new Rectangle(20, 20, 50, 44));
-        var speedUpButton = new UiButton(new Rectangle(130, 20, 50, 44));
+        // Debug Time Scale buttons: 3x their old size (50x44 -> 150x132) so
+        // they're comfortably tappable on a mobile screen; SpeedButtonGap
+        // is the width of the "Nx" label panel DrawSpeedLabel draws between
+        // them, scaled to match.
+        const int speedButtonWidth = 150, speedButtonHeight = 132, speedButtonGap = 180;
+        var speedDownButton = new UiButton(new Rectangle(20, 20, speedButtonWidth, speedButtonHeight));
+        var speedUpButton = new UiButton(new Rectangle(20 + speedButtonWidth + speedButtonGap, 20, speedButtonWidth, speedButtonHeight));
 
         // --- Main loop -------------------------------------------------------
         while (!Raylib.WindowShouldClose())
@@ -223,7 +228,9 @@ public static class Game
     /// <summary>The current speed ("5x"), on a small panel in the gap between the +/- buttons — gold once sped up.</summary>
     private static void DrawSpeedLabel()
     {
-        const int fontSize = 22, x = 70, width = 60, y = 20, height = 44;
+        // Kept in sync with the 3x-scaled speedDownButton/speedUpButton
+        // layout in Run: this panel fills the gap between them exactly.
+        const int fontSize = 64, x = 170, width = 180, y = 20, height = 132;
         Raylib.DrawRectangle(x, y, width, height, PanelFill);
         Raylib.DrawRectangleLines(x, y, width, height, PanelInk);
 
@@ -460,9 +467,10 @@ public static class Game
 /// held left mouse button, for testing on desktop) drags to pan across the
 /// terrain's X/Z plane; two fingers twisting around each other rotates the
 /// whole world around the camera's own Target on the Y axis; two fingers
-/// pinching in/out still zooms, exactly as before. <see cref="WorldTapInput"/>
-/// still gets a clean, undragged tap for faction-select/Genesis — see its
-/// own drag-threshold check — so this and that never fight over the same
+/// pinching in/out zooms; and two fingers sliding up or down together
+/// tilts the camera's pitch. <see cref="WorldTapInput"/> still gets a
+/// clean, undragged tap for faction-select/Genesis — see its own
+/// drag-threshold check — so this and that never fight over the same
 /// touch.
 /// </summary>
 public sealed class TouchCameraController
@@ -495,7 +503,22 @@ public sealed class TouchCameraController
 
     private float _lastTouchAngle;
     private float _lastPinchDistance;
+    private float _lastTwoFingerMidpointY;
     private bool _isTwoFingerGesture;
+
+    /// <summary>Radians of camera tilt (pitch) per pixel the two-finger midpoint moves vertically.</summary>
+    private const float TiltSensitivity = 0.005f;
+
+    /// <summary>
+    /// Steepest the camera may tilt down toward the horizon, in radians
+    /// above it. Kept well clear of 0 (dead level, which would put the
+    /// horizon in frame and let Position dip toward/through the ground)
+    /// and of a perfect 90° top-down (where azimuth becomes meaningless).
+    /// </summary>
+    private const float MinPitch = 0.26f; // ~15 degrees.
+
+    /// <summary>Flattest the camera may tilt toward straight-down.</summary>
+    private const float MaxPitch = 1.48f; // ~85 degrees.
 
     public void Update(ref Camera3D camera, float worldHalfSize)
     {
@@ -539,22 +562,34 @@ public sealed class TouchCameraController
         _isOneFingerGesture = true;
     }
 
-    /// <summary>Two-Finger Rotation + the old pinch-zoom, both read off the same two touch points.</summary>
+    /// <summary>
+    /// Two-Finger Rotation + Tilt + the old pinch-zoom, all read off the
+    /// same two touch points: the angle between them drives yaw, the
+    /// distance between them drives zoom (as before), and — since both of
+    /// those are already relative-to-each-other measures — the midpoint's
+    /// own vertical movement (both fingers sliding up or down together) is
+    /// free to drive pitch without fighting either one.
+    /// </summary>
     private void UpdateTwoFingerGesture(ref Camera3D camera)
     {
         Vector2 first = Raylib.GetTouchPosition(0);
         Vector2 second = Raylib.GetTouchPosition(1);
         float angle = MathF.Atan2(second.Y - first.Y, second.X - first.X);
         float distance = Vector2.Distance(first, second);
+        float midpointY = (first.Y + second.Y) / 2f;
 
         if (_isTwoFingerGesture)
         {
-            Rotate(ref camera, angle - _lastTouchAngle);
+            // Negated: dragging clockwise should turn the world clockwise
+            // beneath the camera, not the reverse.
+            Rotate(ref camera, -(angle - _lastTouchAngle));
             Zoom(ref camera, distance - _lastPinchDistance);
+            Tilt(ref camera, midpointY - _lastTwoFingerMidpointY);
         }
 
         _lastTouchAngle = angle;
         _lastPinchDistance = distance;
+        _lastTwoFingerMidpointY = midpointY;
         _isTwoFingerGesture = true;
     }
 
@@ -606,6 +641,36 @@ public sealed class TouchCameraController
             offset.Y,
             offset.X * sin + offset.Z * cos);
         camera.Position = camera.Target + rotatedOffset;
+    }
+
+    /// <summary>
+    /// Two-Finger Tilt: both fingers sliding up or down together changes
+    /// the camera's pitch (its elevation angle above the Target) while
+    /// holding its distance and azimuth (compass direction around the
+    /// Target) fixed — dragging down flattens toward a top-down view,
+    /// dragging up tilts it into a lower, more oblique angle. Clamped to
+    /// [MinPitch, MaxPitch] so it can never flatten past dead-level (which
+    /// would put the horizon in frame) or flip past straight-down.
+    /// </summary>
+    private static void Tilt(ref Camera3D camera, float midpointDeltaY)
+    {
+        if (midpointDeltaY == 0f)
+            return;
+
+        Vector3 offset = camera.Position - camera.Target;
+        float distance = offset.Length();
+        if (distance < 1e-4f)
+            return;
+
+        float horizontalDistance = MathF.Sqrt(offset.X * offset.X + offset.Z * offset.Z);
+        float azimuth = MathF.Atan2(offset.Z, offset.X);
+        float pitch = Math.Clamp(MathF.Atan2(offset.Y, horizontalDistance) + midpointDeltaY * TiltSensitivity, MinPitch, MaxPitch);
+
+        float newHorizontalDistance = distance * MathF.Cos(pitch);
+        camera.Position = camera.Target + new Vector3(
+            newHorizontalDistance * MathF.Cos(azimuth),
+            distance * MathF.Sin(pitch),
+            newHorizontalDistance * MathF.Sin(azimuth));
     }
 
     /// <summary>Moves Position along the Target->Position axis: fingers spreading apart zooms in.</summary>
@@ -7156,8 +7221,6 @@ public sealed class Aphid
 /// <summary>A minimal clickable rectangle with a centred text label.</summary>
 public sealed class UiButton
 {
-    private const int FontSize = 20;
-
     public Rectangle Bounds { get; }
 
     public UiButton(Rectangle bounds) => Bounds = bounds;
@@ -7176,10 +7239,14 @@ public sealed class UiButton
         Raylib.DrawRectangleRec(Bounds, fill);
         Raylib.DrawRectangleLinesEx(Bounds, 2f, Color.DarkGray);
 
-        // Centre the label inside the rectangle.
-        int textWidth = Raylib.MeasureText(label, FontSize);
+        // UI Text Scaling: sized off the button's own height rather than a
+        // fixed constant, so a bigger button (see the 3x-scaled Debug Time
+        // Scale buttons) automatically gets bigger, still-centred text
+        // instead of a tiny label lost in a large rectangle.
+        int fontSize = (int)(Bounds.Height * 0.5f);
+        int textWidth = Raylib.MeasureText(label, fontSize);
         int x = (int)(Bounds.X + (Bounds.Width - textWidth) / 2f);
-        int y = (int)(Bounds.Y + (Bounds.Height - FontSize) / 2f);
-        Raylib.DrawText(label, x, y, FontSize, disabled && !highlighted ? new Color(90, 80, 75, 255) : Color.Black);
+        int y = (int)(Bounds.Y + (Bounds.Height - fontSize) / 2f);
+        Raylib.DrawText(label, x, y, fontSize, disabled && !highlighted ? new Color(90, 80, 75, 255) : Color.Black);
     }
 }
