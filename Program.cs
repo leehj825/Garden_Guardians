@@ -1591,6 +1591,21 @@ public sealed class World
     /// <summary>Economic Buff: how often (seconds) the Village Heart pays its Upkeep food tax — doubled from 15s so Food Stored lasts much longer between taxes, leaving room to gather Amber instead of running a bare-survival loop.</summary>
     private const float UpkeepInterval = 30f;
 
+    /// <summary>Starvation Rebalance: how much Food Stored a single successful Gatherer delivery (<see cref="DeliverFood"/>) adds — raised from a flat +1 so a long-distance hike across rolling-hills terrain actually pays for itself faster than the Upkeep clock drains it.</summary>
+    private const int GatherYieldPerTrip = 5;
+
+    /// <summary>Starvation Rebalance, Subsistence Mode: a tiny tribe at or below this Population pays a drastically reduced Upkeep tax (see <see cref="UpdateUpkeep"/>) instead of the normal Population/8 cost, so it can bootstrap back up without its first food delivery being taxed away immediately.</summary>
+    private const int SubsistencePopulationThreshold = 3;
+
+    /// <summary>Starvation Rebalance, Subsistence Mode: the flat Upkeep cost charged instead of the normal formula while a tribe's Population is at or below <see cref="SubsistencePopulationThreshold"/> — kept at a small nonzero amount rather than fully free so a struggling village still feels the tax without it being able to instantly wipe out a brand new founder's cache.</summary>
+    private const int SubsistenceUpkeepCost = 1;
+
+    /// <summary>Founder's Care Package: the starting Food Stored a freshly-founded settlement (<see cref="FoundSettlement"/>) begins with, so it doesn't immediately trigger the starvation countdown before its Gatherers have made a single trip.</summary>
+    private const int FounderStartingFood = 15;
+
+    /// <summary>Founder's Care Package: how many extra Bramblekin (beyond the Settler-turned-founder) are instantly spawned as Gatherers alongside a freshly-founded settlement (<see cref="FoundSettlement"/>), so the new colony can parallelize gathering from Day 1.</summary>
+    private const int FounderExtraGathererCount = 2;
+
     /// <summary>How long (seconds) a floating text pop-up (Upkeep, Starvation) stays on screen.</summary>
     public const float FloatingTextDuration = 1.5f;
 
@@ -3424,7 +3439,10 @@ public sealed class World
     {
         if (!_pendingShardRemovals.Contains(shard))
             _pendingShardRemovals.Add(shard);
-        village.FoodStored = Math.Min(village.FoodStored + 1, village.MaxFoodCapacity);
+        // Rebalance, Higher Trip Payoff: a long-distance hike across rolling
+        // hills needs a bigger payoff than +1 to outrun the starvation
+        // clock — see GatherYieldPerTrip.
+        village.FoodStored = Math.Min(village.FoodStored + GatherYieldPerTrip, village.MaxFoodCapacity);
     }
 
     /// <summary>Tycoon Economy Dibs: same rules as <see cref="IsAvailable(FoodShard, Bramblekin)"/> — nobody carrying it, unclaimed (or claimed by <paramref name="claimant"/>).</summary>
@@ -4328,6 +4346,10 @@ public sealed class World
             // zero-Food tribe survives long enough for its founder to start
             // Gathering instead of starving to death before the next frame.
             UpkeepTimer = UpkeepInterval + SchismUpkeepGracePeriod,
+
+            // Founder's Care Package: a starting cache so the new base
+            // doesn't immediately trip the starvation countdown.
+            FoodStored = FounderStartingFood,
         };
 
         // Part 1, The Global List Append: confirmed already present and
@@ -4337,6 +4359,21 @@ public sealed class World
         Villages.Add(village);
         Raylib.TraceLog(TraceLogLevel.Info, $"[FOUNDATION] Villages.Add called — Villages.Count is now {Villages.Count}");
         RebuildObstacles();
+
+        // Founder's Care Package: 2 extra Bramblekin spawned right beside
+        // the founder, defaulting to BramblekinRole.Gatherer (see
+        // Bramblekin's own default Role), so the new colony can
+        // parallelize gathering from Day 1 instead of relying on one
+        // Settler-turned-founder's pathing. Population is recomputed live
+        // every frame from Colony (see UpdateJobManager), so simply adding
+        // these to Colony under the new factionId is enough for it to
+        // reflect all 3 founders without touching a Population field here.
+        for (int i = 0; i < FounderExtraGathererCount; i++)
+        {
+            Vector3 spot = RandomPointNearVillage(village, GenesisSpawnRadius, Bramblekin.BodyRadius + 0.1f)
+                           ?? RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin);
+            Colony.Add(new Bramblekin(spot, Rng, factionId, factionColor));
+        }
 
         // Part 3, Debug Visibility: an unmissable, temporary bright
         // pink/magenta beam at the exact spawn coordinate — see
@@ -4454,7 +4491,15 @@ public sealed class World
         if (village.FoodStored == 0)
             TryEmergencyFoodImport(village);
 
-        int cost = Math.Max(1, village.Population / 8);
+        // Starvation Rebalance, Subsistence Mode: a tiny tribe (Population
+        // <= SubsistencePopulationThreshold) pays a flat, drastically
+        // reduced tax instead of the normal Population/8 formula, so it
+        // can bootstrap itself back up rather than having its very first
+        // food delivery taxed away. Scoped to this Upkeep tax only — it
+        // doesn't touch Tribute/Vassal or any other FoodStored consumer.
+        int cost = village.Population <= SubsistencePopulationThreshold
+            ? SubsistenceUpkeepCost
+            : Math.Max(1, village.Population / 8);
         if (village.FoodStored >= cost)
         {
             village.FoodStored -= cost;
