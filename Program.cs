@@ -673,8 +673,20 @@ public static class Game
         if (_debugLogs.Count == 0)
             return;
 
-        const int fontSize = 12, lineHeight = 16;
-        int width = (int)(360 * UiScale);
+        // Readability: scaled by UiScale like the rest of this file's
+        // responsive UI (see DrawColonyPanel/DrawHud) rather than a fixed
+        // pixel size, so it stays legible at any screen size instead of
+        // shrinking to an unreadable 12px on a dense Android display. Width
+        // is measured from the widest actual log line (not a fixed guess)
+        // so the panel background always fits the larger text with no
+        // clipping and no wasted empty margin either.
+        int fontSize = (int)(18 * UiScale);
+        int lineHeight = fontSize + 4;
+        int widestLine = 0;
+        for (int i = 0; i < _debugLogs.Count; i++)
+            widestLine = Math.Max(widestLine, Raylib.MeasureText(_debugLogs[i], fontSize));
+
+        int width = widestLine + 16;
         int height = _debugLogs.Count * lineHeight + 16;
         int x = 10;
         int y = (Raylib.GetScreenHeight() - height) / 2;
@@ -2267,6 +2279,17 @@ public sealed class World
     };
 
     /// <summary>
+    /// Builder Stall Detector: seconds a Village Heart may continuously need
+    /// a Builder (see <see cref="VillageHeart.BuilderNeedTimer"/>) before
+    /// <see cref="UpdateJobManager"/> treats it as a genuine deadlock rather
+    /// than the normal single-tick delay while Builder Conscription/the
+    /// Manpower Deadlock Fallback resolve it. Comfortably longer than a
+    /// single frame's resolution, short enough to still catch a real stall
+    /// quickly during testing.
+    /// </summary>
+    private const float BuilderStallWarningThresholdSeconds = 8f;
+
+    /// <summary>
     /// The Job Manager: each Village Heart's own autonomous quartermaster.
     /// Every frame it recomputes its own faction's Population — strictly
     /// its own FactionID's living Bramblekin, never any other faction's —
@@ -2305,7 +2328,7 @@ public sealed class World
     /// producing a Builder, and the Blueprint's Progress staying frozen
     /// forever) whenever MilitiaTarget stayed persistently unmet.
     /// </summary>
-    private void UpdateJobManager(VillageHeart village)
+    private void UpdateJobManager(VillageHeart village, float deltaTime)
     {
         village.Population = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID);
         village.MilitiaTarget = village.Population / MilitiaTargetDivisorFor(village.Trait);
@@ -2333,10 +2356,37 @@ public sealed class World
                 // Militia before ever becoming a Builder).
                 conscript.DemoteToGatherer(this);
                 conscript.PromoteToBuilder();
+                Game.AddEventLog($"[BUILDER] Tribe {village.FactionID}: conscripted a Militia into Builder (no Gatherers available).");
             }
         }
         else if (currentBuilders > builderTarget)
             NearestByRole(village, BramblekinRole.Builder)?.DemoteToGatherer(this);
+
+        // Builder Stall Detector: independent of (and running after) all of
+        // the above, so it reports the counts as they actually stand once
+        // this tick's own promotions/demotions have already happened —
+        // proof either that the fallback above is genuinely not keeping up,
+        // or that Builder: 0 is simply correct because nothing needs
+        // building. See VillageHeart.BuilderNeedTimer's own doc comment.
+        currentBuilders = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Builder);
+        if (currentBuilders < builderTarget)
+        {
+            village.BuilderNeedTimer += deltaTime;
+            if (village.BuilderNeedTimer >= BuilderStallWarningThresholdSeconds && !village.BuilderStallWarned)
+            {
+                village.BuilderStallWarned = true;
+                int gathererCount = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Gatherer);
+                int militiaCount = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
+                string stallMessage = $"[BUILDER STALL] Tribe {village.FactionID} has needed a Builder for {village.BuilderNeedTimer:F0}s and still has none! (Gatherers: {gathererCount}, Militia: {militiaCount}, Builders: {currentBuilders})";
+                Raylib.TraceLog(TraceLogLevel.Warning, stallMessage);
+                Game.AddEventLog(stallMessage);
+            }
+        }
+        else
+        {
+            village.BuilderNeedTimer = 0f;
+            village.BuilderStallWarned = false;
+        }
     }
 
     /// <summary>
@@ -3322,7 +3372,7 @@ public sealed class World
         for (int villageIndex = Villages.Count - 1; villageIndex >= 0; villageIndex--)
         {
             VillageHeart village = Villages[villageIndex];
-            UpdateJobManager(village);
+            UpdateJobManager(village, deltaTime);
             UpdateMorale(village, deltaTime);
             village.DamageFlashTimer = MathF.Max(0f, village.DamageFlashTimer - deltaTime);
 
@@ -5978,6 +6028,27 @@ public sealed class VillageHeart
 
     /// <summary>Auto-Conscription: how many of this faction's Bramblekin the Job Manager currently wants as Militia.</summary>
     public int MilitiaTarget { get; internal set; }
+
+    /// <summary>
+    /// Builder Stall Detector: seconds this Village Heart has continuously
+    /// needed a Builder (<see cref="World.UpdateJobManager"/>'s
+    /// <c>currentBuilders &lt; builderTarget</c>) but still has none. Reset
+    /// to 0 the instant that condition clears; accumulated by
+    /// <c>deltaTime</c> otherwise. Crossing <see cref="World.BuilderStallWarningThresholdSeconds"/>
+    /// fires a one-shot diagnostic — see <see cref="World.UpdateJobManager"/> —
+    /// distinguishing a genuine Builder Conscription deadlock from a
+    /// perfectly ordinary <c>Builder: 0</c> (nothing left to build).
+    /// </summary>
+    internal float BuilderNeedTimer { get; set; }
+
+    /// <summary>
+    /// Builder Stall Detector: true once <see cref="BuilderNeedTimer"/> has
+    /// already fired its one-shot warning for the CURRENT stall episode, so
+    /// <see cref="World.UpdateJobManager"/> doesn't log it again every frame
+    /// past the threshold. Cleared alongside <see cref="BuilderNeedTimer"/>
+    /// the instant the stall resolves, arming the next episode to warn again.
+    /// </summary>
+    internal bool BuilderStallWarned { get; set; }
 
     /// <summary>Counts down to this faction's next Upkeep tax. Internal bookkeeping for <see cref="World"/>.</summary>
     internal float UpkeepTimer { get; set; }
