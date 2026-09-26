@@ -894,14 +894,35 @@ public sealed class Terrain
     /// </summary>
     private const float CellSize = 2f;
 
-    /// <summary>Forest Green — the lawn's primary mowed-grass color.</summary>
-    private static readonly Color GrassA = new(34, 139, 34, 255);
+    /// <summary>Forest Green — the lawn's single base grass color, height-tinted per cell (see <see cref="Draw"/>) rather than alternated in a checkerboard.</summary>
+    private static readonly Color GrassBase = new(34, 139, 34, 255);
 
-    /// <summary>Olive Drab — the lawn's secondary checkerboard color.</summary>
-    private static readonly Color GrassB = new(107, 142, 35, 255);
+    /// <summary>Yellow-Green — sunlit tint blended in for a cell's higher (peak) ground.</summary>
+    private static readonly Color GrassPeak = new(154, 205, 50, 255);
 
-    /// <summary>Brown dirt patch color, scattered deterministically across the lawn.</summary>
+    /// <summary>Dark shadow-green — blended in for a cell's lower (valley) ground.</summary>
+    private static readonly Color GrassValley = new(20, 80, 20, 255);
+
+    /// <summary>Brown dirt patch color, scattered deterministically across the lawn as a rare, sparse embellishment.</summary>
     private static readonly Color Dirt = new(120, 85, 55, 255);
+
+    /// <summary>
+    /// The height function's total amplitude (sum of its three stacked
+    /// sine/cosine terms' coefficients — see <see cref="World.GetHeightAt"/>),
+    /// used to normalize a cell's average height into a -1..1 tint factor.
+    /// </summary>
+    private const float HeightAmplitude = 5.5f;
+
+    /// <summary>Component-wise linear interpolation between two colors, alpha fixed at 255.</summary>
+    private static Color LerpColor(Color a, Color b, float t)
+    {
+        t = Math.Clamp(t, 0f, 1f);
+        return new Color(
+            (byte)(a.R + (b.R - a.R) * t),
+            (byte)(a.G + (b.G - a.G) * t),
+            (byte)(a.B + (b.B - a.B) * t),
+            (byte)255);
+    }
 
     /// <summary>
     /// Deterministic (not System.Random) hash of a cell's integer indices,
@@ -952,9 +973,25 @@ public sealed class Terrain
                 int cz = (int)MathF.Floor(z / CellSize);
                 uint hash = CellHash(cx, cz);
 
-                // Deterministic brown dirt patch roughly one cell in twelve;
-                // otherwise a checkerboard of the two greens.
-                Color color = (hash % 12 == 0) ? Dirt : (((cx + cz) & 1) == 0 ? GrassA : GrassB);
+                Color color;
+                if (hash % 40 == 0)
+                {
+                    // A rare, sparse dirt patch (~1 cell in 40) — an
+                    // occasional embellishment, not a repeating pattern.
+                    color = Dirt;
+                }
+                else
+                {
+                    // Organic height-based tinting: a single Forest Green
+                    // base, lightened toward a sunlit yellow-green on peaks
+                    // and darkened toward a shadowed green in valleys — no
+                    // checkerboard, just the cell's own average elevation.
+                    float avgHeight = (p00.Y + p10.Y + p01.Y + p11.Y) / 4f;
+                    float t = Math.Clamp(avgHeight / HeightAmplitude, -1f, 1f);
+                    color = t >= 0f
+                        ? LerpColor(GrassBase, GrassPeak, t)
+                        : LerpColor(GrassBase, GrassValley, -t);
+                }
 
                 // Two triangles, upward-facing winding (counter-clockwise
                 // when viewed from above/+Y).
@@ -1209,6 +1246,21 @@ public sealed class World
 
     /// <summary>Part 6, Grounding Entities: snaps <paramref name="position"/>'s Y onto the terrain's height at its (x, z).</summary>
     public static Vector3 Grounded(Vector3 position) => new(position.X, GetHeightAt(position.X, position.Z), position.Z);
+
+    /// <summary>
+    /// Follow-up Part 2, Fixing Buried Buildings: same terrain snap as
+    /// <see cref="Grounded(Vector3)"/>, but with an extra vertical
+    /// <paramref name="yOffset"/> added on top. The plain single-point
+    /// height sample used for grounding only reads the terrain exactly at
+    /// an entity's own (x, z); on a slope a wide footprint (a Village
+    /// Heart, a Cabin/Tent, a Garden Prop) can still visually dip into the
+    /// hillside on its downhill side, so a small explicit lift keeps the
+    /// base sitting flush on top of the soil instead of sinking into it.
+    /// Small/flat items (Food, Acorns, Amber, Chitin, etc.) keep using the
+    /// zero-offset overload above, since they don't need it.
+    /// </summary>
+    public static Vector3 Grounded(Vector3 position, float yOffset) =>
+        new(position.X, GetHeightAt(position.X, position.Z) + yOffset, position.Z);
 
     /// <summary>AI Time-Slicing: increments once per frame at the top of <see cref="Update(float)"/>; a Bramblekin only runs its heavy target-scanning ("Brain") logic on the frame where <c>FrameCounter % 15 == ID % 15</c>, staggering the load evenly across the colony.</summary>
     public long FrameCounter = 0;
@@ -4717,7 +4769,10 @@ public sealed class VillageHeart
 
     public VillageHeart(Vector3 center, int factionId, Color factionColor, Random rng)
     {
-        Center = World.Grounded(center); // Part 6: snap onto the hilly terrain.
+        // Part 6 + follow-up Part 2: snap onto the hilly terrain, with a
+        // small explicit lift so the mushroom's stalk base (drawn upward
+        // from Center in Draw) doesn't visually sink into a downhill slope.
+        Center = World.Grounded(center, yOffset: 0.15f);
         FactionID = factionId;
         FactionColor = factionColor;
         Trait = (FactionTrait)rng.Next(3);
@@ -5256,7 +5311,10 @@ public sealed class GardenProp
 
     public GardenProp(Vector3 groundPosition, GardenPropKind kind, float rotation, Random rng)
     {
-        Position = groundPosition;
+        // Follow-up Part 2: the caller already grounded this point via
+        // World.Grounded — add a small explicit lift here too so a Pebble/
+        // Twig/Dandelion's base doesn't visually sink into a slope.
+        Position = groundPosition + new Vector3(0, 0.06f, 0);
         Kind = kind;
         _rotation = rotation;
         _twigLength = 0.6f + (float)rng.NextDouble() * 0.9f;
@@ -5412,7 +5470,13 @@ public sealed class Building
 
     public Building(Vector3 position, BuildingKind kind, int factionId, Color factionColor)
     {
-        Position = World.Grounded(position); // Part 6: snap onto the hilly terrain.
+        // Part 6 + follow-up Part 2: snap onto the hilly terrain. Tents and
+        // Cabins (the Housing System's small, base-on-the-ground shapes)
+        // get a small explicit lift so their base doesn't visually sink
+        // into a downhill slope; the other, larger/flatter buildings are
+        // fine flush at the plain grounded height.
+        float groundOffset = kind is BuildingKind.Tent or BuildingKind.Cabin ? 0.1f : 0f;
+        Position = World.Grounded(position, groundOffset);
         Kind = kind;
         FactionID = factionId;
         FactionColor = factionColor;
@@ -5499,8 +5563,10 @@ public sealed class Building
             // leaf. DrawCylinder's first radius is the TOP face and the
             // second is the BOTTOM — 0 on top, TentRadius on the bottom, so
             // the point is up and the wide base sits on the ground.
-            var leaf = new Color(70, 140, 55, 255);
-            var leafEdge = new Color(35, 80, 30, 220);
+            // Follow-up Part 3: Tan (not green) so Tents read as a
+            // high-contrast dried-leaves/straw structure against the green map.
+            var leaf = new Color(210, 180, 140, 255);
+            var leafEdge = new Color(140, 110, 75, 220);
             var tentCenter = Position + new Vector3(0, TentHeight / 2f, 0);
             Raylib.DrawCylinder(tentCenter, 0f, TentRadius, TentHeight, 3, leaf);
             Raylib.DrawCylinderWires(tentCenter, 0f, TentRadius, TentHeight, 3, leafEdge);
@@ -5513,8 +5579,10 @@ public sealed class Building
             // flat via Rlgl scaling) set on a small stem-cap rim, reading
             // as a sturdier permanent home, distinct from the Tent's Leaf
             // Tent it replaces once a tribe reaches Tier 2.
-            var shell = new Color(150, 100, 55, 255);
-            var shellEdge = new Color(90, 58, 30, 220);
+            // Follow-up Part 3: Beige/Tan shell so the Cabin stays a
+            // high-contrast structure against the green map.
+            var shell = new Color(222, 196, 160, 255);
+            var shellEdge = new Color(150, 122, 90, 220);
             float domeRadius = CabinRadius * 0.95f;
             var domeCenter = Position + new Vector3(0, domeRadius * 0.55f, 0);
 
@@ -6903,12 +6971,28 @@ public sealed class Bramblekin
                     : CalmColor;
         Color color = TintWithFaction(baseColor);
 
+        // Follow-up Part 3: a small, dark, semi-transparent drop shadow at
+        // this unit's own X/Z on the ground, drawn before the body itself
+        // — a flat disc laid on the XZ plane (DrawCircle3D's rotationAxis
+        // tilts the circle out of its default XY plane; rotating 90° about
+        // X lays it flat) at a tiny epsilon above the terrain to avoid
+        // z-fighting with it. Makes a Bramblekin's exact ground position
+        // readable at a glance even against the busy hilly lawn.
+        var shadowCenter = new Vector3(Position.X, Position.Y + 0.02f, Position.Z);
+        Raylib.DrawCircle3D(shadowCenter, BodyRadius * 1.3f, new Vector3(1, 0, 0), 90f, new Color(0, 0, 0, 90));
+
         // A capsule standing upright: DrawCapsule takes the centres of its two
         // hemispherical ends, so inset them by the radius.
         var bottom = Position + new Vector3(0, BodyRadius, 0);
         var top = Position + new Vector3(0, BodyHeight - BodyRadius, 0);
         Raylib.DrawCapsule(bottom, top, BodyRadius, 8, 4, color);
         Raylib.DrawCapsuleWires(bottom, top, BodyRadius, 8, 4, new Color(0, 0, 0, 50));
+
+        // Follow-up Part 3: a small FactionColor highlight riding on top of
+        // the head, so a whole swarm's tribe reads at an instant glance
+        // without having to read the faint per-body tint.
+        var highlight = new Color(FactionColor.R, FactionColor.G, FactionColor.B, (byte)235);
+        Raylib.DrawSphere(top + new Vector3(0, BodyRadius * 0.5f, 0), BodyRadius * 0.35f, highlight);
 
         Vector2 facing = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;
 
@@ -6948,11 +7032,25 @@ public sealed class Bramblekin
         _carriedAmber?.Draw(Position + new Vector3(0, BodyHeight, 0));
     }
 
-    /// <summary>Unit Colors: blends a faint dash of <see cref="FactionColor"/> into a base body color, so tribes read apart without drowning out State/Role's own colour cues.</summary>
+    /// <summary>
+    /// Unit Colors: blends a dash of <see cref="FactionColor"/> into a base
+    /// body color, so tribes read apart without drowning out State/Role's
+    /// own colour cues. Follow-up Part 3: also brightens the mix a touch
+    /// (lerped toward white) and raised the FactionColor share so a swarm's
+    /// tribe reads clearly against the green terrain, on top of the drop
+    /// shadow drawn in <see cref="Draw"/> that pins each Bramblekin's
+    /// ground position at a glance.
+    /// </summary>
     private Color TintWithFaction(Color baseColor)
     {
-        const float tintStrength = 0.3f;
-        byte Mix(byte body, byte faction) => (byte)(body * (1f - tintStrength) + faction * tintStrength);
+        const float tintStrength = 0.45f;
+        const float brightenStrength = 0.12f;
+        byte Mix(byte body, byte faction)
+        {
+            float mixed = body * (1f - tintStrength) + faction * tintStrength;
+            float brightened = mixed * (1f - brightenStrength) + 255f * brightenStrength;
+            return (byte)Math.Clamp(brightened, 0f, 255f);
+        }
         return new Color(Mix(baseColor.R, FactionColor.R), Mix(baseColor.G, FactionColor.G), Mix(baseColor.B, FactionColor.B), baseColor.A);
     }
 
