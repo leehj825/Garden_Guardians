@@ -110,7 +110,17 @@ public static class Game
         Raylib.SetTargetFPS(TargetFps);
 
         // --- Build the world -------------------------------------------------
-        var camera = IsometricCamera.Create(target: Vector3.Zero, distance: 30f);
+        // The God-Camera: pulled back and up far enough to take in the
+        // entire 100x100 map at once, centered on the map's midpoint
+        // rather than the origin corner.
+        var camera = new Camera3D
+        {
+            Target = new Vector3(50.0f, 0.0f, 50.0f),
+            Position = new Vector3(50.0f, 120.0f, 150.0f),
+            Up = Vector3.UnitY,
+            FovY = 45f,
+            Projection = CameraProjection.Perspective,
+        };
         var world = new World(new Terrain(size: 100f), new Random(), ColonySize);
         world.SpawnSpiderNearVillage();
         var input = new WorldTapInput();
@@ -414,39 +424,6 @@ public static class Game
 // =============================================================================
 //  Camera
 // =============================================================================
-
-/// <summary>
-/// Builds a fixed isometric-style perspective camera.
-/// </summary>
-public static class IsometricCamera
-{
-    /// <summary>
-    /// Creates a camera that looks down at <paramref name="target"/> from a
-    /// 45° elevation, rotated 45° around the vertical axis (the classic
-    /// isometric diagonal view).
-    /// </summary>
-    /// <param name="target">World point the camera looks at.</param>
-    /// <param name="distance">Straight-line distance from camera to target, in meters.</param>
-    public static Camera3D Create(Vector3 target, float distance)
-    {
-        // A 45° pitch means the camera's height equals its horizontal distance
-        // from the target: h = d·sin(45°), horizontal = d·cos(45°).
-        float height = distance * MathF.Sin(MathF.PI / 4f);
-        float horizontal = distance * MathF.Cos(MathF.PI / 4f);
-
-        // A 45° yaw splits the horizontal distance equally between X and Z.
-        float xz = horizontal * MathF.Cos(MathF.PI / 4f);
-
-        return new Camera3D
-        {
-            Position = target + new Vector3(xz, height, xz),
-            Target = target,
-            Up = Vector3.UnitY,
-            FovY = 45f,                                   // Degrees, vertical.
-            Projection = CameraProjection.Perspective,
-        };
-    }
-}
 
 /// <summary>
 /// Mobile camera controls layered on top of the fixed isometric view. A
@@ -793,6 +770,67 @@ public readonly record struct Obstacle(Vector2 Center, float Radius);
 ///   Auto-Construction, the True Schism) -> acorn/amber/berry/spider respawn
 ///   -> loot despawn.
 /// </summary>
+/// <summary>
+/// The Spatial Grid: divides the map into fixed <see cref="ChunkSize"/>
+/// (10m) chunks keyed by (chunk-x, chunk-z), so a nearest-target search
+/// can look only at the handful of entities near the searcher instead of
+/// scanning every entity on the whole map. Rebuilt from scratch once a
+/// frame (see <see cref="World.RebuildSpatialGrids"/>) rather than having
+/// each entity push incremental chunk-membership updates as it moves —
+/// cheaper and simpler for a world that already rebuilds its obstacle
+/// list the same way every frame, and exactly equivalent to updating each
+/// entity's chunk registration on every move, since every entity moves at
+/// most once per frame anyway.
+/// </summary>
+public sealed class SpatialGrid<T>
+{
+    public const float ChunkSize = 10f;
+
+    private readonly Dictionary<(int X, int Z), List<T>> _cells = new();
+
+    private static (int X, int Z) ChunkOf(Vector3 position) =>
+        ((int)MathF.Floor(position.X / ChunkSize), (int)MathF.Floor(position.Z / ChunkSize));
+
+    /// <summary>Empties every chunk, ready for this frame's <see cref="Register"/> calls.</summary>
+    public void Clear()
+    {
+        foreach (var list in _cells.Values)
+            list.Clear();
+    }
+
+    /// <summary>Registers <paramref name="item"/> under the chunk containing <paramref name="position"/>.</summary>
+    public void Register(T item, Vector3 position)
+    {
+        var key = ChunkOf(position);
+        if (!_cells.TryGetValue(key, out List<T>? list))
+        {
+            list = new List<T>();
+            _cells[key] = list;
+        }
+        list.Add(item);
+    }
+
+    /// <summary>
+    /// Fills <paramref name="results"/> (cleared first) with every item
+    /// registered in the chunk containing <paramref name="position"/> and
+    /// its 8 neighbors — a 30x30m window around the searcher, not the
+    /// whole map.
+    /// </summary>
+    public void QueryNearby(Vector3 position, List<T> results)
+    {
+        results.Clear();
+        var (cx, cz) = ChunkOf(position);
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            for (int dz = -1; dz <= 1; dz++)
+            {
+                if (_cells.TryGetValue((cx + dx, cz + dz), out List<T>? list))
+                    results.AddRange(list);
+            }
+        }
+    }
+}
+
 public sealed class World
 {
     /// <summary>AI Time-Slicing: increments once per frame at the top of <see cref="Update(float)"/>; a Bramblekin only runs its heavy target-scanning ("Brain") logic on the frame where <c>FrameCounter % 15 == ID % 15</c>, staggering the load evenly across the colony.</summary>
@@ -819,6 +857,22 @@ public sealed class World
 
     /// <summary>How many Acorns the map starts with.</summary>
     private const int InitialAcorns = 2;
+
+    /// <summary>
+    /// Object Pooling: fixed size of the <see cref="Acorns"/> pool,
+    /// pre-allocated once at startup instead of growing/shrinking with
+    /// Add/RemoveAt every spawn/shatter. Generously above any realistic
+    /// <see cref="MaxAcorns"/> ceiling (which itself scales with faction
+    /// count via Dynamic Ecosystem Scaling) so the pool is never the thing
+    /// that runs out.
+    /// </summary>
+    private const int AcornPoolCapacity = 300;
+
+    /// <summary>Object Pooling: fixed size of the <see cref="FoodShards"/> pool — see <see cref="AcornPoolCapacity"/>. Generously above any realistic <see cref="MaxBerries"/> ceiling plus every Cooperative Acorn Cracking/Aphid-hunt/Base-Razing scatter that can pile on top of it.</summary>
+    private const int FoodShardPoolCapacity = 1000;
+
+    /// <summary>Object Pooling: fixed size of the <see cref="AmberNodes"/> pool — see <see cref="AcornPoolCapacity"/>. Generously above any realistic <see cref="MaxAmberOnMap"/> ceiling.</summary>
+    private const int AmberPoolCapacity = 100;
 
     /// <summary>
     /// Cooperative Acorn Cracking: extra reach (m) beyond a Chitin-Mallet
@@ -1104,7 +1158,8 @@ public sealed class World
     // CommitPendingChanges(), after every Update() and Draw() this frame.
     private readonly List<Bramblekin> _pendingBramblekinSpawns = new();
     private readonly List<Bramblekin> _pendingBramblekinRemovals = new();
-    private readonly List<FoodShard> _pendingShardSpawns = new();
+    /// <summary>Object Pooling: queued (position, kind) spawn requests, applied by activating a pool slot at flush time rather than constructing a FoodShard up front — see <see cref="CommitPendingChanges"/>.</summary>
+    private readonly List<(Vector3 Position, FoodShardKind Kind)> _pendingShardSpawns = new();
     private readonly List<FoodShard> _pendingShardRemovals = new();
     private readonly List<AmberNode> _pendingAmberRemovals = new();
     private readonly List<Aphid> _pendingAphidSpawns = new();
@@ -1113,6 +1168,19 @@ public sealed class World
     private readonly List<SpiderFang> _pendingFangRemovals = new();
     private readonly List<Chitin> _pendingChitinSpawns = new();
     private readonly List<Chitin> _pendingChitinRemovals = new();
+
+    // The Spatial Grid: see RebuildSpatialGrids. Query results are written
+    // into these reusable scratch buffers rather than allocating a fresh
+    // list per targeting call — safe because the whole simulation runs
+    // single-threaded and no query result is held across another query.
+    private readonly SpatialGrid<FoodShard> _foodGrid = new();
+    private readonly SpatialGrid<Acorn> _acornGrid = new();
+    private readonly SpatialGrid<AmberNode> _amberGrid = new();
+    private readonly SpatialGrid<Bramblekin> _colonyGrid = new();
+    private readonly List<FoodShard> _foodQueryBuffer = new();
+    private readonly List<Acorn> _acornQueryBuffer = new();
+    private readonly List<AmberNode> _amberQueryBuffer = new();
+    private readonly List<Bramblekin> _colonyQueryBuffer = new();
 
     private float _berrySpawnTimer = BerrySpawnInterval;
     private float _aphidRespawnTimer = AphidRespawnDelay;
@@ -1240,14 +1308,64 @@ public sealed class World
         Villages.Add(villageHeart);
         RebuildObstacles();
 
+        // Object Pooling: Acorns/FoodShards/AmberNodes are fixed-size pools,
+        // every slot constructed once here (inactive) rather than
+        // instantiated and destroyed per spawn/pickup/despawn — see
+        // ActivateAcorn/ActivateFoodShard/ActivateAmberNode.
+        for (int i = 0; i < AcornPoolCapacity; i++)
+            Acorns.Add(new Acorn());
+        for (int i = 0; i < FoodShardPoolCapacity; i++)
+            FoodShards.Add(new FoodShard());
+        for (int i = 0; i < AmberPoolCapacity; i++)
+            AmberNodes.Add(new AmberNode());
+
         for (int i = 0; i < InitialAcorns; i++)
-            Acorns.Add(new Acorn(RandomAcornSpot()));
+            ActivateAcorn(RandomAcornSpot());
 
         for (int i = 0; i < colonySize; i++)
             Colony.Add(new Bramblekin(RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin), rng, villageHeart.FactionID, villageHeart.FactionColor));
 
         for (int i = 0; i < MaxAphids; i++)
             Aphids.Add(new Aphid(RandomFreePoint(Aphid.BodyRadius, Aphid.EdgeMargin), rng));
+    }
+
+    /// <summary>Object Pooling: activates the first inactive slot in <see cref="Acorns"/> at <paramref name="position"/>, or silently does nothing if the pool is exhausted.</summary>
+    private void ActivateAcorn(Vector3 position)
+    {
+        foreach (Acorn acorn in Acorns)
+        {
+            if (!acorn.IsActive)
+            {
+                acorn.Activate(position);
+                return;
+            }
+        }
+    }
+
+    /// <summary>Object Pooling: activates the first inactive slot in <see cref="FoodShards"/> at <paramref name="position"/>, or silently does nothing if the pool is exhausted.</summary>
+    private void ActivateFoodShard(Vector3 position, FoodShardKind kind = FoodShardKind.Cracked)
+    {
+        foreach (FoodShard shard in FoodShards)
+        {
+            if (!shard.IsActive)
+            {
+                shard.Activate(position, kind);
+                return;
+            }
+        }
+    }
+
+    /// <summary>Object Pooling: activates the first inactive slot in <see cref="AmberNodes"/> at <paramref name="position"/>, or silently does nothing if the pool is exhausted.</summary>
+    private void ActivateAmberNode(Vector3 position)
+    {
+        foreach (AmberNode amber in AmberNodes)
+        {
+            if (!amber.IsActive)
+            {
+                amber.Activate(position);
+                return;
+            }
+        }
     }
 
     /// <summary>The Village Heart whose Faction matches <paramref name="factionId"/>, if any.</summary>
@@ -1476,9 +1594,11 @@ public sealed class World
         Bramblekin? nearest = null;
         float bestDistanceSquared = BaseDefenseAggroRadius * BaseDefenseAggroRadius;
 
-        for (int i = Colony.Count - 1; i >= 0; i--)
+        // The Spatial Grid: only the Colony chunks around home's own centre.
+        _colonyGrid.QueryNearby(home.Center, _colonyQueryBuffer);
+        for (int i = _colonyQueryBuffer.Count - 1; i >= 0; i--)
         {
-            Bramblekin intruder = Colony[i];
+            Bramblekin intruder = _colonyQueryBuffer[i];
             if (intruder.IsDead || intruder.FactionID == home.FactionID)
                 continue;
 
@@ -1536,9 +1656,11 @@ public sealed class World
         float bestDistanceSquared = float.MaxValue;
         float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
 
-        for (int i = Colony.Count - 1; i >= 0; i--)
+        // The Spatial Grid: only the Colony chunks around home's own centre.
+        _colonyGrid.QueryNearby(home.Center, _colonyQueryBuffer);
+        for (int i = _colonyQueryBuffer.Count - 1; i >= 0; i--)
         {
-            Bramblekin trespasser = Colony[i];
+            Bramblekin trespasser = _colonyQueryBuffer[i];
             if (trespasser.IsDead || trespasser.TrespassingAgainst != home)
                 continue;
 
@@ -1568,9 +1690,11 @@ public sealed class World
             return false;
 
         float radiusSquared = radius * radius;
-        for (int i = Colony.Count - 1; i >= 0; i--)
+        // The Spatial Grid: only the Colony chunks around position itself.
+        _colonyGrid.QueryNearby(position, _colonyQueryBuffer);
+        for (int i = _colonyQueryBuffer.Count - 1; i >= 0; i--)
         {
-            Bramblekin enemy = Colony[i];
+            Bramblekin enemy = _colonyQueryBuffer[i];
             if (enemy.IsDead || !home.HostileFactions.ContainsKey(enemy.FactionID))
                 continue;
             if (Vector3.DistanceSquared(enemy.Position, position) <= radiusSquared)
@@ -1601,9 +1725,11 @@ public sealed class World
         float bestDistanceSquared = float.MaxValue;
         float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
 
-        for (int i = Colony.Count - 1; i >= 0; i--)
+        // The Spatial Grid: only the Colony chunks around home's own centre.
+        _colonyGrid.QueryNearby(home.Center, _colonyQueryBuffer);
+        for (int i = _colonyQueryBuffer.Count - 1; i >= 0; i--)
         {
-            Bramblekin enemy = Colony[i];
+            Bramblekin enemy = _colonyQueryBuffer[i];
             if (enemy.IsDead || !home.HostileFactions.ContainsKey(enemy.FactionID))
                 continue;
 
@@ -1742,7 +1868,7 @@ public sealed class World
             var position = village.Center + new Vector3(MathF.Cos(angle), 0, MathF.Sin(angle)) * distance;
             position.X = Math.Clamp(position.X, -half, half);
             position.Z = Math.Clamp(position.Z, -half, half);
-            _pendingShardSpawns.Add(new FoodShard(position));
+            _pendingShardSpawns.Add((position, FoodShardKind.Cracked));
         }
 
         _splats.Add((village.Center, SplatDuration));
@@ -1807,7 +1933,7 @@ public sealed class World
             var position = aphid.Position + new Vector3(MathF.Cos(angle), 0, MathF.Sin(angle)) * 0.3f;
             position.X = Math.Clamp(position.X, -half, half);
             position.Z = Math.Clamp(position.Z, -half, half);
-            _pendingShardSpawns.Add(new FoodShard(position, FoodShardKind.Cracked));
+            _pendingShardSpawns.Add((position, FoodShardKind.Cracked));
         }
     }
 
@@ -1819,13 +1945,13 @@ public sealed class World
             return;
         _berrySpawnTimer = BerrySpawnInterval;
 
-        int berries = FoodShards.Count(s => s.Kind == FoodShardKind.Berry)
+        int berries = FoodShards.Count(s => s.IsActive && s.Kind == FoodShardKind.Berry)
                     + _pendingShardSpawns.Count(s => s.Kind == FoodShardKind.Berry);
         if (berries >= MaxBerries)
             return;
 
         Vector3 spot = RandomWildernessSpot(FoodShard.Radius + 0.3f, edgeMargin: 1f);
-        _pendingShardSpawns.Add(new FoodShard(spot, FoodShardKind.Berry));
+        _pendingShardSpawns.Add((spot, FoodShardKind.Berry));
     }
 
     /// <summary>Tops the Aphid population back up to <see cref="MaxAphids"/> after a loss.</summary>
@@ -1856,7 +1982,7 @@ public sealed class World
     {
         foreach (FoodShard shard in FoodShards)
         {
-            if (shard.ClaimedBy is null)
+            if (!shard.IsActive || shard.ClaimedBy is null)
                 continue;
 
             shard.ClaimTimer += deltaTime;
@@ -1870,7 +1996,7 @@ public sealed class World
         // Same Dibs failsafe, applied to Amber.
         foreach (AmberNode amber in AmberNodes)
         {
-            if (amber.ClaimedBy is null)
+            if (!amber.IsActive || amber.ClaimedBy is null)
                 continue;
 
             amber.ClaimTimer += deltaTime;
@@ -1902,23 +2028,23 @@ public sealed class World
         for (int i = FoodShards.Count - 1; i >= 0; i--)
         {
             FoodShard shard = FoodShards[i];
-            if (shard.IsCarried)
+            if (!shard.IsActive || shard.IsCarried) // Object Pooling: an inactive slot has nothing to despawn.
                 continue;
 
             shard.DespawnTimer -= deltaTime;
             if (shard.DespawnTimer <= 0f)
-                FoodShards.RemoveAt(i);
+                shard.Deactivate();
         }
 
         for (int i = AmberNodes.Count - 1; i >= 0; i--)
         {
             AmberNode amber = AmberNodes[i];
-            if (amber.IsCarried)
+            if (!amber.IsActive || amber.IsCarried) // Object Pooling: an inactive slot has nothing to despawn.
                 continue;
 
             amber.DespawnTimer -= deltaTime;
             if (amber.DespawnTimer <= 0f)
-                AmberNodes.RemoveAt(i);
+                amber.Deactivate();
         }
     }
 
@@ -1927,6 +2053,7 @@ public sealed class World
         FrameCounter++;
         UpdateFoodClaimTimeouts(deltaTime);
         RebuildObstacles();
+        RebuildSpatialGrids();
         PushFoodOutOfObstacles();
 
         // Ambient prey moves before the colony reacts to it this frame.
@@ -2096,23 +2223,28 @@ public sealed class World
             _pendingBramblekinSpawns.Clear();
         }
 
+        // Object Pooling: a removal returns its pool slot (Deactivate)
+        // rather than removing it from the (now fixed-size) list; a spawn
+        // activates the first free slot rather than constructing a new
+        // FoodShard — see ActivateFoodShard.
         if (_pendingShardRemovals.Count > 0)
         {
             for (int i = _pendingShardRemovals.Count - 1; i >= 0; i--)
-                FoodShards.Remove(_pendingShardRemovals[i]);
+                _pendingShardRemovals[i].Deactivate();
             _pendingShardRemovals.Clear();
         }
 
         if (_pendingShardSpawns.Count > 0)
         {
-            FoodShards.AddRange(_pendingShardSpawns);
+            foreach (var (position, kind) in _pendingShardSpawns)
+                ActivateFoodShard(position, kind);
             _pendingShardSpawns.Clear();
         }
 
         if (_pendingAmberRemovals.Count > 0)
         {
             for (int i = _pendingAmberRemovals.Count - 1; i >= 0; i--)
-                AmberNodes.Remove(_pendingAmberRemovals[i]);
+                _pendingAmberRemovals[i].Deactivate();
             _pendingAmberRemovals.Clear();
         }
 
@@ -2186,17 +2318,21 @@ public sealed class World
         for (int i = Villages.Count - 1; i >= 0; i--)
             Villages[i].Draw();
 
+        // Object Pooling: Acorns/AmberNodes/FoodShards are fixed-size pools
+        // pre-allocated up to their map caps — most slots sit inactive at
+        // any given time, so every rendering (and targeting) loop over them
+        // must skip anything with IsActive false.
         for (int i = Acorns.Count - 1; i >= 0; i--)
         {
             Acorn acorn = Acorns[i];
-            if (IsOnScreen(acorn.Position, camera))
+            if (acorn.IsActive && IsOnScreen(acorn.Position, camera))
                 acorn.Draw();
         }
 
         for (int i = AmberNodes.Count - 1; i >= 0; i--)
         {
             AmberNode amber = AmberNodes[i];
-            if (!amber.IsCarried && IsOnScreen(amber.Position, camera))
+            if (amber.IsActive && !amber.IsCarried && IsOnScreen(amber.Position, camera))
                 amber.Draw(amber.Position);
         }
 
@@ -2208,7 +2344,7 @@ public sealed class World
         for (int i = FoodShards.Count - 1; i >= 0; i--)
         {
             FoodShard shard = FoodShards[i];
-            if (!shard.IsCarried && IsOnScreen(shard.Position, camera))
+            if (shard.IsActive && !shard.IsCarried && IsOnScreen(shard.Position, camera))
                 shard.Draw(shard.Position);
         }
 
@@ -2263,7 +2399,8 @@ public sealed class World
     /// shard wedged somewhere unreachable.
     /// </summary>
     public bool IsAvailable(FoodShard shard, Bramblekin claimant) =>
-        !shard.IsCarried
+        shard.IsActive // Object Pooling: an inactive slot is not a real shard.
+        && !shard.IsCarried
         && (shard.ClaimedBy is null || shard.ClaimedBy == claimant)
         && !IsBlocked(shard.Position, 0f);
 
@@ -2319,9 +2456,12 @@ public sealed class World
         // whatever's nearest anywhere within MaxGatherSearchRadius (still never foreign).
         bool desperate = home is not null && home.FoodStored < DesperationFoodThreshold;
 
-        for (int i = FoodShards.Count - 1; i >= 0; i--)
+        // The Spatial Grid: only the shards in from's own 10m chunk and its
+        // 8 neighbors are ever considered — see SpatialGrid.
+        _foodGrid.QueryNearby(from, _foodQueryBuffer);
+        for (int i = _foodQueryBuffer.Count - 1; i >= 0; i--)
         {
-            FoodShard shard = FoodShards[i];
+            FoodShard shard = _foodQueryBuffer[i];
             if (!IsAvailable(shard, claimant))
                 continue;
             if (IsForeignTerritory(shard.Position, claimant.FactionID))
@@ -2371,7 +2511,8 @@ public sealed class World
 
     /// <summary>Tycoon Economy Dibs: same rules as <see cref="IsAvailable(FoodShard, Bramblekin)"/> — nobody carrying it, unclaimed (or claimed by <paramref name="claimant"/>).</summary>
     public bool IsAvailable(AmberNode amber, Bramblekin claimant) =>
-        !amber.IsCarried
+        amber.IsActive // Object Pooling: an inactive slot is not a real Amber node.
+        && !amber.IsCarried
         && (amber.ClaimedBy is null || amber.ClaimedBy == claimant)
         && !IsBlocked(amber.Position, 0f);
 
@@ -2390,9 +2531,11 @@ public sealed class World
         AmberNode? best = null;
         float bestDistanceSquared = float.MaxValue;
         float maxGatherSearchRadiusSquared = MaxGatherSearchRadius * MaxGatherSearchRadius;
-        for (int i = AmberNodes.Count - 1; i >= 0; i--)
+        // The Spatial Grid: only from's own 10m chunk and its 8 neighbors.
+        _amberGrid.QueryNearby(from, _amberQueryBuffer);
+        for (int i = _amberQueryBuffer.Count - 1; i >= 0; i--)
         {
-            AmberNode amber = AmberNodes[i];
+            AmberNode amber = _amberQueryBuffer[i];
             if (!IsAvailable(amber, claimant))
                 continue;
             if (IsForeignTerritory(amber.Position, claimant.FactionID))
@@ -2945,7 +3088,7 @@ public sealed class World
         {
             Building building = Buildings[i];
             if (building.TickSporeTimer(deltaTime))
-                _pendingShardSpawns.Add(new FoodShard(building.Position, FoodShardKind.Berry));
+                _pendingShardSpawns.Add((building.Position, FoodShardKind.Berry));
         }
     }
 
@@ -3177,6 +3320,53 @@ public sealed class World
     }
 
     /// <summary>
+    /// The Spatial Grid: every living Bramblekin registered within 10m
+    /// chunks of <paramref name="position"/> (its own chunk plus the 8
+    /// neighbors) — used by the Wolf Spider's prey/Militia search and an
+    /// Aphid's flee check, same restricted-scan pattern as the Bramblekin
+    /// resource searches. The returned list is a reused scratch buffer:
+    /// safe to iterate immediately, but don't hold onto it past the call
+    /// that reads it.
+    /// </summary>
+    public List<Bramblekin> QueryNearbyColony(Vector3 position)
+    {
+        _colonyGrid.QueryNearby(position, _colonyQueryBuffer);
+        return _colonyQueryBuffer;
+    }
+
+    /// <summary>The Spatial Grid: every active, gatherable Food Shard/Acorn/AmberNode and every living Bramblekin, re-registered into its current 10m chunk. Rebuilt fresh once a frame, same pattern as <see cref="RebuildObstacles"/>, rather than tracked incrementally as each entity moves.</summary>
+    private void RebuildSpatialGrids()
+    {
+        _foodGrid.Clear();
+        foreach (FoodShard shard in FoodShards)
+        {
+            if (shard.IsActive && !shard.IsCarried)
+                _foodGrid.Register(shard, shard.Position);
+        }
+
+        _acornGrid.Clear();
+        foreach (Acorn acorn in Acorns)
+        {
+            if (acorn.IsActive)
+                _acornGrid.Register(acorn, acorn.Position);
+        }
+
+        _amberGrid.Clear();
+        foreach (AmberNode amber in AmberNodes)
+        {
+            if (amber.IsActive && !amber.IsCarried)
+                _amberGrid.Register(amber, amber.Position);
+        }
+
+        _colonyGrid.Clear();
+        foreach (Bramblekin bramblekin in Colony)
+        {
+            if (!bramblekin.IsDead)
+                _colonyGrid.Register(bramblekin, bramblekin.Position);
+        }
+    }
+
+    /// <summary>
     /// Rocks shove food aside instead of burying it: any shard on the ground
     /// that overlaps a rock (or the village) is slid straight out along the
     /// line from the obstacle's centre. A second pass catches a shard pushed
@@ -3189,7 +3379,7 @@ public sealed class World
         for (int i = FoodShards.Count - 1; i >= 0; i--)
         {
             FoodShard shard = FoodShards[i];
-            if (shard.IsCarried)
+            if (!shard.IsActive || shard.IsCarried) // Object Pooling: an inactive slot isn't really sitting anywhere.
                 continue;
 
             var position = new Vector2(shard.Position.X, shard.Position.Z);
@@ -3237,9 +3427,13 @@ public sealed class World
         Acorn? best = null;
         float bestDistanceSquared = float.MaxValue;
         float maxGatherSearchRadiusSquared = MaxGatherSearchRadius * MaxGatherSearchRadius;
-        for (int i = Acorns.Count - 1; i >= 0; i--)
+        // The Spatial Grid: only from's own 10m chunk and its 8 neighbors.
+        _acornGrid.QueryNearby(from, _acornQueryBuffer);
+        for (int i = _acornQueryBuffer.Count - 1; i >= 0; i--)
         {
-            Acorn acorn = Acorns[i];
+            Acorn acorn = _acornQueryBuffer[i];
+            if (!acorn.IsActive) // Object Pooling: an inactive slot is not a real Acorn.
+                continue;
             if (!acorn.IsClaimedBy(gatherer) && acorn.Claimants.Count >= Acorn.MaxClaimants)
                 continue;
             if (IsForeignTerritory(acorn.Position, gatherer.FactionID))
@@ -3273,14 +3467,14 @@ public sealed class World
         for (int i = Acorns.Count - 1; i >= 0; i--)
         {
             Acorn acorn = Acorns[i];
-            if (acorn.CrackProgress < acorn.CrackThreshold)
+            if (!acorn.IsActive || acorn.CrackProgress < acorn.CrackThreshold) // Object Pooling: an inactive slot never shatters.
                 continue;
 
             foreach (Bramblekin claimant in acorn.Claimants)
                 claimant.OnAcornShattered();
 
             ScatterFoodShardsAround(acorn.Position, ShardsPerAcorn, Acorn.Radius + FoodShard.Radius + 0.35f);
-            Acorns.RemoveAt(i);
+            acorn.Deactivate();
         }
     }
 
@@ -3302,7 +3496,7 @@ public sealed class World
                 Math.Clamp(center.X + MathF.Cos(angle) * distance, -half, half),
                 Terrain.GroundHeight,
                 Math.Clamp(center.Z + MathF.Sin(angle) * distance, -half, half));
-            _pendingShardSpawns.Add(new FoodShard(position));
+            _pendingShardSpawns.Add((position, FoodShardKind.Cracked));
         }
     }
 
@@ -3358,10 +3552,12 @@ public sealed class World
             return;
         _acornSpawnTimer = AcornSpawnInterval;
 
-        if (Acorns.Count >= MaxAcorns)
+        // Object Pooling: Acorns.Count is now the fixed pool size, not the
+        // live count — MaxAcorns caps how many are actually active.
+        if (Acorns.Count(a => a.IsActive) >= MaxAcorns)
             return;
 
-        Acorns.Add(new Acorn(RandomAcornSpot()));
+        ActivateAcorn(RandomAcornSpot());
     }
 
     /// <summary>Somewhere open anywhere on the map, outside every Village Heart's Territory Ring — see <see cref="RandomWildernessSpot"/>.</summary>
@@ -3381,10 +3577,12 @@ public sealed class World
             return;
         _amberSpawnTimer = AmberSpawnInterval;
 
-        if (AmberNodes.Count >= MaxAmberOnMap)
+        // Object Pooling: AmberNodes.Count is now the fixed pool size, not
+        // the live count — MaxAmberOnMap caps how many are actually active.
+        if (AmberNodes.Count(a => a.IsActive) >= MaxAmberOnMap)
             return;
 
-        AmberNodes.Add(new AmberNode(RandomWildernessSpot(AmberNode.Radius + 0.5f, edgeMargin: 1.5f)));
+        ActivateAmberNode(RandomWildernessSpot(AmberNode.Radius + 0.5f, edgeMargin: 1.5f));
     }
 }
 
@@ -3676,14 +3874,40 @@ public sealed class Acorn
     /// <summary>CrackProgress needed to shatter this Acorn — see <see cref="CrackProgress"/>.</summary>
     public float CrackThreshold { get; } = 100f;
 
-    public Vector3 Position { get; }
+    public Vector3 Position { get; private set; }
+
+    /// <summary>
+    /// Object Pooling: false for a pool slot that isn't currently a real
+    /// Acorn on the map — see <see cref="World.Acorns"/>. Every rendering
+    /// and targeting loop over the pool must skip anything with this false.
+    /// </summary>
+    public bool IsActive { get; private set; }
 
     private readonly List<Bramblekin> _claimants = new();
 
     /// <summary>The Chitin-Mallet Gatherers currently claiming this Acorn.</summary>
     public IReadOnlyList<Bramblekin> Claimants => _claimants;
 
-    public Acorn(Vector3 groundPoint) => Position = groundPoint;
+    /// <summary>Constructs an inactive pool slot — see <see cref="World.Acorns"/>. Call <see cref="Activate"/> to actually spawn one.</summary>
+    public Acorn()
+    {
+    }
+
+    /// <summary>Object Pooling: reuses this pool slot as a freshly spawned Acorn at <paramref name="groundPoint"/>, resetting every bit of its previous state.</summary>
+    public void Activate(Vector3 groundPoint)
+    {
+        Position = groundPoint;
+        CrackProgress = 0f;
+        _claimants.Clear();
+        IsActive = true;
+    }
+
+    /// <summary>Object Pooling: returns this slot to the pool — shattered by Cooperative Acorn Cracking. See <see cref="World.Acorns"/>.</summary>
+    public void Deactivate()
+    {
+        IsActive = false;
+        _claimants.Clear();
+    }
 
     public bool IsClaimedBy(Bramblekin gatherer) => _claimants.Contains(gatherer);
 
@@ -3756,7 +3980,37 @@ public sealed class AmberNode
     /// </summary>
     public float DespawnTimer { get; set; } = DespawnLifespan;
 
-    public AmberNode(Vector3 groundPoint) => Position = groundPoint;
+    /// <summary>
+    /// Object Pooling: false for a pool slot that isn't currently a real
+    /// Amber node on the map — see <see cref="World.AmberNodes"/>. Every
+    /// rendering and targeting loop over the pool must skip anything with
+    /// this false.
+    /// </summary>
+    public bool IsActive { get; private set; }
+
+    /// <summary>Constructs an inactive pool slot — see <see cref="World.AmberNodes"/>. Call <see cref="Activate"/> to actually spawn one.</summary>
+    public AmberNode()
+    {
+    }
+
+    /// <summary>Object Pooling: reuses this pool slot as a freshly spawned Amber node at <paramref name="groundPoint"/>, resetting every bit of its previous state.</summary>
+    public void Activate(Vector3 groundPoint)
+    {
+        Position = groundPoint;
+        IsCarried = false;
+        ClaimedBy = null;
+        ClaimTimer = 0f;
+        DespawnTimer = DespawnLifespan;
+        IsActive = true;
+    }
+
+    /// <summary>Object Pooling: returns this slot to the pool — delivered or despawned. See <see cref="World.AmberNodes"/>.</summary>
+    public void Deactivate()
+    {
+        IsActive = false;
+        IsCarried = false;
+        ClaimedBy = null;
+    }
 
     /// <summary>Draws the gem resting on the ground at (or carried above) <paramref name="groundPoint"/>.</summary>
     public void Draw(Vector3 groundPoint)
@@ -3793,7 +4047,16 @@ public sealed class FoodShard
     public bool IsCarried { get; set; }
 
     /// <summary>Where it came from. Only affects colour; it's worth the same 1 food regardless.</summary>
-    public FoodShardKind Kind { get; }
+    public FoodShardKind Kind { get; private set; }
+
+    /// <summary>
+    /// Object Pooling: false for a pool slot that isn't currently a real
+    /// Food Shard on the map. World pre-allocates a fixed pool of these at
+    /// startup (see <see cref="World.FoodShards"/>) instead of constructing
+    /// and destroying one per spawn/pickup/despawn; every rendering and
+    /// targeting loop over the pool must skip anything with this false.
+    /// </summary>
+    public bool IsActive { get; private set; }
 
     /// <summary>
     /// Dibs: the one Bramblekin currently pursuing this shard, if any — see
@@ -3824,10 +4087,29 @@ public sealed class FoodShard
     /// </summary>
     public float DespawnTimer { get; set; } = DespawnLifespan;
 
-    public FoodShard(Vector3 groundPoint, FoodShardKind kind = FoodShardKind.Cracked)
+    /// <summary>Constructs an inactive pool slot — see <see cref="World.FoodShards"/>. Call <see cref="Activate"/> to actually spawn one.</summary>
+    public FoodShard()
+    {
+    }
+
+    /// <summary>Object Pooling: reuses this pool slot as a freshly spawned Food Shard at <paramref name="groundPoint"/>, resetting every bit of its previous state.</summary>
+    public void Activate(Vector3 groundPoint, FoodShardKind kind = FoodShardKind.Cracked)
     {
         Position = groundPoint;
         Kind = kind;
+        IsCarried = false;
+        ClaimedBy = null;
+        ClaimTimer = 0f;
+        DespawnTimer = DespawnLifespan;
+        IsActive = true;
+    }
+
+    /// <summary>Object Pooling: returns this slot to the pool — picked up (delivered/consumed) or despawned. See <see cref="World.FoodShards"/>.</summary>
+    public void Deactivate()
+    {
+        IsActive = false;
+        IsCarried = false;
+        ClaimedBy = null;
     }
 
     /// <summary>Draws the shard resting on the ground at (or carried above) <paramref name="groundPoint"/>.</summary>
@@ -5455,6 +5737,19 @@ public sealed class Bramblekin
             }
         }
 
+        // Object Pooling: a cached target held from an earlier scan may
+        // have since despawned (UpdateLootDespawn deactivates it, rather
+        // than removing it from the pool, without going through this
+        // Bramblekin at all) or even been recycled by the pool into an
+        // unrelated spawn elsewhere on the map — drop a now-inactive
+        // reference rather than walking toward, or "picking up", a
+        // pool slot that isn't really this shard/amber any more. Waits
+        // for the next scan frame to pick something else.
+        if (_claimedAmber is { IsActive: false })
+            _claimedAmber = null;
+        if (_claimedShard is { IsActive: false })
+            _claimedShard = null;
+
         // Continuous Legs: whichever target is currently cached (found this
         // frame's scan, or a still-valid one from up to 14 frames ago) is
         // walked toward and, on arrival, picked up, every single frame —
@@ -5524,7 +5819,7 @@ public sealed class Bramblekin
         // already shattered (handled via OnAcornShattered, which should
         // already have moved us out of this state, but a stray call path
         // is cheap to guard against).
-        if (_claimedAcorn is not { } acorn || !world.Acorns.Contains(acorn))
+        if (_claimedAcorn is not { } acorn || !acorn.IsActive)
         {
             _claimedAcorn = null;
             SetState(BramblekinState.Gathering);
@@ -6473,9 +6768,11 @@ public sealed class WolfSpider
     {
         Bramblekin? best = null;
         float bestDistanceSquared = VibrationRadius * VibrationRadius;
-        for (int i = world.Colony.Count - 1; i >= 0; i--)
+        // The Spatial Grid: only the Colony chunks around this spider.
+        List<Bramblekin> nearby = world.QueryNearbyColony(Position);
+        for (int i = nearby.Count - 1; i >= 0; i--)
         {
-            Bramblekin bramblekin = world.Colony[i];
+            Bramblekin bramblekin = nearby[i];
             // IsVibrating is already false for a dead Bramblekin; checked
             // again explicitly so this never targets one even if that changes.
             if (bramblekin.IsDead || !bramblekin.IsVibrating)
@@ -6496,9 +6793,11 @@ public sealed class WolfSpider
     {
         Bramblekin? best = null;
         float bestDistanceSquared = range * range;
-        for (int i = world.Colony.Count - 1; i >= 0; i--)
+        // The Spatial Grid: only the Colony chunks around this spider.
+        List<Bramblekin> nearby = world.QueryNearbyColony(Position);
+        for (int i = nearby.Count - 1; i >= 0; i--)
         {
-            Bramblekin bramblekin = world.Colony[i];
+            Bramblekin bramblekin = nearby[i];
             if (bramblekin.IsDead || bramblekin.Role != BramblekinRole.Militia)
                 continue;
 
@@ -6685,9 +6984,11 @@ public sealed class Aphid
     {
         Bramblekin? nearest = null;
         float bestDistanceSquared = FleeTriggerRadius * FleeTriggerRadius;
-        for (int i = world.Colony.Count - 1; i >= 0; i--)
+        // The Spatial Grid: only the Colony chunks around this Aphid.
+        List<Bramblekin> nearby = world.QueryNearbyColony(Position);
+        for (int i = nearby.Count - 1; i >= 0; i--)
         {
-            Bramblekin bramblekin = world.Colony[i];
+            Bramblekin bramblekin = nearby[i];
             if (bramblekin.IsDead)
                 continue;
 
