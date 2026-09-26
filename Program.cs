@@ -334,7 +334,9 @@ public static class Game
         const int fontSize = 32, lineHeight = 40;
         int militia = world.Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
         int builders = world.Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Builder);
-        string header = $"{FactionColorName(village.FactionColor)} Faction ({village.Trait})";
+        string tierSuffix = village.Tier >= 2 ? " [Town]" : "";
+        string vassalSuffix = village.IsVassal ? " (Vassal)" : "";
+        string header = $"{FactionColorName(village.FactionColor)} Faction ({village.Trait}){tierSuffix}{vassalSuffix}";
         string food = $"Food Stored: {village.FoodStored} / {village.MaxFoodCapacity}";
         string population = $"Population: {village.Population} / {village.MaxPopulation}   Militia: {militia}   Builder: {builders}";
         string morale = $"Morale: {(int)village.Morale}%" +
@@ -1389,6 +1391,50 @@ public sealed class World
     /// <summary>Cultural Borders: how much a Village Heart's <see cref="VillageHeart.TerritoryRadius"/> grows per point of <see cref="VillageHeart.NectarStored"/> — Nectar buys far more cultural reach than raw Amber, since it takes a whole Nectar Brewery economy to produce at all.</summary>
     public const float TerritoryRadiusPerNectar = 2.0f;
 
+    // --- Village Improvements (Towns & Cabins) ---------------------------------
+
+    /// <summary>Village Improvements: Population needed before a Village Heart upgrades to a Tier 2 Town Center — see <see cref="UpdateVillageTier"/>.</summary>
+    public const int TownCenterPopulationThreshold = 30;
+
+    /// <summary>Village Improvements: Amber Stored needed (on hand, not spent — becoming a Town Center is a milestone, not a purchase) before the Tier 2 upgrade fires.</summary>
+    public const int TownCenterAmberThreshold = 20;
+
+    /// <summary>Village Improvements: the flat bonus a Tier 2 Town Center permanently adds to its own <see cref="VillageHeart.TerritoryRadius"/>.</summary>
+    public const float TownCenterTerritoryBonus = 15f;
+
+    /// <summary>Village Improvements: Food Stored spent to queue a Cabin — a Tier 2 Town Center's replacement for a Tent.</summary>
+    public const int CabinFoodCost = 15;
+
+    /// <summary>Village Improvements: Amber Stored spent to queue a Cabin.</summary>
+    public const int CabinAmberCost = 2;
+
+    /// <summary>Village Improvements: MaxPopulation granted per completed Cabin — double a Tent's bonus, since a Tier 2 city is meant to grow denser than a Tier 1 village.</summary>
+    public const int CabinPopulationBonus = 10;
+
+    /// <summary>How far (m) from the Village Heart an Auto-Cabin may be placed.</summary>
+    private const float CabinPlacementRadius = 5f;
+
+    // --- Physical Trade (Merchants) ---------------------------------------------
+
+    /// <summary>Physical Trade: Food Stored a Merchant sells to (or buys from) a foreign Trading Post per completed trip.</summary>
+    public const int MerchantFoodTradeAmount = 10;
+
+    /// <summary>Physical Trade: Amber Stored a Merchant pays for (or earns from) that same trip's Food.</summary>
+    public const int MerchantAmberTradeAmount = 2;
+
+    // --- Invasion & Conquest ------------------------------------------------------
+
+    /// <summary>Invasion &amp; Conquest: a faction needs more living Militia than this before it will ever march on a weaker neighbor — see <see cref="UpdateInvasionOrders"/>.</summary>
+    public const int InvasionMilitiaThreshold = 10;
+
+    // --- Vassal Colonies (Tribute Economy) ---------------------------------------
+
+    /// <summary>Vassal Colonies: seconds between each automatic Tribute payment to a Vassal's Capital — see <see cref="World.Update"/>'s per-village loop.</summary>
+    public const float TributeInterval = 60f;
+
+    /// <summary>Vassal Colonies: the fraction of a Vassal's own FoodStored/AmberStored shipped to its Capital every <see cref="TributeInterval"/>.</summary>
+    public const float TributeFraction = 0.2f;
+
     /// <summary>
     /// Base Defense Aggro: any foreign Bramblekin caught within this
     /// distance of a Village Heart's own centre — much tighter than its
@@ -1947,8 +1993,8 @@ public sealed class World
         for (int i = _colonyQueryBuffer.Count - 1; i >= 0; i--)
         {
             Bramblekin intruder = _colonyQueryBuffer[i];
-            if (intruder.IsDead || intruder.FactionID == home.FactionID)
-                continue;
+            if (intruder.IsDead || intruder.FactionID == home.FactionID || intruder.Role == BramblekinRole.Merchant)
+                continue; // Physical Trade: Merchants are strictly neutral, never a threat.
 
             float distanceSquared = Vector3.DistanceSquared(intruder.Position, home.Center);
             if (distanceSquared > bestDistanceSquared)
@@ -2047,8 +2093,8 @@ public sealed class World
         for (int i = _colonyQueryBuffer.Count - 1; i >= 0; i--)
         {
             Bramblekin enemy = _colonyQueryBuffer[i];
-            if (enemy.IsDead || !home.HostileFactions.ContainsKey(enemy.FactionID))
-                continue;
+            if (enemy.IsDead || enemy.Role == BramblekinRole.Merchant || !home.HostileFactions.ContainsKey(enemy.FactionID))
+                continue; // Physical Trade: Merchants are strictly neutral, never a threat.
             if (Vector3.DistanceSquared(enemy.Position, position) <= radiusSquared)
                 return true;
         }
@@ -2082,8 +2128,8 @@ public sealed class World
         for (int i = _colonyQueryBuffer.Count - 1; i >= 0; i--)
         {
             Bramblekin enemy = _colonyQueryBuffer[i];
-            if (enemy.IsDead || !home.HostileFactions.ContainsKey(enemy.FactionID))
-                continue;
+            if (enemy.IsDead || enemy.Role == BramblekinRole.Merchant || !home.HostileFactions.ContainsKey(enemy.FactionID))
+                continue; // Physical Trade: Merchants are strictly neutral, never a threat.
 
             float distanceSquared = Vector3.DistanceSquared(enemy.Position, home.Center);
             if (distanceSquared > territoryRadiusSquared || distanceSquared >= bestDistanceSquared)
@@ -2154,6 +2200,63 @@ public sealed class World
         }
         return nearest;
     }
+
+    /// <summary>Invasion &amp; Conquest: how many of <paramref name="factionId"/>'s Bramblekin are currently living Militia — the Conquest Condition checks this against zero.</summary>
+    public int LivingMilitiaCountFor(int factionId) =>
+        Colony.Count(b => !b.IsDead && b.FactionID == factionId && b.Role == BramblekinRole.Militia);
+
+    /// <summary>
+    /// Invasion &amp; Conquest: once a faction is both high-Morale (see
+    /// <see cref="HighMoraleThreshold"/>) and militarily dominant (more
+    /// than <see cref="InvasionMilitiaThreshold"/> living Militia), it
+    /// picks the nearest weaker neighbor — lower Population, or fewer
+    /// living Militia, than itself — and sets it as <paramref name="village"/>'s
+    /// shared <see cref="VillageHeart.InvasionTarget"/> for every idle
+    /// Militia unit to pick up (see <see cref="Bramblekin.Update"/>).
+    /// Cleared the instant either condition no longer holds, the target is
+    /// gone, or it's already this faction's own Vassal — a spent, no
+    /// longer weaker, or already-conquered neighbor is never worth
+    /// marching on.
+    /// </summary>
+    private void UpdateInvasionOrders(VillageHeart village)
+    {
+        int ourMilitia = LivingMilitiaCountFor(village.FactionID);
+        if (village.Morale < HighMoraleThreshold || ourMilitia <= InvasionMilitiaThreshold)
+        {
+            village.InvasionTarget = null;
+            return;
+        }
+
+        // Already marching on someone who's still a valid, still-weaker target.
+        if (village.InvasionTarget is { } current && Villages.Contains(current) &&
+            !(current.IsVassal && current.CapitalFactionID == village.FactionID) &&
+            IsWeakerThan(current, village, ourMilitia))
+            return;
+
+        VillageHeart? weakest = null;
+        float bestDistanceSquared = float.MaxValue;
+        foreach (VillageHeart candidate in Villages)
+        {
+            if (candidate.FactionID == village.FactionID)
+                continue;
+            if (candidate.IsVassal && candidate.CapitalFactionID == village.FactionID)
+                continue; // Already ours.
+            if (!IsWeakerThan(candidate, village, ourMilitia))
+                continue;
+
+            float distanceSquared = Vector3.DistanceSquared(village.Center, candidate.Center);
+            if (distanceSquared < bestDistanceSquared)
+            {
+                weakest = candidate;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+        village.InvasionTarget = weakest;
+    }
+
+    /// <summary>Invasion &amp; Conquest: whether <paramref name="candidate"/> counts as weaker than <paramref name="invader"/> — lower Population, or fewer living Militia, than the invader's own count.</summary>
+    private bool IsWeakerThan(VillageHeart candidate, VillageHeart invader, int invaderMilitiaCount) =>
+        candidate.Population < invader.Population || LivingMilitiaCountFor(candidate.FactionID) < invaderMilitiaCount;
 
     /// <summary>
     /// Base Razing: applies Militia poke damage to an enemy Village Heart
@@ -2226,6 +2329,49 @@ public sealed class World
         _splats.Add((village.Center, SplatDuration));
 
         RunRefugeeProtocol(village, razedFactionId, attackerFactionId);
+    }
+
+    /// <summary>
+    /// Vassal Colonies: Invasion &amp; Conquest's alternative to Base Razing
+    /// — <paramref name="target"/> is NOT destroyed, has no loot shatter,
+    /// and runs no Refugee Protocol. It keeps its own FactionID,
+    /// population and economy running exactly as they were, but is
+    /// instantly recoloured to <paramref name="invaderFactionId"/>'s own
+    /// colour, marked <see cref="VillageHeart.IsVassal"/>, and starts
+    /// paying Tribute to it (see <see cref="VillageHeart.CapitalFactionID"/>
+    /// and the Tribute check in the per-village loop of <see cref="Update"/>).
+    /// "Transfer ownership of all its surviving units": every living
+    /// Bramblekin still on <paramref name="target"/>'s roster is recoloured
+    /// the same way — see <see cref="Bramblekin.RecolorAsVassal"/> — so the
+    /// whole colony visually reads as annexed at a glance, without
+    /// reassigning their FactionID (which would collide with
+    /// <see cref="VillageFor"/> ever finding this specific Village Heart
+    /// again as anyone's home).
+    /// </summary>
+    public void ConquerVillage(VillageHeart target, int invaderFactionId)
+    {
+        if (VillageFor(invaderFactionId) is not { } capital)
+            return; // The would-be conqueror has no Village Heart of its own any more.
+
+        target.IsVassal = true;
+        target.CapitalFactionID = invaderFactionId;
+        target.TributeTimer = TributeInterval;
+        target.InvasionTarget = null;
+        target.FactionColor = capital.FactionColor;
+
+        // Default Peace resumes between conqueror and vassal — a Tribute
+        // relationship, not an ongoing war.
+        target.HostileFactions.Remove(invaderFactionId);
+        capital.HostileFactions.Remove(target.FactionID);
+
+        for (int i = Colony.Count - 1; i >= 0; i--)
+        {
+            Bramblekin b = Colony[i];
+            if (!b.IsDead && b.FactionID == target.FactionID)
+                b.RecolorAsVassal(capital.FactionColor);
+        }
+
+        QueueFloatingText(target.Center, "Conquered!", capital.FactionColor);
     }
 
     /// <summary>
@@ -2490,6 +2636,43 @@ public sealed class World
             if (village.Population > 0)
                 UpdateUpkeep(village, deltaTime);
 
+            // Vassal Colonies: a Tribute payment every TributeInterval
+            // seconds, siphoned straight to the Capital that Conquered
+            // this colony — checked early, right alongside Upkeep, since
+            // it's the same kind of automatic tax. If the Capital is ever
+            // itself gone (Razed or starved out), this colony is
+            // Liberated instead of paying tribute into the void.
+            if (village.IsVassal)
+            {
+                village.TributeTimer -= deltaTime;
+                if (village.TributeTimer <= 0f)
+                {
+                    village.TributeTimer += TributeInterval;
+                    if (VillageFor(village.CapitalFactionID) is { } capital)
+                    {
+                        int foodTribute = (int)(village.FoodStored * TributeFraction);
+                        int amberTribute = (int)(village.AmberStored * TributeFraction);
+                        village.FoodStored -= foodTribute;
+                        village.AmberStored -= amberTribute;
+                        capital.FoodStored = Math.Min(capital.FoodStored + foodTribute, capital.MaxFoodCapacity);
+                        capital.AmberStored += amberTribute;
+                    }
+                    else
+                    {
+                        village.IsVassal = false; // Liberated: the Capital is gone.
+                    }
+                }
+            }
+
+            // Village Improvements: a one-way Tier 1 -> Tier 2 upgrade once
+            // this tribe is populous and wealthy enough — see UpdateVillageTier.
+            UpdateVillageTier(village);
+
+            // Invasion & Conquest: a high-Morale, militarily dominant tribe
+            // picks a weaker neighbor to march its idle Militia on — see
+            // UpdateInvasionOrders.
+            UpdateInvasionOrders(village);
+
             // The New Economy AI: three independent phases, checked in a
             // fixed priority order every frame so a phase that spends Food
             // Stored this frame is always seen by the next one, rather than
@@ -2521,7 +2704,14 @@ public sealed class World
             if (!pursuingMonument)
             {
                 UpdateAutoSporeFarm(village);
-                UpdateAutoTent(village);
+
+                // Village Improvements: a Tier 2 Town Center has outgrown
+                // Tents — it queues denser Cabins instead.
+                if (village.Tier >= 2)
+                    UpdateAutoCabin(village);
+                else
+                    UpdateAutoTent(village);
+
                 UpdateAutoGranary(village);
 
                 // Auxiliary Auto-Construction: population-gated one-time
@@ -3039,6 +3229,57 @@ public sealed class World
         Vector3? spot = RandomPointNearVillage(village, TentPlacementRadius, Building.TentRadius + 0.2f);
         if (spot is { } point)
             TryPlaceBlueprint(village, point, BuildingKind.Tent);
+    }
+
+    /// <summary>
+    /// Village Improvements — a Tier 2 Town Center's own Housing Phase:
+    /// exactly the same trigger as <see cref="UpdateAutoTent"/> (Population
+    /// caught up to MaxPopulation, under the hard cap, nothing already
+    /// queued), but a Cabin costs both Food AND Amber — unlike every other
+    /// Auto-Construction site, which is priced in one resource or the
+    /// other — so it's deducted directly here rather than through
+    /// <see cref="TryPlaceBlueprint"/> (which only ever knows one cost per
+    /// kind).
+    /// </summary>
+    private void UpdateAutoCabin(VillageHeart village)
+    {
+        if (village.MaxPopulation >= MaxPopulationCap)
+            return; // Hard Cap: no more Cabins, ever, regardless of Food/Amber Stored.
+        if (village.Population < village.MaxPopulation)
+            return; // Housing Phase not triggered: still room to grow.
+        if (Blueprints.Any(b => b.Kind == BuildingKind.Cabin && b.FactionID == village.FactionID))
+            return; // Already building one; don't queue a second.
+        if (village.FoodStored < CabinFoodCost || village.AmberStored < CabinAmberCost)
+            return; // Saving toward a Cabin.
+
+        Vector3? spot = RandomPointNearVillage(village, CabinPlacementRadius, Building.CabinRadius + 0.2f);
+        if (spot is not { } point)
+            return;
+
+        village.FoodStored -= CabinFoodCost;
+        village.AmberStored -= CabinAmberCost;
+        Blueprints.Add(new Blueprint(point, BuildingKind.Cabin, village.FactionID, village.FactionColor));
+    }
+
+    /// <summary>
+    /// Village Improvements: a one-way Tier 1 -&gt; Tier 2 (Town Center)
+    /// upgrade the instant a tribe is both populous
+    /// (<see cref="TownCenterPopulationThreshold"/>) and wealthy
+    /// (<see cref="TownCenterAmberThreshold"/> Amber currently on hand) —
+    /// a recognition milestone, not a purchase, so unlike every actual
+    /// building above this never spends the Amber it checks for. Never
+    /// downgrades, and re-checking an already-Tier-2 Town Center is a
+    /// cheap no-op.
+    /// </summary>
+    private void UpdateVillageTier(VillageHeart village)
+    {
+        if (village.Tier >= 2)
+            return;
+        if (village.Population < TownCenterPopulationThreshold || village.AmberStored < TownCenterAmberThreshold)
+            return;
+
+        village.Tier = 2;
+        QueueFloatingText(village.Center, "Town Center!", new Color(215, 175, 60, 255));
     }
 
     /// <summary>
@@ -3733,6 +3974,27 @@ public sealed class World
         return best;
     }
 
+    /// <summary>Physical Trade: the nearest OTHER faction's finished Trading Post to <paramref name="from"/>, if any — a Merchant's destination each trip.</summary>
+    public Building? NearestForeignTradingPost(Vector3 from, int ownFactionId)
+    {
+        Building? best = null;
+        float bestDistanceSquared = float.MaxValue;
+        for (int i = Buildings.Count - 1; i >= 0; i--)
+        {
+            Building building = Buildings[i];
+            if (building.Kind != BuildingKind.TradingPost || building.FactionID == ownFactionId)
+                continue;
+
+            float distanceSquared = Vector3.DistanceSquared(from, building.Position);
+            if (distanceSquared < bestDistanceSquared)
+            {
+                best = building;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+        return best;
+    }
+
     /// <summary>
     /// Finishes a Blueprint once a Builder's Construction Progress reaches
     /// its requirement: removes the site and adds the completed Building,
@@ -3760,8 +4022,20 @@ public sealed class World
             owner.MaxFoodCapacity += GranaryFoodBonus;
         else if (blueprint.Kind == BuildingKind.Tent)
             owner.MaxPopulation = Math.Min(owner.MaxPopulation + TentPopulationBonus, MaxPopulationCap);
+        else if (blueprint.Kind == BuildingKind.Cabin)
+            owner.MaxPopulation = Math.Min(owner.MaxPopulation + CabinPopulationBonus, MaxPopulationCap);
         else if (blueprint.Kind == BuildingKind.Monument)
             _completedMonuments.Add((blueprint.FactionID, blueprint.FactionColor));
+        else if (blueprint.Kind == BuildingKind.TradingPost)
+            SpawnMerchant(owner, blueprint.Position);
+    }
+
+    /// <summary>Physical Trade: queues one Merchant of <paramref name="village"/>'s faction beside its brand-new Trading Post — see <see cref="Bramblekin.UpdateMerchant"/>.</summary>
+    private void SpawnMerchant(VillageHeart village, Vector3 tradingPostPosition)
+    {
+        var merchant = new Bramblekin(tradingPostPosition, Rng, village.FactionID, village.FactionColor);
+        merchant.BecomeMerchant();
+        _pendingBramblekinSpawns.Add(merchant);
     }
 
     /// <summary>Queues a new Bramblekin of <paramref name="village"/>'s Faction on a free spot right beside it.</summary>
@@ -4134,13 +4408,60 @@ public sealed class VillageHeart
     /// ring, so a bigger ring simply reaches further.
     /// </summary>
     public float TerritoryRadius =>
-        World.BaseTerritoryRadius + AmberStored * World.TerritoryRadiusPerAmber + NectarStored * World.TerritoryRadiusPerNectar;
+        World.BaseTerritoryRadius + AmberStored * World.TerritoryRadiusPerAmber + NectarStored * World.TerritoryRadiusPerNectar
+        + (Tier >= 2 ? World.TownCenterTerritoryBonus : 0f);
+
+    /// <summary>
+    /// Village Improvements: 1 (a plain Village Heart) or 2 (a Town
+    /// Center — see <see cref="World.UpdateVillageTier"/>). Permanent and
+    /// one-way: a Town Center never downgrades. Raises
+    /// <see cref="TerritoryRadius"/> by a flat <see cref="World.TownCenterTerritoryBonus"/>,
+    /// renders larger with a gold/stone trim (see <see cref="Draw"/>), and
+    /// switches Auto-Construction's Housing Phase from Tents over to
+    /// Cabins (see <see cref="World.UpdateAutoTent"/>/<see cref="World.UpdateAutoCabin"/>).
+    /// </summary>
+    public int Tier { get; internal set; } = 1;
 
     /// <summary>Which tribe this Village Heart belongs to. The original heart is Faction 0.</summary>
     public int FactionID { get; }
 
-    /// <summary>This faction's colour — tints its territory ring and, faintly, every one of its Bramblekin (see <see cref="Bramblekin.Draw"/>).</summary>
-    public Color FactionColor { get; }
+    /// <summary>
+    /// This faction's colour — tints its territory ring and, faintly,
+    /// every one of its Bramblekin (see <see cref="Bramblekin.Draw"/>).
+    /// Mutable rather than fixed-for-life: Vassal Colonies (see
+    /// <see cref="IsVassal"/>) are instantly recoloured to match their new
+    /// Capital the moment they're conquered — see <see cref="World.ConquerVillage"/>.
+    /// </summary>
+    public Color FactionColor { get; internal set; }
+
+    /// <summary>
+    /// Vassal Colonies (Tribute Economy): true once this Village Heart has
+    /// been Conquered (see <see cref="World.ConquerVillage"/>) rather than
+    /// Razed — it keeps its own FactionID, population and economy running
+    /// exactly as before, but every <see cref="World.TributeInterval"/>
+    /// seconds it ships a cut of its own stores off to <see cref="CapitalFactionID"/>
+    /// (see <see cref="World.Update"/>'s per-village loop). Liberated
+    /// (reset to false) automatically if its Capital is ever itself
+    /// destroyed.
+    /// </summary>
+    public bool IsVassal { get; internal set; }
+
+    /// <summary>The conquering faction this Vassal Colony now pays Tribute to — meaningless while <see cref="IsVassal"/> is false.</summary>
+    public int CapitalFactionID { get; internal set; }
+
+    /// <summary>Vassal Colonies: counts down to the next Tribute payment — see <see cref="World.Update"/>'s per-village loop.</summary>
+    internal float TributeTimer { get; set; }
+
+    /// <summary>
+    /// Invasion &amp; Conquest: the weaker neighbouring Village Heart this
+    /// faction's Militia are currently marching on, if any — set by
+    /// <see cref="World.UpdateInvasionOrders"/> once this faction is both
+    /// high-Morale and militarily dominant, and picked up by any idle
+    /// Militia unit (see <see cref="Bramblekin.Update"/>'s Invasion
+    /// priority). Cleared the instant the target is Conquered, Razed, or
+    /// this faction's own Morale/Militia count no longer qualifies.
+    /// </summary>
+    public VillageHeart? InvasionTarget { get; internal set; }
 
     /// <summary>Centre of the footprint on the ground.</summary>
     public Vector3 Center { get; }
@@ -4277,13 +4598,32 @@ public sealed class VillageHeart
     {
         DrawTerritoryRing();
 
-        var middle = Center + new Vector3(0, Height / 2f, 0);
+        // Village Improvements: a Town Center (Tier 2) draws noticeably
+        // larger than a plain Village Heart, with a gold trim band — purely
+        // cosmetic (Obstacle/Bounds/Width stay the const footprint, so
+        // collision and delivery distance are unaffected).
+        bool isTownCenter = Tier >= 2;
+        float scale = isTownCenter ? 1.5f : 1f;
+        float width = Width * scale;
+        float height = Height * scale;
+
+        var middle = Center + new Vector3(0, height / 2f, 0);
         Color cubeColor = DamageFlashTimer > 0f ? new Color(210, 40, 40, 255) : new Color(122, 78, 40, 255);
-        Raylib.DrawCube(middle, Width, Height, Width, cubeColor);
-        Raylib.DrawCubeWires(middle, Width, Height, Width, new Color(60, 35, 15, 255));
+        Raylib.DrawCube(middle, width, height, width, cubeColor);
+        Raylib.DrawCubeWires(middle, width, height, width, new Color(60, 35, 15, 255));
+
+        if (isTownCenter)
+        {
+            // A gold/stone trim band wrapped around the top — the visual
+            // tell that this tribe has upgraded past a plain Village Heart.
+            var trimCenter = Center + new Vector3(0, height * 0.85f, 0);
+            var trim = new Color(215, 175, 60, 255);
+            Raylib.DrawCube(trimCenter, width * 1.05f, height * 0.12f, width * 1.05f, trim);
+            Raylib.DrawCubeWires(trimCenter, width * 1.05f, height * 0.12f, width * 1.05f, new Color(120, 90, 20, 255));
+        }
 
         // A small dark doorway on the camera-facing side so it reads as a home.
-        var door = Center + new Vector3(Width / 2f + 0.01f, 0.3f, 0);
+        var door = Center + new Vector3(width / 2f + 0.01f, 0.3f, 0);
         Raylib.DrawCube(door, 0.02f, 0.6f, 0.45f, new Color(45, 25, 10, 255));
     }
 
@@ -4711,6 +5051,9 @@ public enum BuildingKind
     /// <summary>The Housing System: permanently raises <see cref="VillageHeart.MaxPopulation"/> by <see cref="World.TentPopulationBonus"/>, hard-capped at <see cref="World.MaxPopulationCap"/>.</summary>
     Tent,
 
+    /// <summary>Village Improvements: a Tier 2 Town Center's replacement for a Tent — permanently raises <see cref="VillageHeart.MaxPopulation"/> by <see cref="World.CabinPopulationBonus"/> (double a Tent's), hard-capped at <see cref="World.MaxPopulationCap"/>.</summary>
+    Cabin,
+
     /// <summary>The Nectar Brewery: once built, consumes Food and Amber on a timer to brew Nectar — a permanent civilization buff (see <see cref="World.UpdateNectarBrewery"/>).</summary>
     Brewery,
 
@@ -4742,6 +5085,10 @@ public sealed class Building
     /// <summary>The Housing System: a Tent's small footprint — the smallest building on the map, so a tribe can pack in several without crowding out its other structures.</summary>
     public const float TentRadius = 0.5f;
     public const float TentHeight = 0.55f;
+
+    /// <summary>A Cabin's footprint — a Tier 2 Town Center's denser, sturdier replacement for a Tent, bigger than a Tent but still well below the three "real" economy buildings.</summary>
+    public const float CabinRadius = 0.65f;
+    public const float CabinHeight = 0.9f;
 
     /// <summary>The Nectar Brewery's footprint — a round structure, slightly larger than a Granary since it houses a whole secondary economy.</summary>
     public const float BreweryRadius = 0.8f;
@@ -4783,6 +5130,7 @@ public sealed class Building
         BuildingKind.Granary => GranaryRadius,
         BuildingKind.TradingPost => TradingPostRadius,
         BuildingKind.Tent => TentRadius,
+        BuildingKind.Cabin => CabinRadius,
         BuildingKind.Brewery => BreweryRadius,
         BuildingKind.Monument => MonumentRadius,
         _ => SporeFarmRadius,
@@ -4868,6 +5216,26 @@ public sealed class Building
             return;
         }
 
+        if (Kind == BuildingKind.Cabin)
+        {
+            // A small log-brown box with a dark peaked roof — reads as a
+            // sturdier permanent cottage, distinct from the Tent's plain
+            // canvas cone it replaces once a tribe reaches Tier 2.
+            var walls = new Color(120, 85, 55, 255);
+            var wallsEdge = new Color(70, 48, 28, 255);
+            float wallHeight = CabinHeight * 0.65f;
+            var wallCenter = Position + new Vector3(0, wallHeight / 2f, 0);
+            Raylib.DrawCube(wallCenter, CabinRadius * 1.6f, wallHeight, CabinRadius * 1.6f, walls);
+            Raylib.DrawCubeWires(wallCenter, CabinRadius * 1.6f, wallHeight, CabinRadius * 1.6f, wallsEdge);
+
+            float roofHeight = CabinHeight - wallHeight;
+            var roofCenter = Position + new Vector3(0, wallHeight + roofHeight / 2f, 0);
+            var roof = new Color(70, 45, 35, 255);
+            Raylib.DrawCylinder(roofCenter, 0f, CabinRadius * 1.15f, roofHeight, 4, roof);
+            Raylib.DrawCylinderWires(roofCenter, 0f, CabinRadius * 1.15f, roofHeight, 4, new Color(40, 25, 18, 255));
+            return;
+        }
+
         if (Kind == BuildingKind.Brewery)
         {
             // A rounded purple/pink vat — Nectar's own colour on the
@@ -4944,6 +5312,7 @@ public sealed class Blueprint
         BuildingKind.Granary => 10f,
         BuildingKind.TradingPost => 20f,
         BuildingKind.Tent => 8f,
+        BuildingKind.Cabin => 12f,
         BuildingKind.Brewery => 25f,
         BuildingKind.Monument => 200f,
         _ => 15f,
@@ -5320,6 +5689,21 @@ public enum BramblekinState
     Building,
 
     /// <summary>
+    /// Invasion &amp; Conquest: Militia only — a strong, high-Morale faction's
+    /// unit marching directly on a weaker neighbor's Village Heart (see
+    /// <see cref="VillageHeart.InvasionTarget"/>/<see cref="World.UpdateInvasionOrders"/>),
+    /// ignoring the usual territory-ring leash a Raid keeps to. See
+    /// <see cref="Bramblekin.UpdateInvading"/>.
+    /// </summary>
+    Invading,
+
+    /// <summary>Merchant only: walking to the nearest foreign Trading Post to execute this trip's trade — see <see cref="Bramblekin.UpdateMerchant"/>.</summary>
+    TravelingToMarket,
+
+    /// <summary>Merchant only: walking back home after trading, before setting out again.</summary>
+    ReturningFromMarket,
+
+    /// <summary>
     /// Individual Equipment: an un-upgraded Militia unit fetching a Spider
     /// Fang, or an un-upgraded Gatherer fetching a Chitin piece — see
     /// <see cref="Bramblekin.UpdateEquipping"/>.
@@ -5354,6 +5738,17 @@ public enum BramblekinRole
     /// but never gathers food itself.
     /// </summary>
     Builder,
+
+    /// <summary>
+    /// Physical Trade: spawned one-per-Trading-Post the instant it's
+    /// completed (see <see cref="World.CompleteBlueprint"/>). Never
+    /// gathers, builds or fights — it shuttles forever between home and
+    /// the nearest foreign Trading Post executing an abstract trade each
+    /// trip (see <see cref="Bramblekin.UpdateMerchant"/>). Strictly
+    /// neutral: excluded from every hostile-Militia/Wolf-Spider targeting
+    /// search, so it can walk straight through a warzone unharmed.
+    /// </summary>
+    Merchant,
 }
 
 /// <summary>
@@ -5521,6 +5916,8 @@ public sealed class Bramblekin
     private static readonly Color PanicColor = new(225, 85, 60, 255);    // Alarm red.
     private static readonly Color MilitiaColor = new(150, 130, 95, 255); // A shade duller than a Gatherer — worn, armed.
     private static readonly Color BuilderColor = new(170, 140, 200, 255); // Lavender — visually distinct, on-the-job.
+    private static readonly Color MerchantColor = new(60, 55, 50, 255);   // A dark, neutral body — the gold backpack is what actually reads.
+    private static readonly Color MerchantBackpackColor = new(215, 175, 60, 255); // Gold, same trim colour as a Town Center.
     private static readonly Color PikeColor = new(120, 55, 40, 255);     // Rose-thorn brown-red.
     private static readonly Color FangPikeColor = new(235, 235, 240, 255); // Spider Fang: bright white/silver.
     private static readonly Color MalletHandleColor = new(120, 80, 45, 255); // Wooden handle.
@@ -5581,6 +5978,16 @@ public sealed class Bramblekin
     /// can pile onto the same Heart at once.
     /// </summary>
     private VillageHeart? _raidTarget;
+
+    /// <summary>
+    /// Invasion &amp; Conquest: the weaker neighboring Village Heart this
+    /// Militia unit is currently marching on — picked up from its own
+    /// faction's <see cref="VillageHeart.InvasionTarget"/> (set once per
+    /// faction by <see cref="World.UpdateInvasionOrders"/>, not per-unit)
+    /// while idle. Unlike <see cref="_raidTarget"/>, an Invasion ignores
+    /// the usual territory-ring leash entirely — see <see cref="UpdateInvading"/>.
+    /// </summary>
+    private VillageHeart? _invasionTarget;
 
     /// <summary>The Schism: set the instant this Bramblekin becomes a Pioneer (see <see cref="BecomePioneer"/>), cleared the instant it stops Migrating (see <see cref="UpdateMigrating"/>).</summary>
     private Migration? _migration;
@@ -5756,6 +6163,20 @@ public sealed class Bramblekin
     }
 
     /// <summary>
+    /// Physical Trade: turns a freshly-sprouted Bramblekin into this
+    /// faction's newest Merchant — called once, right after construction,
+    /// by <see cref="World.CompleteBlueprint"/> the instant a Trading Post
+    /// finishes. Never promoted/demoted by Auto-Conscription (the Job
+    /// Manager only ever recruits from Gatherer/Militia/Builder), and never
+    /// reverts — a Merchant stays a Merchant for life.
+    /// </summary>
+    public void BecomeMerchant()
+    {
+        Role = BramblekinRole.Merchant;
+        SetState(BramblekinState.TravelingToMarket);
+    }
+
+    /// <summary>
     /// Conscription (the Job Manager's Builder assignment): pulls this
     /// Gatherer off food duty to work the faction's Blueprints instead.
     /// Releases whatever Gathering claim it was holding (Food Shard, Acorn
@@ -5825,6 +6246,18 @@ public sealed class Bramblekin
         FactionColor = factionColor;
     }
 
+    /// <summary>
+    /// Vassal Colonies: recolours this Bramblekin to its Village Heart's
+    /// new Capital the instant it's Conquered (see <see cref="World.ConquerVillage"/>)
+    /// — unlike <see cref="Assimilate"/>, FactionID never changes: this
+    /// unit still belongs to (and still reports home to, via
+    /// <see cref="World.VillageFor"/>) its own Vassal Village Heart, which
+    /// keeps running its own population/economy and simply pays Tribute
+    /// upward from here on. Purely cosmetic, so the whole colony visually
+    /// reads as annexed at a glance.
+    /// </summary>
+    public void RecolorAsVassal(Color capitalColor) => FactionColor = capitalColor;
+
     public void Update(float deltaTime, World world)
     {
         if (IsDead)
@@ -5841,6 +6274,19 @@ public sealed class Bramblekin
         if (State == BramblekinState.Migrating)
         {
             UpdateMigrating(deltaTime, world);
+            return;
+        }
+
+        // --- Physical Trade: a Merchant runs its own dedicated loop,
+        // entirely separate from the Gatherer/Militia/Builder priority
+        // chain below — it never gathers, fights or builds. Strictly
+        // neutral: its states (TravelingToMarket/ReturningFromMarket)
+        // never count as IsVibrating, so the Wolf Spider's prey search
+        // can never target it either, same as hostile Militia (see the
+        // Role != Merchant guards in World's threat-search methods).
+        if (Role == BramblekinRole.Merchant)
+        {
+            UpdateMerchant(deltaTime, world);
             return;
         }
 
@@ -5925,6 +6371,19 @@ public sealed class Bramblekin
             home is not null && world.HasHuntableAphidNearVillage(this, home))
             SetState(BramblekinState.Hunting);
 
+        // --- 3d. Invasion & Conquest: an otherwise-idle Militia unit picks
+        // up its own faction's shared marching order the instant one
+        // exists — set once per faction, not per-unit, by
+        // World.UpdateInvasionOrders once that faction is both high-Morale
+        // and militarily dominant (Militia count > InvasionMilitiaThreshold).
+        // Lowest Militia priority: defense/hunting above it always wins.
+        if (Role == BramblekinRole.Militia && State is BramblekinState.Walking or BramblekinState.Pausing &&
+            home?.InvasionTarget is { } invasionTarget)
+        {
+            _invasionTarget = invasionTarget;
+            SetState(BramblekinState.Invading);
+        }
+
         // --- 4. Run the current state -------------------------------------------
         switch (State)
         {
@@ -5970,6 +6429,10 @@ public sealed class Bramblekin
 
             case BramblekinState.Raiding:
                 UpdateRaiding(deltaTime, world, home);
+                break;
+
+            case BramblekinState.Invading:
+                UpdateInvading(deltaTime, world, home);
                 break;
 
             case BramblekinState.Building:
@@ -6139,6 +6602,7 @@ public sealed class Bramblekin
         Color baseColor = State == BramblekinState.Fleeing ? PanicColor
                     : Role == BramblekinRole.Militia ? MilitiaColor
                     : Role == BramblekinRole.Builder ? BuilderColor
+                    : Role == BramblekinRole.Merchant ? MerchantColor
                     : CalmColor;
         Color color = TintWithFaction(baseColor);
 
@@ -6169,6 +6633,17 @@ public sealed class Bramblekin
             var headCenter = grip + new Vector3(facing.X, 0.3f, facing.Y) * 0.5f;
             Raylib.DrawLine3D(grip, headCenter, MalletHandleColor);
             Raylib.DrawCube(headCenter, 0.12f, 0.12f, 0.12f, MalletHeadColor);
+        }
+
+        // Physical Trade: a Merchant carries a small gold backpack on its
+        // back (opposite its direction of travel) so it reads apart from
+        // every other role at a glance, on top of its own distinct body
+        // colour.
+        if (Role == BramblekinRole.Merchant)
+        {
+            var backpackCenter = Position + new Vector3(-facing.X, BodyHeight * 0.55f, -facing.Y) * 0.18f;
+            Raylib.DrawCube(backpackCenter, 0.16f, 0.2f, 0.14f, MerchantBackpackColor);
+            Raylib.DrawCubeWires(backpackCenter, 0.16f, 0.2f, 0.14f, new Color(120, 90, 20, 255));
         }
 
         // Carried food (or Amber) rides on top of the head.
@@ -6700,6 +7175,58 @@ public sealed class Bramblekin
     }
 
     /// <summary>
+    /// Invasion &amp; Conquest: a deliberate strategic strike, not a
+    /// home-defense reflex — unlike <see cref="UpdateRaiding"/> this never
+    /// leashes home and never requires the target sit inside this
+    /// faction's own territory ring; it marches however far it has to and
+    /// simply stands at the gate once it arrives. The actual fighting that
+    /// whittles the defender's Militia down happens on its own, via the
+    /// ordinary Base Defense Aggro/Border Wars combat that standing this
+    /// close to a foreign Village Heart already triggers on the
+    /// defender's side — this method only ever checks whether that combat
+    /// has finished the job (<see cref="World.LivingMilitiaCountFor"/> hits
+    /// zero) and, if so, Conquers the target outright.
+    /// </summary>
+    private void UpdateInvading(float deltaTime, World world, VillageHeart? home)
+    {
+        if (home is null || _invasionTarget is null || !world.Villages.Contains(_invasionTarget))
+        {
+            _invasionTarget = null;
+            StartWandering(world);
+            return;
+        }
+
+        VillageHeart target = _invasionTarget;
+
+        // Already ours (another invader beat this one to it, or it was
+        // stolen back from a rival's own Vassal): nothing left to do here.
+        if (target.IsVassal && target.CapitalFactionID == FactionID)
+        {
+            _invasionTarget = null;
+            StartWandering(world);
+            return;
+        }
+
+        _target = target.Center;
+
+        if (GroundMover.HorizontalDistance(Position, target.Center) <= BuildingAttackRange)
+        {
+            if (world.LivingMilitiaCountFor(target.FactionID) == 0)
+            {
+                world.ConquerVillage(target, FactionID);
+                _invasionTarget = null;
+                StartWandering(world);
+            }
+            // Defenders still standing: hold position right at the gate —
+            // no poking, no Health damage, just presence — and wait for
+            // combat elsewhere to run their numbers down to zero.
+            return;
+        }
+
+        _mover.MoveTowards(_target, DefendSpeed, deltaTime, world, p => IsSafeSpot(p, world));
+    }
+
+    /// <summary>
     /// A point <see cref="InterceptStandoff"/> meters from the spider, on the
     /// side facing <paramref name="home"/> — the spot a Militia unit tries to
     /// hold to physically get between the spider and its Village Heart.
@@ -6815,6 +7342,95 @@ public sealed class Bramblekin
         }
 
         _mover.MoveTowards(chitin.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+    }
+
+    // --- Physical Trade (Merchants) -----------------------------------------------
+
+    /// <summary>Contact distance for a Merchant arriving at either a foreign Trading Post or its own Village Heart.</summary>
+    private const float MerchantContactDistance = 0.8f;
+
+    /// <summary>The foreign Trading Post this Merchant is currently walking to or trading at.</summary>
+    private Building? _merchantTarget;
+
+    /// <summary>
+    /// A Merchant's whole world: walk to the nearest foreign Trading Post
+    /// (re-picked every trip, in case a closer one is built or its old one
+    /// is lost to Base Razing/Conquest), execute one abstract trade there
+    /// based on its own home colony's current needs, then walk home before
+    /// setting out again — forever. Never gathers, fights, builds, or
+    /// carries anything physical; the "trade" is applied directly to
+    /// <see cref="VillageHeart.FoodStored"/>/<see cref="VillageHeart.AmberStored"/>
+    /// the instant it reaches the foreign post, and the walk home is simply
+    /// the round trip completing before the next one starts.
+    /// </summary>
+    private void UpdateMerchant(float deltaTime, World world)
+    {
+        VillageHeart? home = world.VillageFor(FactionID);
+        if (home is null)
+            return; // Homeless (its own Village Heart was razed): nothing left to trade for. Just stands harmlessly in place.
+
+        if (State == BramblekinState.ReturningFromMarket)
+        {
+            if (GroundMover.HorizontalDistance(Position, home.Center) <= MerchantContactDistance)
+            {
+                SetState(BramblekinState.TravelingToMarket);
+                return;
+            }
+
+            _mover.MoveTowards(home.Center, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+            return;
+        }
+
+        // TravelingToMarket: re-validate the target every frame — it may
+        // have been razed, conquered, or never found in the first place.
+        if (_merchantTarget is null || !world.Buildings.Contains(_merchantTarget) || _merchantTarget.Kind != BuildingKind.TradingPost)
+            _merchantTarget = world.NearestForeignTradingPost(Position, FactionID);
+
+        if (_merchantTarget is null)
+        {
+            // No foreign Trading Post anywhere on the map yet — hold
+            // position at home rather than wander off aimlessly (and
+            // rather than touch State, which UpdateMerchant reads every
+            // frame regardless of the ordinary state machine's switch).
+            // It'll start walking the instant a foreign one goes up.
+            return;
+        }
+
+        if (GroundMover.HorizontalDistance(Position, _merchantTarget.Position) <= MerchantContactDistance)
+        {
+            ExecuteTrade(home);
+            _merchantTarget = null;
+            SetState(BramblekinState.ReturningFromMarket);
+            return;
+        }
+
+        _mover.MoveTowards(_merchantTarget.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+    }
+
+    /// <summary>
+    /// Physical Trade's actual economics, abstracted to a single instant
+    /// exchange the moment this Merchant reaches the foreign post: a
+    /// starving home colony (Food Stored below <see cref="World.DesperationFoodThreshold"/>)
+    /// buys <see cref="World.MerchantFoodTradeAmount"/> Food for
+    /// <see cref="World.MerchantAmberTradeAmount"/> Amber, provided it can
+    /// afford that Amber; a food-rich home colony (Food Stored already at
+    /// its cap) sells the same Food for the same Amber instead. Anything
+    /// in between (neither starving nor overflowing) is a wasted round
+    /// trip — same as a real caravan riding out to a market with nothing
+    /// worth trading that day.
+    /// </summary>
+    private static void ExecuteTrade(VillageHeart home)
+    {
+        if (home.FoodStored < World.DesperationFoodThreshold && home.AmberStored >= World.MerchantAmberTradeAmount)
+        {
+            home.AmberStored -= World.MerchantAmberTradeAmount;
+            home.FoodStored = Math.Min(home.FoodStored + World.MerchantFoodTradeAmount, home.MaxFoodCapacity);
+        }
+        else if (home.FoodStored >= home.MaxFoodCapacity && home.FoodStored >= World.MerchantFoodTradeAmount)
+        {
+            home.FoodStored -= World.MerchantFoodTradeAmount;
+            home.AmberStored += World.MerchantAmberTradeAmount;
+        }
     }
 
     // --- The Schism -------------------------------------------------------------------
