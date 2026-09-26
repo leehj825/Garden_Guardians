@@ -5606,10 +5606,8 @@ public sealed class Building
     /// the terrain's surface normal there. Callers draw their primitive(s)
     /// at whatever LOCAL offset from (0,0,0) they previously used relative
     /// to <see cref="Position"/>, then call <see cref="Rlgl.PopMatrix"/>.
-    /// Only used by the Tent and Cabin cases — the Housing System's small
-    /// shapes that visibly clip into a sloped hillside; the larger, flatter
-    /// buildings (Granary, Trading Post, Brewery, Monument) are out of
-    /// scope and keep drawing straight at <see cref="Position"/>.
+    /// Used by every <see cref="BuildingKind"/> case so the whole building
+    /// tilts as one rigid unit to match the terrain's slope.
     /// </summary>
     private void PushGroundedTiltMatrix()
     {
@@ -5627,9 +5625,11 @@ public sealed class Building
     {
         if (Kind == BuildingKind.Granary)
         {
-            var center = Position + new Vector3(0, GranaryHeight / 2f, 0);
+            var center = new Vector3(0, GranaryHeight / 2f, 0);
+            PushGroundedTiltMatrix();
             Raylib.DrawCylinder(center, GranaryRadius, GranaryRadius, GranaryHeight, 16, new Color(180, 140, 70, 255));
             Raylib.DrawCylinderWires(center, GranaryRadius, GranaryRadius, GranaryHeight, 16, new Color(90, 65, 30, 255));
+            Rlgl.PopMatrix();
             return;
         }
 
@@ -5639,10 +5639,12 @@ public sealed class Building
             // Tycoon Economy's landmark, deliberately square so it reads
             // apart from the two round buildings at a glance.
             var goldCube = new Color(255, 203, 0, 255);
-            var postCenter = Position + new Vector3(0, TradingPostHeight / 2f, 0);
+            var postCenter = new Vector3(0, TradingPostHeight / 2f, 0);
+            PushGroundedTiltMatrix();
             Raylib.DrawCube(postCenter, TradingPostRadius * 2f, TradingPostHeight, TradingPostRadius * 2f, new Color(120, 80, 45, 255));
             Raylib.DrawCubeWires(postCenter, TradingPostRadius * 2f, TradingPostHeight, TradingPostRadius * 2f, new Color(65, 40, 20, 255));
             Raylib.DrawCube(postCenter, TradingPostRadius * 0.9f, TradingPostHeight * 0.9f, TradingPostRadius * 0.9f, goldCube);
+            Rlgl.PopMatrix();
             return;
         }
 
@@ -5705,11 +5707,13 @@ public sealed class Building
             // still/brewery rather than another plain Granary silo.
             var vat = new Color(150, 60, 150, 255);
             var vatEdge = new Color(80, 25, 85, 255);
-            var vatCenter = Position + new Vector3(0, BreweryHeight / 2f, 0);
+            var vatCenter = new Vector3(0, BreweryHeight / 2f, 0);
+            var spout = new Vector3(0, BreweryHeight + 0.08f, 0);
+            PushGroundedTiltMatrix();
             Raylib.DrawCylinder(vatCenter, BreweryRadius, BreweryRadius * 0.8f, BreweryHeight, 16, vat);
             Raylib.DrawCylinderWires(vatCenter, BreweryRadius, BreweryRadius * 0.8f, BreweryHeight, 16, vatEdge);
-            var spout = Position + new Vector3(0, BreweryHeight + 0.08f, 0);
             Raylib.DrawCylinder(spout, BreweryRadius * 0.35f, BreweryRadius * 0.2f, 0.18f, 10, new Color(255, 203, 0, 255));
+            Rlgl.PopMatrix();
             return;
         }
 
@@ -5723,6 +5727,7 @@ public sealed class Building
             var stoneEdge = new Color(95, 88, 78, 255);
             const int tiers = 3;
             float tierHeight = MonumentHeight / tiers;
+            PushGroundedTiltMatrix();
             for (int tier = 0; tier < tiers; tier++)
             {
                 // Each tier's own base picks up exactly where the one below
@@ -5730,7 +5735,7 @@ public sealed class Building
                 // stepped pyramid rather than three disconnected cylinders.
                 float baseRadius = MonumentRadius * (1f - tier * 0.3f);
                 float topRadius = MonumentRadius * (1f - (tier + 1) * 0.3f);
-                var tierCenter = Position + new Vector3(0, tierHeight * tier + tierHeight / 2f, 0);
+                var tierCenter = new Vector3(0, tierHeight * tier + tierHeight / 2f, 0);
                 // DrawCylinder takes (radiusTop, radiusBottom) in that
                 // order — topRadius/baseRadius first here, or the tier
                 // renders upside down (wide top, narrow bottom).
@@ -5738,10 +5743,11 @@ public sealed class Building
                 Raylib.DrawCylinderWires(tierCenter, topRadius, baseRadius, tierHeight, 4, stoneEdge);
             }
 
-            var capstone = Position + new Vector3(0, MonumentHeight + 0.3f, 0);
+            var capstone = new Vector3(0, MonumentHeight + 0.3f, 0);
             // Point up, wide base merging into the top tier — same
             // (radiusTop, radiusBottom) order as everywhere else here.
             Raylib.DrawCylinder(capstone, 0f, MonumentRadius * 0.15f, 0.6f, 4, new Color(255, 203, 0, 255));
+            Rlgl.PopMatrix();
             return;
         }
 
@@ -5749,9 +5755,11 @@ public sealed class Building
         // enough from the grass-green ground plane's own hue (86, 150, 60)
         // that it reads as an obvious landmark at a glance rather than
         // blending in.
-        var patchCenter = Position + new Vector3(0, SporeFarmHeight / 2f, 0);
+        var patchCenter = new Vector3(0, SporeFarmHeight / 2f, 0);
+        PushGroundedTiltMatrix();
         Raylib.DrawCylinder(patchCenter, SporeFarmRadius, SporeFarmRadius, SporeFarmHeight, 24, new Color(20, 95, 35, 255));
         Raylib.DrawCylinderWires(patchCenter, SporeFarmRadius, SporeFarmRadius, SporeFarmHeight, 24, new Color(10, 45, 15, 255));
+        Rlgl.PopMatrix();
     }
 }
 
