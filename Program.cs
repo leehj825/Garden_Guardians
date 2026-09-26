@@ -198,6 +198,7 @@ public static class Game
             DrawColonyPanel(world);
             DrawGenesisPrompt(world);
             DrawMonumentAlerts(world);
+            DrawGlobalAlerts(world);
             DrawHud(world);
 
             Raylib.EndDrawing();
@@ -429,6 +430,36 @@ public static class Game
             string text = $"{FactionColorName(factionColor)} Faction has completed the Monument!";
             int textWidth = Raylib.MeasureText(text, fontSize);
             Raylib.DrawText(text, (screenWidth - textWidth) / 2, 10 + i * lineHeight, fontSize, factionColor);
+        }
+    }
+
+    /// <summary>
+    /// Robust Settler AI: transient, top-of-screen banner alerts (see
+    /// <see cref="World.GlobalAlerts"/>/<see cref="World.QueueGlobalAlert"/>)
+    /// — e.g. "[NEW TRIBE] The Blue tribe has sprouted!" the moment a
+    /// Settler founds a new Village Heart. Stacked below
+    /// <see cref="DrawMonumentAlerts"/>'s permanent banner, and fades out
+    /// over its own <see cref="World.GlobalAlertDuration"/> lifetime rather
+    /// than sitting there forever.
+    /// </summary>
+    private static void DrawGlobalAlerts(World world)
+    {
+        if (world.GlobalAlerts.Count == 0)
+            return;
+
+        const int fontSize = 32, lineHeight = 38;
+        int screenWidth = Raylib.GetScreenWidth();
+        int topOffset = world.CompletedMonuments.Count > 0
+            ? world.CompletedMonuments.Count * 44 + 20
+            : 0;
+
+        for (int i = 0; i < world.GlobalAlerts.Count; i++)
+        {
+            (string text, Color color, float timeLeft) = world.GlobalAlerts[i];
+            byte alpha = (byte)(255 * Math.Clamp(timeLeft / World.GlobalAlertDuration, 0f, 1f));
+            Color faded = new(color.R, color.G, color.B, alpha);
+            int textWidth = Raylib.MeasureText(text, fontSize);
+            Raylib.DrawText(text, (screenWidth - textWidth) / 2, topOffset + 10 + i * lineHeight, fontSize, faded);
         }
     }
 
@@ -1427,8 +1458,17 @@ public sealed class World
     /// <summary>The Split Fix: exactly how many Bramblekin depart as Pioneers in a True Schism, regardless of the parent's total Population.</summary>
     public const int SchismPioneerCount = 20;
 
-    /// <summary>The Split Fix: exactly how much Food Stored departs with the Pioneers in a True Schism.</summary>
-    public const int SchismPioneerFood = 50;
+    /// <summary>
+    /// The Split Fix: exactly how much Food Stored departs with the Pioneers
+    /// in a True Schism. The Half Food Fix: this used to be 50 — exactly
+    /// half of <see cref="SchismFoodThreshold"/> (100) — so a Schism firing
+    /// right at threshold read to the player as an unexplained 50% food
+    /// drop with no feedback at all. Lowered to match the flat
+    /// <see cref="SettlerFoodCost"/> the Settler path already charges, and
+    /// now paired with an explicit floating-text alert and TraceLog entry
+    /// (see <see cref="UpdateSchism"/>) so the cost is never a mystery.
+    /// </summary>
+    public const int SchismPioneerFood = 20;
 
     /// <summary>Splinter Factions: minimum Food Stored a Village Heart needs banked, on top of being maxed out on Housing, before it dispatches a Settler — see <see cref="UpdateAutoSettler"/>.</summary>
     public const int SettlerFoodThreshold = 40;
@@ -1535,6 +1575,9 @@ public sealed class World
 
     /// <summary>How long (seconds) a floating text pop-up (Upkeep, Starvation) stays on screen.</summary>
     public const float FloatingTextDuration = 1.5f;
+
+    /// <summary>Robust Settler AI: how long (seconds) a global, top-of-screen alert (e.g. a new tribe founding) stays on screen — see <see cref="QueueGlobalAlert"/>/<see cref="GlobalAlerts"/>.</summary>
+    public const float GlobalAlertDuration = 5f;
 
     /// <summary>
     /// Cultural Borders: the base term of every Village Heart's own dynamic
@@ -1655,13 +1698,16 @@ public sealed class World
     private const int MigrationTargetAttempts = 50;
 
     /// <summary>Splinter Factions: a Settler's founding target must land at least this far (m) from its parent Village Heart — see <see cref="RandomSettlerTarget"/>.</summary>
-    private const float SettlerMinDistance = 40f;
+    private const float SettlerMinDistance = 50f;
+
+    /// <summary>Robust Settler AI: how far (m) a candidate founding target must keep from every OTHER active Village Heart (not just its own parent) before it's accepted outright — see <see cref="RandomSettlerTarget"/>.</summary>
+    private const float SettlerMinDistanceFromOtherVillages = 30f;
+
+    /// <summary>Robust Settler AI: how many random candidates <see cref="RandomSettlerTarget"/> samples before giving up and falling back to <see cref="FurthestCornerFromVillages"/> — guarantees a target is always found, never an unbounded search.</summary>
+    private const int SettlerCandidateCount = 5;
 
     /// <summary>Splinter Factions: how far (m) from the 100x100 map's edges a Settler's founding target keeps — with a 100m-wide map this keeps every target within [-45, 45] on both axes.</summary>
     private const float SettlerEdgeMargin = 5f;
-
-    /// <summary>How many random coordinates <see cref="RandomSettlerTarget"/> tries before giving up and accepting the least-bad (furthest) one tried.</summary>
-    private const int SettlerTargetAttempts = 50;
 
     /// <summary>The palette a new Schism faction's colour is drawn from, cycling once all four are in use.</summary>
     private static readonly Color[] SchismFactionColors =
@@ -1702,6 +1748,7 @@ public sealed class World
     private readonly List<Obstacle> _obstacles = new();
     private readonly List<(Vector3 Position, float TimeLeft)> _splats = new();
     private readonly List<(Vector3 Position, string Text, Color Color, float TimeLeft)> _floatingTexts = new();
+    private readonly List<(string Text, Color Color, float TimeLeft)> _globalAlerts = new();
     private float _acornSpawnTimer = AcornSpawnInterval;
     private float _amberSpawnTimer = AmberSpawnInterval;
 
@@ -1852,6 +1899,9 @@ public sealed class World
 
     /// <summary>Floating text pop-ups (Upkeep paid, Starvation) still fading out above the Village Heart.</summary>
     public IReadOnlyList<(Vector3 Position, string Text, Color Color, float TimeLeft)> FloatingTexts => _floatingTexts;
+
+    /// <summary>Robust Settler AI: fixed, top-of-screen banner alerts (e.g. "[NEW TRIBE] The Blue tribe has sprouted!") — distinct from the world-projected, per-village <see cref="FloatingTexts"/> — see <see cref="QueueGlobalAlert"/>.</summary>
+    public IReadOnlyList<(string Text, Color Color, float TimeLeft)> GlobalAlerts => _globalAlerts;
 
     /// <summary>
     /// The Great Monument: every faction that has ever completed one, in
@@ -2967,6 +3017,16 @@ public sealed class World
             else
                 _floatingTexts[i] = text;
         }
+
+        for (int i = _globalAlerts.Count - 1; i >= 0; i--)
+        {
+            var alert = _globalAlerts[i];
+            alert.TimeLeft -= deltaTime;
+            if (alert.TimeLeft <= 0f)
+                _globalAlerts.RemoveAt(i);
+            else
+                _globalAlerts[i] = alert;
+        }
     }
 
     /// <summary>
@@ -3853,6 +3913,12 @@ public sealed class World
         village.FoodStored -= SchismPioneerFood;
         village.HasActiveMigration = true;
 
+        // The Half Food Fix: a flat, clearly-labeled cost instead of the
+        // silent 50% drop this used to look like — both a floating text at
+        // the parent's own Village Heart and a console log entry.
+        QueueFloatingText(village.Center, $"[-{SchismPioneerFood} Food] Settlers Departed!", Color.White);
+        Raylib.TraceLog(TraceLogLevel.Info, $"[SCHISM] Tribe {village.FactionID} splitting! Consuming {SchismPioneerFood} food.");
+
         // The Physical Population Transfer: every pioneer's FactionID flips
         // the instant it becomes a Pioneer (see Bramblekin.BecomePioneer,
         // called below) — from that point on, world.VillageFor(FactionID)
@@ -3903,6 +3969,11 @@ public sealed class World
         village.FoodStored -= SettlerFoodCost;
         village.Population = Math.Max(0, village.Population - SettlerPopulationCost);
 
+        // The Half Food Fix: a flat, clearly-labeled cost, with the same
+        // floating text and console log the True Schism gets above.
+        QueueFloatingText(village.Center, $"[-{SettlerFoodCost} Food] Settlers Departed!", Color.White);
+        Raylib.TraceLog(TraceLogLevel.Info, $"[SCHISM] Tribe {village.FactionID} splitting! Consuming {SettlerFoodCost} food.");
+
         Vector3 spot = RandomPointNearVillage(village, GenesisSpawnRadius, Bramblekin.BodyRadius + 0.1f)
                        ?? RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin);
 
@@ -3915,29 +3986,98 @@ public sealed class World
     }
 
     /// <summary>
-    /// Splinter Factions: a random point at least <see cref="SettlerMinDistance"/>
-    /// meters from <paramref name="home"/>, staying within
-    /// <see cref="SettlerEdgeMargin"/> meters of the map's edges (on a
-    /// 100x100 map, [-45, 45] on both axes) — a Settler's founding
-    /// destination. Same Overcrowding Fallback as <see cref="RandomMigrationTarget"/>:
-    /// if none of <see cref="SettlerTargetAttempts"/> random tries lands far
-    /// enough away, settle for the furthest one actually tried.
+    /// Robust Settler AI — Guaranteed Splitting: samples
+    /// <see cref="SettlerCandidateCount"/> random points at least
+    /// <see cref="SettlerMinDistance"/> meters from <paramref name="home"/>,
+    /// staying within <see cref="SettlerEdgeMargin"/> meters of the map's
+    /// edges (on a 100x100 map, [-45, 45] on both axes), and returns the
+    /// first one that also keeps at least
+    /// <see cref="SettlerMinDistanceFromOtherVillages"/> meters from every
+    /// OTHER already-active Village Heart — not just its own parent — so a
+    /// fresh splinter never spawns right on top of a rival tribe. If none of
+    /// those candidates clears that bar, this can never fail outright: it
+    /// falls back to <see cref="FurthestCornerFromVillages"/>, a guaranteed
+    /// valid target. Always terminates in exactly
+    /// <see cref="SettlerCandidateCount"/> iterations at most.
     /// </summary>
     private Vector3 RandomSettlerTarget(Vector3 home)
     {
+        for (int attempt = 0; attempt < SettlerCandidateCount; attempt++)
+        {
+            Vector3 candidate = RandomFarPointFrom(home, SettlerMinDistance);
+            if (Villages.All(v => Vector3.Distance(candidate, v.Center) >= SettlerMinDistanceFromOtherVillages))
+                return candidate;
+        }
+
+        // Guaranteed Fallback: every one of the 5 candidates landed too
+        // close to some other tribe (an overcrowded map) — force a valid
+        // location instead of giving up on founding a new tribe at all.
+        return FurthestCornerFromVillages();
+    }
+
+    /// <summary>
+    /// A single random point at least <paramref name="minDistance"/> meters
+    /// from <paramref name="from"/>, staying within
+    /// <see cref="SettlerEdgeMargin"/> meters of the map's edges. Tries up to
+    /// <see cref="MigrationTargetAttempts"/> random draws and falls back to
+    /// the furthest one actually tried — this inner loop only ever picks a
+    /// point's raw distance from a single origin, so it always terminates;
+    /// the outer <see cref="RandomSettlerTarget"/> is what checks it against
+    /// every other Village Heart.
+    /// </summary>
+    private Vector3 RandomFarPointFrom(Vector3 from, float minDistance)
+    {
         Vector3 best = Vector3.Zero;
         float bestDistance = -1f;
-        for (int attempt = 0; attempt < SettlerTargetAttempts; attempt++)
+        for (int attempt = 0; attempt < MigrationTargetAttempts; attempt++)
         {
             Vector3 candidate = Terrain.RandomPoint(Rng, SettlerEdgeMargin);
-            float distance = Vector3.Distance(candidate, home);
-            if (distance >= SettlerMinDistance)
+            float distance = Vector3.Distance(candidate, from);
+            if (distance >= minDistance)
                 return candidate;
 
             if (distance > bestDistance)
             {
                 bestDistance = distance;
                 best = candidate;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Robust Settler AI — Guaranteed Splitting's final fallback: whichever
+    /// of the map's four corners (kept <see cref="SettlerEdgeMargin"/> meters
+    /// in from the true edge, same as every other Settler target) is
+    /// furthest from the average center of every currently active
+    /// <see cref="Villages"/> — a deterministic, always-valid founding spot
+    /// for when the map is too crowded for <see cref="RandomSettlerTarget"/>'s
+    /// 5 random candidates to find a clean gap.
+    /// </summary>
+    private Vector3 FurthestCornerFromVillages()
+    {
+        float half = Terrain.Size / 2f - SettlerEdgeMargin;
+        Span<Vector3> corners = stackalloc Vector3[]
+        {
+            new(-half, Terrain.GroundHeight, -half),
+            new(half, Terrain.GroundHeight, -half),
+            new(-half, Terrain.GroundHeight, half),
+            new(half, Terrain.GroundHeight, half),
+        };
+
+        Vector3 averageCenter = Villages.Count > 0
+            ? new Vector3(Villages.Average(v => v.Center.X), Terrain.GroundHeight, Villages.Average(v => v.Center.Z))
+            : Vector3.Zero;
+
+        Vector3 best = corners[0];
+        float bestDistance = -1f;
+        foreach (Vector3 corner in corners)
+        {
+            float distance = Vector3.Distance(corner, averageCenter);
+            if (distance > bestDistance)
+            {
+                bestDistance = distance;
+                best = corner;
             }
         }
         return best;
@@ -4078,8 +4218,27 @@ public sealed class World
         var village = new VillageHeart(point, factionId, factionColor, Rng);
         Villages.Add(village);
         RebuildObstacles();
+
+        // Robust Settler AI — Guaranteed Splitting: a Settler reaching this
+        // point always successfully founds its new tribe (see
+        // RandomSettlerTarget's own guarantee), so this is unconditional
+        // success feedback, not a "did it work?" check.
+        Raylib.TraceLog(TraceLogLevel.Info, $"[FOUNDATION SUCCESS] New {FactionColorName(factionColor)} tribe established!");
+        QueueGlobalAlert($"[NEW TRIBE] The {FactionColorName(factionColor)} tribe has sprouted!", factionColor);
+
         return village;
     }
+
+    /// <summary>Robust Settler AI: a human-readable name for a faction's colour, for log/alert text — same palette as <see cref="Renderer"/>'s own private copy (kept in sync by hand; a display-only lookup).</summary>
+    private static string FactionColorName(Color color) => color switch
+    {
+        { R: 40, G: 180, B: 90 } => "Green",
+        { R: 60, G: 120, B: 220 } => "Blue",
+        { R: 225, G: 195, B: 55 } => "Yellow",
+        { R: 205, G: 60, B: 55 } => "Red",
+        { R: 150, G: 80, B: 195 } => "Purple",
+        _ => "Unknown",
+    };
 
     /// <summary>
     /// Removes a Settler from the world the instant it founds its new
@@ -4188,6 +4347,10 @@ public sealed class World
     /// <summary>Queues a floating text pop-up (see <see cref="FloatingTexts"/>) at a world position.</summary>
     private void QueueFloatingText(Vector3 position, string text, Color color) =>
         _floatingTexts.Add((position, text, color, FloatingTextDuration));
+
+    /// <summary>Robust Settler AI: queues a fixed, top-of-screen banner alert (see <see cref="GlobalAlerts"/>) for <see cref="GlobalAlertDuration"/> seconds — unlike <see cref="QueueFloatingText"/>, this isn't tied to any world position.</summary>
+    private void QueueGlobalAlert(string text, Color color) =>
+        _globalAlerts.Add((text, color, GlobalAlertDuration));
 
     /// <summary>The Town Square: the strict minimum horizontal distance a newly placed Building/Blueprint must keep from the <see cref="VillageHeart"/>'s own center, so the Heart has room to scale up (e.g. its Tier 2 Town Center upgrade) without clipping into neighboring structures. Not applied to non-building placement (Bramblekin wander/movement targets), which reuse <see cref="RandomPointNearVillage"/> with the default (no) clearance.</summary>
     public const float VillageHeartCenterClearance = 10.0f;
@@ -6117,6 +6280,17 @@ public sealed class GroundMover
     /// <summary>Fraction of the expected distance that must be covered per check to not count as stuck.</summary>
     private const float StuckProgressFraction = 0.3f;
 
+    /// <summary>
+    /// Map Bounds Fix: the strict distance from the 100x100 map's center
+    /// (0, 0) on either the X or Z axis a walker may not cross — see
+    /// <see cref="MoveTowards"/>. Kept a little inside the terrain's own
+    /// hard edge (<see cref="ClampToTerrain"/>'s [-50, 50]-ish clamp) so a
+    /// unit is steered back toward the garden long before it could ever
+    /// walk off the map, rather than relying on the terrain clamp alone to
+    /// silently teleport it back onto the edge every frame.
+    /// </summary>
+    private const float MapBoundaryLimit = 48.0f;
+
     private readonly Random _rng;
     private readonly float _edgeMargin;
     private Vector3 _progressAnchor;
@@ -6195,6 +6369,20 @@ public sealed class GroundMover
         else
         {
             Vector2 heading = Steer(position, toGoal / distance, MathF.Min(distance, LookAhead), goal, obstacles);
+
+            // Map Bounds Fix: before applying velocity to X or Z, turn the
+            // walker back toward the garden's center the instant it's
+            // already past MapBoundaryLimit on that axis, rather than
+            // letting it march indefinitely toward the terrain's hard edge
+            // (or off it, before ClampToTerrain silently caught it below).
+            // Negating just the offending axis's component, not the whole
+            // heading, still lets the other axis's steering continue
+            // normally.
+            if (MathF.Abs(position.X) > MapBoundaryLimit)
+                heading.X = -heading.X;
+            if (MathF.Abs(position.Y) > MapBoundaryLimit)
+                heading.Y = -heading.Y;
+
             position += heading * step;
             Heading = heading;
         }
