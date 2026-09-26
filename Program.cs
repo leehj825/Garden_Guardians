@@ -4283,6 +4283,87 @@ public sealed class World
     }
 
     /// <summary>
+    /// Amber Catch-Up: same rejection-sampling loop as <see cref="RandomWildernessSpot"/>
+    /// (clearance/territory checks included), but candidates are drawn from
+    /// an annulus around <paramref name="near"/> — from just outside
+    /// <paramref name="near"/>'s own Territory Ring out to
+    /// <paramref name="bandMultiplier"/> times its radius — instead of
+    /// uniformly across the whole map, biasing wild Amber to land near a
+    /// specific (poorest) tribe. Falls back to the fully uniform
+    /// <see cref="RandomWildernessSpot"/> if nothing in the band checks out
+    /// after a reasonable number of tries — e.g. the band runs off the edge
+    /// of the terrain.
+    /// </summary>
+    private Vector3 RandomWildernessSpotNear(Vector3 near, float nearRadius, float bandMultiplier, float clearance, float edgeMargin)
+    {
+        float innerRadius = nearRadius * 1.05f; // just outside the territory ring itself
+        float outerRadius = nearRadius * bandMultiplier;
+        for (int attempt = 0; attempt < 20; attempt++)
+        {
+            float angle = (float)(Rng.NextDouble() * MathF.Tau);
+            float radius = innerRadius + (float)Rng.NextDouble() * MathF.Max(outerRadius - innerRadius, 0f);
+            Vector3 candidate = near + new Vector3(MathF.Cos(angle) * radius, 0f, MathF.Sin(angle) * radius);
+            if (!Terrain.Contains(candidate, edgeMargin))
+                continue;
+            if (IsBlocked(candidate, clearance))
+                continue;
+            if (IsInsideAnyTerritory(candidate))
+                continue;
+            return candidate;
+        }
+
+        return RandomWildernessSpot(clearance, edgeMargin);
+    }
+
+    /// <summary>
+    /// Amber Catch-Up: how much of the map's chance a newly-poor tribe (the
+    /// one with the least <see cref="VillageHeart.AmberStored"/>) gets of
+    /// having the next wild Amber node biased toward it, versus a fully
+    /// uniform map-wide spawn. A tendency, not a guarantee — richer tribes
+    /// still occasionally get lucky finds near them too.
+    /// </summary>
+    private const double PoorestVillageAmberBiasChance = 0.75;
+
+    /// <summary>How far out (in multiples of the poorest tribe's own <see cref="VillageHeart.TerritoryRadius"/>) the Amber Catch-Up band reaches.</summary>
+    private const float PoorestVillageAmberBandMultiplier = 2f;
+
+    /// <summary>
+    /// Amber Catch-Up: picks where the next wild Amber node spawns. With
+    /// <see cref="PoorestVillageAmberBiasChance"/> odds (and only when there
+    /// is more than one Village to be poorer or richer relative to), biases
+    /// the spot toward the currently poorest tribe's own vicinity via
+    /// <see cref="RandomWildernessSpotNear"/>; otherwise (and always when
+    /// <see cref="Villages"/> has 0 or 1 entries) falls back to the old,
+    /// fully uniform <see cref="RandomWildernessSpot"/> — so a lone early
+    /// Village Heart sees no behavior change at all.
+    /// </summary>
+    private Vector3 PickAmberSpawnSpot()
+    {
+        if (Villages.Count > 1 && Rng.NextDouble() < PoorestVillageAmberBiasChance)
+        {
+            VillageHeart? poorest = null;
+            for (int i = Villages.Count - 1; i >= 0; i--)
+            {
+                VillageHeart village = Villages[i];
+                if (poorest is null || village.AmberStored < poorest.AmberStored)
+                    poorest = village;
+            }
+
+            if (poorest is not null)
+            {
+                return RandomWildernessSpotNear(
+                    poorest.Center,
+                    poorest.TerritoryRadius,
+                    PoorestVillageAmberBandMultiplier,
+                    AmberNode.Radius + 0.5f,
+                    edgeMargin: 1.5f);
+            }
+        }
+
+        return RandomWildernessSpot(AmberNode.Radius + 0.5f, edgeMargin: 1.5f);
+    }
+
+    /// <summary>
     /// Village Building: spends the Blueprint kind's Food cost (<see cref="GranaryFoodCost"/>,
     /// <see cref="SporeFarmFoodCost"/> or <see cref="TentFoodCost"/>) to
     /// place a Blueprint owned by <paramref name="village"/>'s Faction at
@@ -4696,25 +4777,40 @@ public sealed class World
     private Vector3 RandomAcornSpot() => RandomWildernessSpot(Acorn.Radius + 0.5f, edgeMargin: 1.5f);
 
     /// <summary>
+    /// Tycoon Economy Scaling: the floor on the effective Amber spawn
+    /// interval (see <see cref="UpdateAmberSpawn"/>) — no matter how many
+    /// Villages exist, the shared timer never re-arms faster than this, so a
+    /// very high tribe count can't degenerate into an effectively-every-frame
+    /// spawn timer.
+    /// </summary>
+    private const float MinAmberSpawnInterval = 1.5f;
+
+    /// <summary>
     /// Tycoon Economy: tops the map-wide Amber population back up to
-    /// <see cref="MaxAmberOnMap"/> every <see cref="AmberSpawnInterval"/>
-    /// seconds — kept scarce (at most 3 on the map at once) and spread
-    /// anywhere valid across the whole map, outside every Village Heart's
-    /// Territory Ring, same pattern as Acorns and Berries.
+    /// <see cref="MaxAmberOnMap"/> — kept scarce (bounded per-faction by
+    /// <see cref="MaxAmberPerFaction"/>) and spread across the whole map,
+    /// outside every Village Heart's Territory Ring, same pattern as Acorns
+    /// and Berries. The trickle rate itself now scales with tribe count: the
+    /// shared timer re-arms to <see cref="AmberSpawnInterval"/> divided by
+    /// the current number of Villages (floored at <see cref="MinAmberSpawnInterval"/>)
+    /// each time it fires, instead of a flat interval, so more tribes sharing
+    /// the map means the trickle refills faster too, not just a bigger cap
+    /// to wait longer for. Where the spot itself lands is then biased toward
+    /// whichever tribe is currently poorest — see <see cref="PickAmberSpawnSpot"/>.
     /// </summary>
     private void UpdateAmberSpawn(float deltaTime)
     {
         _amberSpawnTimer -= deltaTime;
         if (_amberSpawnTimer > 0f)
             return;
-        _amberSpawnTimer = AmberSpawnInterval;
+        _amberSpawnTimer = MathF.Max(AmberSpawnInterval / Math.Max(1, Villages.Count), MinAmberSpawnInterval);
 
         // Object Pooling: AmberNodes.Count is now the fixed pool size, not
         // the live count — MaxAmberOnMap caps how many are actually active.
         if (AmberNodes.Count(a => a.IsActive) >= MaxAmberOnMap)
             return;
 
-        ActivateAmberNode(RandomWildernessSpot(AmberNode.Radius + 0.5f, edgeMargin: 1.5f));
+        ActivateAmberNode(PickAmberSpawnSpot());
     }
 }
 
