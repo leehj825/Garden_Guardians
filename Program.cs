@@ -534,7 +534,7 @@ public sealed class TouchCameraController
     /// camera.Target. Turn this down if panning still feels too fast at
     /// every zoom level, up if it feels sluggish.
     /// </summary>
-    private const float PanSensitivity = 0.08f;
+    private const float PanSensitivity = 0.12f;
 
     /// <summary>
     /// Camera Sensitivity Tuning: the single knob on Two-Finger Rotation's
@@ -558,6 +558,20 @@ public sealed class TouchCameraController
     private float _lastPinchDistance;
     private float _lastTwoFingerMidpointY;
     private bool _isTwoFingerGesture;
+
+    // The Flip Fix: raylib reports touch points by index (0, 1, ...), but
+    // which physical finger gets which index is NOT stable frame to frame —
+    // the OS/driver can silently swap them mid-gesture. Since the angle
+    // between the two points flips by ~180° the instant "first" and
+    // "second" swap (Atan2 of a negated vector), that swap alone was
+    // enough to make the world appear to suddenly flip during a twist —
+    // and, because a real vertical two-finger drag is never perfectly
+    // symmetric, during a tilt too. UpdateTwoFingerGesture instead matches
+    // this frame's two points to whichever of last frame's it's actually
+    // closest to, so "first"/"second" stay tied to the same physical
+    // finger regardless of what order raylib reports them in.
+    private Vector2 _lastFirstPos;
+    private Vector2 _lastSecondPos;
 
     /// <summary>
     /// Radians of camera tilt (pitch) per pixel the two-finger midpoint
@@ -630,8 +644,26 @@ public sealed class TouchCameraController
     /// </summary>
     private void UpdateTwoFingerGesture(ref Camera3D camera)
     {
-        Vector2 first = Raylib.GetTouchPosition(0);
-        Vector2 second = Raylib.GetTouchPosition(1);
+        Vector2 pointA = Raylib.GetTouchPosition(0);
+        Vector2 pointB = Raylib.GetTouchPosition(1);
+
+        // The Flip Fix: raylib's index-to-finger assignment isn't stable
+        // frame to frame, so pick whichever of the two possible pairings
+        // (A/B as-is, or swapped) keeps each point closest to where it
+        // already was last frame, rather than trusting index order.
+        Vector2 first = pointA;
+        Vector2 second = pointB;
+        if (_isTwoFingerGesture)
+        {
+            float straight = Vector2.DistanceSquared(pointA, _lastFirstPos) + Vector2.DistanceSquared(pointB, _lastSecondPos);
+            float swapped = Vector2.DistanceSquared(pointA, _lastSecondPos) + Vector2.DistanceSquared(pointB, _lastFirstPos);
+            if (swapped < straight)
+            {
+                first = pointB;
+                second = pointA;
+            }
+        }
+
         float angle = MathF.Atan2(second.Y - first.Y, second.X - first.X);
         float distance = Vector2.Distance(first, second);
         float midpointY = (first.Y + second.Y) / 2f;
@@ -648,6 +680,8 @@ public sealed class TouchCameraController
         _lastTouchAngle = angle;
         _lastPinchDistance = distance;
         _lastTwoFingerMidpointY = midpointY;
+        _lastFirstPos = first;
+        _lastSecondPos = second;
         _isTwoFingerGesture = true;
     }
 
