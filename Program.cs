@@ -1974,10 +1974,6 @@ public sealed class World
         Terrain = terrain;
         Rng = rng;
 
-        // GPU Instancing (base body only): build the shared Bramblekin
-        // capsule Model once, up front.
-        BramblekinRenderer.Initialize();
-
         // The original Village Heart: Faction 0, green — sits just off the
         // centre of the garden. It is a solid circle for walkers, same as
         // any faction that joins it later.
@@ -3366,23 +3362,12 @@ public sealed class World
         // Reverse for-loop, and skip anything marked dead this frame: its
         // removal from Colony is deferred, so without this check a
         // Bramblekin caught a moment ago would still be drawn standing there.
-        // GPU Instancing (base body only): the plain capsule body for every
-        // live, on-screen Bramblekin is batched by FactionColor here and
-        // drawn in one DrawMeshInstanced call per color after the loop;
-        // b.Draw() still runs (same culling gate as before) for every
-        // accessory it always drew — drop shadow, highlight, role
-        // decorations, carried items — just without its own body capsule.
-        BramblekinRenderer.BeginFrame();
         for (int i = Colony.Count - 1; i >= 0; i--)
         {
             Bramblekin b = Colony[i];
             if (!b.IsDead && IsWithinRenderRadius(b.Position, camera) && IsOnScreen(b.Position, camera))
-            {
-                BramblekinRenderer.Add(b);
                 b.Draw();
-            }
         }
-        BramblekinRenderer.Flush();
 
         Spider?.Draw();
     }
@@ -7046,135 +7031,6 @@ public enum BramblekinRole
 /// dies (see <see cref="MarkDead"/>). The Wolf Spider is exempt — any number
 /// of Militia can pile onto it at once.
 /// </summary>
-/// <summary>
-/// GPU Instancing (base body only): batches every on-screen Bramblekin's
-/// plain capsule body into per-FactionColor <see cref="Raylib.DrawMeshInstanced"/>
-/// calls instead of one <see cref="Raylib.DrawCapsule"/> per unit — with
-/// 450+ Bramblekin, that was the single biggest per-frame cost. Everything
-/// else a Bramblekin draws (drop shadow, FactionColor head highlight, role
-/// decorations like a Merchant's backpack or Settler's flag, carried
-/// items) stays on immediate-mode rendering in <see cref="Bramblekin.Draw"/>,
-/// unchanged — only the body capsule itself moved here.
-///
-/// A single shared <see cref="Model"/> is built once (<see cref="Initialize"/>)
-/// from a capsule <see cref="Mesh"/> sized to match the body the immediate-mode
-/// path used to draw. Every frame, <see cref="BeginFrame"/> clears the
-/// per-color transform batches, <see cref="Add"/> is called once per
-/// live/on-screen Bramblekin (same culling gate as before — a culled unit
-/// contributes no matrix, same as it never called Draw before), and
-/// <see cref="Flush"/> issues one instanced draw call per FactionColor,
-/// re-tinting the shared model's material between calls.
-///
-/// Instanced meshes share a single material, so per-instance color isn't
-/// possible without a custom shader; mutating the shared material's
-/// diffuse color immediately before each color group's own
-/// DrawMeshInstanced call is safe because both are synchronous, CPU-side,
-/// single-threaded calls — the mutate-then-draw pair for one color group
-/// always finishes (the GPU command referencing that color's uniform is
-/// issued) before the next group's mutate touches the same material again.
-/// This is the same batch-by-color limitation the user's own spec
-/// describes, not a bug.
-/// </summary>
-internal static class BramblekinRenderer
-{
-    private static Model _model;
-    private static bool _initialized;
-
-    /// <summary>One FactionColor's worth of this frame's world transforms, plus the color itself (needed when the material is (re)tinted just before that color's draw call).</summary>
-    private sealed class Batch
-    {
-        public Color Color;
-        public readonly List<Matrix4x4> Matrices = new();
-    }
-
-    /// <summary>Keyed by a packed RGBA form of FactionColor rather than the Color struct itself, since Raylib-cs's Color has no guaranteed value-equality/hashcode of its own.</summary>
-    private static readonly Dictionary<uint, Batch> _batches = new();
-
-    /// <summary>Part 1: builds the single reusable capsule Model, sized to match the body the old immediate-mode DrawCapsule call used (radius <see cref="Bramblekin.BodyRadius"/>, total height <see cref="Bramblekin.BodyHeight"/>). Called once from <see cref="World"/>'s constructor.</summary>
-    public static void Initialize()
-    {
-        if (_initialized)
-            return;
-
-        // GenMeshCapsule's "height" is the cylindrical mid-section length
-        // between the two hemispherical caps, not the capsule's total
-        // height — so subtract the two end radii from BodyHeight to match
-        // the old bottom/top-inset-by-radius DrawCapsule call exactly.
-        float midHeight = Bramblekin.BodyHeight - 2f * Bramblekin.BodyRadius;
-        Mesh mesh = Raylib.GenMeshCapsule(Bramblekin.BodyRadius, midHeight, 8, 4);
-        _model = Raylib.LoadModelFromMesh(mesh);
-        _initialized = true;
-    }
-
-    /// <summary>Clears every color's transform list for the new frame (batches are grouped fresh each frame, never accumulated).</summary>
-    public static void BeginFrame()
-    {
-        foreach (Batch batch in _batches.Values)
-            batch.Matrices.Clear();
-    }
-
-    /// <summary>
-    /// Part 2: adds one live, on-screen Bramblekin's world transform to its
-    /// FactionColor's batch. The transform combines the exact same
-    /// GetNormalAt acos/axis-angle terrain-tilt math used for
-    /// VillageHeart/Building/GardenProp, plus a translation to this unit's
-    /// ground position with the same local Y-offset (BodyHeight / 2, so the
-    /// capsule's vertical center — GenMeshCapsule's mesh is centered on its
-    /// own local origin — lands where the old bottom/top-inset draw call
-    /// put the capsule) the immediate-mode path used.
-    /// </summary>
-    public static void Add(Bramblekin b)
-    {
-        Vector3 normal = World.GetNormalAt(b.Position.X, b.Position.Z);
-        Vector3 axis = Vector3.Cross(Vector3.UnitY, normal);
-        float angleRadians = MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.UnitY, normal), -1.0f, 1.0f));
-
-        // System.Numerics.Matrix4x4 combines row-vector-style, left to
-        // right (v' = v * M1 * M2 applies M1 first): rotate about the
-        // origin first, then translate to the unit's ground position —
-        // exactly the "rotate first, then translate" order the terrain
-        // tilt needs (rotating an already-translated point would swing it
-        // through the world around the origin instead of tilting it in
-        // place).
-        Matrix4x4 rotation = axis.Length() > 0.001f
-            ? Matrix4x4.CreateFromAxisAngle(Vector3.Normalize(axis), angleRadians)
-            : Matrix4x4.Identity;
-
-        float groundY = World.GetHeightAt(b.Position.X, b.Position.Z);
-        var center = new Vector3(b.Position.X, groundY + Bramblekin.BodyHeight / 2f, b.Position.Z);
-        Matrix4x4 transform = rotation * Matrix4x4.CreateTranslation(center);
-
-        uint key = PackColor(b.FactionColor);
-        if (!_batches.TryGetValue(key, out Batch? batch))
-        {
-            batch = new Batch { Color = b.FactionColor };
-            _batches[key] = batch;
-        }
-        batch.Matrices.Add(transform);
-    }
-
-    private static uint PackColor(Color c) =>
-        ((uint)c.R << 24) | ((uint)c.G << 16) | ((uint)c.B << 8) | c.A;
-
-    /// <summary>Part 3: one DrawMeshInstanced call per FactionColor present this frame, re-tinting the shared model's material immediately before each call.</summary>
-    public static unsafe void Flush()
-    {
-        if (!_initialized)
-            return;
-
-        foreach (Batch batch in _batches.Values)
-        {
-            if (batch.Matrices.Count == 0)
-                continue;
-
-            _model.Materials[0].Maps[(int)MaterialMapIndex.Diffuse].Color = batch.Color;
-
-            Matrix4x4[] transforms = batch.Matrices.ToArray();
-            Raylib.DrawMeshInstanced(_model.Meshes[0], _model.Materials[0], transforms, transforms.Length);
-        }
-    }
-}
-
 public sealed class Bramblekin
 {
     private static int _nextId = 0;
@@ -8052,6 +7908,14 @@ public sealed class Bramblekin
     /// </summary>
     public void Draw()
     {
+        Color baseColor = State == BramblekinState.Fleeing ? PanicColor
+                    : Role == BramblekinRole.Militia ? MilitiaColor
+                    : Role == BramblekinRole.Builder ? BuilderColor
+                    : Role == BramblekinRole.Merchant ? MerchantColor
+                    : Role == BramblekinRole.Settler ? SettlerColor
+                    : CalmColor;
+        Color color = TintWithFaction(baseColor);
+
         // Follow-up Part 3: a small, dark, semi-transparent drop shadow at
         // this unit's own X/Z on the ground, drawn before the body itself
         // — a flat disc laid on the XZ plane (DrawCircle3D's rotationAxis
@@ -8062,13 +7926,12 @@ public sealed class Bramblekin
         var shadowCenter = new Vector3(Position.X, Position.Y + 0.02f, Position.Z);
         Raylib.DrawCircle3D(shadowCenter, BodyRadius * 1.3f, new Vector3(1, 0, 0), 90f, new Color(0, 0, 0, 90));
 
-        // GPU Instancing (base body only): the plain capsule body itself is
-        // no longer drawn here — it's batched by FactionColor and drawn via
-        // BramblekinRenderer's DrawMeshInstanced call in World.Draw
-        // instead. `top`/`bottom` are still needed below (highlight,
-        // role decorations, carried items), so keep them.
+        // A capsule standing upright: DrawCapsule takes the centres of its two
+        // hemispherical ends, so inset them by the radius.
         var bottom = Position + new Vector3(0, BodyRadius, 0);
         var top = Position + new Vector3(0, BodyHeight - BodyRadius, 0);
+        Raylib.DrawCapsule(bottom, top, BodyRadius, 8, 4, color);
+        Raylib.DrawCapsuleWires(bottom, top, BodyRadius, 8, 4, new Color(0, 0, 0, 50));
 
         // Follow-up Part 3: a small FactionColor highlight riding on top of
         // the head, so a whole swarm's tribe reads at an instant glance

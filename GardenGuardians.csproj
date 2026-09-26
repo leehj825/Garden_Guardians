@@ -14,13 +14,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>GardenGuardians</RootNamespace>
-
-    <!-- Bramblekin GPU instancing (BramblekinRenderer) reaches into
-         Model/Material's native pointer fields (Meshes/Materials/Maps) to
-         batch-draw with DrawMeshInstanced, which needs unsafe blocks on
-         every target, not just Android (which already needed it for
-         MainActivity's function pointer). -->
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' != 'net8.0-android'">
