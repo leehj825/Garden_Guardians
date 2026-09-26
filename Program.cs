@@ -2287,6 +2287,18 @@ public sealed class World
     /// back down to Gatherer once nothing's left to build — so the rest of
     /// the colony's Gatherers never have to abandon food duty to pick up a
     /// Blueprint themselves.
+    ///
+    /// Manpower Deadlock Fallback: if an incomplete Blueprint needs a
+    /// Builder but this faction currently has zero Gatherers to promote
+    /// (plausible after heavy Militia drafting, or Merchant/Settler
+    /// conversions, have left none), <see cref="NearestByRole"/> for
+    /// Gatherer returns null and Builder Conscription above would silently
+    /// do nothing forever — the Blueprint's Progress frozen with no
+    /// recovery. To break that, this step falls back to demoting the
+    /// nearest Militia to Gatherer instead, one step per frame same as
+    /// everything else here; the normal Builder-promotion path above then
+    /// picks that freshly-demoted Gatherer up on a later tick once its Role
+    /// has actually changed.
     /// </summary>
     private void UpdateJobManager(VillageHeart village)
     {
@@ -2302,7 +2314,13 @@ public sealed class World
         int builderTarget = HasIncompleteBlueprintFor(village.FactionID) ? 1 : 0;
         int currentBuilders = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Builder);
         if (currentBuilders < builderTarget)
-            NearestByRole(village, BramblekinRole.Gatherer)?.PromoteToBuilder();
+        {
+            Bramblekin? recruit = NearestByRole(village, BramblekinRole.Gatherer);
+            if (recruit is not null)
+                recruit.PromoteToBuilder();
+            else
+                NearestByRole(village, BramblekinRole.Militia)?.DemoteToGatherer(this);
+        }
         else if (currentBuilders > builderTarget)
             NearestByRole(village, BramblekinRole.Builder)?.DemoteToGatherer(this);
     }
@@ -5317,7 +5335,7 @@ public sealed class World
     /// <summary>Whether any Blueprint belonging to <paramref name="factionId"/> still needs Builder hands.</summary>
     public bool HasIncompleteBlueprintFor(int factionId) => Blueprints.Any(b => b.FactionID == factionId);
 
-    /// <summary>The nearest Blueprint belonging to <paramref name="factionId"/> to <paramref name="from"/>, if any — AI Faction Loyalty: a Builder only ever works its own faction's sites.</summary>
+    /// <summary>The nearest Blueprint belonging to <paramref name="factionId"/> to <paramref name="from"/>, if any — AI Faction Loyalty: a Builder only ever works its own faction's sites. Distance is horizontal-only (<see cref="GroundMover.HorizontalDistanceSquared"/>), matching the contact-distance check in <see cref="Bramblekin.UpdateBuilding"/>, so the rolling-hills terrain's Y differences can't make this re-pick flip between two Blueprints as a Builder's elevation changes along its walk.</summary>
     public Blueprint? NearestIncompleteBlueprintFor(Vector3 from, int factionId)
     {
         Blueprint? best = null;
@@ -5328,7 +5346,7 @@ public sealed class World
             if (blueprint.FactionID != factionId)
                 continue;
 
-            float distance = Vector3.DistanceSquared(from, blueprint.Position);
+            float distance = GroundMover.HorizontalDistanceSquared(from, blueprint.Position);
             if (distance < bestDistance)
             {
                 best = blueprint;
