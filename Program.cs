@@ -3468,7 +3468,7 @@ public sealed class World
         if (village.FoodStored < TentFoodCost)
             return; // Saving toward a Tent.
 
-        Vector3? spot = RandomPointNearVillage(village, TentPlacementRadius, Building.TentRadius + 0.2f);
+        Vector3? spot = RandomPointNearVillage(village, TentPlacementRadius, Building.TentRadius + 0.2f, minCenterDistance: VillageHeartCenterClearance);
         if (spot is { } point)
             TryPlaceBlueprint(village, point, BuildingKind.Tent);
     }
@@ -3494,7 +3494,7 @@ public sealed class World
         if (village.FoodStored < CabinFoodCost || village.AmberStored < CabinAmberCost)
             return; // Saving toward a Cabin.
 
-        Vector3? spot = RandomPointNearVillage(village, CabinPlacementRadius, Building.CabinRadius + 0.2f);
+        Vector3? spot = RandomPointNearVillage(village, CabinPlacementRadius, Building.CabinRadius + 0.2f, minCenterDistance: VillageHeartCenterClearance);
         if (spot is not { } point)
             return;
 
@@ -3599,7 +3599,7 @@ public sealed class World
         if (village.FoodStored < village.MaxFoodCapacity)
             return; // Not maxed out yet — Housing/Growth still have first claim on Food Stored.
 
-        Vector3? spot = RandomPointNearVillage(village, GranaryPlacementRadius, Building.GranaryRadius + 0.2f);
+        Vector3? spot = RandomPointNearVillage(village, GranaryPlacementRadius, Building.GranaryRadius + 0.2f, minCenterDistance: VillageHeartCenterClearance);
         if (spot is { } point)
             TryPlaceBlueprint(village, point, BuildingKind.Granary);
     }
@@ -3626,7 +3626,7 @@ public sealed class World
         if (village.FoodStored < SporeFarmFoodCost)
             return; // MUST queue a SporePatch at 10 Food (cost).
 
-        Vector3? spot = RandomPointNearVillage(village, SporeFarmPlacementRadius, Building.SporeFarmRadius + 0.2f);
+        Vector3? spot = RandomPointNearVillage(village, SporeFarmPlacementRadius, Building.SporeFarmRadius + 0.2f, minCenterDistance: VillageHeartCenterClearance);
         if (spot is { } point)
             TryPlaceBlueprint(village, point, BuildingKind.SporeFarm);
     }
@@ -3651,7 +3651,7 @@ public sealed class World
             Blueprints.Any(b => b.Kind == BuildingKind.TradingPost && b.FactionID == village.FactionID))
             return; // Already have one, finished or in progress.
 
-        Vector3? spot = RandomPointNearVillage(village, TradingPostPlacementRadius, Building.TradingPostRadius + 0.2f);
+        Vector3? spot = RandomPointNearVillage(village, TradingPostPlacementRadius, Building.TradingPostRadius + 0.2f, minCenterDistance: VillageHeartCenterClearance);
         if (spot is not { } point)
             return;
 
@@ -3677,7 +3677,7 @@ public sealed class World
             Blueprints.Any(b => b.Kind == BuildingKind.Brewery && b.FactionID == village.FactionID))
             return; // Already have one, finished or in progress.
 
-        Vector3? spot = RandomPointNearVillage(village, BreweryPlacementRadius, Building.BreweryRadius + 0.2f);
+        Vector3? spot = RandomPointNearVillage(village, BreweryPlacementRadius, Building.BreweryRadius + 0.2f, minCenterDistance: VillageHeartCenterClearance);
         if (spot is not { } point)
             return;
 
@@ -3737,7 +3737,7 @@ public sealed class World
         if (village.Population < MonumentPopulationThreshold || village.AmberStored < MonumentAmberCost)
             return false; // Not there yet.
 
-        Vector3? spot = RandomPointNearVillage(village, MonumentPlacementRadius, Building.MonumentRadius + 0.3f);
+        Vector3? spot = RandomPointNearVillage(village, MonumentPlacementRadius, Building.MonumentRadius + 0.3f, minCenterDistance: VillageHeartCenterClearance);
         if (spot is not { } point)
             return false; // No room right now — try again next frame rather than stalling the tribe on nothing.
 
@@ -4189,15 +4189,21 @@ public sealed class World
     private void QueueFloatingText(Vector3 position, string text, Color color) =>
         _floatingTexts.Add((position, text, color, FloatingTextDuration));
 
-    /// <summary>A random point within <paramref name="maxRadius"/> meters of <paramref name="village"/> that isn't blocked. Null if nothing opened up in a handful of tries.</summary>
-    public Vector3? RandomPointNearVillage(VillageHeart village, float maxRadius, float clearance)
+    /// <summary>The Town Square: the strict minimum horizontal distance a newly placed Building/Blueprint must keep from the <see cref="VillageHeart"/>'s own center, so the Heart has room to scale up (e.g. its Tier 2 Town Center upgrade) without clipping into neighboring structures. Not applied to non-building placement (Bramblekin wander/movement targets), which reuse <see cref="RandomPointNearVillage"/> with the default (no) clearance.</summary>
+    public const float VillageHeartCenterClearance = 10.0f;
+
+    /// <summary>A random point within <paramref name="maxRadius"/> meters of <paramref name="village"/> that isn't blocked and is at least <paramref name="minCenterDistance"/> meters from the Heart's own center (see <see cref="VillageHeartCenterClearance"/>). Null if nothing opened up in a handful of tries.</summary>
+    public Vector3? RandomPointNearVillage(VillageHeart village, float maxRadius, float clearance, float minCenterDistance = 0f)
     {
-        float minRadius = village.Obstacle.Radius + 0.5f;
+        float minRadius = MathF.Max(village.Obstacle.Radius + 0.5f, minCenterDistance);
+        float minCenterDistanceSquared = minCenterDistance * minCenterDistance;
         for (int attempt = 0; attempt < 20; attempt++)
         {
             float angle = (float)(Rng.NextDouble() * MathF.Tau);
             float radius = minRadius + (float)Rng.NextDouble() * MathF.Max(maxRadius - minRadius, 0f);
             var point = village.Center + new Vector3(MathF.Cos(angle) * radius, 0, MathF.Sin(angle) * radius);
+            if (GroundMover.HorizontalDistanceSquared(point, village.Center) < minCenterDistanceSquared)
+                continue;
             if (!IsBlocked(point, clearance) && !OverlapsExistingBuilding(point, clearance) && Terrain.Contains(point, 0f))
                 return point;
         }
