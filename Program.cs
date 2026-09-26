@@ -670,9 +670,20 @@ public sealed class TouchCameraController
 
         if (_isTwoFingerGesture)
         {
+            // The Other Flip: Atan2 only ever returns a value in (-π, π],
+            // so the instant the two-finger vector swings past that
+            // branch cut (pointing due "west" on screen — easily crossed
+            // mid-rotation), raw angle jumps from just under +π to just
+            // over -π (or back), a spurious ~2π delta that would otherwise
+            // get applied as a huge, instant rotation. Wrapping the delta
+            // back into (-π, π] turns that into the tiny real delta it
+            // actually was.
+            float rawDelta = angle - _lastTouchAngle;
+            float angleDelta = rawDelta - MathF.Tau * MathF.Round(rawDelta / MathF.Tau);
+
             // Negated: dragging clockwise should turn the world clockwise
             // beneath the camera, not the reverse.
-            Rotate(ref camera, -(angle - _lastTouchAngle) * RotationSensitivity);
+            Rotate(ref camera, -angleDelta * RotationSensitivity);
             Zoom(ref camera, distance - _lastPinchDistance);
             Tilt(ref camera, midpointY - _lastTwoFingerMidpointY);
         }
