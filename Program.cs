@@ -111,12 +111,15 @@ public static class Game
 
         // --- Build the world -------------------------------------------------
         // The God-Camera: pulled back and up far enough to take in the
-        // entire 100x100 map at once, centered on the map's midpoint
-        // rather than the origin corner.
+        // entire 100x100 map at once. Terrain is centered on the origin
+        // (it spans -50..50 on X/Z — see Terrain.Contains), so the true
+        // map centre is Vector3.Zero, not (50, 0, 50); Position keeps the
+        // same offset from Target as before so the viewing angle is
+        // unchanged, just re-centred on the actual map.
         var camera = new Camera3D
         {
-            Target = new Vector3(50.0f, 0.0f, 50.0f),
-            Position = new Vector3(50.0f, 120.0f, 150.0f),
+            Target = Vector3.Zero,
+            Position = new Vector3(0.0f, 120.0f, 100.0f),
             Up = Vector3.UnitY,
             FovY = 45f,
             Projection = CameraProjection.Perspective,
