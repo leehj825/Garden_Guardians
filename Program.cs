@@ -2294,11 +2294,16 @@ public sealed class World
     /// conversions, have left none), <see cref="NearestByRole"/> for
     /// Gatherer returns null and Builder Conscription above would silently
     /// do nothing forever — the Blueprint's Progress frozen with no
-    /// recovery. To break that, this step falls back to demoting the
-    /// nearest Militia to Gatherer instead, one step per frame same as
-    /// everything else here; the normal Builder-promotion path above then
-    /// picks that freshly-demoted Gatherer up on a later tick once its Role
-    /// has actually changed.
+    /// recovery. To break that, this step converts the nearest Militia
+    /// straight to Builder in one atomic step (via DemoteToGatherer then
+    /// PromoteToBuilder on the SAME unit, same tick) rather than demoting it
+    /// to Gatherer and waiting for a later tick to promote it — leaving it
+    /// as a Gatherer across a tick boundary let the Militia-target check
+    /// just above immediately re-promote that exact unit back to Militia
+    /// before Builder Conscription ever got a chance to claim it, forming a
+    /// perpetual demote/promote oscillation each tick (never actually
+    /// producing a Builder, and the Blueprint's Progress staying frozen
+    /// forever) whenever MilitiaTarget stayed persistently unmet.
     /// </summary>
     private void UpdateJobManager(VillageHeart village)
     {
@@ -2317,9 +2322,18 @@ public sealed class World
         {
             Bramblekin? recruit = NearestByRole(village, BramblekinRole.Gatherer);
             if (recruit is not null)
+            {
                 recruit.PromoteToBuilder();
-            else
-                NearestByRole(village, BramblekinRole.Militia)?.DemoteToGatherer(this);
+            }
+            else if (NearestByRole(village, BramblekinRole.Militia) is { } conscript)
+            {
+                // Atomic Militia -> Builder: never expose this unit as a
+                // plain Gatherer across a tick boundary (see the doc comment
+                // above for why that let it get sniped straight back to
+                // Militia before ever becoming a Builder).
+                conscript.DemoteToGatherer(this);
+                conscript.PromoteToBuilder();
+            }
         }
         else if (currentBuilders > builderTarget)
             NearestByRole(village, BramblekinRole.Builder)?.DemoteToGatherer(this);
