@@ -197,6 +197,7 @@ public static class Game
             speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
             DrawColonyPanel(world);
             DrawGenesisPrompt(world);
+            DrawMonumentAlerts(world);
             DrawHud(world);
 
             Raylib.EndDrawing();
@@ -342,10 +343,15 @@ public static class Game
         // so the tribe's banked wealth stands out from the survival stats
         // above it at a glance.
         string amber = $"| Amber: {village.AmberStored}";
+        // The Nectar Brewery: Nectar gets its own line, in a distinct
+        // purple/pink so this civilization buff currency reads apart from
+        // Amber's gold at a glance.
+        string nectar = $"Nectar: {village.NectarStored}";
         int width = Math.Max(Raylib.MeasureText(header, fontSize),
                     Math.Max(Raylib.MeasureText(food, fontSize),
                     Math.Max(Raylib.MeasureText(population, fontSize),
-                    Math.Max(Raylib.MeasureText(morale, fontSize), Raylib.MeasureText(amber, fontSize)))));
+                    Math.Max(Raylib.MeasureText(morale, fontSize),
+                    Math.Max(Raylib.MeasureText(amber, fontSize), Raylib.MeasureText(nectar, fontSize))))));
         int x = Raylib.GetScreenWidth() - width - 30;
 
         // Color Coding: the panel itself is tinted toward the selected
@@ -357,8 +363,8 @@ public static class Game
         Color ink = BlendToward(PanelInk, village.FactionColor, 0.4f);
 
         const int topPadding = 20, textInset = 30;
-        Raylib.DrawRectangle(x - 12, topPadding - 2, width + 24, lineHeight * 5 + 18, fill);
-        Raylib.DrawRectangleLines(x - 12, topPadding - 2, width + 24, lineHeight * 5 + 18, ink);
+        Raylib.DrawRectangle(x - 12, topPadding - 2, width + 24, lineHeight * 6 + 18, fill);
+        Raylib.DrawRectangleLines(x - 12, topPadding - 2, width + 24, lineHeight * 6 + 18, ink);
         Raylib.DrawText(header, x, textInset, fontSize, ink);
         Raylib.DrawText(food, x, textInset + lineHeight, fontSize, ink);
         Raylib.DrawText(population, x, textInset + lineHeight * 2, fontSize, ink);
@@ -367,6 +373,7 @@ public static class Game
                            : ink;
         Raylib.DrawText(morale, x, textInset + lineHeight * 3, fontSize, moraleColor);
         Raylib.DrawText(amber, x, textInset + lineHeight * 4, fontSize, new Color(255, 203, 0, 255));
+        Raylib.DrawText(nectar, x, textInset + lineHeight * 5, fontSize, new Color(215, 80, 210, 255));
     }
 
     /// <summary>
@@ -394,6 +401,33 @@ public static class Game
         var color = new Color(200, 40, 40, 255);
         Raylib.DrawText(title, centerX - titleWidth / 2, centerY - titleSize, titleSize, color);
         Raylib.DrawText(subtitle, centerX - subtitleWidth / 2, centerY + 8, subtitleSize, color);
+    }
+
+    /// <summary>
+    /// The Great Monument: a permanent, screen-wide banner for every
+    /// faction that has ever finished one (see <see cref="World.CompletedMonuments"/>)
+    /// — unlike the Genesis prompt, this never blinks and never goes away
+    /// once shown, marking that faction's transition into an advanced
+    /// civilization for the rest of the game. Stacks one line per faction
+    /// if more than one tribe eventually gets there.
+    /// </summary>
+    private static void DrawMonumentAlerts(World world)
+    {
+        if (world.CompletedMonuments.Count == 0)
+            return;
+
+        const int fontSize = 36, lineHeight = 44;
+        int barHeight = world.CompletedMonuments.Count * lineHeight + 20;
+        int screenWidth = Raylib.GetScreenWidth();
+        Raylib.DrawRectangle(0, 0, screenWidth, barHeight, new Color(20, 15, 5, 200));
+
+        for (int i = 0; i < world.CompletedMonuments.Count; i++)
+        {
+            (_, Color factionColor) = world.CompletedMonuments[i];
+            string text = $"{FactionColorName(factionColor)} Faction has completed the Monument!";
+            int textWidth = Raylib.MeasureText(text, fontSize);
+            Raylib.DrawText(text, (screenWidth - textWidth) / 2, 10 + i * lineHeight, fontSize, factionColor);
+        }
     }
 
     /// <summary>
@@ -493,6 +527,25 @@ public sealed class TouchCameraController
     /// <summary>Keeps the Target from panning off the playable terrain, in meters from its edge.</summary>
     private const float PanEdgeMargin = 5f;
 
+    /// <summary>
+    /// Camera Sensitivity Tuning: the single knob on One-Finger Panning's
+    /// overall feel — multiplies the already-distance-scaled screen delta
+    /// (see <see cref="Pan"/>) before it's ever added to camera.Position/
+    /// camera.Target. Turn this down if panning still feels too fast at
+    /// every zoom level, up if it feels sluggish.
+    /// </summary>
+    private const float PanSensitivity = 0.05f;
+
+    /// <summary>
+    /// Camera Sensitivity Tuning: the single knob on Two-Finger Rotation's
+    /// overall feel — multiplies the raw angle delta between the two touch
+    /// points (see <see cref="Rotate"/>) before it's applied. Kept low: the
+    /// raw angle between two close-together fingers swings wildly for even
+    /// a small physical movement, so without this a twist gesture rotates
+    /// the world far more than the fingers actually moved.
+    /// </summary>
+    private const float RotationSensitivity = 0.3f;
+
     // Camera-gesture state, tracked frame to frame. One controller is
     // constructed once in Game.Run and lives for the whole session, so
     // instance fields here serve exactly the same purpose static fields
@@ -506,7 +559,12 @@ public sealed class TouchCameraController
     private float _lastTwoFingerMidpointY;
     private bool _isTwoFingerGesture;
 
-    /// <summary>Radians of camera tilt (pitch) per pixel the two-finger midpoint moves vertically.</summary>
+    /// <summary>
+    /// Radians of camera tilt (pitch) per pixel the two-finger midpoint
+    /// moves vertically. Camera Sensitivity Tuning: the up/down half of
+    /// two-finger orbiting, so it's damped by the same <see cref="RotationSensitivity"/>
+    /// as the left/right twist — see <see cref="Tilt"/>.
+    /// </summary>
     private const float TiltSensitivity = 0.005f;
 
     /// <summary>
@@ -582,7 +640,7 @@ public sealed class TouchCameraController
         {
             // Negated: dragging clockwise should turn the world clockwise
             // beneath the camera, not the reverse.
-            Rotate(ref camera, -(angle - _lastTouchAngle));
+            Rotate(ref camera, -(angle - _lastTouchAngle) * RotationSensitivity);
             Zoom(ref camera, distance - _lastPinchDistance);
             Tilt(ref camera, midpointY - _lastTwoFingerMidpointY);
         }
@@ -616,8 +674,10 @@ public sealed class TouchCameraController
         float metersPerPixel = distance * 0.0016f;
 
         // Dragging a finger right/up should slide the world the same way
-        // under it, which means moving the camera left/back.
-        Vector3 worldDelta = (-rightXZ * screenDelta.X + forwardXZ * screenDelta.Y) * metersPerPixel;
+        // under it, which means moving the camera left/back. Camera
+        // Sensitivity Tuning: PanSensitivity is the final overall-feel
+        // multiplier, applied on top of the distance-based scaling above.
+        Vector3 worldDelta = (-rightXZ * screenDelta.X + forwardXZ * screenDelta.Y) * metersPerPixel * PanSensitivity;
         camera.Position += worldDelta;
         camera.Target += worldDelta;
     }
@@ -664,7 +724,7 @@ public sealed class TouchCameraController
 
         float horizontalDistance = MathF.Sqrt(offset.X * offset.X + offset.Z * offset.Z);
         float azimuth = MathF.Atan2(offset.Z, offset.X);
-        float pitch = Math.Clamp(MathF.Atan2(offset.Y, horizontalDistance) + midpointDeltaY * TiltSensitivity, MinPitch, MaxPitch);
+        float pitch = Math.Clamp(MathF.Atan2(offset.Y, horizontalDistance) + midpointDeltaY * TiltSensitivity * RotationSensitivity, MinPitch, MaxPitch);
 
         float newHorizontalDistance = distance * MathF.Cos(pitch);
         camera.Position = camera.Target + new Vector3(
@@ -1223,6 +1283,42 @@ public sealed class World
     /// <summary>Emergency Food Import: Food Stored gained per import.</summary>
     public const int EmergencyImportFoodGain = 5;
 
+    /// <summary>The Nectar Brewery: Population needed before a Village Heart will queue one — see <see cref="UpdateAutoBrewery"/>.</summary>
+    public const int BreweryPopulationThreshold = 20;
+
+    /// <summary>The Nectar Brewery: Amber Stored spent to queue its blueprint.</summary>
+    public const int BreweryAmberCost = 10;
+
+    /// <summary>How far (m) from the Village Heart an Auto-Brewery may be placed.</summary>
+    private const float BreweryPlacementRadius = 5f;
+
+    /// <summary>The Nectar Brewery: seconds between each brew attempt once built — see <see cref="UpdateNectarBrewery"/>.</summary>
+    public const float BreweryInterval = 30f;
+
+    /// <summary>The Nectar Brewery: Food Stored consumed per brew.</summary>
+    public const int BreweryFoodCost = 2;
+
+    /// <summary>The Nectar Brewery: Amber Stored consumed per brew.</summary>
+    public const int BreweryAmberUpkeep = 1;
+
+    /// <summary>The Nectar Brewery: Nectar produced per successful brew.</summary>
+    public const int BreweryNectarYield = 1;
+
+    /// <summary>The Nectar Brewery: permanent Gatherer walk-speed bonus per point of <see cref="VillageHeart.NectarStored"/> — see <see cref="Bramblekin.EffectiveWalkSpeed"/>.</summary>
+    public const float NectarSpeedBonusPerPoint = 0.05f;
+
+    /// <summary>The Nectar Brewery: hard ceiling on the cumulative Nectar speed bonus (+50%), so an old enough civilization can't eventually move arbitrarily fast.</summary>
+    public const float MaxNectarSpeedBonus = 0.5f;
+
+    /// <summary>The Great Monument: Population needed before a tribe stops all other construction and commits to one — see <see cref="UpdateAutoMonument"/>.</summary>
+    public const int MonumentPopulationThreshold = 40;
+
+    /// <summary>The Great Monument: Amber Stored spent to queue its blueprint.</summary>
+    public const int MonumentAmberCost = 50;
+
+    /// <summary>How far (m) from the Village Heart the Monument may be placed — further out than the smaller buildings, since it's the biggest structure on the map.</summary>
+    private const float MonumentPlacementRadius = 7f;
+
     /// <summary>Economic Buff: how often (seconds) the Village Heart pays its Upkeep food tax — doubled from 15s so Food Stored lasts much longer between taxes, leaving room to gather Amber instead of running a bare-survival loop.</summary>
     private const float UpkeepInterval = 30f;
 
@@ -1230,20 +1326,28 @@ public sealed class World
     public const float FloatingTextDuration = 1.5f;
 
     /// <summary>
-    /// The 20-Meter Territory Rule: Militia never target a hostile (Aphid or
-    /// Wolf Spider) further than this from their own Village Heart, and
-    /// Gatherers prefer unclaimed food within this radius before looking
+    /// Cultural Borders: the base term of every Village Heart's own dynamic
+    /// <see cref="VillageHeart.TerritoryRadius"/> (before its
+    /// AmberStored/NectarStored bonus) — Militia never target a hostile
+    /// (Aphid or Wolf Spider) further than that from their own Village
+    /// Heart, and Gatherers prefer unclaimed food within it before looking
     /// anywhere else on the map (see <see cref="NearestAvailableShard"/>) —
     /// unless that Village Heart is starving (see <see cref="DesperationFoodThreshold"/>).
-    /// Deliberately a distinct, larger radius than <see cref="VillageHeart.TerritoryRadius"/>'s
-    /// 15 m visual ring.
+    /// Also the fallback territory reach for a homeless Bramblekin (one
+    /// with no Village Heart of its own to scale off).
     /// </summary>
-    public const float TerritoryTargetingRadius = 20f;
+    public const float BaseTerritoryRadius = 15f;
+
+    /// <summary>Cultural Borders: how much a Village Heart's <see cref="VillageHeart.TerritoryRadius"/> grows per point of <see cref="VillageHeart.AmberStored"/>.</summary>
+    public const float TerritoryRadiusPerAmber = 0.5f;
+
+    /// <summary>Cultural Borders: how much a Village Heart's <see cref="VillageHeart.TerritoryRadius"/> grows per point of <see cref="VillageHeart.NectarStored"/> — Nectar buys far more cultural reach than raw Amber, since it takes a whole Nectar Brewery economy to produce at all.</summary>
+    public const float TerritoryRadiusPerNectar = 2.0f;
 
     /// <summary>
     /// Base Defense Aggro: any foreign Bramblekin caught within this
-    /// distance of a Village Heart's own centre — much tighter than the
-    /// full <see cref="TerritoryTargetingRadius"/> ring — is treated as an
+    /// distance of a Village Heart's own centre — much tighter than its
+    /// full territory ring — is treated as an
     /// immediate, lethal threat regardless of any existing peace or Truce,
     /// instantly triggering a Blood Feud. This close to the Heart itself,
     /// there's no such thing as an innocent bystander — see
@@ -1253,8 +1357,8 @@ public sealed class World
 
     /// <summary>
     /// Desperation Mode: once a Village Heart's Food Stored drops below
-    /// this, its Gatherers stop preferring food within <see cref="TerritoryTargetingRadius"/>
-    /// and instead track the nearest unclaimed food anywhere within
+    /// this, its Gatherers stop preferring food within its own territory
+    /// ring and instead track the nearest unclaimed food anywhere within
     /// <see cref="MaxGatherSearchRadius"/> — starving is worse than a walk,
     /// but the walk still isn't unlimited (see <see cref="MaxGatherSearchRadius"/>).
     /// </summary>
@@ -1263,7 +1367,7 @@ public sealed class World
     /// <summary>
     /// Maximum Search Radius: a Gatherer never even considers a Food Shard
     /// or Acorn further than this from its current position, full stop —
-    /// not a preference like <see cref="TerritoryTargetingRadius"/>, a hard
+    /// not a preference like a Village Heart's own territory ring, a hard
     /// cutoff with no last-resort exception. This is what actually stops a
     /// freshly-split Schism splinter's Gatherers from trekking all the way
     /// back to the parent tribe's base: without a hard ceiling, the parent's
@@ -1482,6 +1586,18 @@ public sealed class World
     /// <summary>Floating text pop-ups (Upkeep paid, Starvation) still fading out above the Village Heart.</summary>
     public IReadOnlyList<(Vector3 Position, string Text, Color Color, float TimeLeft)> FloatingTexts => _floatingTexts;
 
+    /// <summary>
+    /// The Great Monument: every faction that has ever completed one, in
+    /// completion order — each entry stays here for the rest of the game
+    /// (see <see cref="CompleteBlueprint"/>), driving the permanent,
+    /// screen-wide "[Faction] has completed the Monument!" alert (see
+    /// <see cref="Game.DrawMonumentAlerts"/>). Never cleared: a civilization
+    /// that reaches this point stays marked as advanced for good, even if
+    /// its Village Heart is later razed.
+    /// </summary>
+    public IReadOnlyList<(int FactionID, Color FactionColor)> CompletedMonuments => _completedMonuments;
+    private readonly List<(int FactionID, Color FactionColor)> _completedMonuments = new();
+
     public World(Terrain terrain, Random rng, int colonySize)
     {
         Terrain = terrain;
@@ -1689,22 +1805,22 @@ public sealed class World
             home.Morale = MathF.Max(0f, home.Morale - MoraleLossPerKill);
     }
 
-    /// <summary>The 20-Meter Territory Rule: whether <paramref name="claimant"/>'s Militia has anything huntable within <see cref="TerritoryTargetingRadius"/> of <paramref name="home"/>.</summary>
+    /// <summary>Cultural Borders: whether <paramref name="claimant"/>'s Militia has anything huntable within <paramref name="home"/>'s own (wealth-scaled — see <see cref="VillageHeart.TerritoryRadius"/>) territory ring.</summary>
     public bool HasHuntableAphidNearVillage(Bramblekin claimant, VillageHeart home) => NearestLiveAphidNearVillage(claimant.Position, claimant, home) is not null;
 
     /// <summary>
-    /// The 20-Meter Territory Rule + Dibs: the nearest still-live, unclaimed
-    /// (or already claimed by <paramref name="claimant"/>) Aphid to
+    /// Cultural Borders + Dibs: the nearest still-live, unclaimed (or
+    /// already claimed by <paramref name="claimant"/>) Aphid to
     /// <paramref name="from"/>, considering only ones within
-    /// <see cref="TerritoryTargetingRadius"/> of <paramref name="home"/> — a
-    /// hard boundary, unlike a Gatherer's food search, which falls back to
-    /// the wider map. Militia simply have nothing to hunt beyond it.
+    /// <paramref name="home"/>'s own <see cref="VillageHeart.TerritoryRadius"/>
+    /// — a hard boundary, unlike a Gatherer's food search, which falls back
+    /// to the wider map. Militia simply have nothing to hunt beyond it.
     /// </summary>
     public Aphid? NearestLiveAphidNearVillage(Vector3 from, Bramblekin claimant, VillageHeart home)
     {
         Aphid? nearest = null;
         float bestDistanceSquared = float.MaxValue;
-        float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
+        float territoryRadiusSquared = home.TerritoryRadius * home.TerritoryRadius;
         for (int i = Aphids.Count - 1; i >= 0; i--)
         {
             Aphid aphid = Aphids[i];
@@ -1750,8 +1866,8 @@ public sealed class World
     /// <summary>
     /// The 'Enemy of My Enemy' Protocol: whether the Wolf Spider is
     /// actively a threat (Hunting or Pouncing, not just ambling through or
-    /// feeding) within <see cref="TerritoryTargetingRadius"/> of
-    /// <paramref name="home"/>. While true, that faction's Militia calls a
+    /// feeding) within <paramref name="home"/>'s own <see cref="VillageHeart.TerritoryRadius"/>.
+    /// While true, that faction's Militia calls a
     /// truce on every rival faction — see the guards on Blood Feud Border
     /// Wars and Base Razing in <see cref="Bramblekin.Update"/> — so the
     /// whole tribe can throw itself at the common enemy instead of a
@@ -1763,7 +1879,7 @@ public sealed class World
     /// </summary>
     public bool IsSpiderActivelyThreateningTerritory(VillageHeart? home) =>
         home is not null && Spider is { State: SpiderState.Hunting or SpiderState.Pouncing } spider &&
-        GroundMover.HorizontalDistanceSquared(spider.Position, home.Center) <= TerritoryTargetingRadius * TerritoryTargetingRadius;
+        GroundMover.HorizontalDistanceSquared(spider.Position, home.Center) <= home.TerritoryRadius * home.TerritoryRadius;
 
     /// <summary>
     /// Base Defense Aggro: the nearest living foreign Bramblekin within
@@ -1810,15 +1926,19 @@ public sealed class World
     public VillageHeart? ForeignTerritoryContaining(Vector3 position, int ownFactionId)
     {
         VillageHeart? nearest = null;
-        float bestDistanceSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
+        float bestDistanceSquared = float.MaxValue;
 
         foreach (VillageHeart village in Villages)
         {
             if (village.FactionID == ownFactionId)
                 continue;
 
+            // Cultural Borders: each village's own border is its own
+            // wealth-scaled TerritoryRadius, not a shared flat constant — a
+            // wealthy tribe's ring can physically overlap into a poorer
+            // neighbour's.
             float distanceSquared = Vector3.DistanceSquared(position, village.Center);
-            if (distanceSquared > bestDistanceSquared)
+            if (distanceSquared > village.TerritoryRadius * village.TerritoryRadius || distanceSquared > bestDistanceSquared)
                 continue;
 
             nearest = village;
@@ -1841,7 +1961,7 @@ public sealed class World
     {
         Bramblekin? nearest = null;
         float bestDistanceSquared = float.MaxValue;
-        float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
+        float territoryRadiusSquared = home.TerritoryRadius * home.TerritoryRadius;
 
         // The Spatial Grid: only the Colony chunks around home's own centre.
         _colonyGrid.QueryNearby(home.Center, _colonyQueryBuffer);
@@ -1910,7 +2030,7 @@ public sealed class World
 
         Bramblekin? nearest = null;
         float bestDistanceSquared = float.MaxValue;
-        float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
+        float territoryRadiusSquared = home.TerritoryRadius * home.TerritoryRadius;
 
         // The Spatial Grid: only the Colony chunks around home's own centre.
         _colonyGrid.QueryNearby(home.Center, _colonyQueryBuffer);
@@ -2344,15 +2464,27 @@ public sealed class World
             //    current MaxFoodCapacity — Housing and Growth always get
             //    first claim on Food Stored; a Granary only ever gets built
             //    once there's genuinely nowhere left to put more food.
-            UpdateAutoSporeFarm(village);
-            UpdateAutoTent(village);
-            UpdateAutoSprout(village);
-            UpdateAutoGranary(village);
+            // The Great Monument: once a tribe is wealthy and populous
+            // enough to commit to one, it stops queuing any other building
+            // (Growth/population is unaffected — that's Auto-Sprout, not a
+            // building) until the Monument itself is finished. Checked
+            // first so it can veto everything below it this same frame.
+            bool pursuingMonument = UpdateAutoMonument(village);
 
-            // Auxiliary Auto-Construction: population-gated one-time builds
-            // that ride on top of the three phases above rather than being
-            // part of that priority order.
-            UpdateAutoTradingPost(village);
+            UpdateAutoSprout(village);
+
+            if (!pursuingMonument)
+            {
+                UpdateAutoSporeFarm(village);
+                UpdateAutoTent(village);
+                UpdateAutoGranary(village);
+
+                // Auxiliary Auto-Construction: population-gated one-time
+                // builds that ride on top of the phases above rather than
+                // being part of that priority order.
+                UpdateAutoTradingPost(village);
+                UpdateAutoBrewery(village);
+            }
 
             // The Schism: a Village Heart maxed out on Housing and
             // overflowing with Food Stored spins off a new faction of its
@@ -2360,6 +2492,7 @@ public sealed class World
             UpdateSchism(village);
         }
         UpdateSporeFarmIncome(deltaTime);
+        UpdateNectarBrewery(deltaTime);
 
         UpdateAcornSpawn(deltaTime);
         UpdateAmberSpawn(deltaTime);
@@ -2596,8 +2729,9 @@ public sealed class World
 
     /// <summary>
     /// Strict Border Control: true if <paramref name="point"/> falls inside
-    /// ANY Village Heart's <see cref="TerritoryTargetingRadius"/> (20m)
-    /// territory ring other than <paramref name="ownFactionId"/>'s own.
+    /// ANY Village Heart's own (Cultural Borders — wealth-scaled, see
+    /// <see cref="VillageHeart.TerritoryRadius"/>) territory ring other
+    /// than <paramref name="ownFactionId"/>'s own.
     /// Shares <see cref="ForeignTerritoryContaining"/> with the Thievery
     /// check for one single "whose border is this?" answer — deliberately
     /// blind to <see cref="VillageHeart.HostileFactions"/>/Default Peace, a
@@ -2616,11 +2750,12 @@ public sealed class World
         ForeignTerritoryContaining(point, ownFactionId) is not null;
 
     /// <summary>
-    /// The 20-Meter Territory Rule + Dibs + Strict Border Control (see
+    /// Cultural Borders + Dibs + Strict Border Control (see
     /// <see cref="IsForeignTerritory"/>) + Maximum Search Radius (see
     /// <see cref="MaxGatherSearchRadius"/>), sorted by distance: among
-    /// unclaimed (or self-claimed) shards within <see cref="TerritoryTargetingRadius"/>
-    /// of <paramref name="home"/>, the nearest one to <paramref name="from"/>.
+    /// unclaimed (or self-claimed) shards within <paramref name="home"/>'s
+    /// own (wealth-scaled — see <see cref="VillageHeart.TerritoryRadius"/>)
+    /// territory ring, the nearest one to <paramref name="from"/>.
     /// Only if none qualify locally does this fall back to the nearest
     /// anywhere within <see cref="MaxGatherSearchRadius"/> — a Gatherer
     /// always prefers its own doorstep, then safe wild food elsewhere on the
@@ -2636,7 +2771,11 @@ public sealed class World
         float bestLocalDistanceSquared = float.MaxValue;
         FoodShard? bestAny = null;
         float bestAnyDistanceSquared = float.MaxValue;
-        float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
+        // Cultural Borders: home's own wealth-scaled TerritoryRadius (see
+        // VillageHeart.TerritoryRadius) — 0 when homeless, so the local
+        // preference below (which also requires home is not null) simply
+        // never matches.
+        float territoryRadiusSquared = home is not null ? home.TerritoryRadius * home.TerritoryRadius : 0f;
         float maxGatherSearchRadiusSquared = MaxGatherSearchRadius * MaxGatherSearchRadius;
         // Desperation Mode: a starving village can't afford to wait for local food that
         // may not exist, so we skip the local-preference logic entirely and just grab
@@ -2993,6 +3132,93 @@ public sealed class World
     }
 
     /// <summary>
+    /// Auto-Construction (The Nectar Brewery) — the Refined Economy: once a
+    /// Village Heart's Population reaches <see cref="BreweryPopulationThreshold"/>
+    /// and it has banked at least <see cref="BreweryAmberCost"/> Amber, and
+    /// it doesn't already have one (built or queued), it spends the Amber
+    /// and places a Brewery Blueprint near its own centre. Once built, it
+    /// starts brewing on its own timer — see <see cref="UpdateNectarBrewery"/>.
+    /// </summary>
+    private void UpdateAutoBrewery(VillageHeart village)
+    {
+        if (village.Population < BreweryPopulationThreshold)
+            return;
+        if (village.AmberStored < BreweryAmberCost)
+            return;
+        if (Buildings.Any(b => b.Kind == BuildingKind.Brewery && b.FactionID == village.FactionID) ||
+            Blueprints.Any(b => b.Kind == BuildingKind.Brewery && b.FactionID == village.FactionID))
+            return; // Already have one, finished or in progress.
+
+        Vector3? spot = RandomPointNearVillage(village, BreweryPlacementRadius, Building.BreweryRadius + 0.2f);
+        if (spot is not { } point)
+            return;
+
+        village.AmberStored -= BreweryAmberCost;
+        Blueprints.Add(new Blueprint(point, BuildingKind.Brewery, village.FactionID, village.FactionColor));
+    }
+
+    /// <summary>
+    /// The Nectar Brewery's own economy: every <see cref="BreweryInterval"/>
+    /// seconds, each finished Brewery attempts to consume
+    /// <see cref="BreweryFoodCost"/> Food and <see cref="BreweryAmberUpkeep"/>
+    /// Amber from its owning Village Heart's stores to brew
+    /// <see cref="BreweryNectarYield"/> Nectar — a permanent civilization
+    /// buff (see <see cref="VillageHeart.NectarStored"/>/<see cref="Bramblekin.EffectiveWalkSpeed"/>).
+    /// If the village can't currently afford the brew, that cycle is simply
+    /// skipped — the timer still resets and tries again next interval,
+    /// exactly like a missed Upkeep tax doesn't destroy anything, just
+    /// delays the payoff.
+    /// </summary>
+    private void UpdateNectarBrewery(float deltaTime)
+    {
+        for (int i = Buildings.Count - 1; i >= 0; i--)
+        {
+            Building building = Buildings[i];
+            if (!building.TickBreweryTimer(deltaTime))
+                continue;
+            if (VillageFor(building.FactionID) is not { } village)
+                continue;
+            if (village.FoodStored < BreweryFoodCost || village.AmberStored < BreweryAmberUpkeep)
+                continue;
+
+            village.FoodStored -= BreweryFoodCost;
+            village.AmberStored -= BreweryAmberUpkeep;
+            village.NectarStored += BreweryNectarYield;
+        }
+    }
+
+    /// <summary>
+    /// The Great Monument — Civilization Goal: once a Village Heart reaches
+    /// <see cref="MonumentPopulationThreshold"/> Population and has hoarded
+    /// <see cref="MonumentAmberCost"/> Amber, it commits its entire Builder
+    /// effort to one — see the per-village loop in <see cref="Update"/>,
+    /// which skips every other Auto-Construction phase for as long as this
+    /// returns true. Returns true while a Monument for this faction is
+    /// queued (or was just queued this frame) and not yet finished; false
+    /// once it's either not eligible yet or already stands complete, either
+    /// of which lets ordinary building resume.
+    /// </summary>
+    private bool UpdateAutoMonument(VillageHeart village)
+    {
+        if (Buildings.Any(b => b.Kind == BuildingKind.Monument && b.FactionID == village.FactionID))
+            return false; // Already an advanced civilization — back to ordinary building.
+
+        if (Blueprints.Any(b => b.Kind == BuildingKind.Monument && b.FactionID == village.FactionID))
+            return true; // Already committed — keep suppressing everything else until it's done.
+
+        if (village.Population < MonumentPopulationThreshold || village.AmberStored < MonumentAmberCost)
+            return false; // Not there yet.
+
+        Vector3? spot = RandomPointNearVillage(village, MonumentPlacementRadius, Building.MonumentRadius + 0.3f);
+        if (spot is not { } point)
+            return false; // No room right now — try again next frame rather than stalling the tribe on nothing.
+
+        village.AmberStored -= MonumentAmberCost;
+        Blueprints.Add(new Blueprint(point, BuildingKind.Monument, village.FactionID, village.FactionColor));
+        return true;
+    }
+
+    /// <summary>
     /// Emergency Food Import: once a Trading Post is fully built, it
     /// unlocks automated trading — called from <see cref="UpdateUpkeep"/>
     /// the instant a village's Upkeep tax comes due while it's sitting on
@@ -3339,13 +3565,13 @@ public sealed class World
         return null;
     }
 
-    /// <summary>True if <paramref name="point"/> falls inside ANY Village Heart's <see cref="VillageHeart.TerritoryRadius"/> ring, regardless of faction.</summary>
+    /// <summary>True if <paramref name="point"/> falls inside ANY Village Heart's own (Cultural Borders — wealth-scaled, see <see cref="VillageHeart.TerritoryRadius"/>) ring, regardless of faction.</summary>
     private bool IsInsideAnyTerritory(Vector3 point)
     {
-        float radiusSquared = VillageHeart.TerritoryRadius * VillageHeart.TerritoryRadius;
         for (int i = Villages.Count - 1; i >= 0; i--)
         {
-            if (Vector3.DistanceSquared(point, Villages[i].Center) <= radiusSquared)
+            VillageHeart village = Villages[i];
+            if (Vector3.DistanceSquared(point, village.Center) <= village.TerritoryRadius * village.TerritoryRadius)
                 return true;
         }
         return false;
@@ -3458,6 +3684,8 @@ public sealed class World
             owner.MaxFoodCapacity += GranaryFoodBonus;
         else if (blueprint.Kind == BuildingKind.Tent)
             owner.MaxPopulation = Math.Min(owner.MaxPopulation + TentPopulationBonus, MaxPopulationCap);
+        else if (blueprint.Kind == BuildingKind.Monument)
+            _completedMonuments.Add((blueprint.FactionID, blueprint.FactionColor));
     }
 
     /// <summary>Queues a new Bramblekin of <paramref name="village"/>'s Faction on a free spot right beside it.</summary>
@@ -3816,8 +4044,21 @@ public sealed class VillageHeart
 
     public const int MaxHealth = 200;
 
-    /// <summary>Radius (m) of the faint territory ring drawn on the ground around this Village Heart.</summary>
-    public const float TerritoryRadius = 15f;
+    /// <summary>
+    /// Cultural Borders: radius (m) of this Village Heart's territory ring
+    /// — no longer a static 20m for every tribe alike, but scaled by this
+    /// specific tribe's own banked wealth: a base <see cref="World.BaseTerritoryRadius"/>
+    /// plus <see cref="World.TerritoryRadiusPerAmber"/> per <see cref="AmberStored"/>
+    /// and <see cref="World.TerritoryRadiusPerNectar"/> per <see cref="NectarStored"/>.
+    /// As a wealthy tribe's ring grows it can physically overlap into a
+    /// poorer neighbour's, letting it claim resources closer to that rival's
+    /// own base without ever counting as foreign territory (see
+    /// <see cref="World.ForeignTerritoryContaining"/>) — Strict Border
+    /// Control only ever excludes what falls inside the OTHER faction's own
+    /// ring, so a bigger ring simply reaches further.
+    /// </summary>
+    public float TerritoryRadius =>
+        World.BaseTerritoryRadius + AmberStored * World.TerritoryRadiusPerAmber + NectarStored * World.TerritoryRadiusPerNectar;
 
     /// <summary>Which tribe this Village Heart belongs to. The original heart is Faction 0.</summary>
     public int FactionID { get; }
@@ -3854,6 +4095,16 @@ public sealed class VillageHeart
     /// player spends directly.
     /// </summary>
     public int AmberStored { get; set; } = 0;
+
+    /// <summary>
+    /// The Nectar Brewery: this faction's permanent civilization buff
+    /// currency, brewed from Food and Amber (see <see cref="World.UpdateNectarBrewery"/>).
+    /// Never spent — every point banked here permanently raises every one
+    /// of this faction's Gatherers' walk speed (see <see cref="Bramblekin.EffectiveWalkSpeed"/>)
+    /// and, alongside <see cref="AmberStored"/>, this tribe's own Cultural
+    /// Borders (see <see cref="TerritoryRadius"/>).
+    /// </summary>
+    public int NectarStored { get; set; } = 0;
 
     /// <summary>
     /// This faction's food storage cap. Starts at <see cref="World.BaseMaxFoodCapacity"/>
@@ -4383,6 +4634,12 @@ public enum BuildingKind
 
     /// <summary>The Housing System: permanently raises <see cref="VillageHeart.MaxPopulation"/> by <see cref="World.TentPopulationBonus"/>, hard-capped at <see cref="World.MaxPopulationCap"/>.</summary>
     Tent,
+
+    /// <summary>The Nectar Brewery: once built, consumes Food and Amber on a timer to brew Nectar — a permanent civilization buff (see <see cref="World.UpdateNectarBrewery"/>).</summary>
+    Brewery,
+
+    /// <summary>The Great Monument: a tribe's endgame civilization goal — a massive, multi-stage structure that takes the whole tribe's coordinated effort (200 Construction Progress) and, once finished, marks that faction's transition into an advanced civilization with a permanent screen-wide alert (see <see cref="World.CompleteBlueprint"/>).</summary>
+    Monument,
 }
 
 /// <summary>
@@ -4410,6 +4667,17 @@ public sealed class Building
     public const float TentRadius = 0.5f;
     public const float TentHeight = 0.55f;
 
+    /// <summary>The Nectar Brewery's footprint — a round structure, slightly larger than a Granary since it houses a whole secondary economy.</summary>
+    public const float BreweryRadius = 0.8f;
+    private const float BreweryHeight = 1.4f;
+
+    /// <summary>
+    /// The Great Monument's footprint — by far the largest structure on the
+    /// map, befitting the whole tribe's coordinated, endgame effort.
+    /// </summary>
+    public const float MonumentRadius = 2.2f;
+    private const float MonumentHeight = 3.2f;
+
     public BuildingKind Kind { get; }
     public Vector3 Position { get; }
 
@@ -4421,6 +4689,9 @@ public sealed class Building
 
     /// <summary>Counts down to the next Berry. Only meaningful for a Spore Farm.</summary>
     private float _sporeTimer = SporeFarmInterval;
+
+    /// <summary>The Nectar Brewery's brewing clock: counts down to the next brew attempt. Only meaningful for a Brewery.</summary>
+    private float _breweryTimer = World.BreweryInterval;
 
     public Building(Vector3 position, BuildingKind kind, int factionId, Color factionColor)
     {
@@ -4436,6 +4707,8 @@ public sealed class Building
         BuildingKind.Granary => GranaryRadius,
         BuildingKind.TradingPost => TradingPostRadius,
         BuildingKind.Tent => TentRadius,
+        BuildingKind.Brewery => BreweryRadius,
+        BuildingKind.Monument => MonumentRadius,
         _ => SporeFarmRadius,
     };
 
@@ -4455,6 +4728,26 @@ public sealed class Building
             return false;
 
         _sporeTimer += SporeFarmInterval;
+        return true;
+    }
+
+    /// <summary>
+    /// The Nectar Brewery's brewing clock: counts down by
+    /// <paramref name="deltaTime"/> and, once it reaches zero, resets and
+    /// returns true so <see cref="World.UpdateNectarBrewery"/> can attempt
+    /// the actual Food/Amber-for-Nectar brew. Always false for anything
+    /// else.
+    /// </summary>
+    public bool TickBreweryTimer(float deltaTime)
+    {
+        if (Kind != BuildingKind.Brewery)
+            return false;
+
+        _breweryTimer -= deltaTime;
+        if (_breweryTimer > 0f)
+            return false;
+
+        _breweryTimer += World.BreweryInterval;
         return true;
     }
 
@@ -4494,6 +4787,48 @@ public sealed class Building
             return;
         }
 
+        if (Kind == BuildingKind.Brewery)
+        {
+            // A rounded purple/pink vat — Nectar's own colour on the
+            // Faction Ledger — with a golden spout on top so it reads as a
+            // still/brewery rather than another plain Granary silo.
+            var vat = new Color(150, 60, 150, 255);
+            var vatEdge = new Color(80, 25, 85, 255);
+            var vatCenter = Position + new Vector3(0, BreweryHeight / 2f, 0);
+            Raylib.DrawCylinder(vatCenter, BreweryRadius, BreweryRadius * 0.8f, BreweryHeight, 16, vat);
+            Raylib.DrawCylinderWires(vatCenter, BreweryRadius, BreweryRadius * 0.8f, BreweryHeight, 16, vatEdge);
+            var spout = Position + new Vector3(0, BreweryHeight + 0.08f, 0);
+            Raylib.DrawCylinder(spout, BreweryRadius * 0.35f, BreweryRadius * 0.2f, 0.18f, 10, new Color(255, 203, 0, 255));
+            return;
+        }
+
+        if (Kind == BuildingKind.Monument)
+        {
+            // The Great Monument: a stepped pyramid — three stacked, shrinking
+            // tiers topped with a golden capstone — massive enough (by far
+            // the tallest/widest structure on the map) to read as the
+            // tribe's endgame civilization goal at a glance.
+            var stone = new Color(190, 180, 165, 255);
+            var stoneEdge = new Color(95, 88, 78, 255);
+            const int tiers = 3;
+            float tierHeight = MonumentHeight / tiers;
+            for (int tier = 0; tier < tiers; tier++)
+            {
+                // Each tier's own base picks up exactly where the one below
+                // it tapered to, so the whole stack reads as one continuous
+                // stepped pyramid rather than three disconnected cylinders.
+                float baseRadius = MonumentRadius * (1f - tier * 0.3f);
+                float topRadius = MonumentRadius * (1f - (tier + 1) * 0.3f);
+                var tierCenter = Position + new Vector3(0, tierHeight * tier + tierHeight / 2f, 0);
+                Raylib.DrawCylinder(tierCenter, baseRadius, topRadius, tierHeight, 4, stone);
+                Raylib.DrawCylinderWires(tierCenter, baseRadius, topRadius, tierHeight, 4, stoneEdge);
+            }
+
+            var capstone = Position + new Vector3(0, MonumentHeight + 0.3f, 0);
+            Raylib.DrawCylinder(capstone, MonumentRadius * 0.15f, 0f, 0.6f, 4, new Color(255, 203, 0, 255));
+            return;
+        }
+
         // Spore Farm: a large, saturated Dark Green disc, deliberately far
         // enough from the grass-green ground plane's own hue (86, 150, 60)
         // that it reads as an obvious landmark at a glance rather than
@@ -4517,12 +4852,14 @@ public sealed class Blueprint
 {
     public BuildingKind Kind { get; }
 
-    /// <summary>Construction Progress needed to finish — 10 for a Granary, 15 for a Spore Farm, 20 for a Trading Post, 8 for a Tent (cheap and fast — Housing needs to keep pace with a growing tribe).</summary>
+    /// <summary>Construction Progress needed to finish — 10 for a Granary, 15 for a Spore Farm, 20 for a Trading Post, 8 for a Tent (cheap and fast — Housing needs to keep pace with a growing tribe), 25 for a Brewery, and a massive 200 for the Great Monument — a whole tribe's coordinated effort.</summary>
     public float ProgressRequired => Kind switch
     {
         BuildingKind.Granary => 10f,
         BuildingKind.TradingPost => 20f,
         BuildingKind.Tent => 8f,
+        BuildingKind.Brewery => 25f,
+        BuildingKind.Monument => 200f,
         _ => 15f,
     };
 
@@ -4938,10 +5275,10 @@ public enum BramblekinRole
 /// them directly; each runs a small state machine, checked in priority order
 /// every frame:
 ///
-///   1. The 20-Meter Territory Rule: a Militia unit only Defends against the
-///      Wolf Spider, or Hunts an Aphid, while that hostile is within
-///      <see cref="World.TerritoryTargetingRadius"/> of its own Village
-///      Heart — see <see cref="World.SpawnSpiderNearVillage"/>'s organic
+///   1. Cultural Borders: a Militia unit only Defends against the
+///      Wolf Spider, or Hunts an Aphid, while that hostile is within its
+///      own Village Heart's dynamic, wealth-scaled <see cref="VillageHeart.TerritoryRadius"/>
+///      — see <see cref="World.SpawnSpiderNearVillage"/>'s organic
 ///      roaming. A Gatherer's own Fear Aura response is unaffected by
 ///      territory: it flees the spider on sight within <see cref="FearRadius"/>
 ///      regardless of where either of them is standing. Default Peace &amp;
@@ -5072,11 +5409,13 @@ public sealed class Bramblekin
     /// The Militia Leash: how far (m) a Militia unit may stray from its own
     /// Village Heart while Chasing (Defending) or Attacking (Raiding)
     /// before it breaks off entirely and heads straight home instead,
-    /// letting the target escape. Deliberately a hair past
-    /// <see cref="World.TerritoryTargetingRadius"/> (20m) — a moving
-    /// target right at that boundary, or an obstacle detour, can easily
-    /// drag a chasing unit slightly past it without this being a runaway
-    /// pursuit — while still keeping Militia from ever wandering off to
+    /// letting the target escape. Deliberately a hair past the old fixed
+    /// 20m territory rule — a moving target right at that boundary, or an
+    /// obstacle detour, can easily drag a chasing unit slightly past it
+    /// without this being a runaway pursuit. Cultural Borders: a very
+    /// wealthy Village Heart's own dynamic <see cref="VillageHeart.TerritoryRadius"/>
+    /// can now grow past this fixed leash — its Militia still won't chase
+    /// any further than this, full stop, while still keeping Militia from ever wandering off to
     /// fight across the whole map.
     /// </summary>
     private const float MilitiaLeashDistance = 22f;
@@ -5423,9 +5762,9 @@ public sealed class Bramblekin
 
         VillageHeart? home = world.VillageFor(FactionID);
 
-        // --- 2. The 20-Meter Territory Rule: Militia only engage the Wolf
-        // Spider while it's within TerritoryTargetingRadius of their own
-        // Village Heart — organic roaming means it spends most of its time
+        // --- 2. Cultural Borders: Militia only engage the Wolf Spider
+        // while it's within their own Village Heart's (wealth-scaled) own
+        // territory ring — organic roaming means it spends most of its time
         // out of territory, ignored. Re-aimed every frame, so a defending
         // Militia keeps adjusting where it's standing as the spider moves.
         // A Gatherer's Fear Aura is unaffected by territory: it flees on
@@ -5437,7 +5776,7 @@ public sealed class Bramblekin
         // chain — it already completely overrides any rival-faction target
         // the instant it's true, full stop.
         if (Role == BramblekinRole.Militia && world.Spider is { } spider && home is not null &&
-                 GroundMover.HorizontalDistanceSquared(spider.Position, home.Center) <= World.TerritoryTargetingRadius * World.TerritoryTargetingRadius)
+                 GroundMover.HorizontalDistanceSquared(spider.Position, home.Center) <= home.TerritoryRadius * home.TerritoryRadius)
         {
             _combatTarget = null;
             _target = ComputeInterceptPoint(spider, home);
@@ -5643,17 +5982,19 @@ public sealed class Bramblekin
         }
         // --- 2d. Blood Feud Base Razing: opportunistic offense rather than
         // home defense -- a Militia unit that's simply wandered within its
-        // own 20m aggro radius of a Village Heart it's actually at declared
-        // war with, with no living hostile Bramblekin also in that radius
+        // own (Cultural Borders — wealth-scaled) aggro radius of a Village
+        // Heart it's actually at declared war with, with no living hostile
+        // Bramblekin also in that radius
         // (a live threat always comes first — see 2b above, which already
         // claims this frame if one's in range), paths in and Pokes it down
         // instead. Default Peace: any faction with no declared Blood Feud
         // is never a valid Raiding target. Temporary Truce applies here
         // too: a spider actively threatening home calls off Base Razing
         // just like Border Wars.
+        float ownTerritoryRadius = home?.TerritoryRadius ?? World.BaseTerritoryRadius;
         if (!world.IsSpiderActivelyThreateningTerritory(home) &&
-            world.NearestHostileVillageHeartInRange(Position, FactionID, World.TerritoryTargetingRadius) is { } enemyHeart &&
-            !world.HasLivingHostileBramblekinNear(Position, FactionID, World.TerritoryTargetingRadius))
+            world.NearestHostileVillageHeartInRange(Position, FactionID, ownTerritoryRadius) is { } enemyHeart &&
+            !world.HasLivingHostileBramblekinNear(Position, FactionID, ownTerritoryRadius))
         {
             _raidTarget = enemyHeart;
             _target = enemyHeart.Center;
@@ -5673,12 +6014,32 @@ public sealed class Bramblekin
     /// speed. Militia are unaffected — soldiers, not workers — and a full
     /// panicked Flee (see <see cref="BramblekinState.Fleeing"/>) always runs
     /// at full speed regardless: fatigue doesn't slow down running for your
-    /// life.
+    /// life. The Nectar Brewery: stacked on top for a Gatherer specifically
+    /// — see <see cref="NectarSpeedMultiplier"/>.
     /// </summary>
-    private float EffectiveWalkSpeed(World world) =>
-        Role != BramblekinRole.Militia && (world.VillageFor(FactionID)?.GatherersAreWeary ?? false)
+    private float EffectiveWalkSpeed(World world)
+    {
+        VillageHeart? home = world.VillageFor(FactionID);
+        float speed = Role != BramblekinRole.Militia && (home?.GatherersAreWeary ?? false)
             ? WalkSpeed * World.WearySpeedMultiplier
             : WalkSpeed;
+
+        if (Role == BramblekinRole.Gatherer && home is not null)
+            speed *= NectarSpeedMultiplier(home);
+
+        return speed;
+    }
+
+    /// <summary>
+    /// The Nectar Brewery: a permanent civilization buff — every point of
+    /// <see cref="VillageHeart.NectarStored"/> this Gatherer's own faction
+    /// has brewed (see <see cref="World.UpdateNectarBrewery"/>) permanently
+    /// moves it <see cref="World.NectarSpeedBonusPerPoint"/> faster, capped
+    /// at <see cref="World.MaxNectarSpeedBonus"/> (+50%) so a sufficiently
+    /// ancient civilization can't eventually move arbitrarily fast.
+    /// </summary>
+    private static float NectarSpeedMultiplier(VillageHeart home) =>
+        1f + Math.Min(home.NectarStored * World.NectarSpeedBonusPerPoint, World.MaxNectarSpeedBonus);
 
     /// <summary>
     /// Individual Equipment: a Militia unit's pike renders bright
@@ -6128,7 +6489,7 @@ public sealed class Bramblekin
         }
 
         bool spiderInTerritory = home is not null && world.Spider is { } spiderCheck &&
-                                  GroundMover.HorizontalDistanceSquared(spiderCheck.Position, home.Center) <= World.TerritoryTargetingRadius * World.TerritoryTargetingRadius;
+                                  GroundMover.HorizontalDistanceSquared(spiderCheck.Position, home.Center) <= home.TerritoryRadius * home.TerritoryRadius;
 
         if (home is not null && spiderInTerritory)
         {
@@ -6161,7 +6522,7 @@ public sealed class Bramblekin
         // ring. Re-checked every frame since they may flee, die, or simply
         // wander back out.
         if (home is not null && _combatTarget is { IsDead: false } enemy &&
-            GroundMover.HorizontalDistanceSquared(enemy.Position, home.Center) <= World.TerritoryTargetingRadius * World.TerritoryTargetingRadius)
+            GroundMover.HorizontalDistanceSquared(enemy.Position, home.Center) <= home.TerritoryRadius * home.TerritoryRadius)
         {
             _target = enemy.Position;
 
@@ -6231,9 +6592,10 @@ public sealed class Bramblekin
             return;
         }
 
+        float raidingReach = home?.TerritoryRadius ?? World.BaseTerritoryRadius;
         if (_raidTarget is null || !world.Villages.Contains(_raidTarget) ||
-            GroundMover.HorizontalDistanceSquared(Position, _raidTarget.Center) > World.TerritoryTargetingRadius * World.TerritoryTargetingRadius ||
-            world.HasLivingHostileBramblekinNear(Position, FactionID, World.TerritoryTargetingRadius))
+            GroundMover.HorizontalDistanceSquared(Position, _raidTarget.Center) > raidingReach * raidingReach ||
+            world.HasLivingHostileBramblekinNear(Position, FactionID, raidingReach))
         {
             _raidTarget = null;
             StartWandering(world);
@@ -6415,8 +6777,9 @@ public sealed class Bramblekin
     {
         // The Militia Leash: a Militia unit's default wander destination
         // never drifts outside its own borders, unlike a Gatherer's
-        // map-wide roam — strictly within World.TerritoryTargetingRadius of
-        // its own Village Heart. Falls back to standing at home outright
+        // map-wide roam — strictly within its own Village Heart's Cultural
+        // Borders (wealth-scaled, see VillageHeart.TerritoryRadius). Falls
+        // back to standing at home outright
         // (never the map-wide point below) if nothing opens up nearby, and
         // to the ordinary map-wide wander if it has no home at all (a
         // homeless refugee, e.g. after Base Razing, has no border left to
@@ -6424,7 +6787,7 @@ public sealed class Bramblekin
         VillageHeart? home = Role == BramblekinRole.Militia ? world.VillageFor(FactionID) : null;
         if (home is not null)
         {
-            _target = world.RandomPointNearVillage(home, World.TerritoryTargetingRadius, BodyRadius + 0.1f) ?? home.Center;
+            _target = world.RandomPointNearVillage(home, home.TerritoryRadius, BodyRadius + 0.1f) ?? home.Center;
             SetState(BramblekinState.Walking);
             return;
         }
@@ -6449,7 +6812,7 @@ public sealed class Bramblekin
     {
         if (home is not null)
         {
-            _target = world.RandomPointNearVillage(home, World.TerritoryTargetingRadius, BodyRadius + 0.1f) ?? home.Center;
+            _target = world.RandomPointNearVillage(home, home.TerritoryRadius, BodyRadius + 0.1f) ?? home.Center;
             SetState(BramblekinState.Walking);
             return;
         }
