@@ -447,7 +447,10 @@ public static class Game
         if (world.GlobalAlerts.Count == 0)
             return;
 
-        const int fontSize = 32, lineHeight = 38;
+        // Part 3, UI Visibility: bumped well past the previous 32px so the
+        // "[NEW TRIBE] ... has sprouted!" banner is actually readable at a
+        // glance, not just a size nudge.
+        const int fontSize = 48, lineHeight = 56;
         int screenWidth = Raylib.GetScreenWidth();
         int topOffset = world.CompletedMonuments.Count > 0
             ? world.CompletedMonuments.Count * 44 + 20
@@ -459,7 +462,13 @@ public static class Game
             byte alpha = (byte)(255 * Math.Clamp(timeLeft / World.GlobalAlertDuration, 0f, 1f));
             Color faded = new(color.R, color.G, color.B, alpha);
             int textWidth = Raylib.MeasureText(text, fontSize);
-            Raylib.DrawText(text, (screenWidth - textWidth) / 2, topOffset + 10 + i * lineHeight, fontSize, faded);
+            int x = (screenWidth - textWidth) / 2;
+            int y = topOffset + 10 + i * lineHeight;
+
+            // A dark drop-shadow, offset a couple pixels, for contrast
+            // against a bright sky/terrain background.
+            Raylib.DrawText(text, x + 2, y + 2, fontSize, new Color(0, 0, 0, alpha));
+            Raylib.DrawText(text, x, y, fontSize, faded);
         }
     }
 
@@ -1387,6 +1396,15 @@ public sealed class World
     /// <summary>How long a crushed spider's splat mark stays on the ground, in seconds.</summary>
     private const float SplatDuration = 6f;
 
+    /// <summary>
+    /// Part 3 Debug Tooling (temporary): how long (seconds) the bright
+    /// pink "founding beam" — see <see cref="_debugBeams"/> — stays lit
+    /// above a brand new Village Heart's exact spawn coordinate, so it's
+    /// unmissable from a distance while diagnosing the Vanishing Settlement
+    /// bug. Not meant to be a permanent visual effect.
+    /// </summary>
+    private const float DebugBeamDuration = 9f;
+
     /// <summary>Global Food Abundance: how often a wild Berry appears, in seconds — shortened again for Pure Simulation so the wilderness restocks fast enough for every tribe's own Auto-Sprout/Auto-Construction economy to keep scaling with no player miracle to bail it out.</summary>
     public const float BerrySpawnInterval = 0.75f;
 
@@ -1749,6 +1767,16 @@ public sealed class World
     private readonly List<(Vector3 Position, float TimeLeft)> _splats = new();
     private readonly List<(Vector3 Position, string Text, Color Color, float TimeLeft)> _floatingTexts = new();
     private readonly List<(string Text, Color Color, float TimeLeft)> _globalAlerts = new();
+
+    /// <summary>
+    /// Part 3 Debug Tooling (temporary): a bright pink/magenta vertical
+    /// beam queued the instant <see cref="FoundSettlement"/> runs, at the
+    /// exact X/Z the new Village Heart is founded at — a cheap "is this
+    /// location valid at all?" visual check, same timed-effect-list shape
+    /// as <see cref="_splats"/>/<see cref="_floatingTexts"/> above. Remove
+    /// once the Vanishing Settlement bug is confirmed fixed for good.
+    /// </summary>
+    private readonly List<(Vector3 Position, float TimeLeft)> _debugBeams = new();
     private float _acornSpawnTimer = AcornSpawnInterval;
     private float _amberSpawnTimer = AmberSpawnInterval;
 
@@ -3027,6 +3055,18 @@ public sealed class World
             else
                 _globalAlerts[i] = alert;
         }
+
+        // Part 3 Debug Tooling (temporary): ticks down the same as every
+        // other timed effect above — see _debugBeams.
+        for (int i = _debugBeams.Count - 1; i >= 0; i--)
+        {
+            var beam = _debugBeams[i];
+            beam.TimeLeft -= deltaTime;
+            if (beam.TimeLeft <= 0f)
+                _debugBeams.RemoveAt(i);
+            else
+                _debugBeams[i] = beam;
+        }
     }
 
     /// <summary>
@@ -3161,6 +3201,21 @@ public sealed class World
             byte alpha = (byte)(200 * Math.Clamp(timeLeft / 2f, 0f, 1f));
             Raylib.DrawCylinder(position + new Vector3(0, 0.012f, 0), 0.9f, 0.9f, 0.005f, 20, new Color(30, 25, 20, (int)alpha));
         }
+
+        // Part 3 Debug Tooling (temporary, NOT a permanent visual effect):
+        // an unmissable bright pink/magenta beam from the ground up to
+        // Y=100 at the exact spot a Village Heart just tried to found at —
+        // see _debugBeams/FoundSettlement. Drawn unconditionally, same as
+        // Villages below, so it's never hidden by distance culling either.
+        for (int i = _debugBeams.Count - 1; i >= 0; i--)
+        {
+            var (position, timeLeft) = _debugBeams[i];
+            byte alpha = (byte)(200 * Math.Clamp(timeLeft / DebugBeamDuration, 0f, 1f));
+            Color beamColor = new(255, 0, 200, alpha);
+            Raylib.DrawCylinder(position, 1.75f, 1.75f, 100f, 16, beamColor);
+            Raylib.DrawCylinderWires(position, 1.75f, 1.75f, 100f, 16, new Color(255, 255, 255, alpha));
+        }
+
         for (int i = Villages.Count - 1; i >= 0; i--)
             Villages[i].Draw();
 
@@ -4195,6 +4250,17 @@ public sealed class World
     }
 
     /// <summary>
+    /// Splinter Factions — the Vanishing Settlement fix's safe inner
+    /// margin: a Settler's final founding X/Z is clamped to
+    /// +/-<see cref="SettlementSafeMargin"/> (comfortably inside
+    /// <see cref="Terrain"/>'s own +/-50 half-size) before the new Village
+    /// Heart is ever instantiated — see <see cref="FoundSettlement"/>. Cheap
+    /// defensive insurance against a boundary/NaN coordinate ever reaching
+    /// the terrain height sample or a Raylib draw call.
+    /// </summary>
+    private const float SettlementSafeMargin = 45f;
+
+    /// <summary>
     /// Splinter Factions' payoff: founds a brand new, fully independent
     /// Village Heart at <paramref name="point"/> once a Settler dispatched
     /// by <see cref="UpdateAutoSettler"/> reaches its target (see
@@ -4212,16 +4278,73 @@ public sealed class World
     /// own constructor — so this new tribe is a genuinely separate,
     /// competing rival from the instant it exists, immediately eligible for
     /// Invasion, Trade and the Blood Feud like any other faction.
+    ///
+    /// The Vanishing Settlement fix's actual root cause: unlike
+    /// <see cref="FoundVillage"/> (which starts <see cref="VillageHeart.UpkeepTimer"/>
+    /// at <see cref="UpkeepInterval"/> plus a full <see cref="SchismUpkeepGracePeriod"/>
+    /// grace window), this method used to leave UpkeepTimer at its default
+    /// (0f) — so the very first per-village Upkeep tick this same frame
+    /// (see <see cref="Update"/>'s Villages loop, which runs right after the
+    /// Colony loop that calls this) fired immediately against a village
+    /// with 0 Food Stored, and <see cref="UpdateUpkeep"/> starved its one
+    /// and only Bramblekin (the freshly-converted founder) to death on the
+    /// spot. Next frame, Population recomputed to 0 with FoodStored still
+    /// under <see cref="FoodSproutThreshold"/> made the brand new Village
+    /// Heart instantly "Extinct" (see <see cref="VillageHeart.IsExtinct"/>)
+    /// and the Ghost Town Cleanup in <see cref="Update"/> removed it from
+    /// <see cref="Villages"/> outright — all within a frame or two of the
+    /// "[NEW TRIBE]" alert appearing, with no despawn/kill of a Bramblekin
+    /// or VillageHeart based on position/bounds ever involved. Given the
+    /// same grace period as every other founding path below fixes this for
+    /// good.
     /// </summary>
     public VillageHeart FoundSettlement(Vector3 point, int factionId, Color factionColor)
     {
+        // Part 2, NaN/Boundary Coordinate Prevention: a last-resort safety
+        // net for a somehow-non-finite point (not currently reachable —
+        // RandomSettlerTarget/RandomFarPointFrom/FurthestCornerFromVillages
+        // all already produce finite, in-bounds coordinates — but cheap
+        // insurance against a future regression).
+        if (!float.IsFinite(point.X) || !float.IsFinite(point.Z))
+            point = Vector3.Zero;
+
+        // Part 2, rigid inner-margin clamp: keeps the founding X/Z well
+        // away from the true map edge, then re-derives Y from the clamped
+        // X/Z so the Village Heart's ground snap always matches where it
+        // actually gets placed.
+        point = new Vector3(
+            Math.Clamp(point.X, -SettlementSafeMargin, SettlementSafeMargin),
+            point.Y,
+            Math.Clamp(point.Z, -SettlementSafeMargin, SettlementSafeMargin));
+        point.Y = GetHeightAt(point.X, point.Z);
+
         var village = new VillageHeart(point, factionId, factionColor, Rng)
         {
             Population = 1,
             MaxPopulation = Math.Max(10, 1),
+
+            // The actual Vanishing Settlement fix: same Upkeep grace period
+            // FoundVillage gives every Schism splinter, so this brand new,
+            // zero-Food tribe survives long enough for its founder to start
+            // Gathering instead of starving to death before the next frame.
+            UpkeepTimer = UpkeepInterval + SchismUpkeepGracePeriod,
         };
+
+        // Part 1, The Global List Append: confirmed already present and
+        // correct below (Villages.Add(village)) — the TraceLog right after
+        // it is new, defensive verification that this call actually ran
+        // and actually grew the list, for future debugging.
         Villages.Add(village);
+        Raylib.TraceLog(TraceLogLevel.Info, $"[FOUNDATION] Villages.Add called — Villages.Count is now {Villages.Count}");
         RebuildObstacles();
+
+        // Part 3, Debug Visibility: an unmissable, temporary bright
+        // pink/magenta beam at the exact spawn coordinate — see
+        // _debugBeams/World.Draw. Tells us immediately whether the
+        // location itself is valid (the beam shows up right where the
+        // alert says) even if the Village Heart's own model were ever to
+        // fail to render.
+        _debugBeams.Add((point, DebugBeamDuration));
 
         // Robust Settler AI — Guaranteed Splitting: a Settler reaching this
         // point always successfully founds its new tribe (see
