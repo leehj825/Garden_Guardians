@@ -687,7 +687,7 @@ public static class Game
         // to stay under maxWidth — the underlying _debugLogs list/15-entry
         // cap (see AddEventLog) is untouched, only how each entry is laid
         // out here.
-        int maxWidth = (int)(560 * UiScale);
+        int maxWidth = (int)(400 * UiScale);
         var wrappedLines = new List<string>();
         for (int i = 0; i < _debugLogs.Count; i++)
             WrapLine(_debugLogs[i], fontSize, maxWidth, wrappedLines);
@@ -5499,8 +5499,12 @@ public sealed class World
     /// <summary>Whether any Blueprint belonging to <paramref name="factionId"/> still needs Builder hands.</summary>
     public bool HasIncompleteBlueprintFor(int factionId) => Blueprints.Any(b => b.FactionID == factionId);
 
-    /// <summary>The nearest Blueprint belonging to <paramref name="factionId"/> to <paramref name="from"/>, if any — AI Faction Loyalty: a Builder only ever works its own faction's sites. Distance is horizontal-only (<see cref="GroundMover.HorizontalDistanceSquared"/>), matching the contact-distance check in <see cref="Bramblekin.UpdateBuilding"/>, so the rolling-hills terrain's Y differences can't make this re-pick flip between two Blueprints as a Builder's elevation changes along its walk.</summary>
-    public Blueprint? NearestIncompleteBlueprintFor(Vector3 from, int factionId)
+    /// <summary>Builder Dibs: a Blueprint can be worked if it's unclaimed, or already claimed by <paramref name="claimant"/> itself — same rule as <see cref="IsAvailable(FoodShard, Bramblekin)"/>/<see cref="IsAvailable(AmberNode, Bramblekin)"/>.</summary>
+    public bool IsAvailable(Blueprint blueprint, Bramblekin claimant) =>
+        blueprint.ClaimedBy is null || blueprint.ClaimedBy == claimant;
+
+    /// <summary>The nearest available (see <see cref="IsAvailable(Blueprint, Bramblekin)"/>) Blueprint belonging to <paramref name="factionId"/> to <paramref name="from"/>, if any — AI Faction Loyalty: a Builder only ever works its own faction's sites. Builder Dibs: skips any Blueprint another Builder from the same faction has already claimed, so with up to MaxConcurrentBuilders active per faction they spread across distinct sites instead of all piling onto whichever one is globally nearest while every other queued site sits at zero Progress forever; claims this site for <paramref name="claimant"/> the moment it's picked. Distance is horizontal-only (<see cref="GroundMover.HorizontalDistanceSquared"/>), matching the contact-distance check in <see cref="Bramblekin.UpdateBuilding"/>, so the rolling-hills terrain's Y differences can't make this re-pick flip between two Blueprints as a Builder's elevation changes along its walk.</summary>
+    public Blueprint? NearestIncompleteBlueprintFor(Vector3 from, int factionId, Bramblekin claimant)
     {
         Blueprint? best = null;
         float bestDistance = float.MaxValue;
@@ -5508,6 +5512,8 @@ public sealed class World
         {
             Blueprint blueprint = Blueprints[i];
             if (blueprint.FactionID != factionId)
+                continue;
+            if (!IsAvailable(blueprint, claimant))
                 continue;
 
             float distance = GroundMover.HorizontalDistanceSquared(from, blueprint.Position);
@@ -5517,6 +5523,8 @@ public sealed class World
                 bestDistance = distance;
             }
         }
+        if (best is not null && best.ClaimedBy != claimant)
+            best.ClaimedBy = claimant;
         return best;
     }
 
@@ -7202,6 +7210,22 @@ public sealed class Blueprint
     /// <summary>The owning faction's colour.</summary>
     public Color FactionColor { get; }
 
+    /// <summary>
+    /// Builder Dibs: the Bramblekin currently working this site, if any —
+    /// same claim/ownership convention as <see cref="FoodShard.ClaimedBy"/>/
+    /// <see cref="AmberNode.ClaimedBy"/>. Keeps <see cref="World.NearestIncompleteBlueprintFor"/>
+    /// from letting every concurrently-active Builder in a faction converge
+    /// on the single globally-nearest Blueprint while every other queued
+    /// site sits at zero Progress forever. Set by
+    /// <see cref="World.NearestIncompleteBlueprintFor"/> the moment a
+    /// Builder picks this site, and released by
+    /// <see cref="Bramblekin.ReleaseBlueprintClaim"/> when that Builder is
+    /// demoted, promoted away, or dies. Never needs releasing on completion
+    /// — <see cref="World.CompleteBlueprint"/> removes the Blueprint from
+    /// <see cref="World.Blueprints"/> entirely.
+    /// </summary>
+    public Bramblekin? ClaimedBy { get; set; }
+
     public Blueprint(Vector3 position, BuildingKind kind, int factionId, Color factionColor)
     {
         Position = World.Grounded(position); // Part 6: snap onto the hilly terrain.
@@ -7931,6 +7955,11 @@ public sealed class Bramblekin
     private Acorn? _claimedAcorn;
     private AmberNode? _claimedAmber;
 
+    // Builder Dibs: the Blueprint this Builder is currently claimed onto, mirroring
+    // the Food/Aphid/Acorn/Amber claim fields above. Released on any promotion/demotion
+    // away from Building duty and on death, same as the others.
+    private Blueprint? _claimedBlueprint;
+
     /// <summary>
     /// The Bramblekin this Militia unit is currently chasing down while
     /// Defending, when there's no Wolf Spider in territory to prioritize
@@ -8127,6 +8156,7 @@ public sealed class Bramblekin
         ReleaseAphidClaim();
         ReleaseAcornClaim();
         ReleaseAmberClaim();
+        ReleaseBlueprintClaim();
 
         // The Schism: a Pioneer lost en route. Tells its Migration so the
         // origin's HasActiveMigration eventually clears if all 4 are lost
@@ -8158,6 +8188,7 @@ public sealed class Bramblekin
 
         Role = BramblekinRole.Militia;
         DropCarried();
+        ReleaseBlueprintClaim(); // A Builder promoted straight to Militia (Conscription) must not leave its Blueprint claimed forever.
         // Interrupt whatever the old Role was doing, whatever State that
         // was — dispatch in Update() runs off State, not Role, so a unit
         // left in e.g. Defending/Hunting/Invading/Looting/Fleeing after this
@@ -8184,6 +8215,7 @@ public sealed class Bramblekin
 
         Role = BramblekinRole.Gatherer;
         DropCarried(); // Defensive: neither Militia nor Builder ever actually carries food.
+        ReleaseBlueprintClaim(); // A Builder demoted back to Gatherer must not leave its Blueprint claimed forever.
         StartWandering(world);
     }
 
@@ -8277,6 +8309,7 @@ public sealed class Bramblekin
         ReleaseAphidClaim();
         ReleaseAcornClaim();
         ReleaseAmberClaim();
+        ReleaseBlueprintClaim();
 
         FactionID = migration.NewFactionID;
         FactionColor = migration.NewFactionColor;
@@ -8331,6 +8364,7 @@ public sealed class Bramblekin
         ReleaseAphidClaim();
         ReleaseAcornClaim();
         ReleaseAmberClaim();
+        ReleaseBlueprintClaim();
 
         FactionID = factionId;
         FactionColor = factionColor;
@@ -8913,6 +8947,14 @@ public sealed class Bramblekin
         _claimedAphid = null;
     }
 
+    /// <summary>Builder Dibs: releases this Bramblekin's claim on its current Blueprint target, if any.</summary>
+    private void ReleaseBlueprintClaim()
+    {
+        if (_claimedBlueprint is not null && _claimedBlueprint.ClaimedBy == this)
+            _claimedBlueprint.ClaimedBy = null;
+        _claimedBlueprint = null;
+    }
+
     /// <summary>Cooperative Acorn Cracking: releases this Gatherer's claim slot on its current Acorn target, if any.</summary>
     private void ReleaseAcornClaim()
     {
@@ -9213,7 +9255,12 @@ public sealed class Bramblekin
         // Re-pick the nearest Blueprint every frame: another Bramblekin may
         // have just finished ours, or a new one may have gone up closer.
         // AI Faction Loyalty: only ever our own faction's sites.
-        Blueprint? blueprint = world.NearestIncompleteBlueprintFor(Position, FactionID);
+        Blueprint? blueprint = world.NearestIncompleteBlueprintFor(Position, FactionID, this);
+        if (blueprint != _claimedBlueprint)
+        {
+            ReleaseBlueprintClaim();
+            _claimedBlueprint = blueprint;
+        }
         if (blueprint is null)
         {
             StartWandering(world);
@@ -9227,7 +9274,10 @@ public sealed class Bramblekin
             float rate = inspired ? World.HighMoraleBuildMultiplier : 1f;
             blueprint.AddProgress(rate * deltaTime);
             if (blueprint.IsComplete)
+            {
+                _claimedBlueprint = null; // CompleteBlueprint removes it from World.Blueprints — no ClaimedBy left to null out.
                 world.CompleteBlueprint(blueprint);
+            }
             return;
         }
 
@@ -9895,7 +9945,7 @@ public sealed class Bramblekin
     /// claim releases it — the single hook every transition already goes
     /// through, so a Gatherer scared off mid-Gathering (Fleeing), promoted
     /// to Militia (Building/Gathering -> Pausing), or simply re-tasked to
-    /// Building doesn't leave a shard/Aphid/Acorn locked out forever. The
+    /// Building doesn't leave a shard/Aphid/Acorn/Blueprint locked out forever. The
     /// Acorn claim specifically survives a Gathering &lt;-&gt; Cracking
     /// transition either way — those two states are just "chasing an
     /// Acorn" and "actively cracking it," not a change of target.
@@ -9916,6 +9966,8 @@ public sealed class Bramblekin
             ReleaseAcornClaim();
         if (state != BramblekinState.Hunting)
             ReleaseAphidClaim();
+        if (state != BramblekinState.Building)
+            ReleaseBlueprintClaim();
 
         State = state;
         _mover.ResetProgress();
