@@ -4215,7 +4215,11 @@ public sealed class World
     /// </summary>
     public VillageHeart FoundSettlement(Vector3 point, int factionId, Color factionColor)
     {
-        var village = new VillageHeart(point, factionId, factionColor, Rng);
+        var village = new VillageHeart(point, factionId, factionColor, Rng)
+        {
+            Population = 1,
+            MaxPopulation = Math.Max(10, 1),
+        };
         Villages.Add(village);
         RebuildObstacles();
 
@@ -6377,10 +6381,20 @@ public sealed class GroundMover
             // (or off it, before ClampToTerrain silently caught it below).
             // Negating just the offending axis's component, not the whole
             // heading, still lets the other axis's steering continue
-            // normally.
-            if (MathF.Abs(position.X) > MapBoundaryLimit)
+            // normally. Direction-aware: only flip when the heading is
+            // still pointing further away from center on that axis — a
+            // blind sign flip could instead reverse a heading that was
+            // already correctly steering back in, sending the unit further
+            // off the map (matching Militias marching out straight and
+            // vanishing off the terrain's hard edge).
+            if (position.X > MapBoundaryLimit && heading.X > 0f)
                 heading.X = -heading.X;
-            if (MathF.Abs(position.Y) > MapBoundaryLimit)
+            else if (position.X < -MapBoundaryLimit && heading.X < 0f)
+                heading.X = -heading.X;
+
+            if (position.Y > MapBoundaryLimit && heading.Y > 0f)
+                heading.Y = -heading.Y;
+            else if (position.Y < -MapBoundaryLimit && heading.Y < 0f)
                 heading.Y = -heading.Y;
 
             position += heading * step;
@@ -7214,6 +7228,32 @@ public sealed class Bramblekin
     /// reads as annexed at a glance.
     /// </summary>
     public void RecolorAsVassal(Color capitalColor) => FactionColor = capitalColor;
+
+    /// <summary>
+    /// Splinter Factions' founding fix: converts this Settler into its own
+    /// brand new tribe's founding citizen instead of despawning into
+    /// nothing (see <see cref="World.FoundSettlement"/>, called just before
+    /// this). Mirrors <see cref="BecomePioneer"/>'s in-place Faction switch
+    /// (FactionID has a private setter, not readonly, so mutating this
+    /// instance is safe and matches the established Schism pattern) but,
+    /// unlike a Migrating Pioneer, this founder's journey is already over:
+    /// it drops straight into Gatherer duty via <see cref="StartWandering"/>
+    /// so the new Village Heart's economy can bootstrap immediately instead
+    /// of the new tribe starting — and staying — at zero population forever.
+    /// </summary>
+    public void BecomeFounder(int factionId, Color factionColor, World world)
+    {
+        DropCarried();
+        ReleaseFoodClaim();
+        ReleaseAphidClaim();
+        ReleaseAcornClaim();
+        ReleaseAmberClaim();
+
+        FactionID = factionId;
+        FactionColor = factionColor;
+        Role = BramblekinRole.Gatherer;
+        StartWandering(world);
+    }
 
     public void Update(float deltaTime, World world)
     {
@@ -8502,7 +8542,7 @@ public sealed class Bramblekin
         if (GroundMover.HorizontalDistance(Position, _settlerTarget) <= SettlerArriveDistance)
         {
             world.FoundSettlement(_settlerTarget, _settlerFactionId, _settlerFactionColor);
-            world.DespawnSettler(this);
+            BecomeFounder(_settlerFactionId, _settlerFactionColor, world);
             return;
         }
 
