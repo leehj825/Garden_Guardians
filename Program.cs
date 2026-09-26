@@ -63,11 +63,10 @@ public enum GamePlatform
 /// </summary>
 public static class Game
 {
-    // Window settings. Kept as constants so they are easy to find and tweak.
-    // On Android this is a *virtual* resolution: raylib scales it to fill the
-    // display (letterboxing if the aspect ratio differs) and maps touches back
-    // into these coordinates, so UI positions work unchanged on any phone.
-    // Width > height also tells raylib to lock the activity to landscape.
+    // Window settings for Desktop. Android instead opens at its native
+    // screen size (see Run's InitWindow call) so the game fills the whole
+    // display with no letterboxing; landscape is locked independently, via
+    // MainActivity's ScreenOrientation attribute, not by these numbers.
     private const int ScreenWidth = 1280;
     private const int ScreenHeight = 720;
     private const int TargetFps = 60;
@@ -106,7 +105,17 @@ public static class Game
             Raylib.SetConfigFlags(ConfigFlags.Msaa4xHint | ConfigFlags.ResizableWindow);
         }
 
-        Raylib.InitWindow(ScreenWidth, ScreenHeight, "Garden Guardians");
+        // Full Screen: Desktop still opens at the fixed ScreenWidth/Height
+        // (the window is resizable from there). On Android, passing 0x0
+        // tells raylib to use the device's actual native surface size
+        // instead of a fixed 1280x720 virtual canvas letterboxed to fit —
+        // every UI/culling call already reads back Raylib.GetScreenWidth()/
+        // GetScreenHeight() rather than the ScreenWidth/ScreenHeight
+        // constants, so it fills whatever size that turns out to be.
+        if (platform == GamePlatform.Android)
+            Raylib.InitWindow(0, 0, "Garden Guardians");
+        else
+            Raylib.InitWindow(ScreenWidth, ScreenHeight, "Garden Guardians");
         Raylib.SetTargetFPS(TargetFps);
 
         // --- Build the world -------------------------------------------------
@@ -444,8 +453,14 @@ public sealed class TouchCameraController
     /// <summary>Closest the camera may zoom in, in meters from its Target.</summary>
     private const float MinZoomDistance = 8f;
 
-    /// <summary>Furthest the camera may zoom out, in meters from its Target.</summary>
-    private const float MaxZoomDistance = 45f;
+    /// <summary>
+    /// Furthest the camera may zoom out, in meters from its Target. Must
+    /// stay above the God-Camera's starting distance (~156m — see
+    /// Game.Run's initial Camera3D) or the very first pinch clamps the
+    /// camera to this ceiling immediately, which reads as a sudden
+    /// snap-zoom-in that a further pinch-out can never undo.
+    /// </summary>
+    private const float MaxZoomDistance = 220f;
 
     /// <summary>How many meters of pinch-distance change it takes to move the camera one meter.</summary>
     private const float PinchZoomSensitivity = 0.05f;
