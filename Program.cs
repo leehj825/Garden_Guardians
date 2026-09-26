@@ -1675,7 +1675,7 @@ public sealed class World
     /// <summary>Map Density Control: the hard ceiling on simultaneously active Village Hearts (independent capitals — Vassals don't count, they're not their own faction any more). Once <see cref="World.Villages"/> hits this, Schism/Auto-Settler no longer spawn a new faction — see <see cref="UpdateSchism"/>/<see cref="UpdateAutoSettler"/>.</summary>
     public const int MaxActiveFactions = 6;
 
-    /// <summary>Overpopulation Crusades: how many Gatherers are instantly drafted into Militia for a blind Crusade when a tribe hits the Schism/Settler trigger but the map is already at <see cref="MaxActiveFactions"/> — see <see cref="LaunchOverpopulationCrusade"/>.</summary>
+    /// <summary>Overpopulation Crusades: how many Gatherers are instantly drafted into Militia for a ruthless, nearest-target Crusade when a tribe hits the Schism/Settler trigger but the map is already at <see cref="MaxActiveFactions"/> — see <see cref="LaunchOverpopulationCrusade"/>.</summary>
     public const int CrusadeMilitiaWaveSize = 8;
 
     // --- Vassal Colonies (Tribute Economy) ---------------------------------------
@@ -2580,6 +2580,7 @@ public sealed class World
             }
         }
         village.InvasionTarget = best;
+        village.InvasionIsCrusade = false;
     }
 
     /// <summary>Invasion &amp; Conquest: whether <paramref name="candidate"/> counts as weaker than <paramref name="invader"/> — lower Population, or fewer living Militia, than the invader's own count.</summary>
@@ -2694,13 +2695,22 @@ public sealed class World
     /// Looter AI (see <see cref="Bramblekin.TryStartLooting"/>) only ever
     /// kicks in on the Razed outcome, since a Vassal's stores aren't lost
     /// at all.
+    ///
+    /// Overpopulation Crusades: <paramref name="forceRaze"/> (see
+    /// <see cref="Bramblekin.UpdateInvading"/>'s <c>_isCrusading</c> flag,
+    /// set by <see cref="LaunchOverpopulationCrusade"/>) skips the
+    /// <see cref="RazeInsteadOfVassalRadius"/> distance check entirely and
+    /// always takes the Raze branch — deliberately, on purpose: this is
+    /// extermination, not conquest, and a distant Crusade target left
+    /// standing as a Vassal would leave the Faction Cap overcrowding it was
+    /// meant to relieve completely unsolved.
     /// </summary>
-    public bool ConquerVillage(VillageHeart target, int invaderFactionId)
+    public bool ConquerVillage(VillageHeart target, int invaderFactionId, bool forceRaze = false)
     {
         if (VillageFor(invaderFactionId) is not { } capital)
             return false; // The would-be conqueror has no Village Heart of its own any more.
 
-        if (Vector3.DistanceSquared(target.Center, capital.Center) <= RazeInsteadOfVassalRadius * RazeInsteadOfVassalRadius)
+        if (forceRaze || Vector3.DistanceSquared(target.Center, capital.Center) <= RazeInsteadOfVassalRadius * RazeInsteadOfVassalRadius)
         {
             RazeConqueredVillage(target, capital);
             return true;
@@ -4329,15 +4339,25 @@ public sealed class World
     /// Gatherers are promoted straight to Militia (<see cref="Bramblekin.PromoteToMilitia"/>,
     /// the same conscription every faction already uses one-at-a-time — just
     /// applied in one lump here), and this village's own
-    /// <see cref="VillageHeart.InvasionTarget"/> is pointed at a uniformly
-    /// random OTHER active Village Heart, "blind" — unlike the ordinary
-    /// Invasion &amp; Conquest AI (see <see cref="UpdateInvasionOrders"/>) this
-    /// never checks whether the target is actually weaker. The freshly
-    /// drafted Militia pick the order up the same way any other idle Militia
-    /// does (<see cref="Bramblekin.Update"/>'s Invasion priority) and march
-    /// out immediately. Composes with Part 2: a Militaristic faction hitting
-    /// the cap crusades exactly the same way — this check only ever looks at
-    /// <see cref="World.Villages"/>.Count, never at <see cref="FactionTrait"/>.
+    /// <see cref="VillageHeart.InvasionTarget"/> is pointed at the NEAREST
+    /// other active Village Heart (excluding this faction's own Vassals,
+    /// which are already its territory, not a rival to clear) — ruthless,
+    /// not blind: unlike the ordinary Invasion &amp; Conquest AI (see
+    /// <see cref="UpdateInvasionOrders"/>) this never checks whether the
+    /// target is actually weaker, only how close it is, since a Crusade
+    /// exists purely to clear the physical overcrowding immediately around
+    /// this tribe's own borders. <see cref="VillageHeart.InvasionIsCrusade"/>
+    /// is set alongside the target so <see cref="Bramblekin.UpdateInvading"/>
+    /// knows to force an unconditional Raze on conquest (see
+    /// <see cref="World.ConquerVillage"/>'s <c>forceRaze</c> parameter)
+    /// regardless of distance from this faction's own capital — a Crusade
+    /// that merely Vassalizes the overcrowding away has failed its one job.
+    /// The freshly drafted Militia pick the order up the same way any other
+    /// idle Militia does (<see cref="Bramblekin.Update"/>'s Invasion
+    /// priority) and march out immediately. Composes with Part 2: a
+    /// Militaristic faction hitting the cap crusades exactly the same way —
+    /// this check only ever looks at <see cref="World.Villages"/>.Count,
+    /// never at <see cref="FactionTrait"/>.
     /// </summary>
     private void LaunchOverpopulationCrusade(VillageHeart village, int foodCost)
     {
@@ -4353,9 +4373,25 @@ public sealed class World
             drafted++;
         }
 
-        List<VillageHeart> rivals = Villages.Where(v => v.FactionID != village.FactionID).ToList();
-        if (rivals.Count > 0)
-            village.InvasionTarget = rivals[Rng.Next(rivals.Count)];
+        VillageHeart? nearestRival = null;
+        float bestDistanceSquared = float.MaxValue;
+        foreach (VillageHeart candidate in Villages)
+        {
+            if (candidate.FactionID == village.FactionID)
+                continue;
+            if (candidate.IsVassal && candidate.CapitalFactionID == village.FactionID)
+                continue; // Already ours — not a rival to clear.
+
+            float distanceSquared = Vector3.DistanceSquared(village.Center, candidate.Center);
+            if (distanceSquared < bestDistanceSquared)
+            {
+                nearestRival = candidate;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+
+        village.InvasionTarget = nearestRival;
+        village.InvasionIsCrusade = nearestRival is not null;
 
         string targetName = village.InvasionTarget is { } t ? FactionColorName(t.FactionColor) : "no one (no rivals left)";
         QueueFloatingText(village.Center, $"[-{foodCost} Food] Overpopulation Crusade!", new Color(220, 30, 30, 255));
@@ -5565,6 +5601,21 @@ public sealed class VillageHeart
     /// this faction's own Morale/Militia count no longer qualifies.
     /// </summary>
     public VillageHeart? InvasionTarget { get; internal set; }
+
+    /// <summary>
+    /// Overpopulation Crusades: true exactly when <see cref="InvasionTarget"/>
+    /// was set by <see cref="World.LaunchOverpopulationCrusade"/> rather than
+    /// the ordinary <see cref="World.UpdateInvasionOrders"/> — a Militia unit
+    /// snapshots this alongside <see cref="InvasionTarget"/> the instant it
+    /// picks the order up (see <see cref="Bramblekin.Update"/>'s Invasion
+    /// priority), so it stays consistent with whichever order that specific
+    /// unit actually marched out on even if this faction's orders change
+    /// again while it's still en route. Consumed by <see cref="Bramblekin.UpdateInvading"/>
+    /// to force an unconditional Raze — see <see cref="World.ConquerVillage"/>'s
+    /// <c>forceRaze</c> parameter — since a Crusade's only purpose is
+    /// clearing the Faction Cap's overcrowding, not annexing territory.
+    /// </summary>
+    public bool InvasionIsCrusade { get; internal set; }
 
     /// <summary>Centre of the footprint on the ground.</summary>
     public Vector3 Center { get; }
@@ -7447,6 +7498,18 @@ public sealed class Bramblekin
     /// </summary>
     private VillageHeart? _invasionTarget;
 
+    /// <summary>
+    /// Overpopulation Crusades: snapshotted from <see cref="VillageHeart.InvasionIsCrusade"/>
+    /// the same instant this unit picks up <see cref="_invasionTarget"/>
+    /// (see <see cref="Update"/>'s Invasion priority), so it stays correct
+    /// for the specific march this unit is actually on even if the home
+    /// faction's orders change again before it arrives. Forces
+    /// <see cref="World.ConquerVillage"/> to Raze unconditionally on
+    /// conquest — see <see cref="UpdateInvading"/> — since a Crusade's only
+    /// purpose is extermination to free up the Faction Cap, never Vassalizing.
+    /// </summary>
+    private bool _isCrusading;
+
     /// <summary>The Schism: set the instant this Bramblekin becomes a Pioneer (see <see cref="BecomePioneer"/>), cleared the instant it stops Migrating (see <see cref="UpdateMigrating"/>).</summary>
     private Migration? _migration;
 
@@ -7904,6 +7967,7 @@ public sealed class Bramblekin
             home?.InvasionTarget is { } invasionTarget)
         {
             _invasionTarget = invasionTarget;
+            _isCrusading = home.InvasionIsCrusade;
             SetState(BramblekinState.Invading);
         }
 
@@ -8808,7 +8872,7 @@ public sealed class Bramblekin
             if (world.LivingMilitiaCountFor(target.FactionID) == 0)
             {
                 Vector3 ruins = target.Center;
-                bool wasRazed = world.ConquerVillage(target, FactionID);
+                bool wasRazed = world.ConquerVillage(target, FactionID, forceRaze: _isCrusading);
                 _invasionTarget = null;
                 if (!wasRazed || !TryStartLooting(world, ruins, home))
                     StartWandering(world);
