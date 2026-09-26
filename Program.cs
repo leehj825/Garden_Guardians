@@ -1430,6 +1430,15 @@ public sealed class World
     /// <summary>The Split Fix: exactly how much Food Stored departs with the Pioneers in a True Schism.</summary>
     public const int SchismPioneerFood = 50;
 
+    /// <summary>Splinter Factions: minimum Food Stored a Village Heart needs banked, on top of being maxed out on Housing, before it dispatches a Settler — see <see cref="UpdateAutoSettler"/>.</summary>
+    public const int SettlerFoodThreshold = 40;
+
+    /// <summary>Splinter Factions: how much Food Stored a dispatched Settler actually costs the parent.</summary>
+    public const int SettlerFoodCost = 20;
+
+    /// <summary>Splinter Factions: how much a dispatched Settler temporarily shaves off the parent's own Population, representing the splinter group that just left — recomputed back to the live Colony count on the very next Job Manager pass (see <see cref="UpdateJobManager"/>).</summary>
+    public const int SettlerPopulationCost = 5;
+
     /// <summary>
     /// Upkeep Grace Period: extra seconds (on top of the normal
     /// <see cref="UpkeepInterval"/> cycle) before a freshly-founded Schism
@@ -1644,6 +1653,15 @@ public sealed class World
 
     /// <summary>How many random coordinates <see cref="RandomMigrationTarget"/>/<see cref="RandomRefugeeTarget"/> try before giving up on a clean gap.</summary>
     private const int MigrationTargetAttempts = 50;
+
+    /// <summary>Splinter Factions: a Settler's founding target must land at least this far (m) from its parent Village Heart — see <see cref="RandomSettlerTarget"/>.</summary>
+    private const float SettlerMinDistance = 40f;
+
+    /// <summary>Splinter Factions: how far (m) from the 100x100 map's edges a Settler's founding target keeps — with a 100m-wide map this keeps every target within [-45, 45] on both axes.</summary>
+    private const float SettlerEdgeMargin = 5f;
+
+    /// <summary>How many random coordinates <see cref="RandomSettlerTarget"/> tries before giving up and accepting the least-bad (furthest) one tried.</summary>
+    private const int SettlerTargetAttempts = 50;
 
     /// <summary>The palette a new Schism faction's colour is drawn from, cycling once all four are in use.</summary>
     private static readonly Color[] SchismFactionColors =
@@ -2914,6 +2932,11 @@ public sealed class World
             // overflowing with Food Stored spins off a new faction of its
             // own rather than just sitting capped out forever.
             UpdateSchism(village);
+
+            // Splinter Factions: a single Settler, dispatched the instant a
+            // Village Heart is maxed out on Housing with a modest Food
+            // surplus on hand -- see UpdateAutoSettler.
+            UpdateAutoSettler(village);
         }
         UpdateSporeFarmIncome(deltaTime);
         UpdateNectarBrewery(deltaTime);
@@ -3852,6 +3875,75 @@ public sealed class World
     }
 
     /// <summary>
+    /// Splinter Factions: unlike the True Schism (which only ever fires once
+    /// a tribe is maxed out on the absolute <see cref="MaxPopulationCap"/>
+    /// and requires a whole <see cref="SchismPioneerCount"/>-strong party),
+    /// this fires the moment a Village Heart is maxed out on its own
+    /// (possibly much lower) current <see cref="VillageHeart.MaxPopulation"/>
+    /// with just <see cref="SettlerFoodThreshold"/> Food Stored banked —
+    /// spending <see cref="SettlerFoodCost"/> of it, shaving
+    /// <see cref="SettlerPopulationCost"/> off Population, and dispatching a
+    /// single Settler (see <see cref="Bramblekin.BecomeSettler"/>) to found a
+    /// brand new, fully independent tribe elsewhere on the map (see
+    /// <see cref="Bramblekin.UpdateSettler"/>/<see cref="FoundSettlement"/>).
+    /// Guarded to at most one Settler in flight per origin at a time — the
+    /// same reasoning as <see cref="VillageHeart.HasActiveMigration"/> — so a
+    /// Village Heart already sitting on a large Food surplus can't spawn a
+    /// whole flotilla of Settlers in a single frame.
+    /// </summary>
+    private void UpdateAutoSettler(VillageHeart village)
+    {
+        if (village.Population < village.MaxPopulation)
+            return; // Housing isn't maxed out yet — still room to grow in place.
+        if (village.FoodStored < SettlerFoodThreshold)
+            return;
+        if (Colony.Any(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Settler))
+            return; // Already got one on the road.
+
+        village.FoodStored -= SettlerFoodCost;
+        village.Population = Math.Max(0, village.Population - SettlerPopulationCost);
+
+        Vector3 spot = RandomPointNearVillage(village, GenesisSpawnRadius, Bramblekin.BodyRadius + 0.1f)
+                       ?? RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin);
+
+        int newFactionId = _nextSchismFactionId++;
+        Color newFactionColor = SchismFactionColors[(newFactionId - 1) % SchismFactionColors.Length];
+
+        var settler = new Bramblekin(spot, Rng, village.FactionID, village.FactionColor);
+        settler.BecomeSettler(RandomSettlerTarget(village.Center), newFactionId, newFactionColor);
+        _pendingBramblekinSpawns.Add(settler);
+    }
+
+    /// <summary>
+    /// Splinter Factions: a random point at least <see cref="SettlerMinDistance"/>
+    /// meters from <paramref name="home"/>, staying within
+    /// <see cref="SettlerEdgeMargin"/> meters of the map's edges (on a
+    /// 100x100 map, [-45, 45] on both axes) — a Settler's founding
+    /// destination. Same Overcrowding Fallback as <see cref="RandomMigrationTarget"/>:
+    /// if none of <see cref="SettlerTargetAttempts"/> random tries lands far
+    /// enough away, settle for the furthest one actually tried.
+    /// </summary>
+    private Vector3 RandomSettlerTarget(Vector3 home)
+    {
+        Vector3 best = Vector3.Zero;
+        float bestDistance = -1f;
+        for (int attempt = 0; attempt < SettlerTargetAttempts; attempt++)
+        {
+            Vector3 candidate = Terrain.RandomPoint(Rng, SettlerEdgeMargin);
+            float distance = Vector3.Distance(candidate, home);
+            if (distance >= SettlerMinDistance)
+                return candidate;
+
+            if (distance > bestDistance)
+            {
+                bestDistance = distance;
+                best = candidate;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>
     /// Strict Migration Distance: a random point at least
     /// <see cref="MinMigrationDistance"/> meters from every existing
     /// Village Heart — a Schism's destination. Overcrowding Fallback: if
@@ -3960,6 +4052,48 @@ public sealed class World
         migration.MarkFounded();
         migration.Origin.HasActiveMigration = false;
         return village;
+    }
+
+    /// <summary>
+    /// Splinter Factions' payoff: founds a brand new, fully independent
+    /// Village Heart at <paramref name="point"/> once a Settler dispatched
+    /// by <see cref="UpdateAutoSettler"/> reaches its target (see
+    /// <see cref="Bramblekin.UpdateSettler"/>). Unlike <see cref="FoundVillage"/>
+    /// (the Schism's own founding path, seeded with population and Food
+    /// carried over by a whole party of Pioneers), a Settled tribe starts
+    /// from nothing but a single founder: Tier 1, empty stores, and
+    /// MaxPopulation left at <see cref="VillageHeart"/>'s own plain-founding
+    /// default of 10 — exactly like the very first Village Heart the game
+    /// starts with. The Crucial Diplomacy Logic: <paramref name="factionColor"/>
+    /// is a completely new colour (see <see cref="UpdateAutoSettler"/>'s own
+    /// generation of it, drawn from the same <see cref="SchismFactionColors"/>
+    /// palette every other post-founding faction uses) and <see cref="FactionTrait"/>
+    /// is independently, randomly rolled fresh inside <see cref="VillageHeart"/>'s
+    /// own constructor — so this new tribe is a genuinely separate,
+    /// competing rival from the instant it exists, immediately eligible for
+    /// Invasion, Trade and the Blood Feud like any other faction.
+    /// </summary>
+    public VillageHeart FoundSettlement(Vector3 point, int factionId, Color factionColor)
+    {
+        var village = new VillageHeart(point, factionId, factionColor, Rng);
+        Villages.Add(village);
+        RebuildObstacles();
+        return village;
+    }
+
+    /// <summary>
+    /// Removes a Settler from the world the instant it founds its new
+    /// Village Heart (see <see cref="FoundSettlement"/>) — a plain despawn,
+    /// not a death: unlike <see cref="Kill"/>, this never ticks Casualties
+    /// or drains any Morale, since nothing was actually lost.
+    /// </summary>
+    public void DespawnSettler(Bramblekin settler)
+    {
+        if (settler.IsDead)
+            return;
+
+        settler.MarkDead();
+        _pendingBramblekinRemovals.Add(settler);
     }
 
     /// <summary>Gatherers Genesis instantly spawns beside the new Village Heart, so the economy can restart immediately.</summary>
@@ -4260,6 +4394,15 @@ public sealed class World
     /// <summary>Queues a new Bramblekin of <paramref name="village"/>'s Faction on a free spot right beside it.</summary>
     private void SproutBramblekin(VillageHeart village)
     {
+        // The Housing System: strictly refuse to spawn a Bramblekin once
+        // Population is already at (or, defensively, past) MaxPopulation.
+        // UpdateAutoSprout's own loop already re-checks this on every single
+        // iteration before calling here, but the guard belongs on the actual
+        // spawning logic itself too, so nothing else that might ever call
+        // this method directly could sneak the tribe over its own cap.
+        if (village.Population >= village.MaxPopulation)
+            return;
+
         float distance = village.Obstacle.Radius + Bramblekin.BodyRadius + 0.2f;
         float startAngle = (float)(Rng.NextDouble() * MathF.Tau);
         Vector3 spot = village.Center + new Vector3(distance, 0, 0);
@@ -6189,6 +6332,15 @@ public enum BramblekinState
     /// See <see cref="Bramblekin.UpdateMigrating"/>.
     /// </summary>
     Migrating,
+
+    /// <summary>
+    /// Splinter Factions: a Settler, forced into this state the instant
+    /// it's spawned (see <see cref="Bramblekin.BecomeSettler"/>) — it paths
+    /// straight for its own founding target, ignoring food, blueprints and
+    /// enemies alike, until it arrives and founds a brand new Village
+    /// Heart. See <see cref="Bramblekin.UpdateSettler"/>.
+    /// </summary>
+    Settling,
 }
 
 /// <summary>A Bramblekin's class: an ordinary worker, a dedicated builder, or a drafted defender.</summary>
@@ -6219,6 +6371,17 @@ public enum BramblekinRole
     /// search, so it can walk straight through a warzone unharmed.
     /// </summary>
     Merchant,
+
+    /// <summary>
+    /// Splinter Factions: spawned by <see cref="World.UpdateAutoSettler"/>
+    /// the instant a Village Heart is maxed out on Housing with a Food
+    /// surplus on hand. Never gathers, builds or fights — it walks straight
+    /// for a random founding target far from home (see
+    /// <see cref="Bramblekin.UpdateSettler"/>) and, on arrival, founds a
+    /// brand new, fully independent Village Heart of its own (see
+    /// <see cref="World.FoundSettlement"/>) and despawns.
+    /// </summary>
+    Settler,
 }
 
 /// <summary>
@@ -6388,6 +6551,10 @@ public sealed class Bramblekin
     private static readonly Color BuilderColor = new(170, 140, 200, 255); // Lavender — visually distinct, on-the-job.
     private static readonly Color MerchantColor = new(60, 55, 50, 255);   // A dark, neutral body — the gold backpack is what actually reads.
     private static readonly Color MerchantBackpackColor = new(215, 175, 60, 255); // Gold, same trim colour as a Town Center.
+
+    private static readonly Color SettlerColor = new(90, 80, 65, 255); // A plain, earthy body — the white banner above is what actually reads.
+    private static readonly Color SettlerPoleColor = new(120, 90, 50, 255);
+    private static readonly Color SettlerFlagColor = new(245, 245, 240, 255); // A small white flag: the founder's colours are yet to be decided.
     private static readonly Color PikeColor = new(120, 55, 40, 255);     // Rose-thorn brown-red.
     private static readonly Color FangPikeColor = new(235, 235, 240, 255); // Spider Fang: bright white/silver.
     private static readonly Color MalletHandleColor = new(120, 80, 45, 255); // Wooden handle.
@@ -6461,6 +6628,15 @@ public sealed class Bramblekin
 
     /// <summary>The Schism: set the instant this Bramblekin becomes a Pioneer (see <see cref="BecomePioneer"/>), cleared the instant it stops Migrating (see <see cref="UpdateMigrating"/>).</summary>
     private Migration? _migration;
+
+    /// <summary>Splinter Factions: where this Settler is founding its new tribe — set once, the instant it's spawned (see <see cref="BecomeSettler"/>).</summary>
+    private Vector3 _settlerTarget;
+
+    /// <summary>Splinter Factions: the brand new FactionID this Settler's new Village Heart will be founded under — see <see cref="BecomeSettler"/>/<see cref="World.FoundSettlement"/>.</summary>
+    private int _settlerFactionId;
+
+    /// <summary>Splinter Factions: the brand new (randomly generated) FactionColor this Settler's new Village Heart will be founded with — see <see cref="BecomeSettler"/>/<see cref="World.FoundSettlement"/>.</summary>
+    private Color _settlerFactionColor;
 
     /// <summary>Feet position on the ground — Part 6: terrain-aware; X/Z come from the flat-Y GroundMover but Y is snapped to World.GetHeightAt every read, so movement math stays flat while the rendered/queried position hikes up and down hills.</summary>
     public Vector3 Position => World.Grounded(_mover.Position);
@@ -6647,6 +6823,27 @@ public sealed class Bramblekin
     }
 
     /// <summary>
+    /// Splinter Factions: turns a freshly-spawned Bramblekin into a Settler
+    /// — called once, right after construction, by
+    /// <see cref="World.UpdateAutoSettler"/>. Locks in this trip's founding
+    /// <paramref name="target"/> plus the brand new (randomly generated)
+    /// <paramref name="newFactionId"/>/<paramref name="newFactionColor"/> its
+    /// new Village Heart will be founded under (see
+    /// <see cref="World.FoundSettlement"/>), and forces it straight into
+    /// Settling, where it stays — ignoring food, blueprints and enemies
+    /// alike, same as a Pioneer Migrating — until it founds its new tribe.
+    /// See <see cref="UpdateSettler"/>.
+    /// </summary>
+    public void BecomeSettler(Vector3 target, int newFactionId, Color newFactionColor)
+    {
+        Role = BramblekinRole.Settler;
+        _settlerTarget = target;
+        _settlerFactionId = newFactionId;
+        _settlerFactionColor = newFactionColor;
+        SetState(BramblekinState.Settling);
+    }
+
+    /// <summary>
     /// Conscription (the Job Manager's Builder assignment): pulls this
     /// Gatherer off food duty to work the faction's Blueprints instead.
     /// Releases whatever Gathering claim it was holding (Food Shard, Acorn
@@ -6744,6 +6941,15 @@ public sealed class Bramblekin
         if (State == BramblekinState.Migrating)
         {
             UpdateMigrating(deltaTime, world);
+            return;
+        }
+
+        // --- Splinter Factions (same absolute priority as the Schism
+        // above): a Settler ignores food, blueprints and enemies alike and
+        // paths straight for its own founding target — see UpdateSettler.
+        if (Role == BramblekinRole.Settler)
+        {
+            UpdateSettler(deltaTime, world);
             return;
         }
 
@@ -7073,6 +7279,7 @@ public sealed class Bramblekin
                     : Role == BramblekinRole.Militia ? MilitiaColor
                     : Role == BramblekinRole.Builder ? BuilderColor
                     : Role == BramblekinRole.Merchant ? MerchantColor
+                    : Role == BramblekinRole.Settler ? SettlerColor
                     : CalmColor;
         Color color = TintWithFaction(baseColor);
 
@@ -7130,6 +7337,19 @@ public sealed class Bramblekin
             var backpackCenter = Position + new Vector3(-facing.X, BodyHeight * 0.55f, -facing.Y) * 0.18f;
             Raylib.DrawCube(backpackCenter, 0.16f, 0.2f, 0.14f, MerchantBackpackColor);
             Raylib.DrawCubeWires(backpackCenter, 0.16f, 0.2f, 0.14f, new Color(120, 90, 20, 255));
+        }
+
+        // Splinter Factions: a Settler carries a small white banner on a
+        // pole above its head — a lone founder's flag, planted long before
+        // its new tribe's own colours are decided — so it reads apart from
+        // every other role at a glance.
+        if (Role == BramblekinRole.Settler)
+        {
+            var poleBase = Position + new Vector3(0, BodyHeight, 0);
+            var poleTop = poleBase + new Vector3(0, 0.35f, 0);
+            Raylib.DrawLine3D(poleBase, poleTop, SettlerPoleColor);
+            var flagCenter = poleTop + new Vector3(facing.X, -0.06f, facing.Y) * 0.12f;
+            Raylib.DrawCube(flagCenter, 0.18f, 0.12f, 0.02f, SettlerFlagColor);
         }
 
         // Carried food (or Amber) rides on top of the head.
@@ -7971,6 +8191,32 @@ public sealed class Bramblekin
         }
 
         _mover.MoveTowards(migration.Target, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+    }
+
+    // --- Splinter Factions ---------------------------------------------------------
+
+    /// <summary>A Settler within this distance of its own founding target has arrived — see <see cref="UpdateSettler"/>.</summary>
+    private const float SettlerArriveDistance = BodyRadius + 0.2f;
+
+    /// <summary>
+    /// A Settler's entire world: path straight for its own founding target
+    /// (<see cref="_settlerTarget"/>), oblivious to food, blueprints and the
+    /// Wolf Spider alike (see the hard lock at the top of <see cref="Update"/>).
+    /// The instant it arrives, it founds its brand new Village Heart (see
+    /// <see cref="World.FoundSettlement"/>) — with its own freshly generated
+    /// <see cref="_settlerFactionId"/>/<see cref="_settlerFactionColor"/> —
+    /// and despawns for good (see <see cref="World.DespawnSettler"/>).
+    /// </summary>
+    private void UpdateSettler(float deltaTime, World world)
+    {
+        if (GroundMover.HorizontalDistance(Position, _settlerTarget) <= SettlerArriveDistance)
+        {
+            world.FoundSettlement(_settlerTarget, _settlerFactionId, _settlerFactionColor);
+            world.DespawnSettler(this);
+            return;
+        }
+
+        _mover.MoveTowards(_settlerTarget, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
     }
 
     // --- Wandering ----------------------------------------------------------------
