@@ -1891,6 +1891,9 @@ public sealed class World
     /// <summary>Overpopulation Crusades: even a tiny tribe with almost no military-eligible population still commits at least this many Militia — otherwise <see cref="CrusadeForceFraction"/> of a very small headcount could round down to zero and the tribe would never actually crusade. See <see cref="LaunchOverpopulationCrusade"/>.</summary>
     public const int CrusadeMinimumForce = 2;
 
+    /// <summary>How long (seconds) <see cref="LaunchOverpopulationCrusade"/>'s "no rivals left" skip stays silent before it's willing to log the same message again for the same faction — see <see cref="VillageHeart.CrusadeSkipLogCooldown"/>.</summary>
+    public const float CrusadeSkipLogCooldownSeconds = 30f;
+
     // --- Vassal Colonies (Tribute Economy) ---------------------------------------
 
     /// <summary>Vassal Colonies: seconds between each automatic Tribute payment to a Vassal's Capital — see <see cref="World.Update"/>'s per-village loop.</summary>
@@ -3482,6 +3485,7 @@ public sealed class World
             UpdateJobManager(village, deltaTime);
             UpdateMorale(village, deltaTime);
             village.DamageFlashTimer = MathF.Max(0f, village.DamageFlashTimer - deltaTime);
+            village.CrusadeSkipLogCooldown = MathF.Max(0f, village.CrusadeSkipLogCooldown - deltaTime);
 
             // The Blood Feud: every declared war's timer counts down toward
             // 0 regardless of anything else this Village Heart is doing;
@@ -4810,6 +4814,49 @@ public sealed class World
     /// </summary>
     private void LaunchOverpopulationCrusade(VillageHeart village, int foodCost)
     {
+        // Find a target FIRST: drafting ~75% of the tribe's workforce into
+        // Militia and spending Food is only worth paying for if there's
+        // actually someone left to march on. Checking this before spending
+        // anything fixes a real bug where a Crusade would fire, pay its
+        // full cost, and mobilize a huge army that then just sat there
+        // forever (InvasionTarget staying null) whenever every reachable
+        // rival happened to already be this faction's own Vassal — visible
+        // as Militia count spiking then slowly demobilizing back down, with
+        // no fighting or marching ever actually happening.
+        VillageHeart? nearestRival = null;
+        float bestDistanceSquared = float.MaxValue;
+        foreach (VillageHeart candidate in Villages)
+        {
+            if (candidate.FactionID == village.FactionID)
+                continue;
+            if (candidate.IsVassal && candidate.CapitalFactionID == village.FactionID)
+                continue; // Already ours — not a rival to clear.
+
+            float distanceSquared = Vector3.DistanceSquared(village.Center, candidate.Center);
+            if (distanceSquared < bestDistanceSquared)
+            {
+                nearestRival = candidate;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+
+        if (nearestRival is null)
+        {
+            // This condition can hold every single tick (Population/Food
+            // sitting right at the trigger thresholds), so logging it
+            // unconditionally would just recreate the exact same on-screen
+            // spam problem an earlier fix already solved for successful
+            // Crusades — cooldown it instead of logging every frame.
+            if (village.CrusadeSkipLogCooldown <= 0f)
+            {
+                string noRivalMessage = $"[CRUSADE SKIPPED] Tribe {village.FactionID} is at the Faction Limit with no rivals left to crusade against — standing down instead of wasting Food and manpower.";
+                Raylib.TraceLog(TraceLogLevel.Info, noRivalMessage);
+                Game.AddEventLog(noRivalMessage);
+                village.CrusadeSkipLogCooldown = CrusadeSkipLogCooldownSeconds;
+            }
+            return;
+        }
+
         village.FoodStored -= foodCost;
 
         // Risky Crusades: size the drafted wave so that roughly
@@ -4833,29 +4880,11 @@ public sealed class World
             drafted++;
         }
 
-        VillageHeart? nearestRival = null;
-        float bestDistanceSquared = float.MaxValue;
-        foreach (VillageHeart candidate in Villages)
-        {
-            if (candidate.FactionID == village.FactionID)
-                continue;
-            if (candidate.IsVassal && candidate.CapitalFactionID == village.FactionID)
-                continue; // Already ours — not a rival to clear.
-
-            float distanceSquared = Vector3.DistanceSquared(village.Center, candidate.Center);
-            if (distanceSquared < bestDistanceSquared)
-            {
-                nearestRival = candidate;
-                bestDistanceSquared = distanceSquared;
-            }
-        }
-
         village.InvasionTarget = nearestRival;
-        village.InvasionIsCrusade = nearestRival is not null;
-        if (nearestRival is not null)
-            CommitFactionMilitiaToWar(village); // Fixed-Roster Invasions: freshly drafted Militia are already promoted above, so this snapshot includes them.
+        village.InvasionIsCrusade = true;
+        CommitFactionMilitiaToWar(village); // Fixed-Roster Invasions: freshly drafted Militia are already promoted above, so this snapshot includes them.
 
-        string targetName = village.InvasionTarget is { } t ? FactionColorName(t.FactionColor) : "no one (no rivals left)";
+        string targetName = FactionColorName(nearestRival.FactionColor);
         QueueFloatingText(village.Center, $"[-{foodCost} Food] Overpopulation Crusade!", new Color(220, 30, 30, 255));
         QueueGlobalAlert($"[CRUSADE] Tribe {village.FactionID} drafts {drafted} Militia (~{(int)(CrusadeForceFraction * 100)}% of its force) and launches a desperate crusade against {targetName}!", village.FactionColor);
         string crusadeMessage = $"[CRUSADE] Tribe {village.FactionID} at Faction Limit ({Villages.Count}/{MaxActiveFactions}) — drafted {drafted} Militia, crusading against {targetName} instead of spawning a new faction.";
@@ -6199,6 +6228,18 @@ public sealed class VillageHeart
     /// the instant the stall resolves, arming the next episode to warn again.
     /// </summary>
     internal bool BuilderStallWarned { get; set; }
+
+    /// <summary>
+    /// Overpopulation Crusades: counts down after a Crusade trigger finds no
+    /// valid rival to target (see <see cref="World.LaunchOverpopulationCrusade"/>'s
+    /// early "no rivals left" return) — while positive, the skip is silent,
+    /// so the same faction hitting this same condition every single tick
+    /// (Population/Food staying at their trigger thresholds) doesn't spam
+    /// the on-screen log with an identical message forever. Set to
+    /// <see cref="World.CrusadeSkipLogCooldownSeconds"/> each time the skip
+    /// message actually logs.
+    /// </summary>
+    internal float CrusadeSkipLogCooldown { get; set; }
 
     /// <summary>Counts down to this faction's next Upkeep tax. Internal bookkeeping for <see cref="World"/>.</summary>
     internal float UpkeepTimer { get; set; }
