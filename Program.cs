@@ -63,11 +63,10 @@ public enum GamePlatform
 /// </summary>
 public static class Game
 {
-    // Window settings. Kept as constants so they are easy to find and tweak.
-    // On Android this is a *virtual* resolution: raylib scales it to fill the
-    // display (letterboxing if the aspect ratio differs) and maps touches back
-    // into these coordinates, so UI positions work unchanged on any phone.
-    // Width > height also tells raylib to lock the activity to landscape.
+    // Window settings for Desktop. Android instead opens at its native
+    // screen size (see Run's InitWindow call) so the game fills the whole
+    // display with no letterboxing; landscape is locked independently, via
+    // MainActivity's ScreenOrientation attribute, not by these numbers.
     private const int ScreenWidth = 1280;
     private const int ScreenHeight = 720;
     private const int TargetFps = 60;
@@ -106,26 +105,55 @@ public static class Game
             Raylib.SetConfigFlags(ConfigFlags.Msaa4xHint | ConfigFlags.ResizableWindow);
         }
 
-        Raylib.InitWindow(ScreenWidth, ScreenHeight, "Garden Guardians");
+        // Full Screen: Desktop still opens at the fixed ScreenWidth/Height
+        // (the window is resizable from there). On Android, passing 0x0
+        // tells raylib to use the device's actual native surface size
+        // instead of a fixed 1280x720 virtual canvas letterboxed to fit —
+        // every UI/culling call already reads back Raylib.GetScreenWidth()/
+        // GetScreenHeight() rather than the ScreenWidth/ScreenHeight
+        // constants, so it fills whatever size that turns out to be.
+        if (platform == GamePlatform.Android)
+            Raylib.InitWindow(0, 0, "Garden Guardians");
+        else
+            Raylib.InitWindow(ScreenWidth, ScreenHeight, "Garden Guardians");
         Raylib.SetTargetFPS(TargetFps);
 
         // --- Build the world -------------------------------------------------
-        var camera = IsometricCamera.Create(target: Vector3.Zero, distance: 30f);
+        // The God-Camera: pulled back and up far enough to take in the
+        // entire 100x100 map at once. Terrain is centered on the origin
+        // (it spans -50..50 on X/Z — see Terrain.Contains), so the true
+        // map centre is Vector3.Zero, not (50, 0, 50); Position keeps the
+        // same offset from Target as before so the viewing angle is
+        // unchanged, just re-centred on the actual map.
+        var camera = new Camera3D
+        {
+            Target = Vector3.Zero,
+            Position = new Vector3(0.0f, 120.0f, 100.0f),
+            Up = Vector3.UnitY,
+            FovY = 45f,
+            Projection = CameraProjection.Perspective,
+        };
         var world = new World(new Terrain(size: 100f), new Random(), ColonySize);
         world.SpawnSpiderNearVillage();
         var input = new WorldTapInput();
         var touchCamera = new TouchCameraController();
-        var speedDownButton = new UiButton(new Rectangle(20, 20, 50, 44));
-        var speedUpButton = new UiButton(new Rectangle(130, 20, 50, 44));
+        // Debug Time Scale buttons: 3x their old size (50x44 -> 150x132) so
+        // they're comfortably tappable on a mobile screen; SpeedButtonGap
+        // is the width of the "Nx" label panel DrawSpeedLabel draws between
+        // them, scaled to match.
+        const int speedButtonWidth = 150, speedButtonHeight = 132, speedButtonGap = 180;
+        var speedDownButton = new UiButton(new Rectangle(20, 20, speedButtonWidth, speedButtonHeight));
+        var speedUpButton = new UiButton(new Rectangle(20 + speedButtonWidth + speedButtonGap, 20, speedButtonWidth, speedButtonHeight));
 
         // --- Main loop -------------------------------------------------------
         while (!Raylib.WindowShouldClose())
         {
             float rawDeltaTime = MathF.Min(Raylib.GetFrameTime(), MaxDeltaTime);
 
-            // 0) Mobile camera: one-finger drag pans, two-finger pinch zooms.
-            //    Runs before the tap input below so the rest of the frame
-            //    sees an already-settled camera.
+            // 0) Spectator Camera: one finger (or a held mouse button) drags
+            //    to pan, two fingers twist to rotate around the current
+            //    Target and pinch to zoom. Runs before the tap input below
+            //    so the rest of the frame sees an already-settled camera.
             touchCamera.Update(ref camera, world.Terrain.Size / 2f);
 
             // 1) Input: Pure Simulation — the player has no lever on the
@@ -133,9 +161,10 @@ public static class Game
             //    Building are all the Village Heart's own business, run
             //    autonomously inside world.Update() below. The only taps
             //    left are inspecting a faction and Genesis (see
-            //    WorldTapInput). The Debug Time Scale +/- buttons are
-            //    checked first and, if hit, swallow the click so it never
-            //    also lands as a ground tap.
+            //    WorldTapInput, which only fires on a clean release that
+            //    never turned into a pan). The Debug Time Scale +/- buttons
+            //    are checked first and, if hit, swallow the click so it
+            //    never also lands as a ground tap.
             bool mousePressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
             Vector2 mousePosition = Raylib.GetMousePosition();
             if (mousePressed && speedDownButton.Contains(mousePosition))
@@ -157,7 +186,7 @@ public static class Game
             Raylib.ClearBackground(new Color(135, 190, 235, 255)); // Sky blue.
 
             Raylib.BeginMode3D(camera);
-            world.Draw();
+            world.Draw(camera);
             Raylib.EndMode3D();
 
             // 2D overlay (UI) is drawn after EndMode3D so it sits on top.
@@ -168,6 +197,7 @@ public static class Game
             speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
             DrawColonyPanel(world);
             DrawGenesisPrompt(world);
+            DrawMonumentAlerts(world);
             DrawHud(world);
 
             Raylib.EndDrawing();
@@ -199,7 +229,9 @@ public static class Game
     /// <summary>The current speed ("5x"), on a small panel in the gap between the +/- buttons — gold once sped up.</summary>
     private static void DrawSpeedLabel()
     {
-        const int fontSize = 22, x = 70, width = 60, y = 20, height = 44;
+        // Kept in sync with the 3x-scaled speedDownButton/speedUpButton
+        // layout in Run: this panel fills the gap between them exactly.
+        const int fontSize = 64, x = 170, width = 180, y = 20, height = 132;
         Raylib.DrawRectangle(x, y, width, height, PanelFill);
         Raylib.DrawRectangleLines(x, y, width, height, PanelInk);
 
@@ -223,7 +255,9 @@ public static class Game
         for (int i = 0; i < world.Colony.Count; i++)
         {
             Bramblekin b = world.Colony[i];
-            if (!b.IsDead)
+            // Raylib Culling: a Bramblekin entirely outside the camera's
+            // current view has no business drawing a health bar either.
+            if (!b.IsDead && IsPointOnScreen(camera, b.Position))
                 DrawHealthBar(camera, b.Position + new Vector3(0, Bramblekin.BodyHeight + 0.15f, 0), b.Health, Bramblekin.MaxHealth);
         }
 
@@ -234,6 +268,15 @@ public static class Game
         // same hidden-until-damaged rule as everything else here.
         foreach (VillageHeart village in world.Villages)
             DrawHealthBar(camera, village.Center + new Vector3(0, VillageHeart.Height + 0.3f, 0), village.Health, VillageHeart.MaxHealth);
+    }
+
+    /// <summary>Basic bounds check: true unless <paramref name="worldPosition"/> projects to a screen point entirely outside the camera's current viewport — used to skip health-bar/UI draw calls for off-screen entities.</summary>
+    private static bool IsPointOnScreen(Camera3D camera, Vector3 worldPosition)
+    {
+        const float margin = 40f;
+        Vector2 screen = Raylib.GetWorldToScreen(worldPosition, camera);
+        return screen.X >= -margin && screen.X <= Raylib.GetScreenWidth() + margin &&
+               screen.Y >= -margin && screen.Y <= Raylib.GetScreenHeight() + margin;
     }
 
     /// <summary>A small red-background/green-fill bar at <paramref name="worldPosition"/>'s projected screen point.</summary>
@@ -284,7 +327,11 @@ public static class Game
         if (village is null)
             return; // No faction founded yet.
 
-        const int fontSize = 24, lineHeight = 30;
+        // UI Text Scaling: bumped from 24px so the Faction Ledger reads on a
+        // mobile screen; width/lineHeight below already derive the panel's
+        // background rectangle from fontSize/lineHeight, so it grows to fit
+        // automatically.
+        const int fontSize = 32, lineHeight = 40;
         int militia = world.Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
         int builders = world.Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Builder);
         string header = $"{FactionColorName(village.FactionColor)} Faction ({village.Trait})";
@@ -296,10 +343,15 @@ public static class Game
         // so the tribe's banked wealth stands out from the survival stats
         // above it at a glance.
         string amber = $"| Amber: {village.AmberStored}";
+        // The Nectar Brewery: Nectar gets its own line, in a distinct
+        // purple/pink so this civilization buff currency reads apart from
+        // Amber's gold at a glance.
+        string nectar = $"Nectar: {village.NectarStored}";
         int width = Math.Max(Raylib.MeasureText(header, fontSize),
                     Math.Max(Raylib.MeasureText(food, fontSize),
                     Math.Max(Raylib.MeasureText(population, fontSize),
-                    Math.Max(Raylib.MeasureText(morale, fontSize), Raylib.MeasureText(amber, fontSize)))));
+                    Math.Max(Raylib.MeasureText(morale, fontSize),
+                    Math.Max(Raylib.MeasureText(amber, fontSize), Raylib.MeasureText(nectar, fontSize))))));
         int x = Raylib.GetScreenWidth() - width - 30;
 
         // Color Coding: the panel itself is tinted toward the selected
@@ -310,16 +362,18 @@ public static class Game
         Color fill = BlendToward(PanelFill, village.FactionColor, 0.4f);
         Color ink = BlendToward(PanelInk, village.FactionColor, 0.4f);
 
-        Raylib.DrawRectangle(x - 12, 18, width + 24, lineHeight * 5 + 14, fill);
-        Raylib.DrawRectangleLines(x - 12, 18, width + 24, lineHeight * 5 + 14, ink);
-        Raylib.DrawText(header, x, 26, fontSize, ink);
-        Raylib.DrawText(food, x, 26 + lineHeight, fontSize, ink);
-        Raylib.DrawText(population, x, 26 + lineHeight * 2, fontSize, ink);
+        const int topPadding = 20, textInset = 30;
+        Raylib.DrawRectangle(x - 12, topPadding - 2, width + 24, lineHeight * 6 + 18, fill);
+        Raylib.DrawRectangleLines(x - 12, topPadding - 2, width + 24, lineHeight * 6 + 18, ink);
+        Raylib.DrawText(header, x, textInset, fontSize, ink);
+        Raylib.DrawText(food, x, textInset + lineHeight, fontSize, ink);
+        Raylib.DrawText(population, x, textInset + lineHeight * 2, fontSize, ink);
         Color moraleColor = village.GatherersAreWeary ? new Color(170, 60, 40, 255)
                            : village.BuildersAreInspired ? new Color(60, 130, 70, 255)
                            : ink;
-        Raylib.DrawText(morale, x, 26 + lineHeight * 3, fontSize, moraleColor);
-        Raylib.DrawText(amber, x, 26 + lineHeight * 4, fontSize, new Color(255, 203, 0, 255));
+        Raylib.DrawText(morale, x, textInset + lineHeight * 3, fontSize, moraleColor);
+        Raylib.DrawText(amber, x, textInset + lineHeight * 4, fontSize, new Color(255, 203, 0, 255));
+        Raylib.DrawText(nectar, x, textInset + lineHeight * 5, fontSize, new Color(215, 80, 210, 255));
     }
 
     /// <summary>
@@ -347,6 +401,33 @@ public static class Game
         var color = new Color(200, 40, 40, 255);
         Raylib.DrawText(title, centerX - titleWidth / 2, centerY - titleSize, titleSize, color);
         Raylib.DrawText(subtitle, centerX - subtitleWidth / 2, centerY + 8, subtitleSize, color);
+    }
+
+    /// <summary>
+    /// The Great Monument: a permanent, screen-wide banner for every
+    /// faction that has ever finished one (see <see cref="World.CompletedMonuments"/>)
+    /// — unlike the Genesis prompt, this never blinks and never goes away
+    /// once shown, marking that faction's transition into an advanced
+    /// civilization for the rest of the game. Stacks one line per faction
+    /// if more than one tribe eventually gets there.
+    /// </summary>
+    private static void DrawMonumentAlerts(World world)
+    {
+        if (world.CompletedMonuments.Count == 0)
+            return;
+
+        const int fontSize = 36, lineHeight = 44;
+        int barHeight = world.CompletedMonuments.Count * lineHeight + 20;
+        int screenWidth = Raylib.GetScreenWidth();
+        Raylib.DrawRectangle(0, 0, screenWidth, barHeight, new Color(20, 15, 5, 200));
+
+        for (int i = 0; i < world.CompletedMonuments.Count; i++)
+        {
+            (_, Color factionColor) = world.CompletedMonuments[i];
+            string text = $"{FactionColorName(factionColor)} Faction has completed the Monument!";
+            int textWidth = Raylib.MeasureText(text, fontSize);
+            Raylib.DrawText(text, (screenWidth - textWidth) / 2, 10 + i * lineHeight, fontSize, factionColor);
+        }
     }
 
     /// <summary>
@@ -381,9 +462,18 @@ public static class Game
     {
         int Count(BramblekinState state) => world.Colony.Count(b => b.State == state);
 
-        int y = Raylib.GetScreenHeight() - 60;
+        // UI Text Scaling: bumped from 20px so it reads on a mobile screen
+        // held at arm's length; a background bar goes underneath both lines
+        // so the now-larger text stays legible over a busy map instead of
+        // the plain transparent overlay it used to sit on.
+        const int fontSize = 26, lineHeight = 30;
+        int y = Raylib.GetScreenHeight() - (lineHeight * 2 + 20);
+        int barWidth = Raylib.GetScreenWidth();
+        int barHeight = lineHeight * 2 + 20;
+        Raylib.DrawRectangle(0, y - 10, barWidth, barHeight, new Color(0, 0, 0, 90));
+
         const string hint = "A pure autonomous simulation: no player intervention. Every Village Heart runs itself — sprouting, drafting Militia, farming and building on its own — while Militia trade blows with the spider toe-to-toe.";
-        Raylib.DrawText(hint, 20, y, 20, Color.DarkGray);
+        Raylib.DrawText(hint, 20, y, fontSize, Color.RayWhite);
         Raylib.DrawText(
             $"Bramblekin: {world.Colony.Count} " +
             $"(gathering {Count(BramblekinState.Gathering)}, returning {Count(BramblekinState.Returning)}, " +
@@ -391,7 +481,7 @@ public static class Game
             $"hunting {Count(BramblekinState.Hunting)}, raiding {Count(BramblekinState.Raiding)}, lost {world.Casualties})   " +
             $"Aphids: {world.Aphids.Count(a => !a.IsDead)}   " +
             $"Spider: {SpiderStatus(world)}   Sprouted: {world.Births}   FPS: {Raylib.GetFPS()}",
-            20, y + 26, 20, Color.DarkGray);
+            20, y + lineHeight, fontSize, Color.RayWhite);
     }
 
     private static string SpiderStatus(World world) =>
@@ -405,56 +495,31 @@ public static class Game
 // =============================================================================
 
 /// <summary>
-/// Builds a fixed isometric-style perspective camera.
-/// </summary>
-public static class IsometricCamera
-{
-    /// <summary>
-    /// Creates a camera that looks down at <paramref name="target"/> from a
-    /// 45° elevation, rotated 45° around the vertical axis (the classic
-    /// isometric diagonal view).
-    /// </summary>
-    /// <param name="target">World point the camera looks at.</param>
-    /// <param name="distance">Straight-line distance from camera to target, in meters.</param>
-    public static Camera3D Create(Vector3 target, float distance)
-    {
-        // A 45° pitch means the camera's height equals its horizontal distance
-        // from the target: h = d·sin(45°), horizontal = d·cos(45°).
-        float height = distance * MathF.Sin(MathF.PI / 4f);
-        float horizontal = distance * MathF.Cos(MathF.PI / 4f);
-
-        // A 45° yaw splits the horizontal distance equally between X and Z.
-        float xz = horizontal * MathF.Cos(MathF.PI / 4f);
-
-        return new Camera3D
-        {
-            Position = target + new Vector3(xz, height, xz),
-            Target = target,
-            Up = Vector3.UnitY,
-            FovY = 45f,                                   // Degrees, vertical.
-            Projection = CameraProjection.Perspective,
-        };
-    }
-}
-
-/// <summary>
-/// Mobile camera controls layered on top of the fixed isometric view. A
-/// single finger is reserved entirely for World interaction — UI clicks and
-/// <see cref="WorldTapInput"/>'s taps — and never moves the camera. Only a
-/// two-finger gesture drives the camera: the
-/// midpoint's drag pans it across the terrain's X/Z plane, and the pinch
-/// distance's change moves it closer to or further from its Target. Both
-/// translate <see cref="Camera3D.Position"/> and <see cref="Camera3D.Target"/>
-/// together, so the viewing angle never changes — only where it's centred
-/// and how far back it sits.
+/// The Spectator Camera: a Google Maps-style controller for the fixed
+/// overhead view — Pure Simulation means the player has no lever on the
+/// world any more, just on how they're looking at it. One finger (or a
+/// held left mouse button, for testing on desktop) drags to pan across the
+/// terrain's X/Z plane; two fingers twisting around each other rotates the
+/// whole world around the camera's own Target on the Y axis; two fingers
+/// pinching in/out zooms; and two fingers sliding up or down together
+/// tilts the camera's pitch. <see cref="WorldTapInput"/> still gets a
+/// clean, undragged tap for faction-select/Genesis — see its own
+/// drag-threshold check — so this and that never fight over the same
+/// touch.
 /// </summary>
 public sealed class TouchCameraController
 {
     /// <summary>Closest the camera may zoom in, in meters from its Target.</summary>
     private const float MinZoomDistance = 8f;
 
-    /// <summary>Furthest the camera may zoom out, in meters from its Target.</summary>
-    private const float MaxZoomDistance = 45f;
+    /// <summary>
+    /// Furthest the camera may zoom out, in meters from its Target. Must
+    /// stay above the God-Camera's starting distance (~156m — see
+    /// Game.Run's initial Camera3D) or the very first pinch clamps the
+    /// camera to this ceiling immediately, which reads as a sudden
+    /// snap-zoom-in that a further pinch-out can never undo.
+    /// </summary>
+    private const float MaxZoomDistance = 220f;
 
     /// <summary>How many meters of pinch-distance change it takes to move the camera one meter.</summary>
     private const float PinchZoomSensitivity = 0.05f;
@@ -462,43 +527,176 @@ public sealed class TouchCameraController
     /// <summary>Keeps the Target from panning off the playable terrain, in meters from its edge.</summary>
     private const float PanEdgeMargin = 5f;
 
-    private Vector2 _previousMidpoint;
-    private float _previousPinchDistance;
+    /// <summary>
+    /// Camera Sensitivity Tuning: the single knob on One-Finger Panning's
+    /// overall feel — multiplies the already-distance-scaled screen delta
+    /// (see <see cref="Pan"/>) before it's ever added to camera.Position/
+    /// camera.Target. Turn this down if panning still feels too fast at
+    /// every zoom level, up if it feels sluggish.
+    /// </summary>
+    private const float PanSensitivity = 0.12f;
+
+    /// <summary>
+    /// Camera Sensitivity Tuning: the single knob on Two-Finger Rotation's
+    /// overall feel — multiplies the raw angle delta between the two touch
+    /// points (see <see cref="Rotate"/>) before it's applied. Kept low: the
+    /// raw angle between two close-together fingers swings wildly for even
+    /// a small physical movement, so without this a twist gesture rotates
+    /// the world far more than the fingers actually moved.
+    /// </summary>
+    private const float RotationSensitivity = 0.3f;
+
+    // Camera-gesture state, tracked frame to frame. One controller is
+    // constructed once in Game.Run and lives for the whole session, so
+    // instance fields here serve exactly the same purpose static fields
+    // would in a single long-running loop, without reaching for actual
+    // global/static mutable state.
+    private Vector2 _lastTouchPos;
+    private bool _isOneFingerGesture;
+
+    private float _lastTouchAngle;
+    private float _lastPinchDistance;
+    private float _lastTwoFingerMidpointY;
     private bool _isTwoFingerGesture;
+
+    // The Flip Fix: raylib reports touch points by index (0, 1, ...), but
+    // which physical finger gets which index is NOT stable frame to frame —
+    // the OS/driver can silently swap them mid-gesture. Since the angle
+    // between the two points flips by ~180° the instant "first" and
+    // "second" swap (Atan2 of a negated vector), that swap alone was
+    // enough to make the world appear to suddenly flip during a twist —
+    // and, because a real vertical two-finger drag is never perfectly
+    // symmetric, during a tilt too. UpdateTwoFingerGesture instead matches
+    // this frame's two points to whichever of last frame's it's actually
+    // closest to, so "first"/"second" stay tied to the same physical
+    // finger regardless of what order raylib reports them in.
+    private Vector2 _lastFirstPos;
+    private Vector2 _lastSecondPos;
+
+    /// <summary>
+    /// Radians of camera tilt (pitch) per pixel the two-finger midpoint
+    /// moves vertically. Camera Sensitivity Tuning: the up/down half of
+    /// two-finger orbiting, so it's damped by the same <see cref="RotationSensitivity"/>
+    /// as the left/right twist — see <see cref="Tilt"/>.
+    /// </summary>
+    private const float TiltSensitivity = 0.005f;
+
+    /// <summary>
+    /// Steepest the camera may tilt down toward the horizon, in radians
+    /// above it. Kept well clear of 0 (dead level, which would put the
+    /// horizon in frame and let Position dip toward/through the ground)
+    /// and of a perfect 90° top-down (where azimuth becomes meaningless).
+    /// </summary>
+    private const float MinPitch = 0.26f; // ~15 degrees.
+
+    /// <summary>Flattest the camera may tilt toward straight-down.</summary>
+    private const float MaxPitch = 1.48f; // ~85 degrees.
 
     public void Update(ref Camera3D camera, float worldHalfSize)
     {
         int touchCount = Raylib.GetTouchPointCount();
 
-        // Two fingers only: a single touch belongs entirely to WorldTapInput
-        // (UI buttons, faction-select/Genesis taps) and must never also pan
-        // the camera underneath it.
-        if (touchCount == 2)
+        if (touchCount >= 2)
         {
-            Vector2 first = Raylib.GetTouchPosition(0);
-            Vector2 second = Raylib.GetTouchPosition(1);
-            Vector2 midpoint = (first + second) / 2f;
-            float distance = Vector2.Distance(first, second);
-
-            if (_isTwoFingerGesture)
-            {
-                Pan(ref camera, midpoint - _previousMidpoint);
-                Zoom(ref camera, distance - _previousPinchDistance);
-            }
-
-            _previousMidpoint = midpoint;
-            _previousPinchDistance = distance;
-            _isTwoFingerGesture = true;
+            UpdateTwoFingerGesture(ref camera);
+            _isOneFingerGesture = false; // A second finger landing mid-pan shouldn't jump-pan once it lifts back to one.
         }
         else
         {
+            UpdateOneFingerPan(ref camera, touchCount);
             _isTwoFingerGesture = false;
         }
 
         ClampTargetToWorld(ref camera, worldHalfSize);
     }
 
-    /// <summary>Translates Position and Target together across the ground plane, following the two-finger midpoint.</summary>
+    /// <summary>
+    /// One-Finger Panning: follows a single touch, or (for desktop testing)
+    /// a held left mouse button — Raylib maps a primary touch to the left
+    /// mouse button anyway, so touchCount == 1 and IsMouseButtonDown both
+    /// read true together on an actual phone; this just means either is
+    /// enough to drive it.
+    /// </summary>
+    private void UpdateOneFingerPan(ref Camera3D camera, int touchCount)
+    {
+        bool isDown = touchCount == 1 || Raylib.IsMouseButtonDown(MouseButton.Left);
+        if (!isDown)
+        {
+            _isOneFingerGesture = false;
+            return;
+        }
+
+        Vector2 currentPos = touchCount == 1 ? Raylib.GetTouchPosition(0) : Raylib.GetMousePosition();
+        if (_isOneFingerGesture)
+            Pan(ref camera, currentPos - _lastTouchPos);
+
+        _lastTouchPos = currentPos;
+        _isOneFingerGesture = true;
+    }
+
+    /// <summary>
+    /// Two-Finger Rotation + Tilt + the old pinch-zoom, all read off the
+    /// same two touch points: the angle between them drives yaw, the
+    /// distance between them drives zoom (as before), and — since both of
+    /// those are already relative-to-each-other measures — the midpoint's
+    /// own vertical movement (both fingers sliding up or down together) is
+    /// free to drive pitch without fighting either one.
+    /// </summary>
+    private void UpdateTwoFingerGesture(ref Camera3D camera)
+    {
+        Vector2 pointA = Raylib.GetTouchPosition(0);
+        Vector2 pointB = Raylib.GetTouchPosition(1);
+
+        // The Flip Fix: raylib's index-to-finger assignment isn't stable
+        // frame to frame, so pick whichever of the two possible pairings
+        // (A/B as-is, or swapped) keeps each point closest to where it
+        // already was last frame, rather than trusting index order.
+        Vector2 first = pointA;
+        Vector2 second = pointB;
+        if (_isTwoFingerGesture)
+        {
+            float straight = Vector2.DistanceSquared(pointA, _lastFirstPos) + Vector2.DistanceSquared(pointB, _lastSecondPos);
+            float swapped = Vector2.DistanceSquared(pointA, _lastSecondPos) + Vector2.DistanceSquared(pointB, _lastFirstPos);
+            if (swapped < straight)
+            {
+                first = pointB;
+                second = pointA;
+            }
+        }
+
+        float angle = MathF.Atan2(second.Y - first.Y, second.X - first.X);
+        float distance = Vector2.Distance(first, second);
+        float midpointY = (first.Y + second.Y) / 2f;
+
+        if (_isTwoFingerGesture)
+        {
+            // The Other Flip: Atan2 only ever returns a value in (-π, π],
+            // so the instant the two-finger vector swings past that
+            // branch cut (pointing due "west" on screen — easily crossed
+            // mid-rotation), raw angle jumps from just under +π to just
+            // over -π (or back), a spurious ~2π delta that would otherwise
+            // get applied as a huge, instant rotation. Wrapping the delta
+            // back into (-π, π] turns that into the tiny real delta it
+            // actually was.
+            float rawDelta = angle - _lastTouchAngle;
+            float angleDelta = rawDelta - MathF.Tau * MathF.Round(rawDelta / MathF.Tau);
+
+            // Negated: dragging clockwise should turn the world clockwise
+            // beneath the camera, not the reverse.
+            Rotate(ref camera, -angleDelta * RotationSensitivity);
+            Zoom(ref camera, distance - _lastPinchDistance);
+            Tilt(ref camera, midpointY - _lastTwoFingerMidpointY);
+        }
+
+        _lastTouchAngle = angle;
+        _lastPinchDistance = distance;
+        _lastTwoFingerMidpointY = midpointY;
+        _lastFirstPos = first;
+        _lastSecondPos = second;
+        _isTwoFingerGesture = true;
+    }
+
+    /// <summary>Translates Position and Target together across the ground plane, following the drag.</summary>
     private static void Pan(ref Camera3D camera, Vector2 screenDelta)
     {
         if (screenDelta == Vector2.Zero)
@@ -514,17 +712,70 @@ public sealed class TouchCameraController
         if (forwardXZ.LengthSquared() > 1e-6f) forwardXZ = Vector3.Normalize(forwardXZ);
         if (rightXZ.LengthSquared() > 1e-6f) rightXZ = Vector3.Normalize(rightXZ);
 
-        // Scale by how far back the camera is sitting, so a pinch-zoomed-out
-        // view (which shows more ground per pixel) still pans at a matching
+        // Scale by how far back the camera is sitting, so a zoomed-out view
+        // (which shows more ground per pixel) still pans at a matching
         // on-screen speed instead of feeling sluggish.
         float distance = Vector3.Distance(camera.Position, camera.Target);
         float metersPerPixel = distance * 0.0016f;
 
         // Dragging a finger right/up should slide the world the same way
-        // under it, which means moving the camera left/back.
-        Vector3 worldDelta = (-rightXZ * screenDelta.X + forwardXZ * screenDelta.Y) * metersPerPixel;
+        // under it, which means moving the camera left/back. Camera
+        // Sensitivity Tuning: PanSensitivity is the final overall-feel
+        // multiplier, applied on top of the distance-based scaling above.
+        Vector3 worldDelta = (-rightXZ * screenDelta.X + forwardXZ * screenDelta.Y) * metersPerPixel * PanSensitivity;
         camera.Position += worldDelta;
         camera.Target += worldDelta;
+    }
+
+    /// <summary>
+    /// Two-Finger Rotation: spins Position around Target strictly on the Y
+    /// axis by <paramref name="angleDelta"/> radians (standard 2D rotation
+    /// applied to the X/Z offset) — the world appears to turn beneath a
+    /// camera that stays locked on the same focus point, height unchanged.
+    /// </summary>
+    private static void Rotate(ref Camera3D camera, float angleDelta)
+    {
+        if (angleDelta == 0f)
+            return;
+
+        Vector3 offset = camera.Position - camera.Target;
+        float cos = MathF.Cos(angleDelta);
+        float sin = MathF.Sin(angleDelta);
+        var rotatedOffset = new Vector3(
+            offset.X * cos - offset.Z * sin,
+            offset.Y,
+            offset.X * sin + offset.Z * cos);
+        camera.Position = camera.Target + rotatedOffset;
+    }
+
+    /// <summary>
+    /// Two-Finger Tilt: both fingers sliding up or down together changes
+    /// the camera's pitch (its elevation angle above the Target) while
+    /// holding its distance and azimuth (compass direction around the
+    /// Target) fixed — dragging down flattens toward a top-down view,
+    /// dragging up tilts it into a lower, more oblique angle. Clamped to
+    /// [MinPitch, MaxPitch] so it can never flatten past dead-level (which
+    /// would put the horizon in frame) or flip past straight-down.
+    /// </summary>
+    private static void Tilt(ref Camera3D camera, float midpointDeltaY)
+    {
+        if (midpointDeltaY == 0f)
+            return;
+
+        Vector3 offset = camera.Position - camera.Target;
+        float distance = offset.Length();
+        if (distance < 1e-4f)
+            return;
+
+        float horizontalDistance = MathF.Sqrt(offset.X * offset.X + offset.Z * offset.Z);
+        float azimuth = MathF.Atan2(offset.Z, offset.X);
+        float pitch = Math.Clamp(MathF.Atan2(offset.Y, horizontalDistance) + midpointDeltaY * TiltSensitivity * RotationSensitivity, MinPitch, MaxPitch);
+
+        float newHorizontalDistance = distance * MathF.Cos(pitch);
+        camera.Position = camera.Target + new Vector3(
+            newHorizontalDistance * MathF.Cos(azimuth),
+            distance * MathF.Sin(pitch),
+            newHorizontalDistance * MathF.Sin(azimuth));
     }
 
     /// <summary>Moves Position along the Target->Position axis: fingers spreading apart zooms in.</summary>
@@ -663,19 +914,48 @@ public sealed class Terrain
 /// </summary>
 public sealed class WorldTapInput
 {
-    /// <summary>Polls the mouse/touch and handles this frame's press, if any.</summary>
+    /// <summary>
+    /// One-Finger Panning claimed the left mouse button/primary touch for
+    /// the Spectator Camera (see <see cref="TouchCameraController"/>), so a
+    /// press that turns into a drag past this many pixels is a pan, not a
+    /// tap — <see cref="HandlePress"/> only fires on release, and only if
+    /// the press never crossed this threshold.
+    /// </summary>
+    private const float TapDragThreshold = 12f;
+
+    private Vector2 _pressStartPosition;
+    private bool _isPressing;
+    private bool _exceededDragThreshold;
+
+    /// <summary>Polls the mouse/touch and handles a clean tap-and-release, if one just finished.</summary>
     public void Update(Camera3D camera, World world)
     {
         // Raylib maps a primary touch to the left mouse button, so the same
         // code path serves desktop clicks and phone taps.
         if (Raylib.IsMouseButtonPressed(MouseButton.Left))
-            HandlePress(Raylib.GetMousePosition(), camera, world);
+        {
+            _isPressing = true;
+            _exceededDragThreshold = false;
+            _pressStartPosition = Raylib.GetMousePosition();
+        }
+        else if (_isPressing && Raylib.IsMouseButtonDown(MouseButton.Left))
+        {
+            if (!_exceededDragThreshold && Vector2.Distance(Raylib.GetMousePosition(), _pressStartPosition) > TapDragThreshold)
+                _exceededDragThreshold = true;
+        }
+        else if (_isPressing && Raylib.IsMouseButtonReleased(MouseButton.Left))
+        {
+            _isPressing = false;
+            if (!_exceededDragThreshold)
+                HandlePress(Raylib.GetMousePosition(), camera, world);
+        }
     }
 
     /// <summary>
-    /// Handles the start of a press at <paramref name="screenPosition"/>.
-    /// Public so input can be driven directly, from a test harness or an
-    /// alternate input source.
+    /// Handles a completed tap at <paramref name="screenPosition"/> — called
+    /// from <see cref="Update"/> on release, once it's confirmed the press
+    /// never turned into a pan. Public so input can be driven directly, from
+    /// a test harness or an alternate input source.
     /// </summary>
     public void HandlePress(Vector2 screenPosition, Camera3D camera, World world)
     {
@@ -782,8 +1062,72 @@ public readonly record struct Obstacle(Vector2 Center, float Radius);
 ///   Auto-Construction, the True Schism) -> acorn/amber/berry/spider respawn
 ///   -> loot despawn.
 /// </summary>
+/// <summary>
+/// The Spatial Grid: divides the map into fixed <see cref="ChunkSize"/>
+/// (10m) chunks keyed by (chunk-x, chunk-z), so a nearest-target search
+/// can look only at the handful of entities near the searcher instead of
+/// scanning every entity on the whole map. Rebuilt from scratch once a
+/// frame (see <see cref="World.RebuildSpatialGrids"/>) rather than having
+/// each entity push incremental chunk-membership updates as it moves —
+/// cheaper and simpler for a world that already rebuilds its obstacle
+/// list the same way every frame, and exactly equivalent to updating each
+/// entity's chunk registration on every move, since every entity moves at
+/// most once per frame anyway.
+/// </summary>
+public sealed class SpatialGrid<T>
+{
+    public const float ChunkSize = 10f;
+
+    private readonly Dictionary<(int X, int Z), List<T>> _cells = new();
+
+    private static (int X, int Z) ChunkOf(Vector3 position) =>
+        ((int)MathF.Floor(position.X / ChunkSize), (int)MathF.Floor(position.Z / ChunkSize));
+
+    /// <summary>Empties every chunk, ready for this frame's <see cref="Register"/> calls.</summary>
+    public void Clear()
+    {
+        foreach (var list in _cells.Values)
+            list.Clear();
+    }
+
+    /// <summary>Registers <paramref name="item"/> under the chunk containing <paramref name="position"/>.</summary>
+    public void Register(T item, Vector3 position)
+    {
+        var key = ChunkOf(position);
+        if (!_cells.TryGetValue(key, out List<T>? list))
+        {
+            list = new List<T>();
+            _cells[key] = list;
+        }
+        list.Add(item);
+    }
+
+    /// <summary>
+    /// Fills <paramref name="results"/> (cleared first) with every item
+    /// registered in the chunk containing <paramref name="position"/> and
+    /// its 8 neighbors — a 30x30m window around the searcher, not the
+    /// whole map.
+    /// </summary>
+    public void QueryNearby(Vector3 position, List<T> results)
+    {
+        results.Clear();
+        var (cx, cz) = ChunkOf(position);
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            for (int dz = -1; dz <= 1; dz++)
+            {
+                if (_cells.TryGetValue((cx + dx, cz + dz), out List<T>? list))
+                    results.AddRange(list);
+            }
+        }
+    }
+}
+
 public sealed class World
 {
+    /// <summary>AI Time-Slicing: increments once per frame at the top of <see cref="Update(float)"/>; a Bramblekin only runs its heavy target-scanning ("Brain") logic on the frame where <c>FrameCounter % 15 == ID % 15</c>, staggering the load evenly across the colony.</summary>
+    public long FrameCounter = 0;
+
     /// <summary>
     /// Food Abundance: seconds between checks that top the Acorn population
     /// back up to <see cref="MaxAcorns"/> — shortened from 6s so the map
@@ -805,6 +1149,22 @@ public sealed class World
 
     /// <summary>How many Acorns the map starts with.</summary>
     private const int InitialAcorns = 2;
+
+    /// <summary>
+    /// Object Pooling: fixed size of the <see cref="Acorns"/> pool,
+    /// pre-allocated once at startup instead of growing/shrinking with
+    /// Add/RemoveAt every spawn/shatter. Generously above any realistic
+    /// <see cref="MaxAcorns"/> ceiling (which itself scales with faction
+    /// count via Dynamic Ecosystem Scaling) so the pool is never the thing
+    /// that runs out.
+    /// </summary>
+    private const int AcornPoolCapacity = 300;
+
+    /// <summary>Object Pooling: fixed size of the <see cref="FoodShards"/> pool — see <see cref="AcornPoolCapacity"/>. Generously above any realistic <see cref="MaxBerries"/> ceiling plus every Cooperative Acorn Cracking/Aphid-hunt/Base-Razing scatter that can pile on top of it.</summary>
+    private const int FoodShardPoolCapacity = 1000;
+
+    /// <summary>Object Pooling: fixed size of the <see cref="AmberNodes"/> pool — see <see cref="AcornPoolCapacity"/>. Generously above any realistic <see cref="MaxAmberOnMap"/> ceiling.</summary>
+    private const int AmberPoolCapacity = 100;
 
     /// <summary>
     /// Cooperative Acorn Cracking: extra reach (m) beyond a Chitin-Mallet
@@ -968,6 +1328,42 @@ public sealed class World
     /// <summary>Emergency Food Import: Food Stored gained per import.</summary>
     public const int EmergencyImportFoodGain = 5;
 
+    /// <summary>The Nectar Brewery: Population needed before a Village Heart will queue one — see <see cref="UpdateAutoBrewery"/>.</summary>
+    public const int BreweryPopulationThreshold = 20;
+
+    /// <summary>The Nectar Brewery: Amber Stored spent to queue its blueprint.</summary>
+    public const int BreweryAmberCost = 10;
+
+    /// <summary>How far (m) from the Village Heart an Auto-Brewery may be placed.</summary>
+    private const float BreweryPlacementRadius = 5f;
+
+    /// <summary>The Nectar Brewery: seconds between each brew attempt once built — see <see cref="UpdateNectarBrewery"/>.</summary>
+    public const float BreweryInterval = 30f;
+
+    /// <summary>The Nectar Brewery: Food Stored consumed per brew.</summary>
+    public const int BreweryFoodCost = 2;
+
+    /// <summary>The Nectar Brewery: Amber Stored consumed per brew.</summary>
+    public const int BreweryAmberUpkeep = 1;
+
+    /// <summary>The Nectar Brewery: Nectar produced per successful brew.</summary>
+    public const int BreweryNectarYield = 1;
+
+    /// <summary>The Nectar Brewery: permanent Gatherer walk-speed bonus per point of <see cref="VillageHeart.NectarStored"/> — see <see cref="Bramblekin.EffectiveWalkSpeed"/>.</summary>
+    public const float NectarSpeedBonusPerPoint = 0.05f;
+
+    /// <summary>The Nectar Brewery: hard ceiling on the cumulative Nectar speed bonus (+50%), so an old enough civilization can't eventually move arbitrarily fast.</summary>
+    public const float MaxNectarSpeedBonus = 0.5f;
+
+    /// <summary>The Great Monument: Population needed before a tribe stops all other construction and commits to one — see <see cref="UpdateAutoMonument"/>.</summary>
+    public const int MonumentPopulationThreshold = 40;
+
+    /// <summary>The Great Monument: Amber Stored spent to queue its blueprint.</summary>
+    public const int MonumentAmberCost = 50;
+
+    /// <summary>How far (m) from the Village Heart the Monument may be placed — further out than the smaller buildings, since it's the biggest structure on the map.</summary>
+    private const float MonumentPlacementRadius = 7f;
+
     /// <summary>Economic Buff: how often (seconds) the Village Heart pays its Upkeep food tax — doubled from 15s so Food Stored lasts much longer between taxes, leaving room to gather Amber instead of running a bare-survival loop.</summary>
     private const float UpkeepInterval = 30f;
 
@@ -975,20 +1371,28 @@ public sealed class World
     public const float FloatingTextDuration = 1.5f;
 
     /// <summary>
-    /// The 20-Meter Territory Rule: Militia never target a hostile (Aphid or
-    /// Wolf Spider) further than this from their own Village Heart, and
-    /// Gatherers prefer unclaimed food within this radius before looking
+    /// Cultural Borders: the base term of every Village Heart's own dynamic
+    /// <see cref="VillageHeart.TerritoryRadius"/> (before its
+    /// AmberStored/NectarStored bonus) — Militia never target a hostile
+    /// (Aphid or Wolf Spider) further than that from their own Village
+    /// Heart, and Gatherers prefer unclaimed food within it before looking
     /// anywhere else on the map (see <see cref="NearestAvailableShard"/>) —
     /// unless that Village Heart is starving (see <see cref="DesperationFoodThreshold"/>).
-    /// Deliberately a distinct, larger radius than <see cref="VillageHeart.TerritoryRadius"/>'s
-    /// 15 m visual ring.
+    /// Also the fallback territory reach for a homeless Bramblekin (one
+    /// with no Village Heart of its own to scale off).
     /// </summary>
-    public const float TerritoryTargetingRadius = 20f;
+    public const float BaseTerritoryRadius = 15f;
+
+    /// <summary>Cultural Borders: how much a Village Heart's <see cref="VillageHeart.TerritoryRadius"/> grows per point of <see cref="VillageHeart.AmberStored"/>.</summary>
+    public const float TerritoryRadiusPerAmber = 0.5f;
+
+    /// <summary>Cultural Borders: how much a Village Heart's <see cref="VillageHeart.TerritoryRadius"/> grows per point of <see cref="VillageHeart.NectarStored"/> — Nectar buys far more cultural reach than raw Amber, since it takes a whole Nectar Brewery economy to produce at all.</summary>
+    public const float TerritoryRadiusPerNectar = 2.0f;
 
     /// <summary>
     /// Base Defense Aggro: any foreign Bramblekin caught within this
-    /// distance of a Village Heart's own centre — much tighter than the
-    /// full <see cref="TerritoryTargetingRadius"/> ring — is treated as an
+    /// distance of a Village Heart's own centre — much tighter than its
+    /// full territory ring — is treated as an
     /// immediate, lethal threat regardless of any existing peace or Truce,
     /// instantly triggering a Blood Feud. This close to the Heart itself,
     /// there's no such thing as an innocent bystander — see
@@ -998,8 +1402,8 @@ public sealed class World
 
     /// <summary>
     /// Desperation Mode: once a Village Heart's Food Stored drops below
-    /// this, its Gatherers stop preferring food within <see cref="TerritoryTargetingRadius"/>
-    /// and instead track the nearest unclaimed food anywhere within
+    /// this, its Gatherers stop preferring food within its own territory
+    /// ring and instead track the nearest unclaimed food anywhere within
     /// <see cref="MaxGatherSearchRadius"/> — starving is worse than a walk,
     /// but the walk still isn't unlimited (see <see cref="MaxGatherSearchRadius"/>).
     /// </summary>
@@ -1008,7 +1412,7 @@ public sealed class World
     /// <summary>
     /// Maximum Search Radius: a Gatherer never even considers a Food Shard
     /// or Acorn further than this from its current position, full stop —
-    /// not a preference like <see cref="TerritoryTargetingRadius"/>, a hard
+    /// not a preference like a Village Heart's own territory ring, a hard
     /// cutoff with no last-resort exception. This is what actually stops a
     /// freshly-split Schism splinter's Gatherers from trekking all the way
     /// back to the parent tribe's base: without a hard ceiling, the parent's
@@ -1090,7 +1494,8 @@ public sealed class World
     // CommitPendingChanges(), after every Update() and Draw() this frame.
     private readonly List<Bramblekin> _pendingBramblekinSpawns = new();
     private readonly List<Bramblekin> _pendingBramblekinRemovals = new();
-    private readonly List<FoodShard> _pendingShardSpawns = new();
+    /// <summary>Object Pooling: queued (position, kind) spawn requests, applied by activating a pool slot at flush time rather than constructing a FoodShard up front — see <see cref="CommitPendingChanges"/>.</summary>
+    private readonly List<(Vector3 Position, FoodShardKind Kind)> _pendingShardSpawns = new();
     private readonly List<FoodShard> _pendingShardRemovals = new();
     private readonly List<AmberNode> _pendingAmberRemovals = new();
     private readonly List<Aphid> _pendingAphidSpawns = new();
@@ -1099,6 +1504,19 @@ public sealed class World
     private readonly List<SpiderFang> _pendingFangRemovals = new();
     private readonly List<Chitin> _pendingChitinSpawns = new();
     private readonly List<Chitin> _pendingChitinRemovals = new();
+
+    // The Spatial Grid: see RebuildSpatialGrids. Query results are written
+    // into these reusable scratch buffers rather than allocating a fresh
+    // list per targeting call — safe because the whole simulation runs
+    // single-threaded and no query result is held across another query.
+    private readonly SpatialGrid<FoodShard> _foodGrid = new();
+    private readonly SpatialGrid<Acorn> _acornGrid = new();
+    private readonly SpatialGrid<AmberNode> _amberGrid = new();
+    private readonly SpatialGrid<Bramblekin> _colonyGrid = new();
+    private readonly List<FoodShard> _foodQueryBuffer = new();
+    private readonly List<Acorn> _acornQueryBuffer = new();
+    private readonly List<AmberNode> _amberQueryBuffer = new();
+    private readonly List<Bramblekin> _colonyQueryBuffer = new();
 
     private float _berrySpawnTimer = BerrySpawnInterval;
     private float _aphidRespawnTimer = AphidRespawnDelay;
@@ -1213,6 +1631,18 @@ public sealed class World
     /// <summary>Floating text pop-ups (Upkeep paid, Starvation) still fading out above the Village Heart.</summary>
     public IReadOnlyList<(Vector3 Position, string Text, Color Color, float TimeLeft)> FloatingTexts => _floatingTexts;
 
+    /// <summary>
+    /// The Great Monument: every faction that has ever completed one, in
+    /// completion order — each entry stays here for the rest of the game
+    /// (see <see cref="CompleteBlueprint"/>), driving the permanent,
+    /// screen-wide "[Faction] has completed the Monument!" alert (see
+    /// <see cref="Game.DrawMonumentAlerts"/>). Never cleared: a civilization
+    /// that reaches this point stays marked as advanced for good, even if
+    /// its Village Heart is later razed.
+    /// </summary>
+    public IReadOnlyList<(int FactionID, Color FactionColor)> CompletedMonuments => _completedMonuments;
+    private readonly List<(int FactionID, Color FactionColor)> _completedMonuments = new();
+
     public World(Terrain terrain, Random rng, int colonySize)
     {
         Terrain = terrain;
@@ -1226,14 +1656,64 @@ public sealed class World
         Villages.Add(villageHeart);
         RebuildObstacles();
 
+        // Object Pooling: Acorns/FoodShards/AmberNodes are fixed-size pools,
+        // every slot constructed once here (inactive) rather than
+        // instantiated and destroyed per spawn/pickup/despawn — see
+        // ActivateAcorn/ActivateFoodShard/ActivateAmberNode.
+        for (int i = 0; i < AcornPoolCapacity; i++)
+            Acorns.Add(new Acorn());
+        for (int i = 0; i < FoodShardPoolCapacity; i++)
+            FoodShards.Add(new FoodShard());
+        for (int i = 0; i < AmberPoolCapacity; i++)
+            AmberNodes.Add(new AmberNode());
+
         for (int i = 0; i < InitialAcorns; i++)
-            Acorns.Add(new Acorn(RandomAcornSpot()));
+            ActivateAcorn(RandomAcornSpot());
 
         for (int i = 0; i < colonySize; i++)
             Colony.Add(new Bramblekin(RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin), rng, villageHeart.FactionID, villageHeart.FactionColor));
 
         for (int i = 0; i < MaxAphids; i++)
             Aphids.Add(new Aphid(RandomFreePoint(Aphid.BodyRadius, Aphid.EdgeMargin), rng));
+    }
+
+    /// <summary>Object Pooling: activates the first inactive slot in <see cref="Acorns"/> at <paramref name="position"/>, or silently does nothing if the pool is exhausted.</summary>
+    private void ActivateAcorn(Vector3 position)
+    {
+        foreach (Acorn acorn in Acorns)
+        {
+            if (!acorn.IsActive)
+            {
+                acorn.Activate(position);
+                return;
+            }
+        }
+    }
+
+    /// <summary>Object Pooling: activates the first inactive slot in <see cref="FoodShards"/> at <paramref name="position"/>, or silently does nothing if the pool is exhausted.</summary>
+    private void ActivateFoodShard(Vector3 position, FoodShardKind kind = FoodShardKind.Cracked)
+    {
+        foreach (FoodShard shard in FoodShards)
+        {
+            if (!shard.IsActive)
+            {
+                shard.Activate(position, kind);
+                return;
+            }
+        }
+    }
+
+    /// <summary>Object Pooling: activates the first inactive slot in <see cref="AmberNodes"/> at <paramref name="position"/>, or silently does nothing if the pool is exhausted.</summary>
+    private void ActivateAmberNode(Vector3 position)
+    {
+        foreach (AmberNode amber in AmberNodes)
+        {
+            if (!amber.IsActive)
+            {
+                amber.Activate(position);
+                return;
+            }
+        }
     }
 
     /// <summary>The Village Heart whose Faction matches <paramref name="factionId"/>, if any.</summary>
@@ -1370,22 +1850,22 @@ public sealed class World
             home.Morale = MathF.Max(0f, home.Morale - MoraleLossPerKill);
     }
 
-    /// <summary>The 20-Meter Territory Rule: whether <paramref name="claimant"/>'s Militia has anything huntable within <see cref="TerritoryTargetingRadius"/> of <paramref name="home"/>.</summary>
+    /// <summary>Cultural Borders: whether <paramref name="claimant"/>'s Militia has anything huntable within <paramref name="home"/>'s own (wealth-scaled — see <see cref="VillageHeart.TerritoryRadius"/>) territory ring.</summary>
     public bool HasHuntableAphidNearVillage(Bramblekin claimant, VillageHeart home) => NearestLiveAphidNearVillage(claimant.Position, claimant, home) is not null;
 
     /// <summary>
-    /// The 20-Meter Territory Rule + Dibs: the nearest still-live, unclaimed
-    /// (or already claimed by <paramref name="claimant"/>) Aphid to
+    /// Cultural Borders + Dibs: the nearest still-live, unclaimed (or
+    /// already claimed by <paramref name="claimant"/>) Aphid to
     /// <paramref name="from"/>, considering only ones within
-    /// <see cref="TerritoryTargetingRadius"/> of <paramref name="home"/> — a
-    /// hard boundary, unlike a Gatherer's food search, which falls back to
-    /// the wider map. Militia simply have nothing to hunt beyond it.
+    /// <paramref name="home"/>'s own <see cref="VillageHeart.TerritoryRadius"/>
+    /// — a hard boundary, unlike a Gatherer's food search, which falls back
+    /// to the wider map. Militia simply have nothing to hunt beyond it.
     /// </summary>
     public Aphid? NearestLiveAphidNearVillage(Vector3 from, Bramblekin claimant, VillageHeart home)
     {
         Aphid? nearest = null;
         float bestDistanceSquared = float.MaxValue;
-        float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
+        float territoryRadiusSquared = home.TerritoryRadius * home.TerritoryRadius;
         for (int i = Aphids.Count - 1; i >= 0; i--)
         {
             Aphid aphid = Aphids[i];
@@ -1431,8 +1911,8 @@ public sealed class World
     /// <summary>
     /// The 'Enemy of My Enemy' Protocol: whether the Wolf Spider is
     /// actively a threat (Hunting or Pouncing, not just ambling through or
-    /// feeding) within <see cref="TerritoryTargetingRadius"/> of
-    /// <paramref name="home"/>. While true, that faction's Militia calls a
+    /// feeding) within <paramref name="home"/>'s own <see cref="VillageHeart.TerritoryRadius"/>.
+    /// While true, that faction's Militia calls a
     /// truce on every rival faction — see the guards on Blood Feud Border
     /// Wars and Base Razing in <see cref="Bramblekin.Update"/> — so the
     /// whole tribe can throw itself at the common enemy instead of a
@@ -1444,7 +1924,7 @@ public sealed class World
     /// </summary>
     public bool IsSpiderActivelyThreateningTerritory(VillageHeart? home) =>
         home is not null && Spider is { State: SpiderState.Hunting or SpiderState.Pouncing } spider &&
-        GroundMover.HorizontalDistance(spider.Position, home.Center) <= TerritoryTargetingRadius;
+        GroundMover.HorizontalDistanceSquared(spider.Position, home.Center) <= home.TerritoryRadius * home.TerritoryRadius;
 
     /// <summary>
     /// Base Defense Aggro: the nearest living foreign Bramblekin within
@@ -1462,9 +1942,11 @@ public sealed class World
         Bramblekin? nearest = null;
         float bestDistanceSquared = BaseDefenseAggroRadius * BaseDefenseAggroRadius;
 
-        for (int i = Colony.Count - 1; i >= 0; i--)
+        // The Spatial Grid: only the Colony chunks around home's own centre.
+        _colonyGrid.QueryNearby(home.Center, _colonyQueryBuffer);
+        for (int i = _colonyQueryBuffer.Count - 1; i >= 0; i--)
         {
-            Bramblekin intruder = Colony[i];
+            Bramblekin intruder = _colonyQueryBuffer[i];
             if (intruder.IsDead || intruder.FactionID == home.FactionID)
                 continue;
 
@@ -1489,15 +1971,19 @@ public sealed class World
     public VillageHeart? ForeignTerritoryContaining(Vector3 position, int ownFactionId)
     {
         VillageHeart? nearest = null;
-        float bestDistanceSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
+        float bestDistanceSquared = float.MaxValue;
 
         foreach (VillageHeart village in Villages)
         {
             if (village.FactionID == ownFactionId)
                 continue;
 
+            // Cultural Borders: each village's own border is its own
+            // wealth-scaled TerritoryRadius, not a shared flat constant — a
+            // wealthy tribe's ring can physically overlap into a poorer
+            // neighbour's.
             float distanceSquared = Vector3.DistanceSquared(position, village.Center);
-            if (distanceSquared > bestDistanceSquared)
+            if (distanceSquared > village.TerritoryRadius * village.TerritoryRadius || distanceSquared > bestDistanceSquared)
                 continue;
 
             nearest = village;
@@ -1520,11 +2006,13 @@ public sealed class World
     {
         Bramblekin? nearest = null;
         float bestDistanceSquared = float.MaxValue;
-        float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
+        float territoryRadiusSquared = home.TerritoryRadius * home.TerritoryRadius;
 
-        for (int i = Colony.Count - 1; i >= 0; i--)
+        // The Spatial Grid: only the Colony chunks around home's own centre.
+        _colonyGrid.QueryNearby(home.Center, _colonyQueryBuffer);
+        for (int i = _colonyQueryBuffer.Count - 1; i >= 0; i--)
         {
-            Bramblekin trespasser = Colony[i];
+            Bramblekin trespasser = _colonyQueryBuffer[i];
             if (trespasser.IsDead || trespasser.TrespassingAgainst != home)
                 continue;
 
@@ -1554,9 +2042,11 @@ public sealed class World
             return false;
 
         float radiusSquared = radius * radius;
-        for (int i = Colony.Count - 1; i >= 0; i--)
+        // The Spatial Grid: only the Colony chunks around position itself.
+        _colonyGrid.QueryNearby(position, _colonyQueryBuffer);
+        for (int i = _colonyQueryBuffer.Count - 1; i >= 0; i--)
         {
-            Bramblekin enemy = Colony[i];
+            Bramblekin enemy = _colonyQueryBuffer[i];
             if (enemy.IsDead || !home.HostileFactions.ContainsKey(enemy.FactionID))
                 continue;
             if (Vector3.DistanceSquared(enemy.Position, position) <= radiusSquared)
@@ -1585,11 +2075,13 @@ public sealed class World
 
         Bramblekin? nearest = null;
         float bestDistanceSquared = float.MaxValue;
-        float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
+        float territoryRadiusSquared = home.TerritoryRadius * home.TerritoryRadius;
 
-        for (int i = Colony.Count - 1; i >= 0; i--)
+        // The Spatial Grid: only the Colony chunks around home's own centre.
+        _colonyGrid.QueryNearby(home.Center, _colonyQueryBuffer);
+        for (int i = _colonyQueryBuffer.Count - 1; i >= 0; i--)
         {
-            Bramblekin enemy = Colony[i];
+            Bramblekin enemy = _colonyQueryBuffer[i];
             if (enemy.IsDead || !home.HostileFactions.ContainsKey(enemy.FactionID))
                 continue;
 
@@ -1728,7 +2220,7 @@ public sealed class World
             var position = village.Center + new Vector3(MathF.Cos(angle), 0, MathF.Sin(angle)) * distance;
             position.X = Math.Clamp(position.X, -half, half);
             position.Z = Math.Clamp(position.Z, -half, half);
-            _pendingShardSpawns.Add(new FoodShard(position));
+            _pendingShardSpawns.Add((position, FoodShardKind.Cracked));
         }
 
         _splats.Add((village.Center, SplatDuration));
@@ -1793,7 +2285,7 @@ public sealed class World
             var position = aphid.Position + new Vector3(MathF.Cos(angle), 0, MathF.Sin(angle)) * 0.3f;
             position.X = Math.Clamp(position.X, -half, half);
             position.Z = Math.Clamp(position.Z, -half, half);
-            _pendingShardSpawns.Add(new FoodShard(position, FoodShardKind.Cracked));
+            _pendingShardSpawns.Add((position, FoodShardKind.Cracked));
         }
     }
 
@@ -1805,13 +2297,13 @@ public sealed class World
             return;
         _berrySpawnTimer = BerrySpawnInterval;
 
-        int berries = FoodShards.Count(s => s.Kind == FoodShardKind.Berry)
+        int berries = FoodShards.Count(s => s.IsActive && s.Kind == FoodShardKind.Berry)
                     + _pendingShardSpawns.Count(s => s.Kind == FoodShardKind.Berry);
         if (berries >= MaxBerries)
             return;
 
         Vector3 spot = RandomWildernessSpot(FoodShard.Radius + 0.3f, edgeMargin: 1f);
-        _pendingShardSpawns.Add(new FoodShard(spot, FoodShardKind.Berry));
+        _pendingShardSpawns.Add((spot, FoodShardKind.Berry));
     }
 
     /// <summary>Tops the Aphid population back up to <see cref="MaxAphids"/> after a loss.</summary>
@@ -1842,7 +2334,7 @@ public sealed class World
     {
         foreach (FoodShard shard in FoodShards)
         {
-            if (shard.ClaimedBy is null)
+            if (!shard.IsActive || shard.ClaimedBy is null)
                 continue;
 
             shard.ClaimTimer += deltaTime;
@@ -1856,7 +2348,7 @@ public sealed class World
         // Same Dibs failsafe, applied to Amber.
         foreach (AmberNode amber in AmberNodes)
         {
-            if (amber.ClaimedBy is null)
+            if (!amber.IsActive || amber.ClaimedBy is null)
                 continue;
 
             amber.ClaimTimer += deltaTime;
@@ -1888,30 +2380,32 @@ public sealed class World
         for (int i = FoodShards.Count - 1; i >= 0; i--)
         {
             FoodShard shard = FoodShards[i];
-            if (shard.IsCarried)
+            if (!shard.IsActive || shard.IsCarried) // Object Pooling: an inactive slot has nothing to despawn.
                 continue;
 
             shard.DespawnTimer -= deltaTime;
             if (shard.DespawnTimer <= 0f)
-                FoodShards.RemoveAt(i);
+                shard.Deactivate();
         }
 
         for (int i = AmberNodes.Count - 1; i >= 0; i--)
         {
             AmberNode amber = AmberNodes[i];
-            if (amber.IsCarried)
+            if (!amber.IsActive || amber.IsCarried) // Object Pooling: an inactive slot has nothing to despawn.
                 continue;
 
             amber.DespawnTimer -= deltaTime;
             if (amber.DespawnTimer <= 0f)
-                AmberNodes.RemoveAt(i);
+                amber.Deactivate();
         }
     }
 
     public void Update(float deltaTime)
     {
+        FrameCounter++;
         UpdateFoodClaimTimeouts(deltaTime);
         RebuildObstacles();
+        RebuildSpatialGrids();
         PushFoodOutOfObstacles();
 
         // Ambient prey moves before the colony reacts to it this frame.
@@ -2015,15 +2509,27 @@ public sealed class World
             //    current MaxFoodCapacity — Housing and Growth always get
             //    first claim on Food Stored; a Granary only ever gets built
             //    once there's genuinely nowhere left to put more food.
-            UpdateAutoSporeFarm(village);
-            UpdateAutoTent(village);
-            UpdateAutoSprout(village);
-            UpdateAutoGranary(village);
+            // The Great Monument: once a tribe is wealthy and populous
+            // enough to commit to one, it stops queuing any other building
+            // (Growth/population is unaffected — that's Auto-Sprout, not a
+            // building) until the Monument itself is finished. Checked
+            // first so it can veto everything below it this same frame.
+            bool pursuingMonument = UpdateAutoMonument(village);
 
-            // Auxiliary Auto-Construction: population-gated one-time builds
-            // that ride on top of the three phases above rather than being
-            // part of that priority order.
-            UpdateAutoTradingPost(village);
+            UpdateAutoSprout(village);
+
+            if (!pursuingMonument)
+            {
+                UpdateAutoSporeFarm(village);
+                UpdateAutoTent(village);
+                UpdateAutoGranary(village);
+
+                // Auxiliary Auto-Construction: population-gated one-time
+                // builds that ride on top of the phases above rather than
+                // being part of that priority order.
+                UpdateAutoTradingPost(village);
+                UpdateAutoBrewery(village);
+            }
 
             // The Schism: a Village Heart maxed out on Housing and
             // overflowing with Food Stored spins off a new faction of its
@@ -2031,6 +2537,7 @@ public sealed class World
             UpdateSchism(village);
         }
         UpdateSporeFarmIncome(deltaTime);
+        UpdateNectarBrewery(deltaTime);
 
         UpdateAcornSpawn(deltaTime);
         UpdateAmberSpawn(deltaTime);
@@ -2081,23 +2588,28 @@ public sealed class World
             _pendingBramblekinSpawns.Clear();
         }
 
+        // Object Pooling: a removal returns its pool slot (Deactivate)
+        // rather than removing it from the (now fixed-size) list; a spawn
+        // activates the first free slot rather than constructing a new
+        // FoodShard — see ActivateFoodShard.
         if (_pendingShardRemovals.Count > 0)
         {
             for (int i = _pendingShardRemovals.Count - 1; i >= 0; i--)
-                FoodShards.Remove(_pendingShardRemovals[i]);
+                _pendingShardRemovals[i].Deactivate();
             _pendingShardRemovals.Clear();
         }
 
         if (_pendingShardSpawns.Count > 0)
         {
-            FoodShards.AddRange(_pendingShardSpawns);
+            foreach (var (position, kind) in _pendingShardSpawns)
+                ActivateFoodShard(position, kind);
             _pendingShardSpawns.Clear();
         }
 
         if (_pendingAmberRemovals.Count > 0)
         {
             for (int i = _pendingAmberRemovals.Count - 1; i >= 0; i--)
-                AmberNodes.Remove(_pendingAmberRemovals[i]);
+                _pendingAmberRemovals[i].Deactivate();
             _pendingAmberRemovals.Clear();
         }
 
@@ -2141,7 +2653,24 @@ public sealed class World
         }
     }
 
-    public void Draw()
+    /// <summary>
+    /// Raylib Culling: margin (px) added around the screen rectangle when
+    /// deciding whether a projected point is "on screen" for
+    /// <see cref="IsOnScreen"/> — generous enough that an entity's body
+    /// (which extends a bit past its center point) doesn't visibly pop in
+    /// right at the screen edge.
+    /// </summary>
+    private const float CullScreenMargin = 40f;
+
+    /// <summary>Basic bounds check: true unless <paramref name="worldPosition"/> projects to a screen point entirely outside the camera's current viewport (plus <see cref="CullScreenMargin"/>) — used to skip Raylib draw calls for entities the camera can't currently see at all.</summary>
+    private static bool IsOnScreen(Vector3 worldPosition, Camera3D camera)
+    {
+        Vector2 screen = Raylib.GetWorldToScreen(worldPosition, camera);
+        return screen.X >= -CullScreenMargin && screen.X <= Raylib.GetScreenWidth() + CullScreenMargin &&
+               screen.Y >= -CullScreenMargin && screen.Y <= Raylib.GetScreenHeight() + CullScreenMargin;
+    }
+
+    public void Draw(Camera3D camera)
     {
         Terrain.Draw();
         for (int i = _splats.Count - 1; i >= 0; i--)
@@ -2154,13 +2683,21 @@ public sealed class World
         for (int i = Villages.Count - 1; i >= 0; i--)
             Villages[i].Draw();
 
+        // Object Pooling: Acorns/AmberNodes/FoodShards are fixed-size pools
+        // pre-allocated up to their map caps — most slots sit inactive at
+        // any given time, so every rendering (and targeting) loop over them
+        // must skip anything with IsActive false.
         for (int i = Acorns.Count - 1; i >= 0; i--)
-            Acorns[i].Draw();
+        {
+            Acorn acorn = Acorns[i];
+            if (acorn.IsActive && IsOnScreen(acorn.Position, camera))
+                acorn.Draw();
+        }
 
         for (int i = AmberNodes.Count - 1; i >= 0; i--)
         {
             AmberNode amber = AmberNodes[i];
-            if (!amber.IsCarried)
+            if (amber.IsActive && !amber.IsCarried && IsOnScreen(amber.Position, camera))
                 amber.Draw(amber.Position);
         }
 
@@ -2172,7 +2709,7 @@ public sealed class World
         for (int i = FoodShards.Count - 1; i >= 0; i--)
         {
             FoodShard shard = FoodShards[i];
-            if (!shard.IsCarried)
+            if (shard.IsActive && !shard.IsCarried && IsOnScreen(shard.Position, camera))
                 shard.Draw(shard.Position);
         }
 
@@ -2194,8 +2731,9 @@ public sealed class World
         // Bramblekin caught a moment ago would still be drawn standing there.
         for (int i = Colony.Count - 1; i >= 0; i--)
         {
-            if (!Colony[i].IsDead)
-                Colony[i].Draw();
+            Bramblekin b = Colony[i];
+            if (!b.IsDead && IsOnScreen(b.Position, camera))
+                b.Draw();
         }
 
         Spider?.Draw();
@@ -2226,7 +2764,8 @@ public sealed class World
     /// shard wedged somewhere unreachable.
     /// </summary>
     public bool IsAvailable(FoodShard shard, Bramblekin claimant) =>
-        !shard.IsCarried
+        shard.IsActive // Object Pooling: an inactive slot is not a real shard.
+        && !shard.IsCarried
         && (shard.ClaimedBy is null || shard.ClaimedBy == claimant)
         && !IsBlocked(shard.Position, 0f);
 
@@ -2235,8 +2774,9 @@ public sealed class World
 
     /// <summary>
     /// Strict Border Control: true if <paramref name="point"/> falls inside
-    /// ANY Village Heart's <see cref="TerritoryTargetingRadius"/> (20m)
-    /// territory ring other than <paramref name="ownFactionId"/>'s own.
+    /// ANY Village Heart's own (Cultural Borders — wealth-scaled, see
+    /// <see cref="VillageHeart.TerritoryRadius"/>) territory ring other
+    /// than <paramref name="ownFactionId"/>'s own.
     /// Shares <see cref="ForeignTerritoryContaining"/> with the Thievery
     /// check for one single "whose border is this?" answer — deliberately
     /// blind to <see cref="VillageHeart.HostileFactions"/>/Default Peace, a
@@ -2255,11 +2795,12 @@ public sealed class World
         ForeignTerritoryContaining(point, ownFactionId) is not null;
 
     /// <summary>
-    /// The 20-Meter Territory Rule + Dibs + Strict Border Control (see
+    /// Cultural Borders + Dibs + Strict Border Control (see
     /// <see cref="IsForeignTerritory"/>) + Maximum Search Radius (see
     /// <see cref="MaxGatherSearchRadius"/>), sorted by distance: among
-    /// unclaimed (or self-claimed) shards within <see cref="TerritoryTargetingRadius"/>
-    /// of <paramref name="home"/>, the nearest one to <paramref name="from"/>.
+    /// unclaimed (or self-claimed) shards within <paramref name="home"/>'s
+    /// own (wealth-scaled — see <see cref="VillageHeart.TerritoryRadius"/>)
+    /// territory ring, the nearest one to <paramref name="from"/>.
     /// Only if none qualify locally does this fall back to the nearest
     /// anywhere within <see cref="MaxGatherSearchRadius"/> — a Gatherer
     /// always prefers its own doorstep, then safe wild food elsewhere on the
@@ -2272,37 +2813,45 @@ public sealed class World
     public FoodShard? NearestAvailableShard(Vector3 from, Bramblekin claimant, VillageHeart? home)
     {
         FoodShard? bestLocal = null;
-        float bestLocalDistance = float.MaxValue;
+        float bestLocalDistanceSquared = float.MaxValue;
         FoodShard? bestAny = null;
-        float bestAnyDistance = float.MaxValue;
-        float territoryRadiusSquared = TerritoryTargetingRadius * TerritoryTargetingRadius;
+        float bestAnyDistanceSquared = float.MaxValue;
+        // Cultural Borders: home's own wealth-scaled TerritoryRadius (see
+        // VillageHeart.TerritoryRadius) — 0 when homeless, so the local
+        // preference below (which also requires home is not null) simply
+        // never matches.
+        float territoryRadiusSquared = home is not null ? home.TerritoryRadius * home.TerritoryRadius : 0f;
+        float maxGatherSearchRadiusSquared = MaxGatherSearchRadius * MaxGatherSearchRadius;
         // Desperation Mode: a starving village can't afford to wait for local food that
         // may not exist, so we skip the local-preference logic entirely and just grab
         // whatever's nearest anywhere within MaxGatherSearchRadius (still never foreign).
         bool desperate = home is not null && home.FoodStored < DesperationFoodThreshold;
 
-        for (int i = FoodShards.Count - 1; i >= 0; i--)
+        // The Spatial Grid: only the shards in from's own 10m chunk and its
+        // 8 neighbors are ever considered — see SpatialGrid.
+        _foodGrid.QueryNearby(from, _foodQueryBuffer);
+        for (int i = _foodQueryBuffer.Count - 1; i >= 0; i--)
         {
-            FoodShard shard = FoodShards[i];
+            FoodShard shard = _foodQueryBuffer[i];
             if (!IsAvailable(shard, claimant))
                 continue;
             if (IsForeignTerritory(shard.Position, claimant.FactionID))
                 continue; // Strict Border Control: off-limits, full stop, no matter how desperate.
 
-            float distance = Vector3.Distance(from, shard.Position);
-            if (distance > MaxGatherSearchRadius)
+            float distanceSquared = Vector3.DistanceSquared(from, shard.Position);
+            if (distanceSquared > maxGatherSearchRadiusSquared)
                 continue; // Maximum Search Radius: never even evaluated, last resort or not.
 
-            if (distance < bestAnyDistance)
+            if (distanceSquared < bestAnyDistanceSquared)
             {
                 bestAny = shard;
-                bestAnyDistance = distance;
+                bestAnyDistanceSquared = distanceSquared;
             }
 
-            if (!desperate && home is not null && distance < bestLocalDistance && Vector3.DistanceSquared(shard.Position, home.Center) <= territoryRadiusSquared)
+            if (!desperate && home is not null && distanceSquared < bestLocalDistanceSquared && Vector3.DistanceSquared(shard.Position, home.Center) <= territoryRadiusSquared)
             {
                 bestLocal = shard;
-                bestLocalDistance = distance;
+                bestLocalDistanceSquared = distanceSquared;
             }
         }
         return desperate ? bestAny : (bestLocal ?? bestAny);
@@ -2333,7 +2882,8 @@ public sealed class World
 
     /// <summary>Tycoon Economy Dibs: same rules as <see cref="IsAvailable(FoodShard, Bramblekin)"/> — nobody carrying it, unclaimed (or claimed by <paramref name="claimant"/>).</summary>
     public bool IsAvailable(AmberNode amber, Bramblekin claimant) =>
-        !amber.IsCarried
+        amber.IsActive // Object Pooling: an inactive slot is not a real Amber node.
+        && !amber.IsCarried
         && (amber.ClaimedBy is null || amber.ClaimedBy == claimant)
         && !IsBlocked(amber.Position, 0f);
 
@@ -2350,23 +2900,26 @@ public sealed class World
     public AmberNode? NearestAvailableAmber(Vector3 from, Bramblekin claimant)
     {
         AmberNode? best = null;
-        float bestDistance = float.MaxValue;
-        for (int i = AmberNodes.Count - 1; i >= 0; i--)
+        float bestDistanceSquared = float.MaxValue;
+        float maxGatherSearchRadiusSquared = MaxGatherSearchRadius * MaxGatherSearchRadius;
+        // The Spatial Grid: only from's own 10m chunk and its 8 neighbors.
+        _amberGrid.QueryNearby(from, _amberQueryBuffer);
+        for (int i = _amberQueryBuffer.Count - 1; i >= 0; i--)
         {
-            AmberNode amber = AmberNodes[i];
+            AmberNode amber = _amberQueryBuffer[i];
             if (!IsAvailable(amber, claimant))
                 continue;
             if (IsForeignTerritory(amber.Position, claimant.FactionID))
                 continue; // Strict Border Control: off-limits, full stop.
 
-            float distance = Vector3.Distance(from, amber.Position);
-            if (distance > MaxGatherSearchRadius)
+            float distanceSquared = Vector3.DistanceSquared(from, amber.Position);
+            if (distanceSquared > maxGatherSearchRadiusSquared)
                 continue; // Maximum Search Radius: never even evaluated.
 
-            if (distance < bestDistance)
+            if (distanceSquared < bestDistanceSquared)
             {
                 best = amber;
-                bestDistance = distance;
+                bestDistanceSquared = distanceSquared;
             }
         }
         return best;
@@ -2621,6 +3174,93 @@ public sealed class World
 
         village.AmberStored -= TradingPostAmberCost;
         Blueprints.Add(new Blueprint(point, BuildingKind.TradingPost, village.FactionID, village.FactionColor));
+    }
+
+    /// <summary>
+    /// Auto-Construction (The Nectar Brewery) — the Refined Economy: once a
+    /// Village Heart's Population reaches <see cref="BreweryPopulationThreshold"/>
+    /// and it has banked at least <see cref="BreweryAmberCost"/> Amber, and
+    /// it doesn't already have one (built or queued), it spends the Amber
+    /// and places a Brewery Blueprint near its own centre. Once built, it
+    /// starts brewing on its own timer — see <see cref="UpdateNectarBrewery"/>.
+    /// </summary>
+    private void UpdateAutoBrewery(VillageHeart village)
+    {
+        if (village.Population < BreweryPopulationThreshold)
+            return;
+        if (village.AmberStored < BreweryAmberCost)
+            return;
+        if (Buildings.Any(b => b.Kind == BuildingKind.Brewery && b.FactionID == village.FactionID) ||
+            Blueprints.Any(b => b.Kind == BuildingKind.Brewery && b.FactionID == village.FactionID))
+            return; // Already have one, finished or in progress.
+
+        Vector3? spot = RandomPointNearVillage(village, BreweryPlacementRadius, Building.BreweryRadius + 0.2f);
+        if (spot is not { } point)
+            return;
+
+        village.AmberStored -= BreweryAmberCost;
+        Blueprints.Add(new Blueprint(point, BuildingKind.Brewery, village.FactionID, village.FactionColor));
+    }
+
+    /// <summary>
+    /// The Nectar Brewery's own economy: every <see cref="BreweryInterval"/>
+    /// seconds, each finished Brewery attempts to consume
+    /// <see cref="BreweryFoodCost"/> Food and <see cref="BreweryAmberUpkeep"/>
+    /// Amber from its owning Village Heart's stores to brew
+    /// <see cref="BreweryNectarYield"/> Nectar — a permanent civilization
+    /// buff (see <see cref="VillageHeart.NectarStored"/>/<see cref="Bramblekin.EffectiveWalkSpeed"/>).
+    /// If the village can't currently afford the brew, that cycle is simply
+    /// skipped — the timer still resets and tries again next interval,
+    /// exactly like a missed Upkeep tax doesn't destroy anything, just
+    /// delays the payoff.
+    /// </summary>
+    private void UpdateNectarBrewery(float deltaTime)
+    {
+        for (int i = Buildings.Count - 1; i >= 0; i--)
+        {
+            Building building = Buildings[i];
+            if (!building.TickBreweryTimer(deltaTime))
+                continue;
+            if (VillageFor(building.FactionID) is not { } village)
+                continue;
+            if (village.FoodStored < BreweryFoodCost || village.AmberStored < BreweryAmberUpkeep)
+                continue;
+
+            village.FoodStored -= BreweryFoodCost;
+            village.AmberStored -= BreweryAmberUpkeep;
+            village.NectarStored += BreweryNectarYield;
+        }
+    }
+
+    /// <summary>
+    /// The Great Monument — Civilization Goal: once a Village Heart reaches
+    /// <see cref="MonumentPopulationThreshold"/> Population and has hoarded
+    /// <see cref="MonumentAmberCost"/> Amber, it commits its entire Builder
+    /// effort to one — see the per-village loop in <see cref="Update"/>,
+    /// which skips every other Auto-Construction phase for as long as this
+    /// returns true. Returns true while a Monument for this faction is
+    /// queued (or was just queued this frame) and not yet finished; false
+    /// once it's either not eligible yet or already stands complete, either
+    /// of which lets ordinary building resume.
+    /// </summary>
+    private bool UpdateAutoMonument(VillageHeart village)
+    {
+        if (Buildings.Any(b => b.Kind == BuildingKind.Monument && b.FactionID == village.FactionID))
+            return false; // Already an advanced civilization — back to ordinary building.
+
+        if (Blueprints.Any(b => b.Kind == BuildingKind.Monument && b.FactionID == village.FactionID))
+            return true; // Already committed — keep suppressing everything else until it's done.
+
+        if (village.Population < MonumentPopulationThreshold || village.AmberStored < MonumentAmberCost)
+            return false; // Not there yet.
+
+        Vector3? spot = RandomPointNearVillage(village, MonumentPlacementRadius, Building.MonumentRadius + 0.3f);
+        if (spot is not { } point)
+            return false; // No room right now — try again next frame rather than stalling the tribe on nothing.
+
+        village.AmberStored -= MonumentAmberCost;
+        Blueprints.Add(new Blueprint(point, BuildingKind.Monument, village.FactionID, village.FactionColor));
+        return true;
     }
 
     /// <summary>
@@ -2906,7 +3546,7 @@ public sealed class World
         {
             Building building = Buildings[i];
             if (building.TickSporeTimer(deltaTime))
-                _pendingShardSpawns.Add(new FoodShard(building.Position, FoodShardKind.Berry));
+                _pendingShardSpawns.Add((building.Position, FoodShardKind.Berry));
         }
     }
 
@@ -2970,13 +3610,13 @@ public sealed class World
         return null;
     }
 
-    /// <summary>True if <paramref name="point"/> falls inside ANY Village Heart's <see cref="VillageHeart.TerritoryRadius"/> ring, regardless of faction.</summary>
+    /// <summary>True if <paramref name="point"/> falls inside ANY Village Heart's own (Cultural Borders — wealth-scaled, see <see cref="VillageHeart.TerritoryRadius"/>) ring, regardless of faction.</summary>
     private bool IsInsideAnyTerritory(Vector3 point)
     {
-        float radiusSquared = VillageHeart.TerritoryRadius * VillageHeart.TerritoryRadius;
         for (int i = Villages.Count - 1; i >= 0; i--)
         {
-            if (Vector3.DistanceSquared(point, Villages[i].Center) <= radiusSquared)
+            VillageHeart village = Villages[i];
+            if (Vector3.DistanceSquared(point, village.Center) <= village.TerritoryRadius * village.TerritoryRadius)
                 return true;
         }
         return false;
@@ -3089,6 +3729,8 @@ public sealed class World
             owner.MaxFoodCapacity += GranaryFoodBonus;
         else if (blueprint.Kind == BuildingKind.Tent)
             owner.MaxPopulation = Math.Min(owner.MaxPopulation + TentPopulationBonus, MaxPopulationCap);
+        else if (blueprint.Kind == BuildingKind.Monument)
+            _completedMonuments.Add((blueprint.FactionID, blueprint.FactionColor));
     }
 
     /// <summary>Queues a new Bramblekin of <paramref name="village"/>'s Faction on a free spot right beside it.</summary>
@@ -3138,6 +3780,53 @@ public sealed class World
     }
 
     /// <summary>
+    /// The Spatial Grid: every living Bramblekin registered within 10m
+    /// chunks of <paramref name="position"/> (its own chunk plus the 8
+    /// neighbors) — used by the Wolf Spider's prey/Militia search and an
+    /// Aphid's flee check, same restricted-scan pattern as the Bramblekin
+    /// resource searches. The returned list is a reused scratch buffer:
+    /// safe to iterate immediately, but don't hold onto it past the call
+    /// that reads it.
+    /// </summary>
+    public List<Bramblekin> QueryNearbyColony(Vector3 position)
+    {
+        _colonyGrid.QueryNearby(position, _colonyQueryBuffer);
+        return _colonyQueryBuffer;
+    }
+
+    /// <summary>The Spatial Grid: every active, gatherable Food Shard/Acorn/AmberNode and every living Bramblekin, re-registered into its current 10m chunk. Rebuilt fresh once a frame, same pattern as <see cref="RebuildObstacles"/>, rather than tracked incrementally as each entity moves.</summary>
+    private void RebuildSpatialGrids()
+    {
+        _foodGrid.Clear();
+        foreach (FoodShard shard in FoodShards)
+        {
+            if (shard.IsActive && !shard.IsCarried)
+                _foodGrid.Register(shard, shard.Position);
+        }
+
+        _acornGrid.Clear();
+        foreach (Acorn acorn in Acorns)
+        {
+            if (acorn.IsActive)
+                _acornGrid.Register(acorn, acorn.Position);
+        }
+
+        _amberGrid.Clear();
+        foreach (AmberNode amber in AmberNodes)
+        {
+            if (amber.IsActive && !amber.IsCarried)
+                _amberGrid.Register(amber, amber.Position);
+        }
+
+        _colonyGrid.Clear();
+        foreach (Bramblekin bramblekin in Colony)
+        {
+            if (!bramblekin.IsDead)
+                _colonyGrid.Register(bramblekin, bramblekin.Position);
+        }
+    }
+
+    /// <summary>
     /// Rocks shove food aside instead of burying it: any shard on the ground
     /// that overlaps a rock (or the village) is slid straight out along the
     /// line from the obstacle's centre. A second pass catches a shard pushed
@@ -3150,7 +3839,7 @@ public sealed class World
         for (int i = FoodShards.Count - 1; i >= 0; i--)
         {
             FoodShard shard = FoodShards[i];
-            if (shard.IsCarried)
+            if (!shard.IsActive || shard.IsCarried) // Object Pooling: an inactive slot isn't really sitting anywhere.
                 continue;
 
             var position = new Vector2(shard.Position.X, shard.Position.Z);
@@ -3196,23 +3885,28 @@ public sealed class World
     public Acorn? NearestClaimableAcorn(Vector3 from, Bramblekin gatherer)
     {
         Acorn? best = null;
-        float bestDistance = float.MaxValue;
-        for (int i = Acorns.Count - 1; i >= 0; i--)
+        float bestDistanceSquared = float.MaxValue;
+        float maxGatherSearchRadiusSquared = MaxGatherSearchRadius * MaxGatherSearchRadius;
+        // The Spatial Grid: only from's own 10m chunk and its 8 neighbors.
+        _acornGrid.QueryNearby(from, _acornQueryBuffer);
+        for (int i = _acornQueryBuffer.Count - 1; i >= 0; i--)
         {
-            Acorn acorn = Acorns[i];
+            Acorn acorn = _acornQueryBuffer[i];
+            if (!acorn.IsActive) // Object Pooling: an inactive slot is not a real Acorn.
+                continue;
             if (!acorn.IsClaimedBy(gatherer) && acorn.Claimants.Count >= Acorn.MaxClaimants)
                 continue;
             if (IsForeignTerritory(acorn.Position, gatherer.FactionID))
                 continue; // Strict Border Control: off-limits, full stop.
 
-            float distance = Vector3.Distance(from, acorn.Position);
-            if (distance > MaxGatherSearchRadius)
+            float distanceSquared = Vector3.DistanceSquared(from, acorn.Position);
+            if (distanceSquared > maxGatherSearchRadiusSquared)
                 continue; // Maximum Search Radius: never even evaluated, last resort or not.
 
-            if (distance < bestDistance)
+            if (distanceSquared < bestDistanceSquared)
             {
                 best = acorn;
-                bestDistance = distance;
+                bestDistanceSquared = distanceSquared;
             }
         }
         return best;
@@ -3233,14 +3927,14 @@ public sealed class World
         for (int i = Acorns.Count - 1; i >= 0; i--)
         {
             Acorn acorn = Acorns[i];
-            if (acorn.CrackProgress < acorn.CrackThreshold)
+            if (!acorn.IsActive || acorn.CrackProgress < acorn.CrackThreshold) // Object Pooling: an inactive slot never shatters.
                 continue;
 
             foreach (Bramblekin claimant in acorn.Claimants)
                 claimant.OnAcornShattered();
 
             ScatterFoodShardsAround(acorn.Position, ShardsPerAcorn, Acorn.Radius + FoodShard.Radius + 0.35f);
-            Acorns.RemoveAt(i);
+            acorn.Deactivate();
         }
     }
 
@@ -3262,7 +3956,7 @@ public sealed class World
                 Math.Clamp(center.X + MathF.Cos(angle) * distance, -half, half),
                 Terrain.GroundHeight,
                 Math.Clamp(center.Z + MathF.Sin(angle) * distance, -half, half));
-            _pendingShardSpawns.Add(new FoodShard(position));
+            _pendingShardSpawns.Add((position, FoodShardKind.Cracked));
         }
     }
 
@@ -3318,10 +4012,12 @@ public sealed class World
             return;
         _acornSpawnTimer = AcornSpawnInterval;
 
-        if (Acorns.Count >= MaxAcorns)
+        // Object Pooling: Acorns.Count is now the fixed pool size, not the
+        // live count — MaxAcorns caps how many are actually active.
+        if (Acorns.Count(a => a.IsActive) >= MaxAcorns)
             return;
 
-        Acorns.Add(new Acorn(RandomAcornSpot()));
+        ActivateAcorn(RandomAcornSpot());
     }
 
     /// <summary>Somewhere open anywhere on the map, outside every Village Heart's Territory Ring — see <see cref="RandomWildernessSpot"/>.</summary>
@@ -3341,10 +4037,12 @@ public sealed class World
             return;
         _amberSpawnTimer = AmberSpawnInterval;
 
-        if (AmberNodes.Count >= MaxAmberOnMap)
+        // Object Pooling: AmberNodes.Count is now the fixed pool size, not
+        // the live count — MaxAmberOnMap caps how many are actually active.
+        if (AmberNodes.Count(a => a.IsActive) >= MaxAmberOnMap)
             return;
 
-        AmberNodes.Add(new AmberNode(RandomWildernessSpot(AmberNode.Radius + 0.5f, edgeMargin: 1.5f)));
+        ActivateAmberNode(RandomWildernessSpot(AmberNode.Radius + 0.5f, edgeMargin: 1.5f));
     }
 }
 
@@ -3391,8 +4089,21 @@ public sealed class VillageHeart
 
     public const int MaxHealth = 200;
 
-    /// <summary>Radius (m) of the faint territory ring drawn on the ground around this Village Heart.</summary>
-    public const float TerritoryRadius = 15f;
+    /// <summary>
+    /// Cultural Borders: radius (m) of this Village Heart's territory ring
+    /// — no longer a static 20m for every tribe alike, but scaled by this
+    /// specific tribe's own banked wealth: a base <see cref="World.BaseTerritoryRadius"/>
+    /// plus <see cref="World.TerritoryRadiusPerAmber"/> per <see cref="AmberStored"/>
+    /// and <see cref="World.TerritoryRadiusPerNectar"/> per <see cref="NectarStored"/>.
+    /// As a wealthy tribe's ring grows it can physically overlap into a
+    /// poorer neighbour's, letting it claim resources closer to that rival's
+    /// own base without ever counting as foreign territory (see
+    /// <see cref="World.ForeignTerritoryContaining"/>) — Strict Border
+    /// Control only ever excludes what falls inside the OTHER faction's own
+    /// ring, so a bigger ring simply reaches further.
+    /// </summary>
+    public float TerritoryRadius =>
+        World.BaseTerritoryRadius + AmberStored * World.TerritoryRadiusPerAmber + NectarStored * World.TerritoryRadiusPerNectar;
 
     /// <summary>Which tribe this Village Heart belongs to. The original heart is Faction 0.</summary>
     public int FactionID { get; }
@@ -3429,6 +4140,16 @@ public sealed class VillageHeart
     /// player spends directly.
     /// </summary>
     public int AmberStored { get; set; } = 0;
+
+    /// <summary>
+    /// The Nectar Brewery: this faction's permanent civilization buff
+    /// currency, brewed from Food and Amber (see <see cref="World.UpdateNectarBrewery"/>).
+    /// Never spent — every point banked here permanently raises every one
+    /// of this faction's Gatherers' walk speed (see <see cref="Bramblekin.EffectiveWalkSpeed"/>)
+    /// and, alongside <see cref="AmberStored"/>, this tribe's own Cultural
+    /// Borders (see <see cref="TerritoryRadius"/>).
+    /// </summary>
+    public int NectarStored { get; set; } = 0;
 
     /// <summary>
     /// This faction's food storage cap. Starts at <see cref="World.BaseMaxFoodCapacity"/>
@@ -3636,14 +4357,40 @@ public sealed class Acorn
     /// <summary>CrackProgress needed to shatter this Acorn — see <see cref="CrackProgress"/>.</summary>
     public float CrackThreshold { get; } = 100f;
 
-    public Vector3 Position { get; }
+    public Vector3 Position { get; private set; }
+
+    /// <summary>
+    /// Object Pooling: false for a pool slot that isn't currently a real
+    /// Acorn on the map — see <see cref="World.Acorns"/>. Every rendering
+    /// and targeting loop over the pool must skip anything with this false.
+    /// </summary>
+    public bool IsActive { get; private set; }
 
     private readonly List<Bramblekin> _claimants = new();
 
     /// <summary>The Chitin-Mallet Gatherers currently claiming this Acorn.</summary>
     public IReadOnlyList<Bramblekin> Claimants => _claimants;
 
-    public Acorn(Vector3 groundPoint) => Position = groundPoint;
+    /// <summary>Constructs an inactive pool slot — see <see cref="World.Acorns"/>. Call <see cref="Activate"/> to actually spawn one.</summary>
+    public Acorn()
+    {
+    }
+
+    /// <summary>Object Pooling: reuses this pool slot as a freshly spawned Acorn at <paramref name="groundPoint"/>, resetting every bit of its previous state.</summary>
+    public void Activate(Vector3 groundPoint)
+    {
+        Position = groundPoint;
+        CrackProgress = 0f;
+        _claimants.Clear();
+        IsActive = true;
+    }
+
+    /// <summary>Object Pooling: returns this slot to the pool — shattered by Cooperative Acorn Cracking. See <see cref="World.Acorns"/>.</summary>
+    public void Deactivate()
+    {
+        IsActive = false;
+        _claimants.Clear();
+    }
 
     public bool IsClaimedBy(Bramblekin gatherer) => _claimants.Contains(gatherer);
 
@@ -3716,7 +4463,37 @@ public sealed class AmberNode
     /// </summary>
     public float DespawnTimer { get; set; } = DespawnLifespan;
 
-    public AmberNode(Vector3 groundPoint) => Position = groundPoint;
+    /// <summary>
+    /// Object Pooling: false for a pool slot that isn't currently a real
+    /// Amber node on the map — see <see cref="World.AmberNodes"/>. Every
+    /// rendering and targeting loop over the pool must skip anything with
+    /// this false.
+    /// </summary>
+    public bool IsActive { get; private set; }
+
+    /// <summary>Constructs an inactive pool slot — see <see cref="World.AmberNodes"/>. Call <see cref="Activate"/> to actually spawn one.</summary>
+    public AmberNode()
+    {
+    }
+
+    /// <summary>Object Pooling: reuses this pool slot as a freshly spawned Amber node at <paramref name="groundPoint"/>, resetting every bit of its previous state.</summary>
+    public void Activate(Vector3 groundPoint)
+    {
+        Position = groundPoint;
+        IsCarried = false;
+        ClaimedBy = null;
+        ClaimTimer = 0f;
+        DespawnTimer = DespawnLifespan;
+        IsActive = true;
+    }
+
+    /// <summary>Object Pooling: returns this slot to the pool — delivered or despawned. See <see cref="World.AmberNodes"/>.</summary>
+    public void Deactivate()
+    {
+        IsActive = false;
+        IsCarried = false;
+        ClaimedBy = null;
+    }
 
     /// <summary>Draws the gem resting on the ground at (or carried above) <paramref name="groundPoint"/>.</summary>
     public void Draw(Vector3 groundPoint)
@@ -3753,7 +4530,16 @@ public sealed class FoodShard
     public bool IsCarried { get; set; }
 
     /// <summary>Where it came from. Only affects colour; it's worth the same 1 food regardless.</summary>
-    public FoodShardKind Kind { get; }
+    public FoodShardKind Kind { get; private set; }
+
+    /// <summary>
+    /// Object Pooling: false for a pool slot that isn't currently a real
+    /// Food Shard on the map. World pre-allocates a fixed pool of these at
+    /// startup (see <see cref="World.FoodShards"/>) instead of constructing
+    /// and destroying one per spawn/pickup/despawn; every rendering and
+    /// targeting loop over the pool must skip anything with this false.
+    /// </summary>
+    public bool IsActive { get; private set; }
 
     /// <summary>
     /// Dibs: the one Bramblekin currently pursuing this shard, if any — see
@@ -3784,10 +4570,29 @@ public sealed class FoodShard
     /// </summary>
     public float DespawnTimer { get; set; } = DespawnLifespan;
 
-    public FoodShard(Vector3 groundPoint, FoodShardKind kind = FoodShardKind.Cracked)
+    /// <summary>Constructs an inactive pool slot — see <see cref="World.FoodShards"/>. Call <see cref="Activate"/> to actually spawn one.</summary>
+    public FoodShard()
+    {
+    }
+
+    /// <summary>Object Pooling: reuses this pool slot as a freshly spawned Food Shard at <paramref name="groundPoint"/>, resetting every bit of its previous state.</summary>
+    public void Activate(Vector3 groundPoint, FoodShardKind kind = FoodShardKind.Cracked)
     {
         Position = groundPoint;
         Kind = kind;
+        IsCarried = false;
+        ClaimedBy = null;
+        ClaimTimer = 0f;
+        DespawnTimer = DespawnLifespan;
+        IsActive = true;
+    }
+
+    /// <summary>Object Pooling: returns this slot to the pool — picked up (delivered/consumed) or despawned. See <see cref="World.FoodShards"/>.</summary>
+    public void Deactivate()
+    {
+        IsActive = false;
+        IsCarried = false;
+        ClaimedBy = null;
     }
 
     /// <summary>Draws the shard resting on the ground at (or carried above) <paramref name="groundPoint"/>.</summary>
@@ -3874,6 +4679,12 @@ public enum BuildingKind
 
     /// <summary>The Housing System: permanently raises <see cref="VillageHeart.MaxPopulation"/> by <see cref="World.TentPopulationBonus"/>, hard-capped at <see cref="World.MaxPopulationCap"/>.</summary>
     Tent,
+
+    /// <summary>The Nectar Brewery: once built, consumes Food and Amber on a timer to brew Nectar — a permanent civilization buff (see <see cref="World.UpdateNectarBrewery"/>).</summary>
+    Brewery,
+
+    /// <summary>The Great Monument: a tribe's endgame civilization goal — a massive, multi-stage structure that takes the whole tribe's coordinated effort (200 Construction Progress) and, once finished, marks that faction's transition into an advanced civilization with a permanent screen-wide alert (see <see cref="World.CompleteBlueprint"/>).</summary>
+    Monument,
 }
 
 /// <summary>
@@ -3901,6 +4712,17 @@ public sealed class Building
     public const float TentRadius = 0.5f;
     public const float TentHeight = 0.55f;
 
+    /// <summary>The Nectar Brewery's footprint — a round structure, slightly larger than a Granary since it houses a whole secondary economy.</summary>
+    public const float BreweryRadius = 0.8f;
+    private const float BreweryHeight = 1.4f;
+
+    /// <summary>
+    /// The Great Monument's footprint — by far the largest structure on the
+    /// map, befitting the whole tribe's coordinated, endgame effort.
+    /// </summary>
+    public const float MonumentRadius = 2.2f;
+    private const float MonumentHeight = 3.2f;
+
     public BuildingKind Kind { get; }
     public Vector3 Position { get; }
 
@@ -3912,6 +4734,9 @@ public sealed class Building
 
     /// <summary>Counts down to the next Berry. Only meaningful for a Spore Farm.</summary>
     private float _sporeTimer = SporeFarmInterval;
+
+    /// <summary>The Nectar Brewery's brewing clock: counts down to the next brew attempt. Only meaningful for a Brewery.</summary>
+    private float _breweryTimer = World.BreweryInterval;
 
     public Building(Vector3 position, BuildingKind kind, int factionId, Color factionColor)
     {
@@ -3927,6 +4752,8 @@ public sealed class Building
         BuildingKind.Granary => GranaryRadius,
         BuildingKind.TradingPost => TradingPostRadius,
         BuildingKind.Tent => TentRadius,
+        BuildingKind.Brewery => BreweryRadius,
+        BuildingKind.Monument => MonumentRadius,
         _ => SporeFarmRadius,
     };
 
@@ -3946,6 +4773,26 @@ public sealed class Building
             return false;
 
         _sporeTimer += SporeFarmInterval;
+        return true;
+    }
+
+    /// <summary>
+    /// The Nectar Brewery's brewing clock: counts down by
+    /// <paramref name="deltaTime"/> and, once it reaches zero, resets and
+    /// returns true so <see cref="World.UpdateNectarBrewery"/> can attempt
+    /// the actual Food/Amber-for-Nectar brew. Always false for anything
+    /// else.
+    /// </summary>
+    public bool TickBreweryTimer(float deltaTime)
+    {
+        if (Kind != BuildingKind.Brewery)
+            return false;
+
+        _breweryTimer -= deltaTime;
+        if (_breweryTimer > 0f)
+            return false;
+
+        _breweryTimer += World.BreweryInterval;
         return true;
     }
 
@@ -3985,6 +4832,48 @@ public sealed class Building
             return;
         }
 
+        if (Kind == BuildingKind.Brewery)
+        {
+            // A rounded purple/pink vat — Nectar's own colour on the
+            // Faction Ledger — with a golden spout on top so it reads as a
+            // still/brewery rather than another plain Granary silo.
+            var vat = new Color(150, 60, 150, 255);
+            var vatEdge = new Color(80, 25, 85, 255);
+            var vatCenter = Position + new Vector3(0, BreweryHeight / 2f, 0);
+            Raylib.DrawCylinder(vatCenter, BreweryRadius, BreweryRadius * 0.8f, BreweryHeight, 16, vat);
+            Raylib.DrawCylinderWires(vatCenter, BreweryRadius, BreweryRadius * 0.8f, BreweryHeight, 16, vatEdge);
+            var spout = Position + new Vector3(0, BreweryHeight + 0.08f, 0);
+            Raylib.DrawCylinder(spout, BreweryRadius * 0.35f, BreweryRadius * 0.2f, 0.18f, 10, new Color(255, 203, 0, 255));
+            return;
+        }
+
+        if (Kind == BuildingKind.Monument)
+        {
+            // The Great Monument: a stepped pyramid — three stacked, shrinking
+            // tiers topped with a golden capstone — massive enough (by far
+            // the tallest/widest structure on the map) to read as the
+            // tribe's endgame civilization goal at a glance.
+            var stone = new Color(190, 180, 165, 255);
+            var stoneEdge = new Color(95, 88, 78, 255);
+            const int tiers = 3;
+            float tierHeight = MonumentHeight / tiers;
+            for (int tier = 0; tier < tiers; tier++)
+            {
+                // Each tier's own base picks up exactly where the one below
+                // it tapered to, so the whole stack reads as one continuous
+                // stepped pyramid rather than three disconnected cylinders.
+                float baseRadius = MonumentRadius * (1f - tier * 0.3f);
+                float topRadius = MonumentRadius * (1f - (tier + 1) * 0.3f);
+                var tierCenter = Position + new Vector3(0, tierHeight * tier + tierHeight / 2f, 0);
+                Raylib.DrawCylinder(tierCenter, baseRadius, topRadius, tierHeight, 4, stone);
+                Raylib.DrawCylinderWires(tierCenter, baseRadius, topRadius, tierHeight, 4, stoneEdge);
+            }
+
+            var capstone = Position + new Vector3(0, MonumentHeight + 0.3f, 0);
+            Raylib.DrawCylinder(capstone, MonumentRadius * 0.15f, 0f, 0.6f, 4, new Color(255, 203, 0, 255));
+            return;
+        }
+
         // Spore Farm: a large, saturated Dark Green disc, deliberately far
         // enough from the grass-green ground plane's own hue (86, 150, 60)
         // that it reads as an obvious landmark at a glance rather than
@@ -4008,12 +4897,14 @@ public sealed class Blueprint
 {
     public BuildingKind Kind { get; }
 
-    /// <summary>Construction Progress needed to finish — 10 for a Granary, 15 for a Spore Farm, 20 for a Trading Post, 8 for a Tent (cheap and fast — Housing needs to keep pace with a growing tribe).</summary>
+    /// <summary>Construction Progress needed to finish — 10 for a Granary, 15 for a Spore Farm, 20 for a Trading Post, 8 for a Tent (cheap and fast — Housing needs to keep pace with a growing tribe), 25 for a Brewery, and a massive 200 for the Great Monument — a whole tribe's coordinated effort.</summary>
     public float ProgressRequired => Kind switch
     {
         BuildingKind.Granary => 10f,
         BuildingKind.TradingPost => 20f,
         BuildingKind.Tent => 8f,
+        BuildingKind.Brewery => 25f,
+        BuildingKind.Monument => 200f,
         _ => 15f,
     };
 
@@ -4322,6 +5213,14 @@ public sealed class GroundMover
         float dz = a.Z - b.Z;
         return MathF.Sqrt(dx * dx + dz * dz);
     }
+
+    /// <summary>Squared horizontal distance — avoids the <see cref="MathF.Sqrt"/> in <see cref="HorizontalDistance"/> for threshold comparisons (compare against a squared threshold instead).</summary>
+    public static float HorizontalDistanceSquared(Vector3 a, Vector3 b)
+    {
+        float dx = a.X - b.X;
+        float dz = a.Z - b.Z;
+        return dx * dx + dz * dz;
+    }
 }
 
 // =============================================================================
@@ -4421,10 +5320,10 @@ public enum BramblekinRole
 /// them directly; each runs a small state machine, checked in priority order
 /// every frame:
 ///
-///   1. The 20-Meter Territory Rule: a Militia unit only Defends against the
-///      Wolf Spider, or Hunts an Aphid, while that hostile is within
-///      <see cref="World.TerritoryTargetingRadius"/> of its own Village
-///      Heart — see <see cref="World.SpawnSpiderNearVillage"/>'s organic
+///   1. Cultural Borders: a Militia unit only Defends against the
+///      Wolf Spider, or Hunts an Aphid, while that hostile is within its
+///      own Village Heart's dynamic, wealth-scaled <see cref="VillageHeart.TerritoryRadius"/>
+///      — see <see cref="World.SpawnSpiderNearVillage"/>'s organic
 ///      roaming. A Gatherer's own Fear Aura response is unaffected by
 ///      territory: it flees the spider on sight within <see cref="FearRadius"/>
 ///      regardless of where either of them is standing. Default Peace &amp;
@@ -4458,6 +5357,11 @@ public enum BramblekinRole
 /// </summary>
 public sealed class Bramblekin
 {
+    private static int _nextId = 0;
+
+    /// <summary>AI Time-Slicing: a stable, evenly-distributed per-unit index used to stagger which frame each Bramblekin runs its expensive Brain (target-scanning) logic on — see <see cref="World.FrameCounter"/>.</summary>
+    public int ID { get; } = _nextId++;
+
     /// <summary>Normal walking speed in m/s. Buffed 50% over the original slow amble so Bramblekin can cross the larger 100x100 m map before Upkeep starves them.</summary>
     public const float WalkSpeed = 1.5f;
 
@@ -4550,11 +5454,13 @@ public sealed class Bramblekin
     /// The Militia Leash: how far (m) a Militia unit may stray from its own
     /// Village Heart while Chasing (Defending) or Attacking (Raiding)
     /// before it breaks off entirely and heads straight home instead,
-    /// letting the target escape. Deliberately a hair past
-    /// <see cref="World.TerritoryTargetingRadius"/> (20m) — a moving
-    /// target right at that boundary, or an obstacle detour, can easily
-    /// drag a chasing unit slightly past it without this being a runaway
-    /// pursuit — while still keeping Militia from ever wandering off to
+    /// letting the target escape. Deliberately a hair past the old fixed
+    /// 20m territory rule — a moving target right at that boundary, or an
+    /// obstacle detour, can easily drag a chasing unit slightly past it
+    /// without this being a runaway pursuit. Cultural Borders: a very
+    /// wealthy Village Heart's own dynamic <see cref="VillageHeart.TerritoryRadius"/>
+    /// can now grow past this fixed leash — its Militia still won't chase
+    /// any further than this, full stop, while still keeping Militia from ever wandering off to
     /// fight across the whole map.
     /// </summary>
     private const float MilitiaLeashDistance = 22f;
@@ -4901,9 +5807,9 @@ public sealed class Bramblekin
 
         VillageHeart? home = world.VillageFor(FactionID);
 
-        // --- 2. The 20-Meter Territory Rule: Militia only engage the Wolf
-        // Spider while it's within TerritoryTargetingRadius of their own
-        // Village Heart — organic roaming means it spends most of its time
+        // --- 2. Cultural Borders: Militia only engage the Wolf Spider
+        // while it's within their own Village Heart's (wealth-scaled) own
+        // territory ring — organic roaming means it spends most of its time
         // out of territory, ignored. Re-aimed every frame, so a defending
         // Militia keeps adjusting where it's standing as the spider moves.
         // A Gatherer's Fear Aura is unaffected by territory: it flees on
@@ -4915,7 +5821,7 @@ public sealed class Bramblekin
         // chain — it already completely overrides any rival-faction target
         // the instant it's true, full stop.
         if (Role == BramblekinRole.Militia && world.Spider is { } spider && home is not null &&
-                 GroundMover.HorizontalDistance(spider.Position, home.Center) <= World.TerritoryTargetingRadius)
+                 GroundMover.HorizontalDistanceSquared(spider.Position, home.Center) <= home.TerritoryRadius * home.TerritoryRadius)
         {
             _combatTarget = null;
             _target = ComputeInterceptPoint(spider, home);
@@ -4925,101 +5831,23 @@ public sealed class Bramblekin
                 SetState(BramblekinState.Defending);
             }
         }
-        // --- 2a. Base Defense Aggro: a foreign Bramblekin caught within
-        // World.BaseDefenseAggroRadius of our own Village Heart — right up
-        // against the doorstep, not just somewhere in the wider 20m ring —
-        // is treated as an active attack in progress no matter what peace
-        // or Truce currently holds. Instantly declares a Blood Feud on its
-        // whole faction (World.DeclareBloodFeud) and engages it directly,
-        // rather than waiting for Border Wars/Thievery to notice next
-        // frame — this is what used to leave Base Razing raiders crowding
-        // around a Heart while the defenders looked right through them.
-        else if (Role == BramblekinRole.Militia && home is not null &&
-                 world.NearestForeignBramblekinNearHeart(home) is { } intruder)
+        // AI Time-Slicing (the "Brain"): 2a-2d below each scan the full
+        // Colony (and, for 2d, Villages) arrays looking for a threat --
+        // expensive with a large map/colony. Only staggered onto this
+        // unit's own frame (World.FrameCounter % 15 == ID % 15); whatever
+        // _combatTarget/_raidTarget/State it last settled on stays exactly
+        // as-is on the other 14 frames out of 15, and UpdateDefending/
+        // UpdateRaiding (pure Legs — chase, poke, leash checks) keep
+        // running every frame regardless, off the cached target.
+        else if (Role == BramblekinRole.Militia && world.FrameCounter % 15 == ID % 15 &&
+                 TryUpdateMilitiaThreatPriority(world, home))
         {
-            world.DeclareBloodFeud(FactionID, intruder.FactionID);
-            _combatTarget = intruder;
-            _target = intruder.Position;
-            if (State != BramblekinState.Defending)
-            {
-                DropCarried();
-                SetState(BramblekinState.Defending);
-            }
-        }
-        // --- 2b. Blood Feud Border Wars: with no Wolf Spider to answer, a
-        // faction's Militia still has to answer a Bramblekin (Gatherer or
-        // Militia) of a faction it's actually at declared war with (see
-        // VillageHeart.HostileFactions) trespassing within their own
-        // Village Heart's territory ring. Default Peace: any other
-        // faction's Bramblekin is completely ignored here, full stop — see
-        // World.NearestHostileBramblekinInTerritory. Same absolute priority
-        // tier and the same Defending state as the spider fight above — see
-        // UpdateDefending for the actual chase/poke. The 'Enemy of My
-        // Enemy' Protocol — Temporary Truce: guarded against a spider
-        // that's actively Hunting/Pouncing nearby (see
-        // IsSpiderActivelyThreateningTerritory) on top of Apex Priority
-        // above, so a common-enemy emergency always wins even in the
-        // narrower window that check alone wouldn't have caught.
-        else if (Role == BramblekinRole.Militia && home is not null &&
-                 !world.IsSpiderActivelyThreateningTerritory(home) &&
-                 world.NearestHostileBramblekinInTerritory(home) is { } enemy)
-        {
-            _combatTarget = enemy;
-            _target = enemy.Position;
-            if (State != BramblekinState.Defending)
-            {
-                DropCarried();
-                SetState(BramblekinState.Defending);
-            }
-        }
-        // --- 2c. Thievery Response: Default Peace still allows for a
-        // surgical, single-target response — a foreign Gatherer caught
-        // physically picking up food inside our own territory (see
-        // Bramblekin.TrespassingAgainst / World.NearestTrespasserInTerritory)
-        // gets singled out and confronted, without declaring war on its
-        // whole faction. UpdateDefending resolves it as a non-lethal
-        // Warning Shove unless the confrontation itself escalates into a
-        // Blood Feud (an armed trespasser, or one that lands a hit back).
-        // Checked after Blood Feud Border Wars: an already-hostile
-        // faction's trespassing Gatherer is just an enemy in our territory
-        // by then, not merely a thief to warn off.
-        else if (Role == BramblekinRole.Militia && home is not null &&
-                 !world.IsSpiderActivelyThreateningTerritory(home) &&
-                 world.NearestTrespasserInTerritory(home) is { } trespasser)
-        {
-            _combatTarget = trespasser;
-            _target = trespasser.Position;
-            if (State != BramblekinState.Defending)
-            {
-                DropCarried();
-                SetState(BramblekinState.Defending);
-            }
-        }
-        // --- 2d. Blood Feud Base Razing: opportunistic offense rather than
-        // home defense -- a Militia unit that's simply wandered within its
-        // own 20m aggro radius of a Village Heart it's actually at declared
-        // war with, with no living hostile Bramblekin also in that radius
-        // (a live threat always comes first — see 2b above, which already
-        // claims this frame if one's in range), paths in and Pokes it down
-        // instead. Default Peace: any faction with no declared Blood Feud
-        // is never a valid Raiding target. Temporary Truce applies here
-        // too: a spider actively threatening home calls off Base Razing
-        // just like Border Wars.
-        else if (Role == BramblekinRole.Militia &&
-                 !world.IsSpiderActivelyThreateningTerritory(home) &&
-                 world.NearestHostileVillageHeartInRange(Position, FactionID, World.TerritoryTargetingRadius) is { } enemyHeart &&
-                 !world.HasLivingHostileBramblekinNear(Position, FactionID, World.TerritoryTargetingRadius))
-        {
-            _raidTarget = enemyHeart;
-            _target = enemyHeart.Center;
-            if (State != BramblekinState.Raiding)
-            {
-                DropCarried();
-                SetState(BramblekinState.Raiding);
-            }
+            // Handled inside TryUpdateMilitiaThreatPriority, which already
+            // set _combatTarget/_raidTarget/_target/State for whichever of
+            // 2a-2d matched.
         }
         else if (Role != BramblekinRole.Militia && world.Spider is { } nearSpider &&
-                 GroundMover.HorizontalDistance(Position, nearSpider.Position) < FearRadius)
+                 GroundMover.HorizontalDistanceSquared(Position, nearSpider.Position) < FearRadius * FearRadius)
         {
             DropCarried();
             _target = FindPointAwayFrom(nearSpider.Position, world);
@@ -5114,17 +5942,149 @@ public sealed class Bramblekin
     }
 
     /// <summary>
+    /// The Brain half of the Militia threat-priority chain (2a-2d, split
+    /// out of <see cref="Update"/> so the whole thing can be gated behind
+    /// the AI Time-Slice check there): Base Defense Aggro, Blood Feud
+    /// Border Wars, Thievery Response, then Blood Feud Base Razing, in that
+    /// priority order. Sets <see cref="_combatTarget"/>/<see cref="_raidTarget"/>/
+    /// <see cref="_target"/>/<see cref="State"/> and returns true the
+    /// instant any one of them matches; returns false (touching nothing)
+    /// if none do, leaving whatever this unit was already doing in place.
+    /// </summary>
+    private bool TryUpdateMilitiaThreatPriority(World world, VillageHeart? home)
+    {
+        // --- 2a. Base Defense Aggro: a foreign Bramblekin caught within
+        // World.BaseDefenseAggroRadius of our own Village Heart — right up
+        // against the doorstep, not just somewhere in the wider 20m ring —
+        // is treated as an active attack in progress no matter what peace
+        // or Truce currently holds. Instantly declares a Blood Feud on its
+        // whole faction (World.DeclareBloodFeud) and engages it directly,
+        // rather than waiting for Border Wars/Thievery to notice next
+        // frame — this is what used to leave Base Razing raiders crowding
+        // around a Heart while the defenders looked right through them.
+        if (home is not null && world.NearestForeignBramblekinNearHeart(home) is { } intruder)
+        {
+            world.DeclareBloodFeud(FactionID, intruder.FactionID);
+            _combatTarget = intruder;
+            _target = intruder.Position;
+            if (State != BramblekinState.Defending)
+            {
+                DropCarried();
+                SetState(BramblekinState.Defending);
+            }
+            return true;
+        }
+        // --- 2b. Blood Feud Border Wars: with no Wolf Spider to answer, a
+        // faction's Militia still has to answer a Bramblekin (Gatherer or
+        // Militia) of a faction it's actually at declared war with (see
+        // VillageHeart.HostileFactions) trespassing within their own
+        // Village Heart's territory ring. Default Peace: any other
+        // faction's Bramblekin is completely ignored here, full stop — see
+        // World.NearestHostileBramblekinInTerritory. Same absolute priority
+        // tier and the same Defending state as the spider fight above — see
+        // UpdateDefending for the actual chase/poke. The 'Enemy of My
+        // Enemy' Protocol — Temporary Truce: guarded against a spider
+        // that's actively Hunting/Pouncing nearby (see
+        // IsSpiderActivelyThreateningTerritory) on top of Apex Priority
+        // above, so a common-enemy emergency always wins even in the
+        // narrower window that check alone wouldn't have caught.
+        if (home is not null &&
+            !world.IsSpiderActivelyThreateningTerritory(home) &&
+            world.NearestHostileBramblekinInTerritory(home) is { } enemy)
+        {
+            _combatTarget = enemy;
+            _target = enemy.Position;
+            if (State != BramblekinState.Defending)
+            {
+                DropCarried();
+                SetState(BramblekinState.Defending);
+            }
+            return true;
+        }
+        // --- 2c. Thievery Response: Default Peace still allows for a
+        // surgical, single-target response — a foreign Gatherer caught
+        // physically picking up food inside our own territory (see
+        // Bramblekin.TrespassingAgainst / World.NearestTrespasserInTerritory)
+        // gets singled out and confronted, without declaring war on its
+        // whole faction. UpdateDefending resolves it as a non-lethal
+        // Warning Shove unless the confrontation itself escalates into a
+        // Blood Feud (an armed trespasser, or one that lands a hit back).
+        // Checked after Blood Feud Border Wars: an already-hostile
+        // faction's trespassing Gatherer is just an enemy in our territory
+        // by then, not merely a thief to warn off.
+        if (home is not null &&
+            !world.IsSpiderActivelyThreateningTerritory(home) &&
+            world.NearestTrespasserInTerritory(home) is { } trespasser)
+        {
+            _combatTarget = trespasser;
+            _target = trespasser.Position;
+            if (State != BramblekinState.Defending)
+            {
+                DropCarried();
+                SetState(BramblekinState.Defending);
+            }
+            return true;
+        }
+        // --- 2d. Blood Feud Base Razing: opportunistic offense rather than
+        // home defense -- a Militia unit that's simply wandered within its
+        // own (Cultural Borders — wealth-scaled) aggro radius of a Village
+        // Heart it's actually at declared war with, with no living hostile
+        // Bramblekin also in that radius
+        // (a live threat always comes first — see 2b above, which already
+        // claims this frame if one's in range), paths in and Pokes it down
+        // instead. Default Peace: any faction with no declared Blood Feud
+        // is never a valid Raiding target. Temporary Truce applies here
+        // too: a spider actively threatening home calls off Base Razing
+        // just like Border Wars.
+        float ownTerritoryRadius = home?.TerritoryRadius ?? World.BaseTerritoryRadius;
+        if (!world.IsSpiderActivelyThreateningTerritory(home) &&
+            world.NearestHostileVillageHeartInRange(Position, FactionID, ownTerritoryRadius) is { } enemyHeart &&
+            !world.HasLivingHostileBramblekinNear(Position, FactionID, ownTerritoryRadius))
+        {
+            _raidTarget = enemyHeart;
+            _target = enemyHeart.Center;
+            if (State != BramblekinState.Raiding)
+            {
+                DropCarried();
+                SetState(BramblekinState.Raiding);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
     /// War Weariness: below <see cref="World.WearyMoraleThreshold"/> Morale, a
     /// Gatherer or Builder is Weary and walks at <see cref="World.WearySpeedMultiplier"/>
     /// speed. Militia are unaffected — soldiers, not workers — and a full
     /// panicked Flee (see <see cref="BramblekinState.Fleeing"/>) always runs
     /// at full speed regardless: fatigue doesn't slow down running for your
-    /// life.
+    /// life. The Nectar Brewery: stacked on top for a Gatherer specifically
+    /// — see <see cref="NectarSpeedMultiplier"/>.
     /// </summary>
-    private float EffectiveWalkSpeed(World world) =>
-        Role != BramblekinRole.Militia && (world.VillageFor(FactionID)?.GatherersAreWeary ?? false)
+    private float EffectiveWalkSpeed(World world)
+    {
+        VillageHeart? home = world.VillageFor(FactionID);
+        float speed = Role != BramblekinRole.Militia && (home?.GatherersAreWeary ?? false)
             ? WalkSpeed * World.WearySpeedMultiplier
             : WalkSpeed;
+
+        if (Role == BramblekinRole.Gatherer && home is not null)
+            speed *= NectarSpeedMultiplier(home);
+
+        return speed;
+    }
+
+    /// <summary>
+    /// The Nectar Brewery: a permanent civilization buff — every point of
+    /// <see cref="VillageHeart.NectarStored"/> this Gatherer's own faction
+    /// has brewed (see <see cref="World.UpdateNectarBrewery"/>) permanently
+    /// moves it <see cref="World.NectarSpeedBonusPerPoint"/> faster, capped
+    /// at <see cref="World.MaxNectarSpeedBonus"/> (+50%) so a sufficiently
+    /// ancient civilization can't eventually move arbitrarily fast.
+    /// </summary>
+    private static float NectarSpeedMultiplier(VillageHeart home) =>
+        1f + Math.Min(home.NectarStored * World.NectarSpeedBonusPerPoint, World.MaxNectarSpeedBonus);
 
     /// <summary>
     /// Individual Equipment: a Militia unit's pike renders bright
@@ -5282,114 +6242,154 @@ public sealed class Bramblekin
 
     private void UpdateGathering(float deltaTime, World world, VillageHeart? home)
     {
-        // Continuous Cracking: only a Chitin-Mallet Gatherer ever targets a
-        // whole Acorn, and only while it can still claim one of its
-        // MaxClaimants slots. Claiming one hands off to the Cracking state
-        // entirely — see UpdateCracking for the walk-there/add-progress
-        // loop and World.UpdateAcornCracking for the actual shatter.
-        //
-        // Efficiency Check: an upgraded Gatherer doesn't blindly beeline for
-        // every claimable Acorn in reach — it only commits when the Acorn
-        // is genuinely the smarter catch, i.e. no loose Food Shard sitting
-        // closer that it would otherwise walk straight past. A shard tied
-        // (or a wash) with the Acorn still favors cracking, since a group
-        // Acorn generally out-yields a single shard once a few Gatherers
-        // pile on.
-        if (HasChitinMallet && world.NearestClaimableAcorn(Position, this) is { } acorn)
+        // AI Time-Slicing (the "Brain"): the target searches below scan the
+        // full FoodShards/AmberNodes/Acorns arrays, which gets expensive
+        // with a large map and colony. Only one in every 15 Bramblekin runs
+        // this scan on any given frame (staggered by ID), so the aggregate
+        // cost stays flat regardless of colony size. Whatever was claimed
+        // last scan (_claimedAmber/_claimedShard) is cached and kept below,
+        // so on off-frames this unit still walks to, and picks up, its
+        // existing target every frame — only the re-scan itself is gated.
+        if (world.FrameCounter % 15 == ID % 15)
         {
-            FoodShard? nearestShard = world.NearestAvailableShard(Position, this, home);
-            bool acornIsSmarterChoice = nearestShard is null ||
-                GroundMover.HorizontalDistance(Position, acorn.Position) <= GroundMover.HorizontalDistance(Position, nearestShard.Position);
-
-            if (acornIsSmarterChoice && acorn.TryClaim(this))
+            // Continuous Cracking: only a Chitin-Mallet Gatherer ever targets a
+            // whole Acorn, and only while it can still claim one of its
+            // MaxClaimants slots. Claiming one hands off to the Cracking state
+            // entirely — see UpdateCracking for the walk-there/add-progress
+            // loop and World.UpdateAcornCracking for the actual shatter.
+            //
+            // Efficiency Check: an upgraded Gatherer doesn't blindly beeline for
+            // every claimable Acorn in reach — it only commits when the Acorn
+            // is genuinely the smarter catch, i.e. no loose Food Shard sitting
+            // closer that it would otherwise walk straight past. A shard tied
+            // (or a wash) with the Acorn still favors cracking, since a group
+            // Acorn generally out-yields a single shard once a few Gatherers
+            // pile on.
+            if (HasChitinMallet && world.NearestClaimableAcorn(Position, this) is { } acorn)
             {
-                ReleaseFoodClaim(); // Switching to the Acorn this frame — don't leave a stale claim on whatever shard we were chasing.
-                _claimedAcorn = acorn;
-                SetState(BramblekinState.Cracking);
-                return;
+                FoodShard? nearestShard = world.NearestAvailableShard(Position, this, home);
+                bool acornIsSmarterChoice = nearestShard is null ||
+                    GroundMover.HorizontalDistanceSquared(Position, acorn.Position) <= GroundMover.HorizontalDistanceSquared(Position, nearestShard.Position);
+
+                if (acornIsSmarterChoice && acorn.TryClaim(this))
+                {
+                    ReleaseFoodClaim(); // Switching to the Acorn this frame — don't leave a stale claim on whatever shard we were chasing.
+                    _claimedAcorn = acorn;
+                    SetState(BramblekinState.Cracking);
+                    return;
+                }
+            }
+
+            // Tycoon Economy — Maslow's Hierarchy: a well-fed village's
+            // Gatherers chase Amber (wealth) ahead of wild food; a hungry one
+            // ignores Amber completely and falls straight through to the Food
+            // Shard logic below. Same Safe Gathering (Danger Penalty) and
+            // Maximum Search Radius rules as any other target — see
+            // World.NearestAvailableAmber.
+            bool wellFed = home is not null && home.FoodStored >= home.MaxFoodCapacity / 2;
+            AmberNode? amber = wellFed ? world.NearestAvailableAmber(Position, this) : null;
+            if (amber is not null)
+            {
+                if (amber != _claimedAmber)
+                {
+                    ReleaseAmberClaim();
+                    _claimedAmber = amber;
+                    amber.ClaimedBy = this;
+                    amber.ClaimTimer = 0f;
+                }
+            }
+            else
+            {
+                ReleaseAmberClaim(); // Not well-fed, or nothing to chase — don't leave a stale claim behind.
+            }
+
+            if (_claimedAmber is null)
+            {
+                FoodShard? shard = world.NearestAvailableShard(Position, this, home);
+                if (shard != _claimedShard)
+                {
+                    ReleaseFoodClaim();
+                    _claimedShard = shard;
+                    if (shard is not null)
+                    {
+                        shard.ClaimedBy = this;
+                        shard.ClaimTimer = 0f;
+                    }
+                }
+
+                if (shard is null)
+                {
+                    // Maximum Search Radius: nothing to gather within reach at all
+                    // (as opposed to StartWandering's ordinary map-wide roam) --
+                    // wait close to home instead of hiking toward whatever's
+                    // technically nearest across the whole map; the local Spore
+                    // Farm's next Berry is the actual fix, not a long walk.
+                    StartWanderingNearHome(world, home);
+                    return;
+                }
             }
         }
 
-        // Tycoon Economy — Maslow's Hierarchy: a well-fed village's
-        // Gatherers chase Amber (wealth) ahead of wild food; a hungry one
-        // ignores Amber completely and falls straight through to the Food
-        // Shard logic below. Same Safe Gathering (Danger Penalty) and
-        // Maximum Search Radius rules as any other target — see
-        // World.NearestAvailableAmber.
-        bool wellFed = home is not null && home.FoodStored >= home.MaxFoodCapacity / 2;
-        AmberNode? amber = wellFed ? world.NearestAvailableAmber(Position, this) : null;
-        if (amber is not null)
-        {
-            if (amber != _claimedAmber)
-            {
-                ReleaseAmberClaim();
-                _claimedAmber = amber;
-                amber.ClaimedBy = this;
-                amber.ClaimTimer = 0f;
-            }
+        // Object Pooling: a cached target held from an earlier scan may
+        // have since despawned (UpdateLootDespawn deactivates it, rather
+        // than removing it from the pool, without going through this
+        // Bramblekin at all) or even been recycled by the pool into an
+        // unrelated spawn elsewhere on the map — drop a now-inactive
+        // reference rather than walking toward, or "picking up", a
+        // pool slot that isn't really this shard/amber any more. Waits
+        // for the next scan frame to pick something else.
+        if (_claimedAmber is { IsActive: false })
+            _claimedAmber = null;
+        if (_claimedShard is { IsActive: false })
+            _claimedShard = null;
 
-            if (GroundMover.HorizontalDistance(Position, amber.Position) <= PickupDistance)
+        // Continuous Legs: whichever target is currently cached (found this
+        // frame's scan, or a still-valid one from up to 14 frames ago) is
+        // walked toward and, on arrival, picked up, every single frame —
+        // never gated by the time-slice above.
+        if (_claimedAmber is { } cachedAmber)
+        {
+            if (GroundMover.HorizontalDistance(Position, cachedAmber.Position) <= PickupDistance)
             {
-                amber.IsCarried = true;
-                amber.ClaimedBy = null;
+                cachedAmber.IsCarried = true;
+                cachedAmber.ClaimedBy = null;
                 _claimedAmber = null;
-                _carriedAmber = amber;
+                _carriedAmber = cachedAmber;
 
                 // Same Thievery rule as a stolen Food Shard: an Amber node
                 // sitting inside a rival's 20m border flags us as a caught
                 // trespasser the instant we pick it up.
-                TrespassingAgainst = world.ForeignTerritoryContaining(amber.Position, FactionID);
+                TrespassingAgainst = world.ForeignTerritoryContaining(cachedAmber.Position, FactionID);
 
                 SetState(BramblekinState.Returning);
                 return;
             }
 
-            _mover.MoveTowards(amber.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+            _mover.MoveTowards(cachedAmber.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
             return;
         }
-        ReleaseAmberClaim(); // Not well-fed, or nothing to chase — don't leave a stale claim behind.
 
-        FoodShard? shard = world.NearestAvailableShard(Position, this, home);
-        if (shard != _claimedShard)
+        if (_claimedShard is { } cachedShard)
         {
-            ReleaseFoodClaim();
-            _claimedShard = shard;
-            if (shard is not null)
+            if (GroundMover.HorizontalDistance(Position, cachedShard.Position) <= PickupDistance)
             {
-                shard.ClaimedBy = this;
-                shard.ClaimTimer = 0f;
+                cachedShard.IsCarried = true;
+                cachedShard.ClaimedBy = null;
+                _claimedShard = null;
+                _carried = cachedShard;
+
+                // Thievery: caught in the act the instant the shard we just
+                // grabbed turns out to be sitting inside someone else's 20m
+                // border -- flags us for that specific faction's Militia to
+                // single out, whatever the wider peace between us still holds.
+                TrespassingAgainst = world.ForeignTerritoryContaining(cachedShard.Position, FactionID);
+
+                SetState(BramblekinState.Returning);
+                return;
             }
+
+            _mover.MoveTowards(cachedShard.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
         }
-
-        if (shard is null)
-        {
-            // Maximum Search Radius: nothing to gather within reach at all
-            // (as opposed to StartWandering's ordinary map-wide roam) --
-            // wait close to home instead of hiking toward whatever's
-            // technically nearest across the whole map; the local Spore
-            // Farm's next Berry is the actual fix, not a long walk.
-            StartWanderingNearHome(world, home);
-            return;
-        }
-
-        if (GroundMover.HorizontalDistance(Position, shard.Position) <= PickupDistance)
-        {
-            shard.IsCarried = true;
-            shard.ClaimedBy = null;
-            _claimedShard = null;
-            _carried = shard;
-
-            // Thievery: caught in the act the instant the shard we just
-            // grabbed turns out to be sitting inside someone else's 20m
-            // border -- flags us for that specific faction's Militia to
-            // single out, whatever the wider peace between us still holds.
-            TrespassingAgainst = world.ForeignTerritoryContaining(shard.Position, FactionID);
-
-            SetState(BramblekinState.Returning);
-            return;
-        }
-
-        _mover.MoveTowards(shard.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
     }
 
     /// <summary>
@@ -5412,7 +6412,7 @@ public sealed class Bramblekin
         // already shattered (handled via OnAcornShattered, which should
         // already have moved us out of this state, but a stray call path
         // is cheap to guard against).
-        if (_claimedAcorn is not { } acorn || !world.Acorns.Contains(acorn))
+        if (_claimedAcorn is not { } acorn || !acorn.IsActive)
         {
             _claimedAcorn = null;
             SetState(BramblekinState.Gathering);
@@ -5524,7 +6524,7 @@ public sealed class Bramblekin
         // branch (Border Wars, Base Razing) tries to re-claim it into
         // Defending again before it arrives; only once it's back inside
         // the leash does a fresh chase actually stick.
-        if (home is not null && GroundMover.HorizontalDistance(Position, home.Center) > MilitiaLeashDistance)
+        if (home is not null && GroundMover.HorizontalDistanceSquared(Position, home.Center) > MilitiaLeashDistance * MilitiaLeashDistance)
         {
             _combatTarget = null;
             _target = home.Center;
@@ -5534,7 +6534,7 @@ public sealed class Bramblekin
         }
 
         bool spiderInTerritory = home is not null && world.Spider is { } spiderCheck &&
-                                  GroundMover.HorizontalDistance(spiderCheck.Position, home.Center) <= World.TerritoryTargetingRadius;
+                                  GroundMover.HorizontalDistanceSquared(spiderCheck.Position, home.Center) <= home.TerritoryRadius * home.TerritoryRadius;
 
         if (home is not null && spiderInTerritory)
         {
@@ -5567,7 +6567,7 @@ public sealed class Bramblekin
         // ring. Re-checked every frame since they may flee, die, or simply
         // wander back out.
         if (home is not null && _combatTarget is { IsDead: false } enemy &&
-            GroundMover.HorizontalDistance(enemy.Position, home.Center) <= World.TerritoryTargetingRadius)
+            GroundMover.HorizontalDistanceSquared(enemy.Position, home.Center) <= home.TerritoryRadius * home.TerritoryRadius)
         {
             _target = enemy.Position;
 
@@ -5628,7 +6628,7 @@ public sealed class Bramblekin
     /// </summary>
     private void UpdateRaiding(float deltaTime, World world, VillageHeart? home)
     {
-        if (home is not null && GroundMover.HorizontalDistance(Position, home.Center) > MilitiaLeashDistance)
+        if (home is not null && GroundMover.HorizontalDistanceSquared(Position, home.Center) > MilitiaLeashDistance * MilitiaLeashDistance)
         {
             _raidTarget = null;
             _target = home.Center;
@@ -5637,9 +6637,10 @@ public sealed class Bramblekin
             return;
         }
 
+        float raidingReach = home?.TerritoryRadius ?? World.BaseTerritoryRadius;
         if (_raidTarget is null || !world.Villages.Contains(_raidTarget) ||
-            GroundMover.HorizontalDistance(Position, _raidTarget.Center) > World.TerritoryTargetingRadius ||
-            world.HasLivingHostileBramblekinNear(Position, FactionID, World.TerritoryTargetingRadius))
+            GroundMover.HorizontalDistanceSquared(Position, _raidTarget.Center) > raidingReach * raidingReach ||
+            world.HasLivingHostileBramblekinNear(Position, FactionID, raidingReach))
         {
             _raidTarget = null;
             StartWandering(world);
@@ -5671,33 +6672,46 @@ public sealed class Bramblekin
 
     private void UpdateHunting(float deltaTime, World world, VillageHeart? home)
     {
-        // The 20-Meter Territory Rule: nothing to hunt without a home village.
-        // Re-pick the nearest live, unclaimed Aphid every frame: another
-        // Militia unit may have already caught (or claimed) ours, or it may
-        // simply have wandered off/out of territory.
-        Aphid? aphid = home is null ? null : world.NearestLiveAphidNearVillage(Position, this, home);
-        if (aphid != _claimedAphid)
+        // AI Time-Slicing (the "Brain"): re-picking the nearest live,
+        // unclaimed Aphid scans the whole Aphids array, so — same as
+        // UpdateGathering — it's only re-run on this unit's staggered
+        // frame; the cached _claimedAphid keeps being chased every frame
+        // in between.
+        if (world.FrameCounter % 15 == ID % 15)
         {
-            ReleaseAphidClaim();
-            _claimedAphid = aphid;
-            if (aphid is not null)
-                aphid.ClaimedBy = this;
+            // The 20-Meter Territory Rule: nothing to hunt without a home village.
+            // Another Militia unit may have already caught (or claimed) ours, or
+            // it may simply have wandered off/out of territory.
+            Aphid? aphid = home is null ? null : world.NearestLiveAphidNearVillage(Position, this, home);
+            if (aphid != _claimedAphid)
+            {
+                ReleaseAphidClaim();
+                _claimedAphid = aphid;
+                if (aphid is not null)
+                    aphid.ClaimedBy = this;
+            }
+
+            if (aphid is null)
+            {
+                StartWandering(world);
+                return;
+            }
         }
 
-        if (aphid is null)
+        if (_claimedAphid is not { } cachedAphid)
         {
             StartWandering(world);
             return;
         }
 
-        if (GroundMover.HorizontalDistance(Position, aphid.Position) <= HuntContactDistance)
+        if (GroundMover.HorizontalDistance(Position, cachedAphid.Position) <= HuntContactDistance)
         {
-            world.KillAphid(aphid);
+            world.KillAphid(cachedAphid);
             _claimedAphid = null;
-            return; // Re-targets (or wanders) fresh next frame.
+            return; // Re-targets (or wanders) fresh next scan.
         }
 
-        _mover.MoveTowards(aphid.Position, HuntSpeed, deltaTime, world, p => IsSafeSpot(p, world));
+        _mover.MoveTowards(cachedAphid.Position, HuntSpeed, deltaTime, world, p => IsSafeSpot(p, world));
     }
 
     // --- Individual Equipment (RPG-Style) --------------------------------------------
@@ -5808,8 +6822,9 @@ public sealed class Bramblekin
     {
         // The Militia Leash: a Militia unit's default wander destination
         // never drifts outside its own borders, unlike a Gatherer's
-        // map-wide roam — strictly within World.TerritoryTargetingRadius of
-        // its own Village Heart. Falls back to standing at home outright
+        // map-wide roam — strictly within its own Village Heart's Cultural
+        // Borders (wealth-scaled, see VillageHeart.TerritoryRadius). Falls
+        // back to standing at home outright
         // (never the map-wide point below) if nothing opens up nearby, and
         // to the ordinary map-wide wander if it has no home at all (a
         // homeless refugee, e.g. after Base Razing, has no border left to
@@ -5817,7 +6832,7 @@ public sealed class Bramblekin
         VillageHeart? home = Role == BramblekinRole.Militia ? world.VillageFor(FactionID) : null;
         if (home is not null)
         {
-            _target = world.RandomPointNearVillage(home, World.TerritoryTargetingRadius, BodyRadius + 0.1f) ?? home.Center;
+            _target = world.RandomPointNearVillage(home, home.TerritoryRadius, BodyRadius + 0.1f) ?? home.Center;
             SetState(BramblekinState.Walking);
             return;
         }
@@ -5842,7 +6857,7 @@ public sealed class Bramblekin
     {
         if (home is not null)
         {
-            _target = world.RandomPointNearVillage(home, World.TerritoryTargetingRadius, BodyRadius + 0.1f) ?? home.Center;
+            _target = world.RandomPointNearVillage(home, home.TerritoryRadius, BodyRadius + 0.1f) ?? home.Center;
             SetState(BramblekinState.Walking);
             return;
         }
@@ -6198,7 +7213,7 @@ public sealed class WolfSpider
         // explicitly: a killed Bramblekin's removal from Colony is deferred
         // to the end of the frame, so Contains() alone can't tell it's gone.
         if (_prey is null || _prey.IsDead || !world.Colony.Contains(_prey) ||
-            GroundMover.HorizontalDistance(Position, _prey.Position) > VibrationRadius * 1.5f)
+            GroundMover.HorizontalDistanceSquared(Position, _prey.Position) > (VibrationRadius * 1.5f) * (VibrationRadius * 1.5f))
         {
             _prey = null;
         }
@@ -6347,20 +7362,22 @@ public sealed class WolfSpider
     private Bramblekin? FindPrey(World world)
     {
         Bramblekin? best = null;
-        float bestDistance = VibrationRadius;
-        for (int i = world.Colony.Count - 1; i >= 0; i--)
+        float bestDistanceSquared = VibrationRadius * VibrationRadius;
+        // The Spatial Grid: only the Colony chunks around this spider.
+        List<Bramblekin> nearby = world.QueryNearbyColony(Position);
+        for (int i = nearby.Count - 1; i >= 0; i--)
         {
-            Bramblekin bramblekin = world.Colony[i];
+            Bramblekin bramblekin = nearby[i];
             // IsVibrating is already false for a dead Bramblekin; checked
             // again explicitly so this never targets one even if that changes.
             if (bramblekin.IsDead || !bramblekin.IsVibrating)
                 continue;
 
-            float distance = GroundMover.HorizontalDistance(Position, bramblekin.Position);
-            if (distance <= bestDistance)
+            float distanceSquared = GroundMover.HorizontalDistanceSquared(Position, bramblekin.Position);
+            if (distanceSquared <= bestDistanceSquared)
             {
                 best = bramblekin;
-                bestDistance = distance;
+                bestDistanceSquared = distanceSquared;
             }
         }
         return best;
@@ -6370,18 +7387,20 @@ public sealed class WolfSpider
     private Bramblekin? NearestMilitiaInRange(World world, float range)
     {
         Bramblekin? best = null;
-        float bestDistance = range;
-        for (int i = world.Colony.Count - 1; i >= 0; i--)
+        float bestDistanceSquared = range * range;
+        // The Spatial Grid: only the Colony chunks around this spider.
+        List<Bramblekin> nearby = world.QueryNearbyColony(Position);
+        for (int i = nearby.Count - 1; i >= 0; i--)
         {
-            Bramblekin bramblekin = world.Colony[i];
+            Bramblekin bramblekin = nearby[i];
             if (bramblekin.IsDead || bramblekin.Role != BramblekinRole.Militia)
                 continue;
 
-            float distance = GroundMover.HorizontalDistance(Position, bramblekin.Position);
-            if (distance <= bestDistance)
+            float distanceSquared = GroundMover.HorizontalDistanceSquared(Position, bramblekin.Position);
+            if (distanceSquared <= bestDistanceSquared)
             {
                 best = bramblekin;
-                bestDistance = distance;
+                bestDistanceSquared = distanceSquared;
             }
         }
         return best;
@@ -6559,18 +7578,20 @@ public sealed class Aphid
     private Bramblekin? NearestCloseBramblekin(World world)
     {
         Bramblekin? nearest = null;
-        float bestDistance = FleeTriggerRadius;
-        for (int i = world.Colony.Count - 1; i >= 0; i--)
+        float bestDistanceSquared = FleeTriggerRadius * FleeTriggerRadius;
+        // The Spatial Grid: only the Colony chunks around this Aphid.
+        List<Bramblekin> nearby = world.QueryNearbyColony(Position);
+        for (int i = nearby.Count - 1; i >= 0; i--)
         {
-            Bramblekin bramblekin = world.Colony[i];
+            Bramblekin bramblekin = nearby[i];
             if (bramblekin.IsDead)
                 continue;
 
-            float distance = GroundMover.HorizontalDistance(Position, bramblekin.Position);
-            if (distance <= bestDistance)
+            float distanceSquared = GroundMover.HorizontalDistanceSquared(Position, bramblekin.Position);
+            if (distanceSquared <= bestDistanceSquared)
             {
                 nearest = bramblekin;
-                bestDistance = distance;
+                bestDistanceSquared = distanceSquared;
             }
         }
         return nearest;
@@ -6608,8 +7629,6 @@ public sealed class Aphid
 /// <summary>A minimal clickable rectangle with a centred text label.</summary>
 public sealed class UiButton
 {
-    private const int FontSize = 20;
-
     public Rectangle Bounds { get; }
 
     public UiButton(Rectangle bounds) => Bounds = bounds;
@@ -6628,10 +7647,14 @@ public sealed class UiButton
         Raylib.DrawRectangleRec(Bounds, fill);
         Raylib.DrawRectangleLinesEx(Bounds, 2f, Color.DarkGray);
 
-        // Centre the label inside the rectangle.
-        int textWidth = Raylib.MeasureText(label, FontSize);
+        // UI Text Scaling: sized off the button's own height rather than a
+        // fixed constant, so a bigger button (see the 3x-scaled Debug Time
+        // Scale buttons) automatically gets bigger, still-centred text
+        // instead of a tiny label lost in a large rectangle.
+        int fontSize = (int)(Bounds.Height * 0.5f);
+        int textWidth = Raylib.MeasureText(label, fontSize);
         int x = (int)(Bounds.X + (Bounds.Width - textWidth) / 2f);
-        int y = (int)(Bounds.Y + (Bounds.Height - FontSize) / 2f);
-        Raylib.DrawText(label, x, y, FontSize, disabled && !highlighted ? new Color(90, 80, 75, 255) : Color.Black);
+        int y = (int)(Bounds.Y + (Bounds.Height - fontSize) / 2f);
+        Raylib.DrawText(label, x, y, fontSize, disabled && !highlighted ? new Color(90, 80, 75, 255) : Color.Black);
     }
 }
