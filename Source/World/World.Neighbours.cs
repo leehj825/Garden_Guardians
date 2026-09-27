@@ -32,7 +32,7 @@ public sealed partial class World
     private const float GrievanceFadePerSecond = 0.004f;
 
     /// <summary>An aggrieved group's Leader (Aggression ≥ <see cref="WarAggression"/>) may declare war once the grievance reaches this.</summary>
-    private const float WarGrievance = 6f;
+    private const float WarGrievance = 10f;
 
     private const float WarAggression = 0.4f;
 

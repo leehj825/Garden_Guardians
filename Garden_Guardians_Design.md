@@ -520,7 +520,7 @@ overhead camera:
     leaving in anger 2, an exile's household 1.5.
 *   **Leader decisions** (each Leader weighs every group it neighbours or
     has history with):
-    *   **War** — a neighbour it holds a grievance of 6+ against, and a
+    *   **War** — a neighbour it holds a grievance of 10+ against, and a
         Leader at least 0.4 Aggressive (odds 0.1 × Aggression per decision).
     *   **Alliance** — a neighbour with little grievance (under 1), both
         Leaders at least 0.35 Sociable, neither with 2 allies already, and
