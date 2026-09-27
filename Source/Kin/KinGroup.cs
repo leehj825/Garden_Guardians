@@ -38,6 +38,14 @@ public sealed class KinGroup
     /// <summary>The group's shared home (and store), once it has one — see <see cref="World.UpdateGroupHomes"/>.</summary>
     public Shelter? Home { get; set; }
 
+    /// <summary>A village's other homes, besides <see cref="Home"/> — see <see cref="World.PlanConstruction"/>.</summary>
+    public List<Shelter> Annexes { get; } = new();
+
+    /// <summary>The one home the group is building or upgrading right now, if any: its main home first, then a new one in the village.</summary>
+    public Shelter? ConstructionSite =>
+        Home is { NeedsTwigs: true, IsCollapsed: false } home ? home
+        : Annexes.FirstOrDefault(a => a is { NeedsTwigs: true, IsCollapsed: false });
+
     /// <summary>Counts down after a failed attempt to find a site for a group home.</summary>
     public float HomeSiteRetryTimer { get; set; }
 

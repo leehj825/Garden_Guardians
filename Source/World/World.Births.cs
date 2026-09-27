@@ -17,6 +17,9 @@ public sealed partial class World
     /// <summary>A group won't raise young while more than this fraction of its members are hungry.</summary>
     private const float BirthMaxHungryFraction = 1f / 3f;
 
+    /// <summary>In autumn a group only raises young if its stores hold at least this much Food per member — enough to see everyone through the winter.</summary>
+    private const int AutumnBirthFoodPerMember = 2;
+
     /// <summary>At or above this fraction of <see cref="Bramblekin.MaxHealth"/>, a fed adult is fit to be a parent.</summary>
     private const float ParentHealthFraction = 0.7f;
 
@@ -29,14 +32,19 @@ public sealed partial class World
     /// Growth: a thriving group raises young. It needs a House with at
     /// least <see cref="BirthStoreThreshold"/> Food stored, two healthy, fed
     /// adults to be the parents, few hungry members, room to grow (see
-    /// <see cref="GroupSizeLimit"/>) and <see cref="BirthCooldownSeconds"/>
-    /// since its last birth. The newborn costs <see cref="BirthFoodCost"/>
+    /// <see cref="BirthLimit"/>) and <see cref="BirthCooldownSeconds"/>
+    /// since its last birth — and the right time of year: never in winter,
+    /// and in autumn only with <see cref="AutumnBirthFoodPerMember"/> Food
+    /// stored per member for the winter ahead. The newborn costs <see cref="BirthFoodCost"/>
     /// from the store, inherits a mix of its parents' Personalities, and
     /// joins the group at home. Checked at each Leader decision.
     /// </summary>
     private void TryBirth(KinGroup group)
     {
-        if (group.BirthCooldown > 0f || group.Members.Count >= GroupSizeLimit(group))
+        if (group.BirthCooldown > 0f || group.Members.Count >= BirthLimit(group))
+            return;
+        if (CurrentSeason == Season.Winter ||
+            (CurrentSeason == Season.Autumn && StoredFood(group) < group.Members.Count * AutumnBirthFoodPerMember))
             return;
         if (Colony.Count(k => !k.IsDead) + _pendingKinSpawns.Count >= MaxPopulation)
             return;

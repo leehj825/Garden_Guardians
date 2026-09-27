@@ -230,8 +230,8 @@ public sealed partial class World
     /// Alliance: puts <paramref name="a"/> and <paramref name="b"/> in the
     /// same group — a brand-new one if neither has a group, the existing one
     /// if only one does, or the larger of the two if both do (the smaller is
-    /// merged into it). Refused if the result would exceed
-    /// <see cref="MaxGroupSize"/>, or would put anyone in a group with a
+    /// merged into it). Refused if the result would outgrow the larger
+    /// group's housing (see <see cref="GroupSizeLimit"/>), or would put anyone in a group with a
     /// known Enemy.
     /// </summary>
     private bool TryFormAlliance(Bramblekin a, Bramblekin b, bool bothThreatened)
@@ -253,7 +253,7 @@ public sealed partial class World
         }
         else if (groupA is not null && groupB is not null)
         {
-            if (groupA.Members.Count + groupB.Members.Count > MaxGroupSize)
+            if (groupA.Members.Count + groupB.Members.Count > Math.Max(GroupSizeLimit(groupA), GroupSizeLimit(groupB)))
                 return false;
 
             var (larger, smaller) = groupA.Members.Count >= groupB.Members.Count ? (groupA, groupB) : (groupB, groupA);
@@ -269,6 +269,7 @@ public sealed partial class World
                 larger.Members.Add(member);
             }
             smaller.Members.Clear();
+            AbsorbHomes(larger, smaller);
             _groups.Remove(smaller.Id);
             group = larger;
         }
@@ -276,7 +277,7 @@ public sealed partial class World
         {
             KinGroup existing = groupA ?? groupB!;
             Bramblekin joiner = groupA is null ? a : b;
-            if (existing.Members.Count >= MaxGroupSize || HasEnemyIn(joiner, existing) || joiner.HasLeft(existing.Id))
+            if (existing.Members.Count >= GroupSizeLimit(existing) || HasEnemyIn(joiner, existing) || joiner.HasLeft(existing.Id))
                 return false;
 
             NoteRejoin(joiner);

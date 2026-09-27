@@ -89,26 +89,26 @@ public sealed partial class Bramblekin
         return DoGatherDuty(deltaTime, world);
     }
 
-    /// <summary>Builder: fetches twigs for the home's current construction stage; with nothing to build, gathers.</summary>
+    /// <summary>Builder: fetches twigs for whichever group home is under construction; with nothing to build, gathers.</summary>
     private bool DoBuilderDuty(float deltaTime, World world)
     {
-        if (Home is { NeedsTwigs: true } home)
+        if (BuildSite is { } site)
         {
-            DoBuildWork(home, deltaTime, world);
+            DoBuildWork(site, deltaTime, world);
             return true;
         }
         return DoGatherDuty(deltaTime, world);
     }
 
-    /// <summary>Gatherer: brings Food lying within <see cref="GatherRange"/> of home into the shared store until it's full.</summary>
+    /// <summary>Gatherer: brings Food lying within <see cref="GatherRange"/> of home into the shared stores until they're full.</summary>
     private bool DoGatherDuty(float deltaTime, World world)
     {
-        if (Home is not { IsBuilt: true } home || home.StoreIsFull)
+        if (Home is not { IsBuilt: true } home || StoreToStock(world) is not { } store)
             return false;
 
         if (_carried is not null)
         {
-            CarryFoodHome(home, deltaTime, world);
+            CarryFoodHome(store, deltaTime, world);
             return true;
         }
 

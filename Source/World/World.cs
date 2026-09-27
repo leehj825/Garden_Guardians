@@ -155,18 +155,8 @@ public sealed partial class World
     /// <summary>The same pair of Bramblekin can't resolve another encounter until this many seconds have passed.</summary>
     public const float EncounterCooldown = 12f;
 
-    /// <summary>A group never grows past this many members, by joining or by merging.</summary>
+    /// <summary>A group grows to this many members, by joining, merging or births, before it needs more housing — see <see cref="GroupSizeLimit"/>.</summary>
     public const int MaxGroupSize = 6;
-
-    /// <summary>How big <paramref name="group"/> may grow, by joining or by births.</summary>
-    public int GroupSizeLimit(KinGroup group) => MaxGroupSize;
-
-    /// <summary>Every home <paramref name="group"/> has.</summary>
-    public IEnumerable<Shelter> GroupHomes(KinGroup group)
-    {
-        if (group.Home is { IsCollapsed: false } home)
-            yield return home;
-    }
 
     /// <summary>Two Bramblekin both at least this Sociable band together on meeting — see <see cref="ResolveEncounter"/>.</summary>
     public const float AllianceSociabilityThreshold = 0.6f;

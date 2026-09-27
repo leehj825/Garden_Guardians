@@ -85,13 +85,15 @@ public sealed partial class World
     /// weighted by the Leader's own personality, picks the best, and hands
     /// out jobs to match.
     ///   * Defend — a threat near home; always wins, more so for a bold Leader.
-    ///   * Settle — the home is being upgraded (Intelligent Leaders prize
-    ///     it), or is still a site: a first home is urgent.
+    ///   * Settle — something is under construction (see
+    ///     <see cref="KinGroup.ConstructionSite"/>): an upgrade or a new home
+    ///     in the village (Intelligent Leaders prize it), or the first home,
+    ///     which is urgent.
     ///   * Hunt — a Stag Beetle within reach (further for a bolder Leader) and
     ///     at least two to hunt it; Aggressive Leaders prize it, and an
     ///     emptier store makes it more urgent.
-    ///   * Stockpile — fill the store (once there is one); the emptier it
-    ///     is, the more urgent.
+    ///   * Stockpile — fill the stores (once there are any); the emptier
+    ///     they are, the more urgent.
     /// The sharing rule follows the Leader's personality: an unsociable,
     /// Aggressive Leader eats first.
     /// </summary>
@@ -100,7 +102,8 @@ public sealed partial class World
         Personality p = leader.Personality;
         Shelter? home = group.Home;
         Vector3 center = home?.Position ?? leader.Position;
-        float storeFill = home is { IsBuilt: true } ? home.StoredFood / (float)home.StoreCapacity : 0f;
+        float storeFill = StoreFill(group);
+        bool hasStore = GroupHomes(group).Any(h => h.IsBuilt);
 
         group.DefendTarget = ThreatNearHome(group);
         float huntRadius = BaseHuntSearchRadius + HuntSearchRadiusPerAggression * p.Aggression;
@@ -109,11 +112,11 @@ public sealed partial class World
         // A first home comes before anything but a fight or a beetle: until
         // it's finished there's no store to stock, so Stockpile means nothing.
         float defend = group.DefendTarget is not null ? 5f + 2f * p.Aggression : 0f;
-        float settle = home is not { NeedsTwigs: true } ? 0f
-            : home.IsBuilt ? 1.5f + 2f * p.Intelligence
+        float settle = group.ConstructionSite is null ? 0f
+            : home is { IsBuilt: true } ? 1.5f + 2f * p.Intelligence
             : 3f + 2f * p.Intelligence;
         float hunt = group.HuntTarget is not null ? 0.8f + 2f * p.Aggression + (1f - storeFill) : 0f;
-        float stockpile = home is { IsBuilt: true } ? 1f + 2f * (1f - storeFill) + 0.5f * (1f - p.Aggression) : 0f;
+        float stockpile = hasStore ? 1f + 2f * (1f - storeFill) + 0.5f * (1f - p.Aggression) : 0f;
 
         // Seasons: a far-sighted Leader stocks up through autumn for the
         // winter ahead; in winter's lean months, big game is worth more.
@@ -145,7 +148,7 @@ public sealed partial class World
                 GroupGoal.Defend => $"[LEADER] #{leader.ID} rallies group {group.ShortId} to defend home",
                 GroupGoal.Hunt => $"[LEADER] #{leader.ID} sends group {group.ShortId} after a Stag Beetle",
                 GroupGoal.Settle => $"[LEADER] #{leader.ID} puts group {group.ShortId} to building",
-                _ => $"[LEADER] #{leader.ID} has group {group.ShortId} stock the store",
+                _ => $"[LEADER] #{leader.ID} has group {group.ShortId} stock the stores",
             });
         }
 
@@ -179,7 +182,7 @@ public sealed partial class World
                 break;
 
             case GroupGoal.Settle:
-                // Everyone builds a first home; an upgrade takes the most Intelligent half.
+                // Everyone builds a first home; an upgrade or a new home takes the most Intelligent half.
                 int builders = group.Home is { IsBuilt: false } ? members.Count : Math.Max(1, (members.Count + 1) / 2);
                 foreach (Bramblekin member in members.OrderByDescending(m => m.Personality.Intelligence).Take(builders))
                     member.AssignJob(KinJob.Builder);
@@ -227,7 +230,7 @@ public sealed partial class World
         {
             if (kin.IsDead || kin.GroupId == group.Id)
                 continue;
-            if ((group.Home is not null && kin.RaidTarget == group.Home) ||
+            if ((kin.RaidTarget is { } raided && raided.GroupId == group.Id) ||
                 (kin.CombatTarget is Bramblekin victim && victim.GroupId == group.Id))
                 Consider(kin);
         }
@@ -236,14 +239,14 @@ public sealed partial class World
 
     /// <summary>
     /// Whether <paramref name="kin"/> may eat from <paramref name="home"/>'s
-    /// store right now: its own home always; a group home by the group's
-    /// sharing rule — under <see cref="SharingRule.LeaderFirst"/> only the
+    /// store right now: its own home, or any home of its group's, by the
+    /// group's sharing rule — under <see cref="SharingRule.LeaderFirst"/> only the
     /// Leader eats while merely hungry. A refusal is remembered (it costs
     /// the Leader loyalty — see Bramblekin.UpdateLoyalty).
     /// </summary>
     public bool MayEatFromStore(Bramblekin kin, Shelter home)
     {
-        if (kin.Home != home)
+        if (kin.Home != home && !(kin.GroupId is not null && home.GroupId == kin.GroupId))
             return false;
         if (home.GroupId is not { } groupId || !_groups.TryGetValue(groupId, out KinGroup? group))
             return true;

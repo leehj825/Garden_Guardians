@@ -218,7 +218,7 @@ public sealed partial class World
             KinGroup? group = shelter.GroupId is { } id && _groups.TryGetValue(id, out KinGroup? g) ? g : null;
             Game.AddEventLog(group is null
                 ? $"[SETTLE] #{builder.ID} finished a House"
-                : $"[SETTLE] Group {group.ShortId} finished its House");
+                : $"[SETTLE] Group {group.ShortId} finished a House");
         }
         else
         {
@@ -233,17 +233,17 @@ public sealed partial class World
     // --- Sites & ownership ---------------------------------------------------------------
 
     /// <summary>
-    /// Marks out a new construction site within <see cref="ShelterSiteSearchRadius"/>
-    /// of <paramref name="near"/>: on open ground, inside the map, and at least
-    /// <see cref="MinShelterSpacing"/> from every other shelter. Returns null
-    /// if nowhere nearby qualifies.
+    /// Marks out a new construction site within <paramref name="searchRadius"/>
+    /// (default <see cref="ShelterSiteSearchRadius"/>) of <paramref name="near"/>:
+    /// on open ground, inside the map, and at least <see cref="MinShelterSpacing"/>
+    /// from every other shelter. Returns null if nowhere nearby qualifies.
     /// </summary>
-    public Shelter? TryCreateShelterSite(Vector3 near, Bramblekin? owner, Guid? groupId)
+    public Shelter? TryCreateShelterSite(Vector3 near, Bramblekin? owner, Guid? groupId, float searchRadius = ShelterSiteSearchRadius)
     {
         for (int attempt = 0; attempt < 16; attempt++)
         {
             float angle = (float)(Rng.NextDouble() * MathF.Tau);
-            float radius = attempt == 0 ? 0f : (float)Rng.NextDouble() * ShelterSiteSearchRadius;
+            float radius = attempt == 0 ? 0f : (float)Rng.NextDouble() * searchRadius;
             Vector3 candidate = near + new Vector3(MathF.Cos(angle) * radius, 0f, MathF.Sin(angle) * radius);
             if (!Terrain.Contains(candidate, 3f) || IsBlocked(candidate, Shelter.HouseRadius + 0.3f))
                 continue;

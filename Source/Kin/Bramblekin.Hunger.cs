@@ -44,9 +44,9 @@ public sealed partial class Bramblekin
         }
 
         // With a predator about, a stocked home is the safe place to eat.
-        if (IsThreatenedByPredator && Home is { } safeHome && CanEatFromStore(world))
+        if (IsThreatenedByPredator && StoreToEatFrom(world) is { } safeStore)
         {
-            GoHomeAndEat(safeHome, deltaTime, world);
+            GoHomeAndEat(safeStore, deltaTime, world);
             return;
         }
 
@@ -58,9 +58,9 @@ public sealed partial class Bramblekin
 
         // Settling pays off: with nothing loose in sight, it goes home and
         // eats from its own (or its group's) store.
-        if (Home is { } home && CanEatFromStore(world))
+        if (StoreToEatFrom(world) is { } store)
         {
-            GoHomeAndEat(home, deltaTime, world);
+            GoHomeAndEat(store, deltaTime, world);
             return;
         }
 

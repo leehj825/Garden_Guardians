@@ -47,7 +47,22 @@ public sealed partial class Bramblekin
     private float SettleDelay => MaxSettleDelay - (MaxSettleDelay - MinSettleDelay) * Personality.Intelligence;
 
     /// <summary>True while it's the one who should be fetching twigs for its home's current construction stage.</summary>
-    private bool NeedsTwig => _carriedTwig is null && Home is { NeedsTwigs: true } && BuildsForHome;
+    private bool NeedsTwig => _carriedTwig is null && BuildSite is not null && BuildsForHome;
+
+    /// <summary>What its group is building right now, as the group last told it — see <see cref="SetBuildSite"/>.</summary>
+    private Shelter? _groupBuildSite;
+
+    /// <summary>
+    /// Where its twigs go: a solitary Bramblekin's own home while that's
+    /// under construction; in a group, whichever of the group's homes is
+    /// being built or upgraded (see <see cref="KinGroup.ConstructionSite"/>).
+    /// </summary>
+    private Shelter? BuildSite => GroupId is null
+        ? Home is { NeedsTwigs: true } home ? home : null
+        : _groupBuildSite is { NeedsTwigs: true, IsCollapsed: false } site ? site : null;
+
+    /// <summary>Its group tells it which home is under construction (or that none is).</summary>
+    public void SetBuildSite(Shelter? site) => _groupBuildSite = site;
 
     /// <summary>Whether it fetches twigs for its home: a solitary Bramblekin builds its own; in a group, that's the Builders' job (see Bramblekin.Duty) — or everyone's, while the group has no Leader's orders yet.</summary>
     private bool BuildsForHome => !IsYoung && (GroupId is null || Job is KinJob.Builder or KinJob.None);
@@ -80,31 +95,29 @@ public sealed partial class Bramblekin
     }
 
     /// <summary>
-    /// A group member's part in its group's home (see
-    /// <see cref="World.UpdateGroupHomes"/>): help build or upgrade it,
-    /// then rest in it, stock the shared store and hunt near it just like a
-    /// homesteader does its own. A group still without a home just keeps
-    /// moving with its Leader.
+    /// A group member's part in its group's homes (see
+    /// <see cref="World.UpdateGroupHomes"/>): help build whichever one is
+    /// under construction, then rest in its own, stock the shared stores and
+    /// hunt near home just like a homesteader does. A group still without a
+    /// home just keeps moving with its Leader.
     /// </summary>
     private bool UpdateGroupSettle(float deltaTime, World world)
     {
-        if (Home is not { } home)
-            return false;
-
-        if (home.NeedsTwigs && BuildsForHome)
+        if (BuildSite is { } site && BuildsForHome)
         {
-            DoBuildWork(home, deltaTime, world);
+            DoBuildWork(site, deltaTime, world);
             return true;
         }
 
-        return TendHome(home, deltaTime, world);
+        return Home is { } home && TendHome(home, deltaTime, world);
     }
 
     /// <summary>
     /// Life around a finished home: rest there when hurt (until nearly
-    /// healed), carry held Food into the store, fetch visible Food lying
-    /// near home to stock it, and hunt Grubs near home while the store is
-    /// low. Returns false when there's nothing to do.
+    /// healed), carry held Food into the store (or, if that's full, another
+    /// of its group's — see <see cref="StoreToStock"/>), fetch visible Food
+    /// lying near home to stock it, and hunt Grubs near home while the
+    /// stores are low. Returns false when there's nothing to do.
     /// </summary>
     private bool TendHome(Shelter home, float deltaTime, World world)
     {
@@ -118,21 +131,23 @@ public sealed partial class Bramblekin
             return true;
         }
 
-        if (_carried is not null && !home.StoreIsFull)
+        Shelter? store = StoreToStock(world);
+        if (_carried is not null && store is not null)
         {
-            CarryFoodHome(home, deltaTime, world);
+            CarryFoodHome(store, deltaTime, world);
             return true;
         }
 
-        if (_carried is null && !home.StoreIsFull && ValidPerceivedFood(world) is { } food &&
+        if (_carried is null && store is not null && ValidPerceivedFood(world) is { } food &&
             GroundMover.HorizontalDistanceSquared(food.Position, home.Position) <= StockpileRange * StockpileRange)
         {
             ApproachFood(food, WalkSpeed, deltaTime, world, eatOnArrival: false);
             return true;
         }
 
-        // A low store is worth a hunt: a Grub near home becomes meat to stock.
-        if (!IsYoung && home.StoredFood < home.StoreCapacity / 2 && _perceivedGrub is { IsDead: false } grub &&
+        // Low stores are worth a hunt: a Grub near home becomes meat to stock.
+        float fill = world.GroupOf(this) is { } group ? world.StoreFill(group) : home.StoredFood / (float)home.StoreCapacity;
+        if (!IsYoung && fill < 0.5f && _perceivedGrub is { IsDead: false } grub &&
             GroundMover.HorizontalDistanceSquared(grub.Position, home.Position) <= StockpileRange * StockpileRange)
         {
             HuntGrub(grub, deltaTime, world);
@@ -252,11 +267,53 @@ public sealed partial class Bramblekin
         }
     }
 
-    /// <summary>True if its home's store has Food it may eat right now.</summary>
-    private bool CanEatFromStore(World world) =>
-        Home is { IsBuilt: true, StoredFood: > 0 } home && world.MayEatFromStore(this, home);
+    /// <summary>
+    /// The store it eats from: its own home's, if that has Food; else, in a
+    /// village, the nearest of its group's other homes that does. Null if
+    /// there's none — or the group's sharing rule turns it away.
+    /// </summary>
+    private Shelter? StoreToEatFrom(World world)
+    {
+        if (Home is not { IsBuilt: true } home)
+            return null;
+        if (home.StoredFood > 0)
+            return world.MayEatFromStore(this, home) ? home : null;
 
-    /// <summary>Hunger: walks home and takes a piece of Food from the store to eat there.</summary>
+        Shelter? nearest = NearestGroupHome(world, h => h.StoredFood > 0);
+        return nearest is not null && world.MayEatFromStore(this, nearest) ? nearest : null;
+    }
+
+    /// <summary>The store it stocks: its own home's, unless that's full; then the nearest of its group's other homes with room. Null if none.</summary>
+    private Shelter? StoreToStock(World world)
+    {
+        if (Home is not { IsBuilt: true } home)
+            return null;
+        return !home.StoreIsFull ? home : NearestGroupHome(world, h => !h.StoreIsFull);
+    }
+
+    /// <summary>The nearest finished home of its group's (besides its own) that satisfies <paramref name="match"/>.</summary>
+    private Shelter? NearestGroupHome(World world, Func<Shelter, bool> match)
+    {
+        if (world.GroupOf(this) is not { } group)
+            return null;
+
+        Shelter? best = null;
+        float bestDistanceSquared = float.MaxValue;
+        foreach (Shelter shelter in world.GroupHomes(group))
+        {
+            if (shelter == Home || !shelter.IsBuilt || !match(shelter))
+                continue;
+            float distanceSquared = GroundMover.HorizontalDistanceSquared(Position, shelter.Position);
+            if (distanceSquared < bestDistanceSquared)
+            {
+                best = shelter;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>Hunger: walks to <paramref name="home"/> (its own, or a groupmate's in the village) and takes a piece of Food from the store to eat there.</summary>
     private void GoHomeAndEat(Shelter home, float deltaTime, World world)
     {
         if (home.Contains(Position))

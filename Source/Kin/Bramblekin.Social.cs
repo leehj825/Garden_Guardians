@@ -8,8 +8,9 @@ public sealed partial class Bramblekin
     /// <summary>
     /// Social need (fed and safe): pocket a spare piece of Food if one is
     /// close and its hands are empty; a follower stays near its Leader;
-    /// anyone else alternates short rests with a move chosen by
-    /// <see cref="ChooseSocialAction"/>.
+    /// in winter, anyone with a home huddles inside it (see
+    /// <see cref="WinterIn"/>); anyone else alternates short rests with a
+    /// move chosen by <see cref="ChooseSocialAction"/>.
     /// </summary>
     private void UpdateSocial(float deltaTime, World world)
     {
@@ -31,6 +32,12 @@ public sealed partial class Bramblekin
         if (leader is { IsDead: false } && leader != this && Home is not { IsBuilt: true })
         {
             FollowLeader(leader, deltaTime, world);
+            return;
+        }
+
+        if (world.CurrentSeason == Season.Winter && Home is { IsBuilt: true } home)
+        {
+            WinterIn(home, deltaTime, world);
             return;
         }
 
@@ -94,6 +101,22 @@ public sealed partial class Bramblekin
 
         _wanderTarget = RandomWanderPoint(world, WanderRadius);
         SetState(BramblekinState.Wandering);
+    }
+
+    /// <summary>
+    /// Wintering in: with nothing better to do in the lean season, it goes
+    /// home and huddles inside, safe from Hornets and the Spider and burning
+    /// Food at <see cref="WinterShelterMetabolism"/> of the usual rate.
+    /// </summary>
+    private void WinterIn(Shelter home, float deltaTime, World world)
+    {
+        if (!home.Contains(Position))
+        {
+            SetState(BramblekinState.HeadingHome);
+            MoveTo(home.Position, WalkSpeed, deltaTime, world);
+            return;
+        }
+        SetState(BramblekinState.Resting);
     }
 
     /// <summary>Walks up to the stranger it spotted; the World resolves the encounter once they're close.</summary>

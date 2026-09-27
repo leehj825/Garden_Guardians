@@ -96,6 +96,9 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>Hunger gained per second — a full belly lasts well under two minutes.</summary>
     public const float HungerPerSecond = 1f;
 
+    /// <summary>Huddled inside its home in winter (see <see cref="IsSheltered"/>), Hunger rises at this fraction of the usual rate.</summary>
+    public const float WinterShelterMetabolism = 0.5f;
+
     /// <summary>At or above this, Hunger is Critical and overrides every other need.</summary>
     public const float HungryThreshold = 60f;
 
@@ -379,6 +382,14 @@ public sealed partial class Bramblekin : ICombatant
         Loyalty = 0.7f;
     }
 
+    /// <summary>Budding: its House in the village sets up as a group of its own — no quarrel, so it keeps its home and holds nothing against the old group.</summary>
+    public void BudOff(Guid newGroupId)
+    {
+        LeaveGroup();
+        JoinGroup(newGroupId);
+        _groupBuildSite = null;
+    }
+
     public void LeaveGroup()
     {
         GroupId = null;
@@ -503,8 +514,9 @@ public sealed partial class Bramblekin : ICombatant
         if (Home is { IsCollapsed: true })
             Home = null;
 
-        // Metabolism: Hunger always rises; at the very top it starts costing Health.
-        Hunger = MathF.Min(MaxHunger, Hunger + HungerPerSecond * deltaTime);
+        // Metabolism: Hunger always rises (slower huddled at home in winter); at the very top it starts costing Health.
+        float metabolism = world.CurrentSeason == Season.Winter && IsSheltered ? WinterShelterMetabolism : 1f;
+        Hunger = MathF.Min(MaxHunger, Hunger + HungerPerSecond * metabolism * deltaTime);
         if (Hunger >= MaxHunger)
         {
             _starvationTimer += deltaTime;
@@ -621,8 +633,8 @@ public sealed partial class Bramblekin : ICombatant
                 continue;
             }
 
-            // Fight to protect: a raider heading for its home.
-            if (Home is not null && other.RaidTarget == Home)
+            // Fight to protect: a raider heading for its home (or any of its group's).
+            if (other.RaidTarget is { } raided && (raided == Home || (GroupId is not null && raided.GroupId == GroupId)))
             {
                 Consider(other, allyDefense: true);
                 continue;
