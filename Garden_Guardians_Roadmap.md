@@ -482,6 +482,15 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
 *   ✅ **Clan culture:** Martial, Hunting and Farming traditions that grow
     from what a clan does, sway its Leaders, nudge its children, and pass
     to daughter clans.
+*   *Result* (24 seeds × 13 years, no exceptions): the first cut of the
+    weather was too harsh (harsh winters 30% of the time, 0.5× food,
+    1.25× cold): population ~70 → ~58, starvation 52 → 68 a run,
+    old-age deaths 78 → 60, and one winter in ten after a drought
+    killing up to 65%. Ablations put it on the weather (off: 31 starved)
+    and cleared danger memory (off: no better). Softened (20%, 0.7×,
+    1.15×): population ~65, 54 starved, 69 old-age deaths, newcomers 18
+    a run; a harsh winter costs 13% of the garden on average (7% for a
+    fair one), and the worst 38%.
 
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
