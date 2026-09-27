@@ -7,8 +7,7 @@ namespace GardenGuardians;
 /// An emergent band of Bramblekin sharing one <see cref="Bramblekin.GroupId"/>.
 /// Membership is owned by the Bramblekin themselves; <see cref="World"/>
 /// rebuilds this view of it every frame, dissolving a group down to its
-/// last survivor and re-electing the Leader — always the most Intelligent
-/// member.
+/// last survivor and electing a new Leader whenever the old one is gone.
 /// </summary>
 public sealed class KinGroup
 {
@@ -69,7 +68,13 @@ public sealed class KinGroup
         Color = Palette[(int)((uint)id.GetHashCode() % (uint)Palette.Length)];
     }
 
-    /// <summary>The living member with the highest Intelligence leads (lowest ID breaks a tie).</summary>
+    /// <summary>
+    /// Elects a Leader: the living member with the highest
+    /// <see cref="Bramblekin.LeadershipScore"/> (Intelligence plus earned
+    /// Reputation; lowest ID breaks a tie). Only happens when the group
+    /// forms or its Leader is gone — a sitting Leader can only be replaced
+    /// by losing a challenge (see <see cref="World.ResolveDuel"/>).
+    /// </summary>
     public void ElectLeader()
     {
         Bramblekin? best = null;
@@ -78,10 +83,16 @@ public sealed class KinGroup
             if (member.IsDead)
                 continue;
             if (best is null ||
-                member.Personality.Intelligence > best.Personality.Intelligence ||
-                (member.Personality.Intelligence == best.Personality.Intelligence && member.ID < best.ID))
+                member.LeadershipScore > best.LeadershipScore ||
+                (member.LeadershipScore == best.LeadershipScore && member.ID < best.ID))
                 best = member;
         }
         Leader = best;
     }
+
+    /// <summary>True while the Leader is alive and still in the group.</summary>
+    public bool HasSittingLeader => Leader is { IsDead: false } leader && leader.GroupId == Id;
+
+    /// <summary>A coup: <paramref name="leader"/> takes over.</summary>
+    public void SetLeader(Bramblekin leader) => Leader = leader;
 }

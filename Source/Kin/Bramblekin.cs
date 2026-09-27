@@ -351,19 +351,30 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>Drops a dead Bramblekin from <see cref="KnownKins"/> — see <see cref="World.CommitPendingChanges"/>.</summary>
     public void ForgetKin(int id) => _knownKins.Remove(id);
 
-    public void JoinGroup(Guid groupId) => GroupId = groupId;
+    /// <summary>Joins a group, starting out as loyal as it is Sociable.</summary>
+    public void JoinGroup(Guid groupId)
+    {
+        GroupId = groupId;
+        Loyalty = LoyaltyBaseline;
+    }
+
+    /// <summary>Splinter: leaves its group, along with other unhappy members, for a new one of their own — homeless, but keen.</summary>
+    public void SplitOff(Guid newGroupId)
+    {
+        if (GroupId is { } former)
+            _formerGroups.Add(former);
+        LeaveGroup();
+        Home = null;
+        HasLeftGroup = true;
+        JoinGroup(newGroupId);
+        Loyalty = 0.7f;
+    }
 
     public void LeaveGroup()
     {
         GroupId = null;
         Job = KinJob.None;
     }
-
-    /// <summary>
-    /// Takes orders only while this is true. Phase E ties it to loyalty; a
-    /// member always obeys until then.
-    /// </summary>
-    private bool IsObedient => true;
 
     /// <summary>Set whenever its group's sharing rule turned it away from the store.</summary>
     private bool _deniedFood;
@@ -414,6 +425,15 @@ public sealed partial class Bramblekin : ICombatant
             return;
 
         Health = Math.Max(0, Health - amount);
+
+        // A leadership duel is a contest, not a feud: no lingering threat, no enmity.
+        if (source is not null && ReferenceEquals(source, _duelOpponent))
+        {
+            if (Health <= 0)
+                world.Kill(this, cause, source);
+            return;
+        }
+
         if (source is not null)
         {
             _lastAttacker = source;
@@ -498,6 +518,10 @@ public sealed partial class Bramblekin : ICombatant
             _perceptionTimer += PerceptionInterval;
             Perceive(world);
         }
+
+        // 0) A leadership duel, once started, is settled before anything else.
+        if (UpdateDuel(deltaTime, world))
+            return;
 
         // 1) Critical: Hunger. A meal already under way is always finished.
         if (IsHungry || State == BramblekinState.Eating)

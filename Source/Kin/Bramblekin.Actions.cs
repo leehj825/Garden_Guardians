@@ -123,6 +123,8 @@ public sealed partial class Bramblekin
 
         if (State == BramblekinState.Attacking && target is Bramblekin victim && victim.HasFood)
             world.StealFood(this, victim);
+        if (State == BramblekinState.Fighting && _threatIsAllyDefense)
+            world.NoteDefended(this, target);
         target.TakeHit(StrikeDamage, this, world);
     }
 
@@ -193,7 +195,7 @@ public sealed partial class Bramblekin
             _restTimer = 0f;
 
         State = state;
-        if (state is not (BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting))
+        if (state is not (BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or BramblekinState.Dueling))
             CombatTarget = null;
         _mover.ResetProgress();
     }

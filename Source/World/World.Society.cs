@@ -42,6 +42,9 @@ public sealed partial class World
         {
             if (group.Members.Count >= 2)
             {
+                if (group.HasSittingLeader)
+                    continue;
+
                 Bramblekin? previousLeader = group.Leader;
                 group.ElectLeader();
                 if (previousLeader is not null && previousLeader != group.Leader)
@@ -233,6 +236,8 @@ public sealed partial class World
         {
             group = new KinGroup(Guid.NewGuid());
             _groups[group.Id] = group;
+            NoteRejoin(a);
+            NoteRejoin(b);
             a.JoinGroup(group.Id);
             b.JoinGroup(group.Id);
             group.Members.Add(a);
@@ -246,7 +251,7 @@ public sealed partial class World
             var (larger, smaller) = groupA.Members.Count >= groupB.Members.Count ? (groupA, groupB) : (groupB, groupA);
             foreach (Bramblekin member in smaller.Members)
             {
-                if (HasEnemyIn(member, larger))
+                if (HasEnemyIn(member, larger) || member.HasLeft(larger.Id))
                     return false;
             }
 
@@ -263,15 +268,17 @@ public sealed partial class World
         {
             KinGroup existing = groupA ?? groupB!;
             Bramblekin joiner = groupA is null ? a : b;
-            if (existing.Members.Count >= MaxGroupSize || HasEnemyIn(joiner, existing))
+            if (existing.Members.Count >= MaxGroupSize || HasEnemyIn(joiner, existing) || joiner.HasLeft(existing.Id))
                 return false;
 
+            NoteRejoin(joiner);
             joiner.JoinGroup(existing.Id);
             existing.Members.Add(joiner);
             group = existing;
         }
 
-        group.ElectLeader();
+        if (!group.HasSittingLeader)
+            group.ElectLeader();
         SetMutualRelationship(a, b, RelationshipState.Friend);
         AlliancesFormed++;
         QueueFloatingText(a.Position, "+Ally", group.Color);

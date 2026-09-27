@@ -69,4 +69,9 @@ public enum BramblekinState
 
     /// <summary>Standing its ground against a threat — or defending a groupmate from one.</summary>
     Fighting,
+
+    // --- Politics ---
+
+    /// <summary>Fighting a leadership duel with a groupmate, until one yields.</summary>
+    Dueling,
 }

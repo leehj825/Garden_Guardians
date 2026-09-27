@@ -126,6 +126,7 @@ public sealed partial class World
         _splats.Add((spider.Position, SplatDuration));
         ScatterFoodAround(spider.Position, SpiderCarcassFood, 0.6f, FoodShardKind.Meat);
         CreditMeat(attacker, SpiderCarcassFood);
+        attacker.AddReputation(1f);
         Spider = null;
         SpiderRespawnTimer = SpiderRespawnDelay;
         SpidersKilled++;

@@ -63,6 +63,7 @@ public sealed partial class World
         beetle.MarkDead();
         _pendingBeetleRemovals.Add(beetle);
         BeetlesKilled++;
+        killer.AddReputation(1f);
         ScatterFoodAround(beetle.Position, StagBeetle.MeatYield, 0.7f, FoodShardKind.Meat);
         CreditMeat(killer, StagBeetle.MeatYield);
 

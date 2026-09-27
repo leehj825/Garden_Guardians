@@ -177,6 +177,7 @@ public sealed partial class World
         if (!shelter.AddTwig())
             return;
 
+        builder.AddReputation(0.5f);
         if (shelter.Tier == ShelterTier.House)
         {
             HousesBuilt++;
@@ -371,6 +372,7 @@ public sealed partial class World
     public void NoteAteFromStore(Bramblekin kin, Shelter home)
     {
         StoreMeals++;
+        kin.NoteAteFromStore();
     }
 
     /// <summary>Meals eaten from a store rather than off the ground.</summary>

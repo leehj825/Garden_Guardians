@@ -263,6 +263,18 @@ public static class Game
             $"{world.StoreMeals} meals eaten from stores, {world.StoreRaids} store raids.");
         PrintSurvivalTrend(world);
         PrintLeadership(world);
+        PrintRebellion(world);
+    }
+
+    /// <summary>Headless summary: how often followers rebelled, and how the Independents who left are faring.</summary>
+    private static void PrintRebellion(World world)
+    {
+        List<Bramblekin> independents = world.Colony.Where(b => !b.IsDead && b.Status == SurvivalStatus.Independent).ToList();
+        Console.WriteLine(
+            $"Rebellion: {world.Departures} left, {world.Splinters} splinter groups, {world.Coups} coups " +
+            $"({world.FailedChallenges} failed challenges), {world.Exiles} exiles; {world.Rejoins} independents later joined another group.");
+        Console.WriteLine(
+            $"  {independents.Count} independents alive at the end, {independents.Count(b => b.Home is { IsBuilt: true })} of them with a home of their own.");
     }
 
     /// <summary>Headless summary: how groups under each style of Leader spent their time, and how often their Leader ate first.</summary>
@@ -474,6 +486,10 @@ public static class Game
             (group is null ? "Group: none" : $"Group {group.ShortId}: {group.Members.Count} members", ink),
             (DescribeHome(kin), ink),
             (group is null ? "Job: none" : $"Job: {kin.Job} (group goal: {group.Goal}{(group.Sharing == SharingRule.LeaderFirst ? ", leader eats first" : "")})", ink),
+            (group is null || group.Leader == kin
+                ? $"Reputation: {kin.Reputation:0.0}{(kin.Status == SurvivalStatus.Independent ? "  (independent)" : "")}"
+                : $"Loyalty: {kin.Loyalty:0.00}{(kin.Loyalty < Bramblekin.ObedienceThreshold ? " (disobedient)" : "")}   Reputation: {kin.Reputation:0.0}",
+                kin.GroupId is not null && group?.Leader != kin && kin.Loyalty < Bramblekin.ObedienceThreshold ? new Color(170, 60, 40, 255) : ink),
             ($"Known: {friends} friend, {enemies} enemy, {neutral} neutral", ink),
         };
 
@@ -514,6 +530,7 @@ public static class Game
             $"Foraging {Count(BramblekinState.Foraging) + Count(BramblekinState.Hunting)}   Eating {Count(BramblekinState.Eating)}   " +
             $"Fleeing {Count(BramblekinState.Fleeing)}   Fighting {Count(BramblekinState.Fighting)}   Robbing {Count(BramblekinState.Attacking)}",
             $"Arrived {world.Arrivals}   Starved {world.DeathsByStarvation}   Killed by predators {world.DeathsByPredator}, by kin {world.DeathsByKin}   Thefts {world.Thefts}",
+            $"Politics: {world.Departures} left, {world.Splinters} splits, {world.Coups} coups, {world.Exiles} exiles   Raids {world.StoreRaids}   Beetles {world.BeetlesKilled}",
         };
 
         // UI Text Scaling: a background bar goes underneath, sized off

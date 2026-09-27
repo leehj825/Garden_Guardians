@@ -60,7 +60,7 @@ public sealed partial class World
     {
         foreach (KinGroup group in _groups.Values)
         {
-            if (group.Leader is not { IsDead: false } leader)
+            if (!group.HasSittingLeader || group.Leader is not { } leader)
                 continue;
 
             _goalSeconds[(int)group.Style, (int)group.Goal] += deltaTime;
@@ -73,7 +73,9 @@ public sealed partial class World
 
             group.DecisionTimer = LeaderDecisionInterval;
             DecideGroupGoal(group, leader);
+            ReviewLoyalty(group, leader);
         }
+        ProcessRebellions();
     }
 
     /// <summary>
