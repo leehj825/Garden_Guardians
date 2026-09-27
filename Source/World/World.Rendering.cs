@@ -69,6 +69,16 @@ public sealed partial class World
             shelter.Draw(flag);
         }
 
+        DrawRelations(camera);
+        bool winter = CurrentSeason == Season.Winter;
+        foreach (BerryBush bush in Bushes)
+        {
+            if (!IsVisible(bush.Position, camera))
+                continue;
+            Color? stake = bush.GroupId is { } bushGroup && _groups.TryGetValue(bushGroup, out KinGroup? farmer) ? farmer.Color : null;
+            bush.Draw(winter, stake);
+        }
+
         foreach (Twig twig in Twigs)
         {
             if (twig.IsActive && !twig.IsCarried && IsVisible(twig.Position, camera))

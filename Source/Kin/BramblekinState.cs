@@ -42,6 +42,9 @@ public enum BramblekinState
     /// <summary>A Guard returning to its post by the group's home.</summary>
     Guarding,
 
+    /// <summary>Planting or harvesting its group's berry bushes — see Bramblekin.Farming.</summary>
+    Farming,
+
     // --- Critical (hunger) ---
 
     /// <summary>Hungry with no food in sight: roaming further afield to find some.</summary>

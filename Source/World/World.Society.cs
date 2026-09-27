@@ -147,6 +147,17 @@ public sealed partial class World
             return false;
         }
 
+        // Neighbours: warring groups' members keep their distance (the fighting
+        // happens near home and on raids); allies treat each other as friends.
+        GroupStance stance = StanceBetween(a.GroupId, b.GroupId);
+        if (stance == GroupStance.AtWar)
+            return false;
+        if (stance == GroupStance.Allied)
+        {
+            TryShareFood(a, b, sameGroup: false);
+            return TryCourt(a, b);
+        }
+
         if (TryStartRobbery(a, b) || TryStartRobbery(b, a))
             return false;
 
@@ -190,7 +201,7 @@ public sealed partial class World
     {
         if (!attacker.IsStarving || attacker.HasFood || attacker.IsRobbing || attacker.SeesFood || !victim.HasFood)
             return false;
-        if (attacker.Personality.Aggression < HighAggressionThreshold)
+        if (attacker.Personality.Aggression < HighAggressionThreshold || attacker.IsCloseKinOf(victim) || AreAllied(attacker.GroupId, victim.GroupId))
             return false;
 
         double chance = attacker.Personality.Aggression;
@@ -200,6 +211,7 @@ public sealed partial class World
             return false;
 
         DeclareEnemies(attacker, victim);
+        AddGrievance(attacker.GroupId, victim.GroupId, RobberyGrievance);
         attacker.BeginRobbery(victim);
         QueueFloatingText(attacker.Position, "Attack!", HostileTextColor);
         Game.AddEventLog($"[HOSTILITY] Starving {attacker.Name} turned on {victim.Name} for its food");

@@ -70,6 +70,15 @@ public sealed class KinGroup
     /// <summary>The threat near home the Leader sent its Guards against, if any.</summary>
     public ICombatant? DefendTarget { get; set; }
 
+    /// <summary>The enemy store the Leader sent its Raiders against, if any — see World.Neighbours.</summary>
+    public Shelter? WarTarget { get; set; }
+
+    /// <summary>When the current raiding party gives up and heads home.</summary>
+    public float RaidEndsAt { get; set; }
+
+    /// <summary>No new raid before this (World.ElapsedSeconds).</summary>
+    public float NextRaidAt { get; set; }
+
     /// <summary>Counts down to the Leader's next decision.</summary>
     public float DecisionTimer { get; set; }
 

@@ -367,6 +367,7 @@ public sealed partial class World
         UpdateFoodClaimTimeouts(deltaTime);
         RebuildSpatialGrids();
         RebuildGroups();
+        UpdateRelations(deltaTime);
         UpdateGroupHomes(deltaTime);
         UpdateGroupDecisions(deltaTime);
         CountShelterOccupants();
@@ -395,6 +396,7 @@ public sealed partial class World
         ResolveEncounters();
 
         UpdateShelters(deltaTime);
+        UpdateFarming(deltaTime);
         UpdateBerrySpawn(deltaTime);
         UpdateTwigSpawn(deltaTime);
         UpdateSpiderRespawn(deltaTime);

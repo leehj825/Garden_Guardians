@@ -99,6 +99,8 @@ public sealed partial class World
                 break;
             case DeathCause.Kin:
                 DeathsByKin++;
+                if (killer is Bramblekin slayer)
+                    AddGrievance(kin.GroupId, slayer.GroupId, KillingGrievance);
                 how = killer is Bramblekin attacker ? $"was killed by {attacker.Name}" : "was killed by another Bramblekin";
                 break;
             default:

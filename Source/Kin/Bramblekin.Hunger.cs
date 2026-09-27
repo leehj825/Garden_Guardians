@@ -66,6 +66,13 @@ public sealed partial class Bramblekin
             return;
         }
 
+        // Farming pays off: a ripe berry on one of its group's bushes.
+        if (world.GroupOf(this) is { } group && world.NearestRipeBush(this, group, DetectionRadius) is { } bush)
+        {
+            Harvest(bush, deltaTime, world, eat: true);
+            return;
+        }
+
         // An abandoned store it can see is free for the taking.
         if (TryTakeFromStore(deltaTime, world, raid: false))
             return;

@@ -101,7 +101,9 @@ public sealed partial class Bramblekin
     /// <summary>
     /// Closes to strike range of <paramref name="target"/> and strikes on
     /// cooldown. When robbing, the first blow that lands takes the victim's
-    /// food (see <see cref="World.StealFood"/>).
+    /// food (see <see cref="World.StealFood"/>). Blood is thicker than
+    /// water: it never deals a close relative (parent, child, sibling) the
+    /// blow that would kill it.
     /// </summary>
     private void PursueAndStrike(ICombatant target, float speed, float deltaTime, World world)
     {
@@ -120,6 +122,8 @@ public sealed partial class Bramblekin
         if (_strikeCooldown > 0f)
             return;
         _strikeCooldown = StrikeCooldownDuration;
+        if (target is Bramblekin relative && relative.Health <= StrikeDamage && relative.IsCloseKinOf(this))
+            return;
 
         if (State == BramblekinState.Attacking && target is Bramblekin victim && victim.HasFood)
             world.StealFood(this, victim);

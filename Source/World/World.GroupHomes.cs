@@ -298,10 +298,12 @@ public sealed partial class World
             }
             daughter.ElectLeader();
             NameGroup(daughter);
+            HandOverBushes(parent, daughter, house, parent.Home);
+            SetStance(parent, daughter, GroupStance.Allied); // Kin villages stand together.
 
             Buddings++;
             QueueFloatingText(house.Position, "New group!", daughter.Color);
-            Game.AddEventLog($"[COLONY] {parent.CapitalTitle} has grown too big: {settlers.Count} of them set up as {daughter.Title} in their own House, led by {daughter.Leader!.Name}");
+            Game.AddEventLog($"[COLONY] {parent.CapitalTitle} has grown too big: {settlers.Count} of them set up as {daughter.Title} in their own House, led by {daughter.Leader!.Name} - allies of their old village");
         }
         _pendingBuddings.Clear();
     }
@@ -325,6 +327,7 @@ public sealed partial class World
 
             larger.Annexes.Add(home);
             home.GroupId = larger.Id;
+            HandOverBushes(smaller, larger, home, fromHome: null);
             if (larger.Annexes.Count == 1)
                 VillagesFounded++;
         }

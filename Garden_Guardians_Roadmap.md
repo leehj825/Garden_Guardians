@@ -6,8 +6,8 @@
 
 ## Progress Snapshot
 The game is an **Emergent Survival** simulation (Phase 7) that has grown
-a **society** (Phase 8), a **living population** (Phase 9) and **lives
-& lineages** (Phase 10). There are no factions or top-down economy: the
+a **society** (Phase 8), a **living population** (Phase 9), **lives &
+lineages** (Phase 10) and **farming & neighbours** (Phase 11). There are no factions or top-down economy: the
 map is the procedural terrain and loose entities — wild Food, Twigs, a
 Wolf Spider, Hornet swarms, Grubs, Stag Beetles, Garden Props — and the
 Bramblekin. Every Bramblekin is an individual agent with a random
@@ -423,6 +423,36 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     Food stored per member (2 in autumn) — with old age thinning the
     population, food per head was the main thing holding births back.
 
+## Phase 11: Farming, Neighbours & a 13-Year Review
+*   ✅ **Farming:** clever clans work out how to grow berry bushes from
+    seed; the knowledge lives in individuals and spreads through
+    families, splits, budding, marriage and allies. Farmers plant (a berry
+    as seed) and harvest into the stores; bushes fruit at the season's
+    pace, drop overripe berries, and run wild when their group is gone.
+*   ✅ **Villages as neighbours:** per-pair stances (Neutral / Allied /
+    At War) driven by fading grievances (killings, raids, robberies,
+    splits, exiles) and Leader personalities. Allies defend each other,
+    send food to an ally in need, teach farming and marry across; wars
+    bring bold residents out against intruders and send raiding parties
+    after enemy stores; peace comes as grudges fade or war-weariness sets
+    in. Green/red lines on the map, counts on the HUD.
+*   ✅ **Fixes from a 13-year review:** close relatives killed each other
+    in feuds between their groups (now: no killing blow, robbery or raid
+    against parent, child or sibling); winter famine made followers walk
+    out and starve alone (now: shared hardship costs the Leader less
+    loyalty, and a sharp rebel waits for spring); newly joined members
+    churned straight back out (now: a 90s grace); neighbouring villages
+    "defended" against each other in endless brawls (now: an outsider
+    defending its own home isn't a threat, and allies only join when their
+    ally is actually hit); raiding parties were recalled before they
+    arrived (now: a party sees its raid through unless home is threatened).
+*   *Result* (6 seeds × 13 years, against the previous build): population
+    ~52 on average (was ~34), starvation about the same in number on a far
+    bigger population, newcomers ~17 per run (was ~54) — the world now
+    sustains itself — and 0 close-kin killings (was 14). Most worlds stay
+    peaceful with a few lasting alliances; some fall into cycles of war
+    with dozens of kin deaths. Stable over 24 years with 34–69 kin.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:
@@ -436,10 +466,13 @@ matter most:
     now have similar death rates; groups win on food and on numbers, and
     lose some of that edge to risky hunts, defence and politics. Worth
     tuning if groups should be the clearly safer choice.
-*   ⬜ **Villages as neighbours.** Daughter groups start next to their
-    parent village but have no special tie to it (no kinship bonus, no
-    shared defence), and nothing makes villages spread out across the
-    map rather than clustering where they began.
+*   ⬜ **Spreading out.** Villages still cluster where they began
+    (daughter groups bud off right next door), which is what makes
+    neighbouring feuds so close-quartered; nothing yet pushes new villages
+    out toward open ground.
+*   ⬜ **Aid in person.** Allied food aid moves between stores
+    abstractly; a carrier walking it over would make it visible (and
+    raidable).
 *   ⬜ **Real pathfinding.** Bramblekin still steer around obstacles with
     a short sideways detour when stuck, rather than any actual NavMesh/
     grid pathfinding. Fine at current Pebble density.

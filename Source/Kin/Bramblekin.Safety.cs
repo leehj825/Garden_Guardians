@@ -16,6 +16,12 @@ public sealed partial class Bramblekin
     private bool UpdateSafety(float deltaTime, World world)
     {
         ICombatant? threat = _perceivedThreat;
+
+        // A raider on a war raid pushes through the defenders to the store
+        // and back, until it's hurt badly enough to stand down.
+        if (threat is Bramblekin && IsOnWarRaid(world) && Health > MaxHealth * DutyStandDownHealthFraction)
+            return false;
+
         if (threat is not null)
         {
             float leash = DetectionRadius * ThreatLeashMultiplier;

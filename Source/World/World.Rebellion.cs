@@ -46,15 +46,16 @@ public sealed partial class World
     /// </summary>
     private void ReviewLoyalty(KinGroup group, Bramblekin leader)
     {
+        bool sharedHardship = CurrentSeason == Season.Winter && StoredFood(group) == 0 && group.Sharing == SharingRule.Equal;
         foreach (Bramblekin member in group.Members)
         {
             if (!member.IsDead && !member.IsYoung)
-                member.UpdateLoyalty(group);
+                member.UpdateLoyalty(group, sharedHardship);
         }
 
         foreach (Bramblekin member in group.Members)
         {
-            if (member == leader || member.IsDead || member.IsDueling || member.IsYoung)
+            if (member == leader || member.IsDead || member.IsDueling || member.IsYoung || member.IsNewMember)
                 continue;
 
             if (member.Loyalty < Bramblekin.RebelThreshold && Rng.NextDouble() < RebelChancePerDecision)
@@ -100,6 +101,11 @@ public sealed partial class World
             return;
         }
 
+        // Walking out into the snow is how loners starve: a sharp mind
+        // grumbles and waits for spring.
+        if (CurrentSeason == Season.Winter && Rng.NextDouble() < rebel.Personality.Intelligence)
+            return;
+
         if (rebel.Personality.Sociability >= SplinterSociability && TrySplinter(group, rebel))
             return;
 
@@ -136,6 +142,7 @@ public sealed partial class World
         }
         splinter.ElectLeader();
         NameGroup(splinter);
+        AddGrievance(group.Id, splinter.Id, SplinterGrievance);
 
         Splinters++;
         QueueFloatingText(instigator.Position, "Split off!", splinter.Color);
@@ -175,7 +182,8 @@ public sealed partial class World
         if (PartnerGoesAlong(group, outcast))
         {
             Bramblekin partner = outcast.Partner!;
-            LeaveAsCouple(outcast, partner);
+            KinGroup household = LeaveAsCouple(outcast, partner);
+            AddGrievance(group.Id, household.Id, ExileGrievance);
             partnerNote = $"; {partner.Name} went with them";
         }
         else

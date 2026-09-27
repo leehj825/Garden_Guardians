@@ -36,6 +36,8 @@ public sealed partial class Bramblekin
             KinJob.Hunter => DoHuntDuty(group, deltaTime, world),
             KinJob.Builder => DoBuilderDuty(deltaTime, world),
             KinJob.Gatherer => DoGatherDuty(deltaTime, world),
+            KinJob.Farmer => DoFarmDuty(group, deltaTime, world),
+            KinJob.Raider => DoRaidDuty(group, deltaTime, world),
             _ => false,
         };
     }
@@ -89,6 +91,49 @@ public sealed partial class Bramblekin
         return DoGatherDuty(deltaTime, world);
     }
 
+    /// <summary>
+    /// Raider (at war): goes with the raiding party to the enemy store its
+    /// Leader picked, takes a piece of Food and carries it home to its own
+    /// stores. The enemy's residents see it coming and defend. Stands down
+    /// to rest at half Health.
+    /// </summary>
+    private bool DoRaidDuty(KinGroup group, float deltaTime, World world)
+    {
+        if (Health <= MaxHealth * DutyStandDownHealthFraction)
+            return false;
+
+        if (_carried is not null)
+        {
+            if (StoreToStock(world) is not { } store)
+                return false;
+            CarryFoodHome(store, deltaTime, world);
+            return true;
+        }
+
+        if (group.WarTarget is not { IsCollapsed: false, StoredFood: > 0 } target)
+            return false;
+
+        _raidTarget = target;
+        SetState(BramblekinState.Raiding);
+        if (!target.Contains(Position))
+        {
+            MoveTo(target.Position, WalkSpeed * 1.2f, deltaTime, world);
+            return true;
+        }
+
+        _raidTarget = null;
+        if (world.RaidStore(this, target) is { } food)
+        {
+            _carried = food;
+            world.NoteWarRaid();
+        }
+        return true;
+    }
+
+    /// <summary>True while it's a Raider out with its group's raiding party (see <see cref="DoRaidDuty"/>).</summary>
+    private bool IsOnWarRaid(World world) =>
+        Job == KinJob.Raider && IsObedient && world.GroupOf(this) is { Goal: GroupGoal.Raid, WarTarget: not null };
+
     /// <summary>Builder: fetches twigs for whichever group home is under construction; with nothing to build, gathers.</summary>
     private bool DoBuilderDuty(float deltaTime, World world)
     {
@@ -100,7 +145,7 @@ public sealed partial class Bramblekin
         return DoGatherDuty(deltaTime, world);
     }
 
-    /// <summary>Gatherer: brings Food lying within <see cref="GatherRange"/> of home into the shared stores until they're full.</summary>
+    /// <summary>Gatherer: brings ripe berries off the group's bushes, and Food lying within <see cref="GatherRange"/> of home, into the shared stores until they're full.</summary>
     private bool DoGatherDuty(float deltaTime, World world)
     {
         if (Home is not { IsBuilt: true } home || StoreToStock(world) is not { } store)
@@ -109,6 +154,12 @@ public sealed partial class Bramblekin
         if (_carried is not null)
         {
             CarryFoodHome(store, deltaTime, world);
+            return true;
+        }
+
+        if (world.GroupOf(this) is { } group && world.NearestRipeBush(this, group, GatherRange) is { } bush)
+        {
+            Harvest(bush, deltaTime, world, eat: false);
             return true;
         }
 

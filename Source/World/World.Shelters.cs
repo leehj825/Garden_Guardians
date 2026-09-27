@@ -368,8 +368,14 @@ public sealed partial class World
         StoreRaids++;
         foreach (Bramblekin victim in ResidentsOf(shelter))
             DeclareEnemies(raider, victim);
+        AddGrievance(raider.GroupId, shelter.GroupId, RaidGrievance);
         QueueFloatingText(shelter.Position, "Raided!", new Color(210, 50, 40, 255));
-        Game.AddEventLog($"[RAID] {raider.Name} raided {(shelter.GroupId is null ? $"{shelter.Owner?.Name}'s" : "a group's")} {shelter.Tier} store");
+        // A war raid is announced once, when the party sets out (see DecideGroupGoal).
+        if (!AreAtWar(raider.GroupId, shelter.GroupId))
+        {
+            string whose = shelter.GroupId is { } owners && _groups.TryGetValue(owners, out KinGroup? victims) ? $"{victims.Title}'s" : $"{shelter.Owner?.Name}'s";
+            Game.AddEventLog($"[RAID] {raider.Name} raided {whose} {shelter.Tier} store");
+        }
         return food;
     }
 
@@ -389,6 +395,9 @@ public sealed partial class World
             if (kin.GroupId is not null && shelter.GroupId == kin.GroupId)
                 continue;
             if (abandonedOnly && !shelter.IsAbandoned)
+                continue;
+            // Nobody raids a home its own parent, child or sibling lives in.
+            if (!shelter.IsAbandoned && ResidentsOf(shelter).Any(resident => resident.IsCloseKinOf(kin)))
                 continue;
 
             float distanceSquared = GroundMover.HorizontalDistanceSquared(kin.Position, shelter.Position);

@@ -59,6 +59,9 @@ public sealed partial class Bramblekin
 
     public void SetLoyalty(float loyalty) => Loyalty = Math.Clamp(loyalty, 0f, 1f);
 
+    /// <summary>How much of the usual hunger grudge a follower holds against its Leader in a shared hardship — see <see cref="UpdateLoyalty"/>.</summary>
+    private const float SharedHardshipBlame = 0.4f;
+
     /// <summary>A groupmate just fought off something that was attacking it — see <see cref="World.NoteDefended"/>.</summary>
     public void NoteDefended() => _defendedSinceTick = true;
 
@@ -71,9 +74,12 @@ public sealed partial class Bramblekin
     /// it; hunger (worse when starving), being turned away from the store, a
     /// Leader who eats first, dangerous orders (felt less by the Aggressive)
     /// and injury lose it. Since a badly run group's members share most of
-    /// those grievances, they tend to grow unhappy together.
+    /// those grievances, they tend to grow unhappy together — though in a
+    /// <paramref name="sharedHardship"/> (a winter famine with the stores
+    /// empty and shared fairly) hunger is nobody's fault, and costs the
+    /// Leader far less.
     /// </summary>
-    public void UpdateLoyalty(KinGroup group)
+    public void UpdateLoyalty(KinGroup group, bool sharedHardship)
     {
         if (group.Leader == this)
         {
@@ -94,15 +100,17 @@ public sealed partial class Bramblekin
 
         if (_deniedFood)
             delta -= 0.1f;
+        float hungerBlame = sharedHardship ? SharedHardshipBlame : 1f;
         if (IsStarving)
-            delta -= 0.05f;
+            delta -= 0.05f * hungerBlame;
         else if (IsHungry)
-            delta -= 0.02f;
+            delta -= 0.02f * hungerBlame;
         if (Health < MaxHealth / 2)
             delta -= 0.02f;
         if (group.Sharing == SharingRule.LeaderFirst)
             delta -= 0.04f * (1f - 0.5f * Personality.Aggression);
-        if ((Job == KinJob.Hunter && group.Goal == GroupGoal.Hunt) || (Job == KinJob.Guard && group.Goal == GroupGoal.Defend))
+        if ((Job == KinJob.Hunter && group.Goal == GroupGoal.Hunt) || (Job == KinJob.Guard && group.Goal == GroupGoal.Defend) ||
+            (Job == KinJob.Raider && group.Goal == GroupGoal.Raid))
             delta -= 0.03f * (1f - Personality.Aggression);
 
         SetLoyalty(Loyalty + delta);

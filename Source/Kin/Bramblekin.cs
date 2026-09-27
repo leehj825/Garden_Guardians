@@ -137,6 +137,12 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>A threat or target is let go once it's this many detection radii away.</summary>
     private const float ThreatLeashMultiplier = 1.3f;
 
+    /// <summary>At war, only a resident at least this Aggressive goes after an enemy passer-by…</summary>
+    private const float WarIntruderAggression = 0.5f;
+
+    /// <summary>…and only one this close (m) to home.</summary>
+    private const float WarIntruderRadius = 6f;
+
     /// <summary>Whoever last hit this Bramblekin stays its top threat for this many seconds.</summary>
     private const float RecentAttackWindow = 4f;
 
@@ -351,7 +357,7 @@ public sealed partial class Bramblekin : ICombatant
 
     /// <summary>The Wolf Spider hunts by vibration: a Bramblekin busy with food (or a fight over it) gives itself away.</summary>
     public bool IsVibrating => !IsDead && State is BramblekinState.Foraging or BramblekinState.Eating or BramblekinState.Hunting
-        or BramblekinState.Attacking or BramblekinState.Raiding;
+        or BramblekinState.Attacking or BramblekinState.Raiding or BramblekinState.Farming;
 
     private int StrikeDamage => (int)MathF.Round((BaseStrikeDamage + StrikeDamagePerAggression * Personality.Aggression) * (IsElder ? ElderStrikeFactor : 1f));
 
@@ -377,7 +383,17 @@ public sealed partial class Bramblekin : ICombatant
     {
         GroupId = groupId;
         Loyalty = LoyaltyBaseline;
+        _joinedAt = _timeHere;
     }
+
+    /// <summary>When (in <see cref="_timeHere"/>) it last joined a group.</summary>
+    private float _joinedAt;
+
+    /// <summary>A newcomer to a group gives it this long (s) before it rebels, or is thrown out.</summary>
+    private const float NewMemberGrace = 90f;
+
+    /// <summary>True for a while after it joins a group — see <see cref="NewMemberGrace"/>.</summary>
+    public bool IsNewMember => _timeHere - _joinedAt < NewMemberGrace;
 
     /// <summary>Splinter: leaves its group, along with other unhappy members, for a new one of their own — homeless, but keen.</summary>
     public void SplitOff(Guid newGroupId)
@@ -644,22 +660,36 @@ public sealed partial class Bramblekin : ICombatant
                 continue;
             }
 
-            // Fight to protect: a raider heading for its home (or any of its group's).
-            if (other.RaidTarget is { } raided && (raided == Home || (GroupId is not null && raided.GroupId == GroupId)))
+            // Fight to protect: a raider heading for its home (or any of its group's, or its allies').
+            if (other.RaidTarget is { } raided &&
+                (raided == Home || (GroupId is not null && (raided.GroupId == GroupId || world.AreAllied(raided.GroupId, GroupId)))))
             {
                 Consider(other, allyDefense: true);
                 continue;
             }
 
-            if (GroupId is null || other.GroupId != GroupId)
+            if (GroupId is null || other.GroupId is null)
                 continue;
 
-            // Group Dynamics: a groupmate under attack, or already
-            // fighting, pulls its foe into this Bramblekin's sights too.
+            // War: a bold resident drives off a member of an enemy group that comes right up to home.
+            if (Home is { } home && Personality.Aggression >= WarIntruderAggression && world.AreAtWar(GroupId, other.GroupId) &&
+                GroundMover.HorizontalDistanceSquared(other.Position, home.Position) <= WarIntruderRadius * WarIntruderRadius)
+            {
+                Consider(other, allyDefense: true);
+                continue;
+            }
+
+            if (other.GroupId != GroupId && !world.AreAllied(GroupId, other.GroupId))
+                continue;
+
+            // Group Dynamics: a groupmate under attack, or already fighting,
+            // pulls its foe into this Bramblekin's sights too; an ally only
+            // when it's actually being hit.
+            bool groupmate = other.GroupId == GroupId;
             ICombatant? allyFoe = other.RecentAttacker(world) ??
-                                  (other.State == BramblekinState.Fighting ? other.CombatTarget : null);
+                                  (groupmate && other.State == BramblekinState.Fighting ? other.CombatTarget : null);
             if (allyFoe is { IsDead: false } && !ReferenceEquals(allyFoe, this) &&
-                !(allyFoe is Bramblekin foeKin && foeKin.GroupId == GroupId))
+                !(allyFoe is Bramblekin foeKin && (foeKin.GroupId == GroupId || world.AreAllied(foeKin.GroupId, GroupId))))
                 Consider(allyFoe, allyDefense: true);
         }
 

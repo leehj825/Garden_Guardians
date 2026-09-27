@@ -3,7 +3,8 @@
 *Last updated: 2026-09-27 — the **Emergent Survival** pivot, now with
 **settling and society**, and a living population: **seasons**, **births**
 and **villages** that bud off daughter groups, **named** Bramblekin who
-pair up as **couples** and die of **old age**, and a **follow camera**.
+pair up as **couples** and die of **old age**, a **follow camera**,
+**farming**, and villages that live as **neighbours** — allies or enemies.
 The game is no longer a
 macro-RTS faction simulator: there are no factions, no top-down economy
 and no faction wars. Every Bramblekin is an individual agent with its own
@@ -46,7 +47,9 @@ decide group goals every few seconds; followers' loyalty rises and falls
 with how they're treated, and the disloyal leave, split off or stage a
 coup → singles pair up as couples, and thriving groups raise their young
 and grow into villages, while the seasons swing the food supply from
-plenty to scarcity and back → the old grow grey and die, and their
+plenty to scarcity and back → clever clans work out farming and plant
+berry bushes; neighbouring villages ally, send each other food, or go to
+war and raid each other's stores → the old grow grey and die, and their
 children carry the family name on → new solitary wanderers drift in
 from the map's edge whenever the population runs low.
 
@@ -106,7 +109,8 @@ overhead camera:
     robbing, raiding, grouping, leading, obeying and rebelling — is the
     Bramblekin's own business.
 *   The HUD shows the year and season (with its food multiplier), homes
-    (tents, houses, sites, food stored, villages and buddings), what the
+    (tents, houses, sites, food stored, villages and buddings, bushes),
+    groups (how many farm) and current alliances and wars, what the
     colony is doing, deaths by cause, births and the highest generation,
     and the politics so far (walk-outs, splits, coups, exiles, raids).
     The event console on the left narrates the seasons, alliances,
@@ -118,12 +122,13 @@ overhead camera:
     under `Source/`, one type per file: `Engine/` (touch and follow
     cameras, terrain, tap input, spatial grid, movement), `World/` (the
     `World` partial class split by concern — core, society, families,
-    group homes & villages, leadership, rebellion, seasons, births,
+    neighbours, farming, group homes & villages, leadership, rebellion,
+    seasons, births,
     shelters, hunting, interactions, spawning, stats, rendering — plus
     Food, Twigs, Shelters and Garden Props), `Kin/` (the `Bramblekin`
     partial class with one file per need — Hunger, Safety, Duty, Settle,
-    Social — plus Hunting, Loyalty, Lineage, Family, Aging, Actions and
-    Drawing, and the Personality, names, sex, relationship, group and
+    Social — plus Hunting, Farming, Loyalty, Lineage, Family, Aging,
+    Actions and Drawing, and the Personality, names, sex, relationship, group and
     society types), `Wildlife/` and `Game/`.
 *   **Squared-distance math everywhere:** targeting/aggro/encounter checks
     compare squared distances against a squared threshold.
@@ -250,11 +255,17 @@ overhead camera:
 *   **Grubs** are small prey for anyone: a hungry Bramblekin that can't
     see Food hunts one; a settler with a low store hunts those near home.
 *   **Defending home:** residents who see a raider heading for their home
-    (or any of their village's homes) treat it as a threat they're keen to
-    fight; a Leader rallies its group to Defend against anything that
-    comes within 10m of home.
+    (or any of their village's homes, or an ally's) treat it as a threat
+    they're keen to fight; a Leader rallies its group to Defend against
+    anything that comes within 10m of home — though not against an
+    outsider who's only defending its own home next door, or against
+    defenders fighting off its own raiding party.
 *   **Raids:** a starving, highly Aggressive Bramblekin raids someone
-    else's store, making Enemies of everyone who lives there.
+    else's store, making Enemies of everyone who lives there — never a
+    home where its parent, child or sibling lives.
+*   **Blood is thicker than water:** a Bramblekin never robs a close
+    relative (parent, child or sibling), and never deals one the blow
+    that would kill it.
 
 ## Encounters, Relationships & Groups
 *   **Relationships:** each Bramblekin keeps `KnownKins` — every other
@@ -343,9 +354,13 @@ overhead camera:
     food in it, having been defended by a groupmate and friendship with
     the Leader; it falls with hunger (more when starving), being turned
     away from the store, a Leader who eats first, dangerous orders
-    (Hunter on a hunt, Guard on a defence — felt less by the Aggressive)
-    and injury. Members of a badly run group share most of those
-    grievances, so they tend to sour together.
+    (Hunter on a hunt, Guard on a defence, Raider on a raid — felt less by
+    the Aggressive) and injury. Members of a badly run group share most of
+    those grievances, so they tend to sour together. But in a **shared
+    hardship** — winter, the stores empty and shared fairly — hunger is
+    nobody's fault, and costs the Leader only 40% of the usual loyalty.
+*   **New members** get 90s to settle in before they can rebel or be
+    thrown out.
 *   **Obedience:** below 0.3 a follower ignores its job and fends for
     itself.
 *   **Rebellion:** below 0.2, at each decision a follower rebels with odds
@@ -362,6 +377,9 @@ overhead camera:
         homeless group with a Leader of their own.
     *   **Leave** — otherwise: it walks out and goes it alone as an
         **Independent**, losing the group's home, store and defenders.
+    *   In winter a rebel who'd leave or split off waits for spring
+        instead, with odds of its Intelligence — walking out into the snow
+        is how loners starve.
 *   **Exile:** an Aggressive Leader (≥ 0.5) throws out a follower below
     0.15 loyalty (odds 0.25 per decision); the two become Enemies.
 *   Nobody ever rejoins a group it left. An Independent can be taken in
@@ -460,10 +478,77 @@ overhead camera:
     against the old group. The parent village can then build again.
 *   **The population** is no longer held at a fixed number: it rises
     through Summer and Autumn and thins in Winter and early Spring, and
-    over hours settles wherever the garden's food allows — about 30–50
-    in 4-hour headless runs, with births (150–210 per run) well ahead of
-    newcomers (60–120). Wandering Arrivals only top it up when it falls
-    below 30; a safety cap of 150 is never reached in practice.
+    over hours settles wherever the garden's food allows — with farming,
+    about 35–70 in 4-hour headless runs, with births (250–360 per run)
+    far ahead of newcomers (10–25). Wandering Arrivals only top it up when
+    it falls below 30; a safety cap of 150 is never reached in practice.
+
+## Farming
+*   **Working it out:** at each Leader decision, a group with a House
+    that doesn't yet farm works it out with odds 0.008 × the Intelligence
+    of its cleverest grown member — a bright clan within a year or two, a
+    dull one much later. Farming is something **individuals** know: the
+    whole group learns it, children of a farming parent are born knowing
+    it, a group teaches everyone who joins, and kin carry it with them
+    when they split off, bud off or marry into another group. An ally
+    may also teach it (see Neighbours).
+*   **Berry bushes:** a farming group keeps up to 2 bushes per House and
+    1 per Tent, planted 2.5–6m from home (at least 1.4m apart, clear of
+    shelters; 40 on the map at most). Planting costs a berry from the
+    stores as seed and never happens in winter. A bush grows for 90s (at
+    the season's pace) and then ripens a berry every 40s — again at the
+    season's pace, so it fruits hardest in summer and barely in winter —
+    holding up to 4; an overripe one drops a loose Berry anyone can eat.
+    Drawn as a leafy clump dotted with its ripe berries, with a stake in
+    its group's colour; browner in winter.
+*   **Farmers:** a farming group makes one Farmer per 4 grown members (at
+    least one), from its most Intelligent Gatherers, under any goal but
+    Defend. A Farmer picks ripe berries into the stores, and plants while
+    the group has room for more bushes and a berry to spare; otherwise it
+    gathers. Gatherers pick ripe bushes too, and a hungry member eats
+    straight off one.
+*   **Wild bushes:** when its group is gone, a bush runs wild — still
+    fruiting (and dropping berries for anyone) — and withers after 600s.
+    Bushes go with the house nearest them when a village buds or two
+    groups merge.
+
+## Neighbours: Alliances & War
+*   **Neighbours** are groups whose main homes are within 30m. Between
+    any two groups the World keeps a **stance** — Neutral, Allied or At
+    War — and a shared **grievance** that fades by 0.004 a second (about
+    2.4 a year): a killing adds 3, a raid 1, a robbery 1, a splinter
+    leaving in anger 2, an exile's household 1.5.
+*   **Leader decisions** (each Leader weighs every group it neighbours or
+    has history with):
+    *   **War** — a neighbour it holds a grievance of 6+ against, and a
+        Leader at least 0.4 Aggressive (odds 0.1 × Aggression per decision).
+    *   **Alliance** — a neighbour with little grievance (under 1), both
+        Leaders at least 0.35 Sociable, neither with 2 allies already, and
+        not Enemies: odds 0.02 × their average Sociability per decision,
+        three times that if they're family or friends. A village and the
+        daughter group that buds off it start out allied.
+    *   **Rift** — a grievance of 3+ breaks an alliance.
+    *   **Peace** — once the grievance has faded below 1.5, or after three
+        seasons of war however bitter: odds 0.02 + 0.08 × (1 − Aggression)
+        per decision.
+*   **Allies** defend each other (an ally being hit, or a raider heading
+    for an ally's home, is a threat), never rob each other, meet as
+    friends (sharing food), and marry across: a couple from allied groups
+    forms, and one of them (not a Leader) moves to the other's village. A
+    well-stocked ally (6+ stored, half full) sends 3 food to an ally that
+    has run out while a third of it goes hungry, and a farming ally may
+    teach the other to farm (odds 0.05 per decision).
+*   **War:** members of warring groups keep their distance when they meet;
+    a bold resident (Aggression 0.5+) drives off an enemy that comes within
+    6m of home. An Aggressive Leader at war sends a **raiding party**: the
+    boldest healthy half of its group goes for the richest enemy store
+    within 60m, each Raider pushing past the defenders to take a piece of
+    Food and carry it home (standing down at half Health). A party keeps
+    at it for 45s or until the store is empty; the next can't set out for
+    240s.
+*   Allied and warring villages are joined on the map by a green or red
+    line between their main homes; the HUD counts current alliances and
+    wars, and the Kin Inspector shows its group's.
 
 ## Food & Wildlife
 *   **Food:** wild Berries grow passively (one every 0.6s, up to 100 on

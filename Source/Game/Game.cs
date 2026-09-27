@@ -275,6 +275,14 @@ public static class Game
             $"{world.StoreMeals} meals eaten from stores, {world.StoreRaids} store raids; " +
             $"{world.VillagesFounded} villages founded, {world.Buddings} daughter groups budded off.");
         Console.WriteLine(
+            $"Neighbours: {world.AlliancesMade} alliances made, {world.WarsDeclared} wars declared, {world.PeacesMade} peaces made; " +
+            $"{world.AidSent} aid shipments ({world.FoodAided} food), {world.WarRaids} pieces carried off in war raids; " +
+            $"at the end {world.CurrentAlliances} alliances and {world.CurrentWars} wars.");
+        Console.WriteLine(
+            $"Farming: worked out {world.FarmingDiscoveries} times, taught {world.FarmingTaught} times; {world.BushesPlanted} bushes planted, " +
+            $"{world.FruitHarvested} berries picked; at the end {world.Groups.Count(World.KnowsFarming)} groups farm {world.Bushes.Count(b => b.GroupId is not null)} bushes " +
+            $"({world.Bushes.Count(b => b.GroupId is null)} wild).");
+        Console.WriteLine(
             $"Building: a Tent takes {world.AverageTentBuildSeconds:0}s on average, a House upgrade {world.AverageHouseUpgradeSeconds:0}s; " +
             $"{world.StagesOlderThan(600f)} of {world.Shelters.Count(s => !s.IsBuilt || s.IsUpgrading)} construction stages under way have stalled over 10 min.");
         PrintSurvivalTrend(world);
@@ -339,7 +347,7 @@ public static class Game
         int houses = world.Shelters.Count(s => s.Tier == ShelterTier.House);
         int stored = world.Shelters.Sum(s => s.StoredFood);
         Console.WriteLine(
-            $"[t={world.ElapsedSeconds,6:0}s Y{world.Year} {world.CurrentSeason,-6}] kin {living.Count,3} (solitary {solitary}, groups {world.Groups.Count}, largest {largestGroup}, villages {villages}) " +
+            $"[t={world.ElapsedSeconds,6:0}s Y{world.Year} {world.CurrentSeason,-6}] kin {living.Count,3} (solitary {solitary}, groups {world.Groups.Count}, largest {largestGroup}, villages {villages}, bushes {world.Bushes.Count}, allies {world.CurrentAlliances}, wars {world.CurrentWars}) " +
             $"avg hunger {averageHunger,5:0.0}  food on map {world.LooseFoodCount,3}, stored {stored,3}  tents {tents} houses {houses}  " +
             $"arrived {world.Arrivals} born {world.Births}  died: starved {world.DeathsByStarvation}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}, old age {world.DeathsByOldAge}");
     }
@@ -571,7 +579,8 @@ public static class Game
             ($"Aggression:   {kin.Personality.Aggression:0.00}", new Color(185, 60, 45, 255)),
             ($"Sociability:  {kin.Personality.Sociability:0.00}", new Color(60, 130, 70, 255)),
             ($"Intelligence: {kin.Personality.Intelligence:0.00} ({kin.DetectionRadius:0}m)", new Color(60, 100, 170, 255)),
-            (group is null ? "Group: none" : $"Group: {group.Name ?? group.ShortId}, {group.Members.Count} members", ink),
+            (group is null ? "Group: none" : $"Group: {group.Name ?? group.ShortId}, {group.Members.Count} members" +
+                (world.DescribeRelations(group) is { } relations ? $" ({relations})" : ""), ink),
             (DescribeHome(kin), ink),
             (group is null ? "Job: none" : $"Job: {kin.Job} (group goal: {group.Goal}{(group.Sharing == SharingRule.LeaderFirst ? ", leader eats first" : "")})", ink),
             (group is null || group.Leader == kin
@@ -630,8 +639,9 @@ public static class Game
             $"Year {world.Year} {world.CurrentSeason} (food x{world.FoodAbundance:0.0})   Speed {_timeScale}x   FPS {Raylib.GetFPS()}   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
             $"Homes: {world.Shelters.Count(s => s.IsBuilt && s.Tier == ShelterTier.Tent)} tents, {world.Shelters.Count(s => s.Tier == ShelterTier.House)} houses, " +
             $"{world.Shelters.Count(s => !s.IsBuilt)} being built   Food stored {world.Shelters.Sum(s => s.StoredFood)}   " +
-            $"Villages {world.Groups.Count(g => g.Annexes.Count > 0)} (budded {world.Buddings})",
-            $"Bramblekin {living}: {solitary} solitary, {world.Groups.Count} groups (largest {largestGroup})",
+            $"Villages {world.Groups.Count(g => g.Annexes.Count > 0)} (budded {world.Buddings})   Bushes {world.Bushes.Count}",
+            $"Bramblekin {living}: {solitary} solitary, {world.Groups.Count} groups (largest {largestGroup}, {world.Groups.Count(World.KnowsFarming)} farming)   " +
+            $"Alliances {world.CurrentAlliances}   Wars {world.CurrentWars}",
             $"Foraging {Count(BramblekinState.Foraging) + Count(BramblekinState.Hunting)}   Eating {Count(BramblekinState.Eating)}   " +
             $"Fleeing {Count(BramblekinState.Fleeing)}   Fighting {Count(BramblekinState.Fighting)}   Robbing {Count(BramblekinState.Attacking)}",
             $"Arrived {world.Arrivals}   Died: starved {world.DeathsByStarvation}, old age {world.DeathsByOldAge}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}   Thefts {world.Thefts}",

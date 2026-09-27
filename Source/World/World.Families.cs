@@ -32,8 +32,9 @@ public sealed partial class World
     /// <see cref="CourtshipSociabilityChance"/> for their average
     /// Sociability. Groupmates simply become a couple; two loners set up
     /// together as a new group; a loner joins its new partner's group if
-    /// there's room. Members of two different groups don't — neither would
-    /// leave its own. Returns true if group membership changed.
+    /// there's room. Members of two different groups only pair if their
+    /// groups are allies — then one (not a Leader) moves over to the
+    /// other's group. Returns true if group membership changed.
     /// </summary>
     private bool TryCourt(Bramblekin a, Bramblekin b)
     {
@@ -44,7 +45,7 @@ public sealed partial class World
 
         KinGroup? groupA = GroupOf(a);
         KinGroup? groupB = GroupOf(b);
-        if (groupA is not null && groupB is not null && groupA != groupB)
+        if (groupA is not null && groupB is not null && groupA != groupB && !AreAllied(groupA.Id, groupB.Id))
             return false;
 
         float sociability = (a.Personality.Sociability + b.Personality.Sociability) / 2f;
@@ -79,6 +80,19 @@ public sealed partial class World
             loner.JoinGroup(group.Id);
             group.Members.Add(loner);
             how = $" - {loner.GivenName} joined {group.Title}";
+            groupsChanged = true;
+        }
+        else if (groupA != groupB)
+        {
+            // Allied groups: one moves over to its partner's village.
+            (Bramblekin mover, KinGroup to) = b != groupB!.Leader && groupA!.Members.Count < GroupSizeLimit(groupA) ? (b, groupA)
+                : a != groupA!.Leader && groupB.Members.Count < GroupSizeLimit(groupB) ? (a, groupB)
+                : (null!, null!);
+            if (mover is null)
+                return false;
+            mover.JoinGroup(to.Id);
+            to.Members.Add(mover);
+            how = $" - {mover.GivenName} moved to {to.Title}";
             groupsChanged = true;
         }
         else
