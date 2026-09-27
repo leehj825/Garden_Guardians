@@ -2126,6 +2126,12 @@ public sealed class World
     /// <summary>Morale regained per second whenever the spider isn't actively terrorizing anyone.</summary>
     public const float MoraleRecoveryPerSecond = 1f;
 
+    /// <summary>Additional Morale regained per second, on top of <see cref="MoraleRecoveryPerSecond"/>, while a faction is Prosperous — see <see cref="VillageHeart.IsProsperous"/>. Fixes Morale bottoming out and staying there: <see cref="MoraleLossPerKill"/> (20, instant) easily outpaces a bare 1/s trickle once Hornets, Grubs and Blood-Feud skirmishes make casualties a routine occurrence rather than a rare Wolf-Spider event.</summary>
+    public const float ProsperityMoraleRecoveryBonus = 3f;
+
+    /// <summary>Tycoon Economy — Maslow's Hierarchy: the flat Food Stored floor a village needs banked before its Gatherers will bother with Amber (wealth) over Food (survival) — see the Gathering priority chain. Deliberately NOT a fraction of <see cref="VillageHeart.MaxFoodCapacity"/>, which only grows as Granaries are built and would otherwise raise this bar exactly as the economy matures.</summary>
+    public const int WellFedFoodThreshold = 15;
+
     /// <summary>Below this Morale, Gatherers are Weary (see <see cref="WearySpeedMultiplier"/>).</summary>
     public const float WearyMoraleThreshold = 50f;
 
@@ -2774,9 +2780,22 @@ public sealed class World
     private void UpdateMorale(VillageHeart village, float deltaTime)
     {
         bool terrorized = Spider is { State: SpiderState.Hunting or SpiderState.Pouncing };
-        village.Morale = terrorized
-            ? MathF.Max(0f, village.Morale - MoraleLossPerSecondTerrorized * deltaTime)
-            : MathF.Min(MaxMorale, village.Morale + MoraleRecoveryPerSecond * deltaTime);
+        if (terrorized)
+        {
+            village.Morale = MathF.Max(0f, village.Morale - MoraleLossPerSecondTerrorized * deltaTime);
+            return;
+        }
+
+        // Morale Regeneration Loop: a Prosperous faction recovers noticeably
+        // faster than the bare baseline trickle — without this, a single
+        // MoraleLossPerKill hit (20, instant) needed 20 real seconds of the
+        // old 1/s recovery to undo, and with Hornets/Grubs/Blood-Feud
+        // skirmishes making casualties routine rather than a rare event,
+        // Morale simply never climbed back out of the hole. Still hard
+        // capped at MaxMorale (100) and floored at 0 — see the Max(0f, ...)
+        // clamp in the terrorized branch above for the underflow side.
+        float recoveryRate = MoraleRecoveryPerSecond + (village.IsProsperous ? ProsperityMoraleRecoveryBonus : 0f);
+        village.Morale = MathF.Min(MaxMorale, village.Morale + recoveryRate * deltaTime);
     }
 
     /// <summary>The living Bramblekin of <paramref name="role"/> and <paramref name="village"/>'s Faction nearest that Village Heart, if any.</summary>
@@ -7294,6 +7313,17 @@ public sealed class VillageHeart
     /// <summary>Above <see cref="World.HighMoraleThreshold"/>: this faction's Builders work at <see cref="World.HighMoraleBuildMultiplier"/> speed.</summary>
     public bool BuildersAreInspired => Morale > World.HighMoraleThreshold;
 
+    /// <summary>
+    /// Morale Regeneration: a faction counts as Prosperous — and gets
+    /// <see cref="World.ProsperityMoraleRecoveryBonus"/> on top of the
+    /// baseline Morale trickle — whenever it's visibly thriving rather than
+    /// just scraping by: Food Stored comfortably ahead of its own headcount
+    /// (double Population, so there's real slack, not just enough to not
+    /// starve), or it's banked any Amber or Nectar at all (wealth/culture
+    /// a tribe under constant pressure never accumulates).
+    /// </summary>
+    public bool IsProsperous => FoodStored > Population * 2 || AmberStored > 0 || NectarStored > 0;
+
     /// <summary>Faction Personalities: fixed for this Village Heart's entire life, randomly rolled the moment it's founded.</summary>
     public FactionTrait Trait { get; }
 
@@ -10723,7 +10753,21 @@ public sealed class Bramblekin
             // Shard logic below. Same Safe Gathering (Danger Penalty) and
             // Maximum Search Radius rules as any other target — see
             // World.NearestAvailableAmber.
-            bool wellFed = home is not null && home.FoodStored >= home.MaxFoodCapacity / 2;
+            //
+            // Economic Deadlock Fix: this used to require FoodStored at HALF
+            // of MaxFoodCapacity — a moving target that only grows as
+            // Granaries raise the ceiling (up to 260), so a maturing economy
+            // needed to bank MORE Food, not less, before its Gatherers would
+            // ever touch Amber. Combined with Upkeep, Tribute, Prosperity,
+            // and the newer Grub theft threat all competing for the same
+            // FoodStored pool, tribes routinely never crossed that bar for
+            // their entire run — Amber stayed at 0 forever, which meant
+            // Traders (which need AmberStored > 10) never drafted either, so
+            // Goodwill could never be generated. A small FIXED floor (not
+            // scaled to the ever-growing capacity) is enough to prove the
+            // village isn't actively starving without gatekeeping Amber
+            // behind an economy that's already thriving by definition.
+            bool wellFed = home is not null && home.FoodStored >= WellFedFoodThreshold;
             AmberNode? amber = wellFed ? world.NearestAvailableAmber(Position, this) : null;
             if (amber is not null)
             {
