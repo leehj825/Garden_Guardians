@@ -192,6 +192,8 @@ public sealed partial class World
             if (group.Annexes.Count == 1)
                 VillagesFounded++;
             Game.AddEventLog($"[VILLAGE] {group.CapitalTitle} ({members} strong) is building a {(group.Annexes.Count == 1 ? "second" : "third")} home");
+            if (group.Annexes.Count == 1)
+                Chronicle($"{group.CapitalTitle} grew into a village of {members}", group);
         }
     }
 
@@ -307,6 +309,7 @@ public sealed partial class World
             daughter.ElectLeader();
             NameGroup(daughter);
             daughter.SettleTarget = FindOpenGround(house.Position);
+            daughter.Culture.CopyFrom(parent.Culture);
             int dowry = Math.Min(MaxDowry, StoredFood(parent) / 3);
             TakeFromStores(parent, dowry, preferred: house);
             daughter.Dowry = dowry;
@@ -317,6 +320,7 @@ public sealed partial class World
             float distance = daughter.SettleTarget is { } target ? GroundMover.HorizontalDistance(house.Position, target) : 0f;
             Game.AddEventLog($"[COLONY] {parent.CapitalTitle} has grown too big: {settlers.Count} of them set out, led by {daughter.Leader!.Name}, " +
                              $"to found {daughter.Title} {distance:0}m away{(dowry > 0 ? $", taking {dowry} food" : "")} - allies of their old village");
+            Chronicle($"{settlers.Count} settlers left {parent.Title} to found {daughter.Title}, {distance:0}m away", parent, daughter);
         }
         _pendingBuddings.Clear();
     }

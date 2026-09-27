@@ -80,6 +80,18 @@ public sealed class BerryBush
         return true; // Overripe: this one drops.
     }
 
+    /// <summary>Seconds toward its next berry, for saving.</summary>
+    public float FruitTimer => _fruitTimer;
+
+    /// <summary>Loading a saved world: puts back how grown and laden it was.</summary>
+    public void Restore(float growth, int fruit, float fruitTimer, float wildSeconds)
+    {
+        Growth = growth;
+        Fruit = fruit;
+        _fruitTimer = fruitTimer;
+        WildSeconds = wildSeconds;
+    }
+
     /// <summary>Picks one ripe berry. False if there's none.</summary>
     public bool TryPick()
     {

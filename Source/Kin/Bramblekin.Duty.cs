@@ -27,6 +27,10 @@ public sealed partial class Bramblekin
     /// </summary>
     private bool UpdateDuty(float deltaTime, World world)
     {
+        // An errand for its group comes before any job (see Bramblekin.Errands).
+        if (_errand is { } errand)
+            return DoErrand(errand, deltaTime, world);
+
         if (GroupId is null || IsYoung || !IsObedient || world.GroupOf(this) is not { } group)
             return false;
 
@@ -125,7 +129,7 @@ public sealed partial class Bramblekin
         if (world.RaidStore(this, target) is { } food)
         {
             _carried = food;
-            world.NoteWarRaid();
+            world.NoteWarRaid(this, target);
         }
         return true;
     }

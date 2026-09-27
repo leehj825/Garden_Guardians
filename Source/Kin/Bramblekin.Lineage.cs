@@ -50,9 +50,10 @@ public sealed partial class Bramblekin
     /// is a daughter or a son at even odds, starts out fed, and already
     /// counts its parents as Friends.
     /// </summary>
-    public static Bramblekin BornTo(Bramblekin mother, Bramblekin father, Vector3 position, Random rng)
+    public static Bramblekin BornTo(Bramblekin mother, Bramblekin father, Vector3 position, Random rng, ClanCulture? culture = null)
     {
-        var child = new Bramblekin(position, rng, Personality.Inherit(mother.Personality, father.Personality, rng))
+        Personality nature = Personality.Inherit(mother.Personality, father.Personality, rng);
+        var child = new Bramblekin(position, rng, culture?.Nudge(nature) ?? nature)
         {
             _bornHere = true,
             Generation = Math.Max(mother.Generation, father.Generation) + 1,

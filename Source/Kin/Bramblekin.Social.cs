@@ -35,9 +35,9 @@ public sealed partial class Bramblekin
             return;
         }
 
-        if (world.CurrentSeason == Season.Winter && Home is { IsBuilt: true } home)
+        if ((world.CurrentSeason == Season.Winter || world.IsStorming) && Home is { IsBuilt: true } home)
         {
-            WinterIn(home, deltaTime, world);
+            WinterIn(home, deltaTime, world); // Sitting out the winter — or a storm.
             return;
         }
 

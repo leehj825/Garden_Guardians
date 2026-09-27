@@ -143,11 +143,13 @@ public sealed partial class World
         splinter.ElectLeader();
         NameGroup(splinter);
         splinter.SettleTarget = FindOpenGround(instigator.Position); // Well away from the group they left.
+        splinter.Culture.CopyFrom(group.Culture);
         AddGrievance(group.Id, splinter.Id, SplinterGrievance);
 
         Splinters++;
         QueueFloatingText(instigator.Position, "Split off!", splinter.Color);
         Game.AddEventLog($"[SPLIT] {instigator.Name} led {faction.Count} unhappy members out of {group.Title} into a new group, {splinter.Title}, led by {splinter.Leader!.Name}");
+        Chronicle($"{instigator.Name} led {faction.Count} unhappy members out of {group.Title} to form {splinter.Title}", group, splinter);
         return true;
     }
 
@@ -232,6 +234,7 @@ public sealed partial class World
             Coups++;
             QueueFloatingText(winner.Position, "New leader!", group.Color);
             Game.AddEventLog($"[COUP] {winner.Name} beat {loser.Name} and now leads {group.Title}");
+            Chronicle($"{winner.Name} overthrew {loser.Name} as Leader of {group.Title}", group);
             return;
         }
 

@@ -49,7 +49,10 @@ public sealed partial class World
                 group.ElectLeader();
                 NameGroup(group);
                 if (previousLeader is not null && previousLeader != group.Leader)
+                {
                     Game.AddEventLog($"[GROUP] {group.Leader!.Name} now leads {group.Title}");
+                    Chronicle($"{group.Leader.Name} became Leader of {group.Title}", group);
+                }
                 continue;
             }
 
@@ -65,6 +68,7 @@ public sealed partial class World
                     survivor.SetHome(home);
                 }
                 Game.AddEventLog($"[GROUP] {group.CapitalTitle} is gone; {survivor.Name} is alone again");
+                Chronicle($"{group.CapitalTitle} came to an end; {survivor.Name} was the last of it", group);
             }
             _groupRemovalBuffer.Add(group.Id);
         }

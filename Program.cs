@@ -53,9 +53,11 @@ namespace GardenGuardians;
 /// Desktop entry point. Android starts the game from MainActivity instead
 /// (see Platforms/Android/MainActivity.cs); both end up in <see cref="Game.Run"/>.
 ///
-/// <c>--headless [seconds] [--seed N]</c> skips the window entirely and
-/// steps the simulation on its own, printing periodic population reports —
-/// a quick way to check the survival loop end to end without a GPU.
+/// <c>--headless [seconds] [--seed N] [--load FILE] [--save FILE]</c> skips
+/// the window entirely and steps the simulation on its own, printing
+/// periodic population reports — a quick way to check the survival loop end
+/// to end without a GPU. <c>--load</c> carries on a saved garden (for
+/// <c>seconds</c> more) and <c>--save</c> writes it out at the end.
 /// </summary>
 public static class Program
 {
@@ -78,7 +80,17 @@ public static class Program
         if (seedIndex >= 0 && seedIndex + 1 < args.Length && int.TryParse(args[seedIndex + 1], out int parsedSeed))
             seed = parsedSeed;
 
-        Game.RunHeadless(seconds, seed);
+        // --load <file> carries on a saved garden; --save <file> saves it at the end.
+        string? load = OptionValue(args, "--load");
+        string? save = OptionValue(args, "--save");
+
+        Game.RunHeadless(seconds, seed, load, save);
+    }
+
+    private static string? OptionValue(string[] args, string option)
+    {
+        int index = Array.IndexOf(args, option);
+        return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
     }
 }
 

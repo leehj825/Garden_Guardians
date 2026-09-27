@@ -61,6 +61,15 @@ public sealed class KinGroup
     /// <summary>Food a budded group took from its parent village, set aside for its new store once it's built.</summary>
     public int Dowry { get; set; }
 
+    /// <summary>The clan's traditions — see <see cref="ClanCulture"/>.</summary>
+    public ClanCulture Culture { get; } = new();
+
+    /// <summary>Danger spots its members have run into, shared by all of them — see Bramblekin.Memory.</summary>
+    public PlaceMemory Dangers { get; } = new(capacity: 6, mergeRadius: 4f);
+
+    /// <summary>Where its members have found food lately, shared by all of them.</summary>
+    public PlaceMemory FoodSpots { get; } = new(capacity: 6, mergeRadius: 5f);
+
     /// <summary>Counts down after a failed attempt to find a site for a group home.</summary>
     public float HomeSiteRetryTimer { get; set; }
 

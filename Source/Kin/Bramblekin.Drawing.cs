@@ -68,6 +68,7 @@ public sealed partial class Bramblekin
         }
 
         _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
+        DrawSack(facing);
         if (_carriedTwig is not null)
             Twig.DrawCarried(Position + new Vector3(0, BodyHeight * 0.55f, 0), facing);
     }

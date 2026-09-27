@@ -90,6 +90,7 @@ public sealed partial class World
         FarmingDiscoveries++;
         QueueFloatingText(thinker.Position, "Idea: farming!", FarmTextColor);
         Game.AddEventLog($"[FARMING] {thinker.Name} of {group.Title} worked out how to grow berry bushes from seed");
+        Chronicle($"{thinker.Name} of {group.Title} worked out how to grow berry bushes from seed", group);
     }
 
     /// <summary>A free spot for a new bush near <paramref name="home"/>: open ground, clear of shelters and other bushes. Null if none turns up.</summary>

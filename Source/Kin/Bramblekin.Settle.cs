@@ -47,7 +47,8 @@ public sealed partial class Bramblekin
     private float SettleDelay => MaxSettleDelay - (MaxSettleDelay - MinSettleDelay) * Personality.Intelligence;
 
     /// <summary>True while it's the one who should be fetching twigs for its home's current construction stage.</summary>
-    private bool NeedsTwig => _carriedTwig is null && BuildSite is not null && BuildsForHome;
+    private bool NeedsTwig => _carriedTwig is null &&
+        ((BuildSite is not null && BuildsForHome) || _errand is { Kind: ErrandKind.Labour, Returning: false });
 
     /// <summary>What its group is building right now, as the group last told it — see <see cref="SetBuildSite"/>.</summary>
     private Shelter? _groupBuildSite;
@@ -192,6 +193,7 @@ public sealed partial class Bramblekin
             {
                 _carriedTwig = null;
                 world.DeliverTwig(this, site, twig);
+                NoteTwigDelivered(site);
             }
             else
             {

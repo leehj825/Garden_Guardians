@@ -7,7 +7,7 @@ namespace GardenGuardians;
 /// Owns the window and the main loop: reads input, steps the <see cref="World"/>,
 /// and draws it with the UI on top. Platform-independent.
 /// </summary>
-public static class Game
+public static partial class Game
 {
     // Window settings for Desktop. Android instead opens at its native
     // screen size (see Run's InitWindow call) so the game fills the whole
@@ -137,10 +137,14 @@ public static class Game
             FovY = 45f,
             Projection = CameraProjection.Perspective,
         };
-        var world = new World(new Terrain(size: 100f), new Random(), InitialKinCount);
+        // Save/Load: the garden carries on where it was left (see SaveSystem).
+        string savePath = SaveSystem.DefaultPath;
+        World world = LoadOrCreateWorld(savePath);
         var input = new WorldTapInput();
         var touchCamera = new TouchCameraController();
         var followCamera = new FollowCamera(camera);
+        Camera3D overview = camera;
+        float autosaveTimer = AutosaveInterval;
 
         // --- Main loop -------------------------------------------------------
         while (!Raylib.WindowShouldClose())
@@ -151,7 +155,9 @@ public static class Game
             //    to pan, two fingers twist to rotate around the current
             //    Target and pinch to zoom. Runs before the tap input below
             //    so the rest of the frame sees an already-settled camera.
-            touchCamera.Update(ref camera, world.Terrain.Size / 2f);
+            // (The History screen takes over touches and drags while it's open.)
+            if (!_showChronicle)
+                touchCamera.Update(ref camera, world.Terrain.Size / 2f);
 
             // Responsive UI: the Debug Time Scale buttons' geometry (and the
             // "Nx" label panel between them) is recomputed from the CURRENT
@@ -169,7 +175,11 @@ public static class Game
             var speedLabelBounds = new Rectangle(speedButtonMargin + speedButtonWidth, speedButtonMargin, speedButtonGap, speedButtonHeight);
             var mapButton = new UiButton(new Rectangle(speedButtonMargin * 2 + speedButtonWidth * 2 + speedButtonGap, speedButtonMargin,
                 (int)(190 * uiScale), speedButtonHeight));
-            UiButton? followButton = FollowButton(world);
+            var historyButton = new UiButton(new Rectangle(mapButton.Bounds.X + mapButton.Bounds.Width + speedButtonMargin, speedButtonMargin,
+                (int)(290 * uiScale), speedButtonHeight));
+            UiButton? followButton = _showChronicle ? null : FollowButton(world);
+            UiButton? newGardenButton = _showChronicle ? NewGardenButton(historyButton, speedButtonMargin) : null;
+            _newGardenConfirm = MathF.Max(0f, _newGardenConfirm - Raylib.GetFrameTime());
 
             // 1) Input: the player has no lever on the world. The only tap
             //    left is inspecting a single Bramblekin (see WorldTapInput,
@@ -183,6 +193,22 @@ public static class Game
                 DecreaseTimeScale();
             else if (mousePressed && speedUpButton.Contains(mousePosition))
                 IncreaseTimeScale();
+            else if (mousePressed && historyButton.Contains(mousePosition))
+                ToggleChronicle();
+            else if (mousePressed && newGardenButton is not null && newGardenButton.Contains(mousePosition))
+            {
+                if (ConfirmNewGarden())
+                {
+                    world = StartNewGarden(savePath);
+                    camera = overview;
+                    followCamera = new FollowCamera(overview);
+                    autosaveTimer = AutosaveInterval;
+                }
+            }
+            else if (_showChronicle)
+            {
+                // The History screen scrolls instead (see DrawChronicle).
+            }
             else if (mousePressed && mapButton.Contains(mousePosition))
                 followCamera.ShowWholeMap();
             else if (mousePressed && followButton is not null && followButton.Contains(mousePosition))
@@ -214,10 +240,15 @@ public static class Game
             DrawSpeedLabel(speedLabelBounds, uiScale);
             speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
             mapButton.Draw("Map", highlighted: false);
+            historyButton.Draw("History", highlighted: _showChronicle);
+            newGardenButton?.Draw(_newGardenConfirm > 0f ? "Sure?" : "New", highlighted: _newGardenConfirm > 0f);
             DrawKinPanel(world);
             followButton?.Draw(followCamera.IsFollowing ? "Following" : "Follow", highlighted: followCamera.IsFollowing);
             int hudTop = DrawHud(world);
-            DrawDebugConsole(top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
+            if (_showChronicle)
+                DrawChronicle(world, top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
+            else
+                DrawDebugConsole(top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
 
             Raylib.EndDrawing();
 
@@ -226,8 +257,17 @@ public static class Game
             //    entity list ever changes size while something is iterating
             //    it (an arrival mid-Colony-update, a kill mid-pounce, etc).
             world.CommitPendingChanges();
+
+            // 5) Autosave, between frames (see World.ToSave).
+            autosaveTimer -= Raylib.GetFrameTime();
+            if (autosaveTimer <= 0f)
+            {
+                autosaveTimer = AutosaveInterval;
+                SaveSystem.Save(world, savePath);
+            }
         }
 
+        SaveSystem.Save(world, savePath);
         Raylib.CloseWindow();
     }
 
@@ -240,18 +280,34 @@ public static class Game
     /// display, and for tuning — pass a <paramref name="seed"/> to replay
     /// the exact same run.
     /// </summary>
-    public static void RunHeadless(float simulatedSeconds, int? seed)
+    public static void RunHeadless(float simulatedSeconds, int? seed, string? loadPath = null, string? savePath = null)
     {
         _isHeadless = true;
         const float step = 1f / 60f;
         const float reportInterval = 30f;
 
-        var world = new World(new Terrain(size: 100f), seed is { } s ? new Random(s) : new Random(), InitialKinCount);
+        var rng = seed is { } s ? new Random(s) : new Random();
+        World world;
+        if (loadPath is null)
+        {
+            world = new World(new Terrain(size: 100f), rng, InitialKinCount);
+        }
+        else if (SaveSystem.TryLoad(loadPath, rng) is { } loaded)
+        {
+            world = loaded;
+            Console.WriteLine($"Loaded {loadPath}: Year {world.Year}, {world.ElapsedSeconds:0}s in");
+        }
+        else
+        {
+            Console.WriteLine($"Couldn't load {loadPath}");
+            return;
+        }
         Console.WriteLine($"Garden Guardians headless run: {simulatedSeconds:0}s simulated, seed {(seed?.ToString() ?? "random")}");
         PrintReport(world);
 
+        float endTime = world.ElapsedSeconds + simulatedSeconds;
         float reportTimer = 0f;
-        while (world.ElapsedSeconds < simulatedSeconds)
+        while (world.ElapsedSeconds < endTime)
         {
             world.Update(step);
             world.CommitPendingChanges();
@@ -276,8 +332,16 @@ public static class Game
             $"{world.VillagesFounded} villages founded, {world.Buddings} daughter groups budded off.");
         Console.WriteLine(
             $"Neighbours: {world.AlliancesMade} alliances made, {world.WarsDeclared} wars declared, {world.PeacesMade} peaces made; " +
-            $"{world.AidSent} aid shipments ({world.FoodAided} food), {world.WarRaids} pieces carried off in war raids; " +
+            $"{world.AidSent} aid shipments ({world.FoodAided} food delivered, {world.ErrandsLost} sacks lost on the way), " +
+            $"{world.HelpersHired} helpers hired ({world.LabourFoodPaid} food paid), {world.WarRaids} pieces carried off in war raids; " +
             $"at the end {world.CurrentAlliances} alliances and {world.CurrentWars} wars.");
+        Console.WriteLine(
+            $"Weather: {world.BountifulSeasons} bountiful seasons, {world.Droughts} droughts, {world.HarshWinters} harsh winters, {world.Storms} storms.");
+        Console.WriteLine(
+            $"Culture: {world.Groups.Count(g => g.Culture.Leading == Tradition.Warlike)} warlike, {world.Groups.Count(g => g.Culture.Leading == Tradition.Hunting)} hunting and " +
+            $"{world.Groups.Count(g => g.Culture.Leading == Tradition.Farming)} farming clans of {world.Groups.Count} at the end.");
+        Console.WriteLine(
+            $"War outcomes: {world.Conquests} conquests, {world.TributesAgreed} tribute peaces ({world.TributeDelivered} food delivered, {world.TributesMissed} payments missed).");
         Console.WriteLine(
             $"Farming: worked out {world.FarmingDiscoveries} times, taught {world.FarmingTaught} times; {world.BushesPlanted} bushes planted, " +
             $"{world.FruitHarvested} berries picked; at the end {world.Groups.Count(World.KnowsFarming)} groups farm {world.Bushes.Count(b => b.GroupId is not null)} bushes " +
@@ -289,6 +353,10 @@ public static class Game
         PrintLeadership(world);
         PrintRebellion(world);
         PrintLineage(world);
+        PrintChronicle(world);
+
+        if (savePath is not null)
+            Console.WriteLine(SaveSystem.Save(world, savePath) ? $"Saved to {savePath}" : $"Couldn't save to {savePath}");
     }
 
     /// <summary>Headless summary: how often followers rebelled, and how the Independents who left are faring.</summary>
@@ -580,15 +648,37 @@ public static class Game
             ($"Sociability:  {kin.Personality.Sociability:0.00}", new Color(60, 130, 70, 255)),
             ($"Intelligence: {kin.Personality.Intelligence:0.00} ({kin.DetectionRadius:0}m)", new Color(60, 100, 170, 255)),
             (group is null ? "Group: none" : $"Group: {group.Name ?? group.ShortId}, {group.Members.Count} members" +
-                (world.DescribeRelations(group) is { } relations ? $" ({relations})" : ""), ink),
+                (DescribeClan(world, group) is { } about ? $" ({about})" : ""), ink),
             (DescribeHome(kin), ink),
-            (group is null ? "Job: none" : $"Job: {kin.Job} (group goal: {group.Goal}{(group.Sharing == SharingRule.LeaderFirst ? ", leader eats first" : "")})", ink),
+            (kin.Errand is { } errand ? DescribeErrand(world, errand)
+                : group is null ? "Job: none" : $"Job: {kin.Job} (group goal: {group.Goal}{(group.Sharing == SharingRule.LeaderFirst ? ", leader eats first" : "")})", ink),
             (group is null || group.Leader == kin
                 ? $"Reputation: {kin.Reputation:0.0}{(kin.Status == SurvivalStatus.Independent ? "  (independent)" : "")}"
                 : $"Loyalty: {kin.Loyalty:0.00}{(kin.Loyalty < Bramblekin.ObedienceThreshold ? " (disobedient)" : "")}   Reputation: {kin.Reputation:0.0}",
                 kin.GroupId is not null && group?.Leader != kin && kin.Loyalty < Bramblekin.ObedienceThreshold ? new Color(170, 60, 40, 255) : ink),
             ($"Known: {friends} friend, {enemies} enemy, {neutral} neutral", ink),
         };
+    }
+
+    /// <summary>"Errand: carrying 5 food in aid to the Mossbrook clan" for the Kin Inspector.</summary>
+    private static string DescribeErrand(World world, Errand errand)
+    {
+        string to = world.Groups.FirstOrDefault(g => g.Id == errand.To)?.Title ?? "its allies";
+        return errand switch
+        {
+            { Returning: true } => $"Errand: heading home with {errand.Load} food in pay",
+            { Kind: ErrandKind.Aid } => $"Errand: carrying {errand.Load} food in aid to {to}",
+            { Kind: ErrandKind.Tribute } => $"Errand: carrying {errand.Load} food in tribute to {to}",
+            _ => $"Errand: helping {to} build ({errand.TwigsOwed} twigs to go)",
+        };
+    }
+
+    /// <summary>"warlike; allied with 1" for the Kin Inspector — the clan's tradition and its neighbours — or null if there's nothing to say.</summary>
+    private static string? DescribeClan(World world, KinGroup group)
+    {
+        string?[] parts = { group.Culture.Label, world.DescribeRelations(group) };
+        string joined = string.Join("; ", parts.Where(p => p is not null));
+        return joined.Length > 0 ? joined : null;
     }
 
     /// <summary>The selected Bramblekin's name, floating above it (and its partner's, fainter, so a couple is easy to spot).</summary>
@@ -636,7 +726,7 @@ public static class Game
         // screen at any size (the font scales with UiScale).
         string[] lines =
         {
-            $"Year {world.Year} {world.CurrentSeason} (food x{world.FoodAbundance:0.0})   Speed {_timeScale}x   FPS {Raylib.GetFPS()}   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
+            $"Year {world.Year} {world.CurrentSeason}{(world.WeatherLabel is { } weather ? $" - {weather}" : "")} (food x{world.FoodAbundance:0.0})   Speed {_timeScale}x   FPS {Raylib.GetFPS()}   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
             $"Homes: {world.Shelters.Count(s => s.IsBuilt && s.Tier == ShelterTier.Tent)} tents, {world.Shelters.Count(s => s.Tier == ShelterTier.House)} houses, " +
             $"{world.Shelters.Count(s => !s.IsBuilt)} being built   Food stored {world.Shelters.Sum(s => s.StoredFood)}   " +
             $"Villages {world.Groups.Count(g => g.Annexes.Count > 0)} (budded {world.Buddings})   Bushes {world.Bushes.Count}",

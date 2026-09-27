@@ -33,7 +33,7 @@ public sealed partial class Bramblekin : ICombatant
     private static int _nextId = 0;
 
     /// <summary>A stable, never-reused identity — what other Bramblekin remember it by in their <see cref="KnownKins"/>.</summary>
-    public int ID { get; } = _nextId++;
+    public int ID { get; private set; } = _nextId++;
 
     // --- Body --------------------------------------------------------------------
 
@@ -284,7 +284,7 @@ public sealed partial class Bramblekin : ICombatant
     public Personality Personality { get; }
 
     /// <summary>Female or male, at even odds — see <see cref="GardenGuardians.Sex"/>. Only births care.</summary>
-    public Sex Sex { get; }
+    public Sex Sex { get; private set; }
 
     /// <summary>The group this Bramblekin has joined, or null while solitary.</summary>
     public Guid? GroupId { get; private set; }
@@ -326,7 +326,7 @@ public sealed partial class Bramblekin : ICombatant
 
     public float CollisionRadius => BodyRadius;
 
-    /// <summary>True while it's holding a piece of Food (a reserve, or a meal about to be eaten).</summary>
+    /// <summary>True while it's holding a piece of Food (a reserve, or a meal about to be eaten) — food a thief could snatch. (An errand sack is slung tight: it's only lost if the runner is cut down.)</summary>
     public bool HasFood => _carried is not null;
 
     public bool IsHungry => Hunger >= HungryThreshold;
@@ -479,6 +479,9 @@ public sealed partial class Bramblekin : ICombatant
             return;
         }
 
+        if (source is WolfSpider or Hornet)
+            RememberDanger(source.Position, world);
+
         if (source is not null)
         {
             _lastAttacker = source;
@@ -543,6 +546,8 @@ public sealed partial class Bramblekin : ICombatant
 
         // Metabolism: Hunger always rises (slower huddled at home in winter); at the very top it starts costing Health.
         float metabolism = world.CurrentSeason == Season.Winter && IsSheltered ? WinterShelterMetabolism : 1f;
+        if (!IsSheltered)
+            metabolism *= world.ColdFactor; // A harsh winter bites anyone caught outdoors.
         Hunger = MathF.Min(MaxHunger, Hunger + HungerPerSecond * metabolism * deltaTime);
         if (Hunger >= MaxHunger)
         {
@@ -607,8 +612,14 @@ public sealed partial class Bramblekin : ICombatant
     {
         float radius = DetectionRadius;
         _perceivedFood = world.NearestAvailableFood(Position, radius, this);
+        // Memory: food near a remembered danger isn't worth it (unless starving).
+        if (_perceivedFood is not null && !WorthTheRisk(_perceivedFood.Position, world))
+            _perceivedFood = null;
         if (_perceivedFood is not null)
+        {
             _foodMemory = _perceivedFood.Position;
+            world.GroupOf(this)?.FoodSpots.Remember(_perceivedFood.Position, world.ElapsedSeconds);
+        }
         _perceivedGrub = world.NearestLiveGrub(Position, radius);
         _perceivedBeetle = world.NearestLiveBeetle(Position, radius);
         _perceivedTwig = NeedsTwig ? world.NearestAvailableTwig(Position, radius, this) : null;

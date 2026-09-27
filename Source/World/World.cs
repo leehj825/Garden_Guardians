@@ -363,11 +363,14 @@ public sealed partial class World
     {
         ElapsedSeconds += deltaTime;
         UpdateSeason();
+        UpdateWeather(deltaTime);
+        UpdateHistory(deltaTime);
         AccumulateExposure(deltaTime);
         UpdateFoodClaimTimeouts(deltaTime);
         RebuildSpatialGrids();
         RebuildGroups();
         UpdateRelations(deltaTime);
+        UpdateTributes();
         UpdateGroupHomes(deltaTime);
         UpdateGroupDecisions(deltaTime);
         CountShelterOccupants();

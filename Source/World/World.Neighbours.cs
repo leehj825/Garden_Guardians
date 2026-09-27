@@ -66,10 +66,10 @@ public sealed partial class World
     private const float RiftGrievance = 3f;
 
     /// <summary>A group with at least this much stored, and half-full stores, sends food to an ally that's run out…</summary>
-    private const int AidMinStore = 6;
+    private const int AidMinStore = 5;
 
     /// <summary>…this much at a time.</summary>
-    private const int AidAmount = 3;
+    private const int AidAmount = 5;
 
     /// <summary>A farming group teaches an ally with this chance per decision.</summary>
     private const float TeachFarmingChance = 0.05f;
@@ -79,6 +79,10 @@ public sealed partial class World
         public GroupStance Stance;
         public float Grievance;
         public float Since;
+
+        /// <summary>At war: how well each side (the first and second in its key) is doing — see World.WarOutcomes.</summary>
+        public float FirstScore;
+        public float SecondScore;
     }
 
     private readonly Dictionary<(Guid, Guid), GroupRelation> _relations = new();
@@ -164,7 +168,8 @@ public sealed partial class World
     ///     a neighbour declares war; with little or none, two Sociable neighbouring Leaders may
     ///     ally (far more readily if they're family or friends).
     ///   * Allied: a grudge that grows too big breaks the alliance; a
-    ///     well-stocked group sends food to an ally that's run out, and a
+    ///     well-stocked group sends food to an ally that's run out, hires
+    ///     a helper from a hungry ally to build (labour for food), and a
     ///     farming group may teach an ally to farm.
     /// </summary>
     private void ConsiderNeighbours(KinGroup group, Bramblekin leader)
@@ -186,21 +191,21 @@ public sealed partial class World
             {
                 case GroupStance.AtWar:
                     bool weary = ElapsedSeconds - relation!.Since > WarWeariness;
-                    if ((grievance < PeaceGrievance || weary) && Rng.NextDouble() < PeaceChance + PeaceChancePerCalm * (1f - p.Aggression))
-                    {
-                        SetStance(group, other, GroupStance.Neutral);
-                        PeacesMade++;
-                        Game.AddEventLog($"[PEACE] {leader.Name} made peace between {group.Title} and {other.Title}");
-                    }
+                    bool beaten = IsBeaten(group, other);
+                    if ((grievance < PeaceGrievance || weary || beaten) &&
+                        Rng.NextDouble() < (PeaceChance + PeaceChancePerCalm * (1f - p.Aggression)) * (1f - 0.5f * group.Culture.Martial) + (beaten ? SurrenderChance : 0f))
+                        EndWar(group, other, leader);
                     break;
 
                 case GroupStance.Neutral:
-                    if (neighbours && grievance >= WarGrievance && p.Aggression >= WarAggression && Rng.NextDouble() < WarChance * p.Aggression)
+                    if (neighbours && grievance >= WarGrievance && p.Aggression >= WarAggression &&
+                        Rng.NextDouble() < WarChance * p.Aggression * (1f + 2f * group.Culture.Martial))
                     {
                         SetStance(group, other, GroupStance.AtWar);
                         WarsDeclared++;
                         QueueFloatingText(leader.Position, "War!", HostileTextColor);
                         Game.AddEventLog($"[WAR] {leader.Name} led {group.Title} to war against {other.Title}");
+                        Chronicle($"{leader.Name} led {group.Title} to war against {other.Title}", group, other);
                     }
                     else if (neighbours && grievance < AllianceMaxGrievance && TryAlly(group, leader, other))
                     {
@@ -213,9 +218,11 @@ public sealed partial class World
                     {
                         SetStance(group, other, GroupStance.Neutral);
                         Game.AddEventLog($"[RIFT] The alliance between {group.Title} and {other.Title} has broken down");
+                        Chronicle($"The alliance between {group.Title} and {other.Title} broke down", group, other);
                         break;
                     }
                     TrySendAid(group, other);
+                    TryHireHelper(group, other);
                     TryTeachFarming(group, other);
                     break;
             }
@@ -233,7 +240,8 @@ public sealed partial class World
         if (AllyCount(group) >= MaxAllies || AllyCount(other) >= MaxAllies)
             return false;
 
-        float chance = AllianceChance * (leader.Personality.Sociability + otherLeader.Personality.Sociability) / 2f;
+        float chance = AllianceChance * (leader.Personality.Sociability + otherLeader.Personality.Sociability) / 2f *
+                       (1f - 0.6f * MathF.Max(group.Culture.Martial, other.Culture.Martial));
         bool close = leader.IsCloseKinOf(otherLeader) || leader.FamilyName == otherLeader.FamilyName ||
                      leader.RelationshipTo(otherLeader) == RelationshipState.Friend;
         if (close)
@@ -244,40 +252,28 @@ public sealed partial class World
         SetStance(group, other, GroupStance.Allied);
         SetMutualRelationship(leader, otherLeader, RelationshipState.Friend);
         Game.AddEventLog($"[ALLIES] {leader.Name} of {group.Title} and {otherLeader.Name} of {other.Title} made an alliance");
+        Chronicle($"{group.CapitalTitle} and {other.Title} became allies", group, other);
         return true;
     }
 
     private int AllyCount(KinGroup group) =>
         _relations.Count(r => r.Value.Stance == GroupStance.Allied && (r.Key.Item1 == group.Id || r.Key.Item2 == group.Id));
 
-    /// <summary>A well-stocked group sends food to an ally whose stores have run out while its members go hungry.</summary>
+    /// <summary>A well-stocked group sends a runner with food to an ally whose stores have run out while its members go hungry.</summary>
     private void TrySendAid(KinGroup giver, KinGroup ally)
     {
-        if (StoredFood(giver) < AidMinStore || StoreFill(giver) < 0.5f)
+        if (StoredFood(giver) < AidMinStore || StoreFill(giver) < 0.4f)
             return;
-        if (StoredFood(ally) > 0 || ally.Members.Count(m => m.IsHungry) * 3 < ally.Members.Count)
+        if (StoredFood(ally) > 1 || ally.Members.Count(m => m.IsHungry) * 4 < ally.Members.Count)
             return;
         if (ally.Home is not { IsBuilt: true } allyHome || giver.Leader is not { } leader)
             return;
         if (Rng.NextDouble() >= leader.Personality.Sociability)
             return;
 
-        int sent = 0;
-        foreach (Shelter home in GroupHomes(giver))
-        {
-            while (sent < AidAmount && !allyHome.StoreIsFull && home.TryWithdraw())
-            {
-                allyHome.TryDeposit();
-                sent++;
-            }
-        }
-        if (sent == 0)
-            return;
-
-        AidSent++;
-        FoodAided += sent;
-        QueueFloatingText(allyHome.Position, $"Aid +{sent}", FriendlyTextColor);
-        Game.AddEventLog($"[AID] {giver.CapitalTitle} sent {sent} food to their hungry allies, {ally.Title}");
+        // Aid goes in person: a runner walks it over (see World.Errands).
+        if (DispatchAid(giver, ally, allyHome))
+            AidSent++;
     }
 
     private void TryTeachFarming(KinGroup teacher, KinGroup ally)
@@ -288,6 +284,7 @@ public sealed partial class World
             member.LearnFarming();
         FarmingTaught++;
         Game.AddEventLog($"[FARMING] {teacher.CapitalTitle} taught their allies, {ally.Title}, to grow berry bushes");
+        Chronicle($"{teacher.CapitalTitle} taught {ally.Title} to farm", teacher, ally);
     }
 
     /// <summary>The richest store of a group at war with <paramref name="group"/>, within <see cref="WarRaidRange"/> of home — the target for a raiding party.</summary>
@@ -317,7 +314,11 @@ public sealed partial class World
     }
 
     /// <summary>A raider brought home a piece of an enemy's store.</summary>
-    public void NoteWarRaid() => WarRaids++;
+    public void NoteWarRaid(Bramblekin raider, Shelter store)
+    {
+        WarRaids++;
+        AddWarScore(raider.GroupId, store.GroupId, RaidWarScore);
+    }
 
     /// <summary>Lines between allied (green) and warring (red) groups' main homes.</summary>
     private void DrawRelations(Camera3D camera)

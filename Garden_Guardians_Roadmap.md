@@ -462,23 +462,39 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     *Result* (12 seeds × 13 years): kin-on-kin killings 551 → 159, wars
     28 → 1, starvation 639 → 494, average population 53 → 64, and twice
     as much food aid between allies.
+*   ✅ **Aid in person:** food aid between allies is carried by a runner
+    with a sack — visible on the map, robbable, and spilled if the runner
+    dies on the way.
+*   ✅ **Trade between allies:** a group with building under way hires a
+    helper from a hard-up ally, paying in food carried home.
+*   ✅ **War outcomes:** war scores (killings, food carried off); a
+    clearly beaten side sues for peace and either is absorbed (if small)
+    or pays a year of tribute, carried by runners.
+*   ✅ **Weather:** droughts, harsh winters and bountiful seasons; storms
+    that blow away loose berries and bring down twigs.
+*   ✅ **Memory:** kin and their groups remember where danger struck
+    (and keep away from there unless starving) and where food was found.
+*   ✅ **Chronicle & History screen:** a dated story of every clan, with a
+    population/groups chart; per-clan view for the selected Bramblekin.
+*   ✅ **Save & load:** autosave every 30s and on exit, carried on at the
+    next start; a New button (with confirmation) starts over; headless
+    `--save`/`--load`.
+*   ✅ **Clan culture:** Martial, Hunting and Farming traditions that grow
+    from what a clan does, sway its Leaders, nudge its children, and pass
+    to daughter clans.
 
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:
-*   ⬜ **Groups as actors.** Groups now have homes, goals, jobs and
-    politics, but they don't raid, trade with or ally with *other groups*;
-    enmity is still strictly between individuals.
-*   ⬜ **Memory beyond the last Food/Twig sighting.** No remembered danger
-    zones (a Bramblekin will happily wander back toward the Hornet nest
-    it just fled) and no reputation shared between groupmates.
+*   ⬜ **Reputation between groups.** Groups remember grievances and
+    places, but not individuals: a notorious raider is no more feared by
+    the next village than anyone else.
 *   ⬜ **Group vs. homestead balance.** Settling alone and living in a group
     now have similar death rates; groups win on food and on numbers, and
     lose some of that edge to risky hunts, defence and politics. Worth
     tuning if groups should be the clearly safer choice.
-*   ⬜ **Aid in person.** Allied food aid moves between stores
-    abstractly; a carrier walking it over would make it visible (and
-    raidable).
+*   ⬜ **More than one garden.** A single autosave slot; no way to keep
+    a favourite world aside and start another.
 *   ⬜ **Real pathfinding.** Bramblekin still steer around obstacles with
     a short sideways detour when stuck, rather than any actual NavMesh/
     grid pathfinding. Fine at current Pebble density.

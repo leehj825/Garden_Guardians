@@ -113,6 +113,9 @@ overhead camera:
     groups (how many farm) and current alliances and wars, what the
     colony is doing, deaths by cause, births and the highest generation,
     and the politics so far (walk-outs, splits, coups, exiles, raids).
+    The year line names the weather (drought, harsh winter, bountiful,
+    storm), and the Kin Inspector shows its clan's tradition and
+    neighbours, and any errand it's on.
     The event console on the left narrates the seasons, alliances,
     settlements, villages, births, hunts, leader decisions, rebellions
     and deaths.
@@ -122,14 +125,17 @@ overhead camera:
     under `Source/`, one type per file: `Engine/` (touch and follow
     cameras, terrain, tap input, spatial grid, movement), `World/` (the
     `World` partial class split by concern — core, society, families,
-    neighbours, farming, group homes & villages, leadership, rebellion,
-    seasons, births,
-    shelters, hunting, interactions, spawning, stats, rendering — plus
-    Food, Twigs, Shelters and Garden Props), `Kin/` (the `Bramblekin`
+    neighbours, errands, war outcomes, farming, group homes & villages,
+    leadership, rebellion, culture, seasons, weather, births, chronicle,
+    save, shelters, hunting, interactions, spawning, stats, rendering —
+    plus Food, Twigs, Shelters and Garden Props), `Kin/` (the `Bramblekin`
     partial class with one file per need — Hunger, Safety, Duty, Settle,
     Social — plus Hunting, Farming, Loyalty, Lineage, Family, Aging,
-    Actions and Drawing, and the Personality, names, sex, relationship, group and
-    society types), `Wildlife/` and `Game/`.
+    Errands, Memory, Save, Actions and Drawing, and the Personality, names,
+    sex, relationship, group, errand, place-memory, clan-culture and
+    society types), `Wildlife/`, `Save/` (the save file's data types and
+    the JSON save system) and `Game/` (the main loop, HUD, History screen
+    and saving).
 *   **Squared-distance math everywhere:** targeting/aggro/encounter checks
     compare squared distances against a squared threshold.
 *   **Staggered perception:** each Bramblekin rescans its surroundings
@@ -540,15 +546,30 @@ overhead camera:
         daughter group that buds off it start out allied.
     *   **Rift** — a grievance of 3+ breaks an alliance.
     *   **Peace** — once the grievance has faded below 1.5, or after three
-        seasons of war however bitter: odds 0.02 + 0.08 × (1 − Aggression)
-        per decision.
+        seasons of war however bitter, or once its side is clearly beaten
+        (see war outcomes): odds 0.02 + 0.08 × (1 − Aggression) per
+        decision (halved in a fully warlike clan), plus 0.1 when beaten.
 *   **Allies** defend each other (an ally being hit, or a raider heading
     for an ally's home, is a threat), never rob each other, meet as
     friends (sharing food), and marry across: a couple from allied groups
     forms, and one of them (not a Leader) moves to the other's village. A
-    well-stocked ally (6+ stored, half full) sends 3 food to an ally that
-    has run out while a third of it goes hungry, and a farming ally may
-    teach the other to farm (odds 0.05 per decision).
+    farming ally may teach the other to farm (odds 0.05 per decision).
+*   **Aid in person:** a well-stocked group (5+ stored, 40% full) whose
+    ally has run out (1 or less stored, a quarter of it hungry) sends a
+    **runner** — its most Sociable fit, fed, grown member (never the
+    Leader) — with up to 5 food in a sack slung on its back (odds: the
+    Leader's Sociability per decision; up to 3 runners on the road to one
+    ally at once). The runner walks it over and fills the ally's stores;
+    anything that won't fit is left at the door. On the way it's
+    vulnerable: a thief's successful blow grabs from the sack, and if the
+    runner dies (or leaves its group, or the ally is gone) the sack
+    spills on the ground for anyone to find.
+*   **Trade — labour for food:** a group with building under way and food
+    to spare hires a **helper** from an ally whose stores are under half
+    full (odds 0.3 × the Leader's Sociability; one helper at a time). The
+    helper walks over, fetches 3 twigs for the construction, and carries
+    3 food home to its own store as pay. An employer that can't pay in
+    full earns a grievance.
 *   **War:** members of warring groups keep their distance when they meet;
     a bold resident (Aggression 0.5+) drives off an enemy that comes within
     6m of home. An Aggressive Leader at war sends a **raiding party**: the
@@ -557,9 +578,97 @@ overhead camera:
     Food and carry it home (standing down at half Health). A party keeps
     at it for 45s or until the store is empty; the next can't set out for
     240s.
+*   **War outcomes:** each side of a war keeps a score — 3 for every enemy
+    it kills, 1 for every piece of food it carries off. A side with at
+    least 4 and twice the other's has **won**; the beaten side is likelier
+    to sue for peace, and the peace comes on terms. A small beaten group
+    (5 or fewer, against a winner at least twice its size) is **absorbed**:
+    its survivors join the winner (only grudgingly loyal, at 0.35) and its
+    homes near the winner's village become part of it. A bigger one pays
+    **tribute** — a runner carries 3 food to the victors every season for a
+    year; a missed payment adds 2 to the grievance. Terms settle half the
+    bitterness; a war with no clear winner ends in a plain peace.
 *   Allied and warring villages are joined on the map by a green or red
     line between their main homes; the HUD counts current alliances and
     wars, and the Kin Inspector shows its group's.
+
+## Weather
+*   **Good and bad years:** each season rolls its weather. A Winter is
+    **harsh** 30% of the time: food at half even the usual winter pace,
+    and anyone caught outdoors gets hungry 25% faster. A Summer or Autumn
+    brings a **drought** 15% of the time: berries and bushes grow at half
+    pace, and the lawn turns parched gold. Any season but Winter may be
+    **bountiful** (15%): food at 1.5×. The HUD's year line names the
+    weather, the log announces it, and droughts and harsh winters go into
+    the chronicle.
+*   **Storms:** outside Winter and droughts, a storm blows up about once
+    every 400s and lasts 25s: the sky darkens, rain streaks down, half the
+    loose berries nobody has claimed are blown away, and twigs come down
+    (up to 25 more than usual lying about) — good for builders. Anyone
+    with a home and nothing pressing shelters from it, as in Winter.
+
+## Memory
+*   **Danger:** a Bramblekin stung by a Hornet or bitten by the Spider
+    remembers the spot (up to 4 places), and so does its group; a group
+    also remembers where a member was killed by a predator. For 300s it
+    passes up food within 6m of a remembered danger — unless it's
+    starving, when nothing is too risky — and wanders elsewhere.
+*   **Good places:** where a member last saw food, its group remembers too
+    (up to 6 spots). With no food in sight, a Bramblekin heads for where
+    it last saw some, else the freshest spot its group knows from the last
+    240s (that isn't dangerous); a spot that turns out empty is forgotten.
+
+## Clan Culture
+*   **Traditions:** a clan grows into what it does, a little at each
+    Leader decision: at war, raiding or defending home grows its
+    **Martial** tradition; hunting big game its **Hunting** one; tending
+    bushes (in proportion to how many it keeps) its **Farming** one. Each
+    runs 0–1 and fades if neglected (a half-life of about two years).
+    Once one reaches 0.4 and leads, the clan is *known* for it — "a
+    warlike clan" — and the chronicle notes it; the Kin Inspector and the
+    History screen show it.
+*   **Traditions outlast Leaders:** they sway any Leader's choices — a
+    warlike clan raids more, goes to war up to three times as readily,
+    makes peace more reluctantly and is shunned as an ally; a hunting
+    clan hunts more; a farming clan stockpiles more and keeps more
+    Farmers. Children raised in the clan lean its way (bolder in a
+    warlike or hunting clan, more sociable in a hunting one, sharper in a
+    farming one), and daughter and splinter groups start with their
+    parent's traditions.
+
+## The Chronicle & History
+*   **The chronicle** is the story of the garden's clans: foundings and
+    endings, new Leaders and how old ones died, wars and how they ended,
+    alliances, conquests and tribute, farming learned and taught, new
+    villages and daughter groups, famous Spider hunts, great elders, the
+    traditions clans became known for, and the worst weather. Each entry
+    is dated (year and season) and filed under the clans it concerns.
+*   **The History screen** (the **History** button beside Map) shows a
+    chart of the population and the number of groups over the whole run
+    (sampled every 30s) and the chronicle, newest first; drag or scroll
+    to read back. With a Bramblekin selected it shows that clan's story
+    instead: its name and tradition, members and Leader, and its own
+    entries. Headless runs print the chronicle at the end.
+
+## Save & Load
+*   **The garden carries on:** the game autosaves every 30s of real time
+    and on the way out, and picks up where it left off at the next start.
+    A save keeps everything lasting — the props, homes and their stores,
+    bushes, loose food and twigs, every Bramblekin (who it is, its family,
+    partner, home, group, job, loyalty, reputation, relationships, what it
+    knows and remembers, its errand), every group (Leader, homes, goal,
+    traditions, memories), the relations and tributes between groups,
+    the weather, the chronicle and history, and every counter and
+    statistic. What a Bramblekin was doing that very second (and where
+    the Hornets and the Spider were) isn't kept; each picks up again
+    within moments.
+*   **New garden:** the **New** button (shown while the History screen is
+    open) starts over — tap it, then tap **Sure?** within 3s.
+*   The save is JSON (`garden.json` in the app's local data folder),
+    written to a temporary file and moved into place so a crash can't
+    leave half a save. A save that can't be read, or is from an
+    incompatible version, is ignored and a fresh garden begins. Headless
+    runs can `--load` a save and `--save` one at the end.
 
 ## Food & Wildlife
 *   **Food:** wild Berries grow passively (one every 0.6s, up to 100 on

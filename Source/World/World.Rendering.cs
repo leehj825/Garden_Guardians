@@ -70,6 +70,7 @@ public sealed partial class World
         }
 
         DrawRelations(camera);
+        DrawRain(camera);
         bool winter = CurrentSeason == Season.Winter;
         foreach (BerryBush bush in Bushes)
         {

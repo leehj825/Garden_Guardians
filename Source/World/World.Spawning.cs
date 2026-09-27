@@ -157,6 +157,7 @@ public sealed partial class World
         if (group.Name is not null || group.Leader is not { } leader)
             return;
         group.Name = Names.Clan(leader.FamilyName, name => _groups.Values.Any(g => g != group && g.Name == name));
+        Chronicle($"{group.CapitalTitle} was founded, led by {leader.Name}", group);
     }
 
     /// <summary>Dibs failsafe — see <see cref="FoodClaimTimeoutSeconds"/>.</summary>

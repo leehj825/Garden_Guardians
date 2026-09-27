@@ -52,8 +52,8 @@ public sealed partial class World
     /// <summary>0 at the start of the current season, approaching 1 at its end.</summary>
     public float SeasonProgress => ElapsedSeconds % SeasonLength / SeasonLength;
 
-    /// <summary>The current season's Food abundance — see <see cref="AbundanceOf"/>.</summary>
-    public float FoodAbundance => AbundanceOf(CurrentSeason);
+    /// <summary>The current season's Food abundance — see <see cref="AbundanceOf"/> — scaled by its weather (see World.Weather).</summary>
+    public float FoodAbundance => AbundanceOf(CurrentSeason) * WeatherFoodFactor;
 
     /// <summary>Announces each change of season in the event log.</summary>
     private void UpdateSeason()
@@ -63,6 +63,7 @@ public sealed partial class World
             return;
 
         _announcedSeason = season;
+        RollWeather(season);
         Game.AddEventLog(season switch
         {
             Season.Spring => $"[SEASON] Year {Year}: Spring - the berries come back",
@@ -77,7 +78,9 @@ public sealed partial class World
     /// easing into the next one's over the last fifth of the season so the
     /// change is gradual rather than a sudden switch.
     /// </summary>
-    public (Color Tint, float Amount) SeasonTint
+    public (Color Tint, float Amount) SeasonTint => WeatherTint(SeasonalTint);
+
+    private (Color Tint, float Amount) SeasonalTint
     {
         get
         {
@@ -102,7 +105,8 @@ public sealed partial class World
         {
             int current = (int)CurrentSeason;
             float blend = Math.Clamp((SeasonProgress - 0.8f) / 0.2f, 0f, 1f);
-            return Blend(SeasonSkies[current], SeasonSkies[(current + 1) % 4], blend);
+            Color sky = Blend(SeasonSkies[current], SeasonSkies[(current + 1) % 4], blend);
+            return IsStorming ? Blend(sky, StormSky, 0.75f) : sky;
         }
     }
 

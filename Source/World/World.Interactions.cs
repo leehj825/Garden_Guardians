@@ -43,7 +43,14 @@ public sealed partial class World
     /// <summary>Hostility pays off: <paramref name="thief"/> takes <paramref name="victim"/>'s carried food on a successful blow.</summary>
     public void StealFood(Bramblekin thief, Bramblekin victim)
     {
-        if (victim.SurrenderFood() is not { } food)
+        // Food in hand first; else a grab from an errand sack.
+        FoodShard? food = victim.SurrenderFood();
+        if (food is null && victim.TakeFromSack() && ActivateFood(victim.Position, FoodShardKind.Berry) is { } grabbed)
+        {
+            PickUpFood(grabbed);
+            food = grabbed;
+        }
+        if (food is null)
             return;
 
         thief.ReceiveFood(food);
@@ -67,6 +74,13 @@ public sealed partial class World
         }
     }
 
+    /// <summary>Memory: a member ran into danger — its whole group remembers the spot.</summary>
+    public void NoteDanger(Bramblekin kin, Vector3 where)
+    {
+        if (GroupOf(kin) is { } group)
+            group.Dangers.Remember(where, ElapsedSeconds);
+    }
+
     // --- Deaths -----------------------------------------------------------------------
 
     /// <summary>
@@ -82,6 +96,10 @@ public sealed partial class World
 
         RecordDeath(kin, cause); // Before MarkDead, while its status is still its own.
         NoteBereavement(kin);
+        if (cause == DeathCause.Predator && GroupOf(kin) is { } mourners)
+            mourners.Dangers.Remember(kin.Position, ElapsedSeconds); // Its group won't forget where it fell.
+        if (kin.Errand is { } errand)
+            AbandonErrand(kin, errand);
         kin.MarkDead();
         _pendingKinRemovals.Add(kin);
 
@@ -100,7 +118,10 @@ public sealed partial class World
             case DeathCause.Kin:
                 DeathsByKin++;
                 if (killer is Bramblekin slayer)
+                {
                     AddGrievance(kin.GroupId, slayer.GroupId, KillingGrievance);
+                    AddWarScore(slayer.GroupId, kin.GroupId, KillWarScore);
+                }
                 how = killer is Bramblekin attacker ? $"was killed by {attacker.Name}" : "was killed by another Bramblekin";
                 break;
             default:
@@ -114,6 +135,10 @@ public sealed partial class World
                 break;
         }
         Game.AddEventLog($"[DEATH] {kin.Name} {how}");
+        if (GroupOf(kin) is { } clan && clan.Leader == kin)
+            Chronicle($"Leader {kin.Name} {how}", clan);
+        else if (cause == DeathCause.OldAge && kin.Children >= 5)
+            Chronicle($"{kin.Name} {how}", GroupOf(kin));
     }
 
     /// <summary>
@@ -143,6 +168,8 @@ public sealed partial class World
         Game.AddEventLog(group is null
             ? $"[HUNT] {attacker.Name} slew the Wolf Spider alone!"
             : $"[HUNT] {group.CapitalTitle} brought down the Wolf Spider (final blow by {attacker.Name})");
+        if (group is not null)
+            Chronicle($"{attacker.Name} dealt the final blow as {group.Title} brought down the Wolf Spider", group);
     }
 
     /// <summary>A Hornet swatted out of the air. Removal from <see cref="Hornets"/> is deferred to the end of the frame.</summary>

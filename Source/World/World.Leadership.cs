@@ -74,12 +74,14 @@ public sealed partial class World
 
             group.DecisionTimer = LeaderDecisionInterval;
             UpdateFarmingKnowledge(group);
+            UpdateCulture(group);
             ConsiderNeighbours(group, leader);
             DecideGroupGoal(group, leader);
             ReviewLoyalty(group, leader);
             TryBirth(group);
         }
         ProcessRebellions();
+        ProcessConquests();
     }
 
     /// <summary>
@@ -140,6 +142,15 @@ public sealed partial class World
         int fighters = group.Members.Count(m => !m.IsDead && !m.IsYoung && m.Health > Bramblekin.MaxHealth / 2);
         float raid = warTarget is null || !hasStore || fighters < 3 ? 0f
             : 0.5f + 3f * p.Aggression + (1f - storeFill);
+
+        // Clan culture: its traditions sway any Leader's choices.
+        ClanCulture culture = group.Culture;
+        if (hunt > 0f)
+            hunt += 1.5f * culture.Hunting;
+        if (raid > 0f)
+            raid += 2f * culture.Martial;
+        if (stockpile > 0f)
+            stockpile += 0.5f * culture.Farming;
 
         GroupGoal goal = GroupGoal.Stockpile;
         float best = stockpile;
@@ -255,7 +266,8 @@ public sealed partial class World
         // A farming group keeps some of its sharpest Gatherers on its bushes.
         if (group.Goal != GroupGoal.Defend && group.Home is { IsBuilt: true } && KnowsFarming(group))
         {
-            int farmers = Math.Max(1, members.Count / FarmersPerMembers);
+            int perFarmer = Math.Max(2, FarmersPerMembers - (int)MathF.Round(2f * group.Culture.Farming)); // A farming clan farms more.
+            int farmers = Math.Max(1, members.Count / perFarmer);
             foreach (Bramblekin member in members.Where(m => m.Job == KinJob.Gatherer).OrderByDescending(m => m.Personality.Intelligence).Take(farmers))
                 member.AssignJob(KinJob.Farmer);
         }

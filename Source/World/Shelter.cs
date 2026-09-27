@@ -60,7 +60,19 @@ public sealed class Shelter
         Position = World.Grounded(groundPoint);
     }
 
-    public int ID { get; } = _nextId++;
+    public int ID { get; private set; } = _nextId++;
+
+    /// <summary>Loading a saved world: puts back a shelter's own state (see World.Save).</summary>
+    public void Restore(int id, ShelterTier tier, bool built, bool upgrading, int twigs, int stored)
+    {
+        ID = id;
+        _nextId = Math.Max(_nextId, id + 1);
+        Tier = tier;
+        IsBuilt = built;
+        IsUpgrading = upgrading;
+        TwigsDelivered = twigs;
+        StoredFood = stored;
+    }
 
     public Vector3 Position { get; }
 

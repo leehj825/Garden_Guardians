@@ -212,6 +212,15 @@ public sealed partial class Bramblekin
     /// <summary>A random reachable point within <paramref name="radius"/> of where it stands (anywhere on the map as a fallback).</summary>
     private Vector3 RandomWanderPoint(World world, float radius) => RandomWanderPointAround(Position, radius, world);
 
+    /// <summary>A random wander point that isn't somewhere it remembers danger (if one turns up in a few tries).</summary>
+    private Vector3 SafeWanderPoint(World world, float radius)
+    {
+        Vector3 point = RandomWanderPoint(world, radius);
+        for (int attempt = 0; attempt < 3 && IsDangerous(point, world); attempt++)
+            point = RandomWanderPoint(world, radius);
+        return point;
+    }
+
     /// <summary>A random reachable point within <paramref name="radius"/> of <paramref name="center"/> (anywhere on the map as a fallback).</summary>
     private Vector3 RandomWanderPointAround(Vector3 center, float radius, World world)
     {

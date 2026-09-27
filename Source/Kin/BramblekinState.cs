@@ -45,6 +45,9 @@ public enum BramblekinState
     /// <summary>Planting or harvesting its group's berry bushes — see Bramblekin.Farming.</summary>
     Farming,
 
+    /// <summary>On an errand for its group: carrying food to an ally, or home with its pay — see Bramblekin.Errands.</summary>
+    Traveling,
+
     // --- Critical (hunger) ---
 
     /// <summary>Hungry with no food in sight: roaming further afield to find some.</summary>
