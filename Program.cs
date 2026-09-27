@@ -435,7 +435,9 @@ public static class Game
         // purple/pink so this civilization buff currency reads apart from
         // Amber's gold at a glance.
         string nectar = $"Nectar: {village.NectarStored}";
-        string[] lines = { header, food, population, militiaLine, builderLine, morale, amber, nectar };
+        string prosperity = $"Prosperity: {village.ProsperityLevel}";
+        string warStatus = village.InvasionTarget is not null ? "At War" : "At Peace";
+        string[] lines = { header, food, population, militiaLine, builderLine, morale, amber, nectar, prosperity, warStatus };
 
         // Narrow-and-Tall: a fixed, narrower width (proportional to UiScale,
         // matching DrawHud's own responsive-sizing convention) instead of
@@ -469,6 +471,9 @@ public static class Game
         Raylib.DrawText(morale, x, textInset + lineHeight * 5, fontSize, moraleColor);
         Raylib.DrawText(amber, x, textInset + lineHeight * 6, fontSize, new Color(255, 203, 0, 255));
         Raylib.DrawText(nectar, x, textInset + lineHeight * 7, fontSize, new Color(215, 80, 210, 255));
+        Raylib.DrawText(prosperity, x, textInset + lineHeight * 8, fontSize, new Color(255, 203, 0, 255));
+        Color warColor = village.InvasionTarget is not null ? new Color(170, 60, 40, 255) : new Color(60, 130, 70, 255);
+        Raylib.DrawText(warStatus, x, textInset + lineHeight * 9, fontSize, warColor);
     }
 
     /// <summary>
@@ -1885,14 +1890,36 @@ public sealed class World
     /// <summary>Map Density Control: the hard ceiling on simultaneously active Village Hearts (independent capitals — Vassals don't count, they're not their own faction any more). Once <see cref="World.Villages"/> hits this, Schism/Auto-Settler no longer spawn a new faction — see <see cref="UpdateSchism"/>/<see cref="UpdateAutoSettler"/>.</summary>
     public const int MaxActiveFactions = 6;
 
-    /// <summary>Overpopulation Crusades: the fraction of this tribe's entire military-eligible force (living Gatherers + Militia) that ends up committed as Militia for a ruthless, nearest-target Crusade when it hits the Schism/Settler trigger but the map is already at <see cref="MaxActiveFactions"/> — deliberately large (three quarters) so a Crusade is "risky": most of the tribe marches out, leaving its home lightly defended, rather than a small flat draft it barely notices. See <see cref="LaunchOverpopulationCrusade"/>.</summary>
-    public const float CrusadeForceFraction = 0.75f;
+    /// <summary>Prosperity: how far each <see cref="VillageHeart.ProsperityLevel"/> raises a tribe's population ceiling past <see cref="MaxPopulationCap"/> — see <see cref="VillageHeart.EffectiveMaxPopulationCap"/>.</summary>
+    public const int ProsperityPopulationStep = 8;
 
-    /// <summary>Overpopulation Crusades: even a tiny tribe with almost no military-eligible population still commits at least this many Militia — otherwise <see cref="CrusadeForceFraction"/> of a very small headcount could round down to zero and the tribe would never actually crusade. See <see cref="LaunchOverpopulationCrusade"/>.</summary>
-    public const int CrusadeMinimumForce = 2;
+    /// <summary>Prosperity: the highest <see cref="VillageHeart.ProsperityLevel"/> a tribe can invest up to.</summary>
+    public const int MaxProsperityLevel = 5;
 
-    /// <summary>How long (seconds) <see cref="LaunchOverpopulationCrusade"/>'s "no rivals left" skip stays silent before it's willing to log the same message again for the same faction — see <see cref="VillageHeart.CrusadeSkipLogCooldown"/>.</summary>
-    public const float CrusadeSkipLogCooldownSeconds = 30f;
+    /// <summary>Prosperity: flat Food cost of every Prosperity level — see <see cref="TryInvestInProsperity"/>.</summary>
+    public const int ProsperityFoodCost = 40;
+
+    /// <summary>Prosperity: Amber cost per level step — investing in level N costs N times this much Amber.</summary>
+    public const int ProsperityAmberCostPerLevel = 5;
+
+    /// <summary>Prosperity: minimum seconds between two Prosperity investments by the same tribe.</summary>
+    public const float ProsperityCooldownSeconds = 45f;
+
+    /// <summary>War Weariness: seconds after any war ends (won, failed or cancelled) during which a tribe may not declare a new one — see <see cref="VillageHeart.WarCooldown"/>.</summary>
+    public const float WarCooldownSeconds = 90f;
+
+    /// <summary>Peace by Default: a tribe with a Blood Feud grievance only marches once it has more than this many living Militia (Militaristic uses <see cref="MilitaristicInvasionMilitiaThreshold"/>).</summary>
+    public const int GrievanceMilitiaThreshold = 6;
+
+    /// <summary>Desperation Raids: a tribe with less than this much Food Stored counts as starving — see <see cref="UpdateInvasionOrders"/>.</summary>
+    public const int DesperationFoodThreshold = 10;
+
+    /// <summary>Desperation Raids: a starving tribe only raids if it is at least this populous (otherwise it is too small to field an army).</summary>
+    public const int DesperationMinPopulation = 12;
+
+    /// <summary>Desperation Raids: a starving tribe needs at least this many living Militia to raid.</summary>
+    public const int DesperationMinMilitia = 2;
+
 
     // --- Vassal Colonies (Tribute Economy) ---------------------------------------
 
@@ -2903,93 +2930,108 @@ public sealed class World
         Colony.Count(b => !b.IsDead && b.FactionID == factionId && b.Role == BramblekinRole.Militia);
 
     /// <summary>
-    /// Invasion &amp; Conquest: once a faction is both high-Morale (see
-    /// <see cref="HighMoraleThreshold"/>) and militarily dominant (more
-    /// than <see cref="InvasionMilitiaThreshold"/> living Militia), it
-    /// picks the nearest weaker neighbor — lower Population, or fewer
-    /// living Militia, than itself — and sets it as <paramref name="village"/>'s
-    /// shared <see cref="VillageHeart.InvasionTarget"/> for every idle
-    /// Militia unit to pick up (see <see cref="Bramblekin.Update"/>).
-    /// Cleared the instant either condition no longer holds, the target is
-    /// gone, or it's already this faction's own Vassal — a spent, no
-    /// longer weaker, or already-conquered neighbor is never worth
-    /// marching on.
+    /// Peace by Default: a tribe never declares war merely because it is
+    /// strong. It marches only with a reason — (a) a Grievance: an active
+    /// Blood Feud (<see cref="VillageHeart.HostileFactions"/>) against a
+    /// rival, targeting the nearest hostile faction (non-Militaristic tribes
+    /// still only pick a hostile that is weaker than them; Militaristic
+    /// tribes hold the grudge regardless and need fewer Militia), or (b)
+    /// Desperation: starving (<see cref="DesperationFoodThreshold"/>) and
+    /// populous enough to field a raid, targeting the nearest rival for its
+    /// stores (Spoils of War). No new war while <see cref="VillageHeart.WarCooldown"/>
+    /// is running. A declared war runs until its target is gone or ours,
+    /// it wins (<see cref="ConquerVillage"/>), or its roster is wiped out
+    /// (<see cref="CheckInvasionFailure"/>).
     /// </summary>
     private void UpdateInvasionOrders(VillageHeart village)
     {
-        // A Crusade is its own committed war, declared by
-        // LaunchOverpopulationCrusade — the ordinary Morale/Militia gates
-        // below must never cancel it, or a low-Morale tribe's Crusade gets
-        // erased the tick after it's declared (its drafted army then
-        // demobilizes and the Crusade re-fires, forever). It only ends when
-        // its target is gone/ours (here), it wins (ConquerVillage), or its
-        // roster is wiped out (CheckInvasionFailure).
-        if (village.InvasionIsCrusade)
+        if (village.InvasionTarget is { } current)
         {
-            if (village.InvasionTarget is { } crusadeTarget && Villages.Contains(crusadeTarget) &&
-                !(crusadeTarget.IsVassal && crusadeTarget.CapitalFactionID == village.FactionID))
-                return;
+            if (Villages.Contains(current) &&
+                !(current.IsVassal && current.CapitalFactionID == village.FactionID))
+                return; // War in progress — see it through.
 
-            village.InvasionTarget = null;
-            village.InvasionIsCrusade = false;
+            EndWar(village);
             return;
         }
+
+        if (village.WarCooldown > 0f)
+            return; // War weary: no new declarations yet.
 
         bool militaristic = village.Trait == FactionTrait.Militaristic;
         int ourMilitia = LivingMilitiaCountFor(village.FactionID);
-
-        // Trait-Driven Warfare: a Militaristic tribe has a dramatically
-        // lower Militia bar to clear, and no Morale gate at all — an
-        // Invasive tribe attacks because it wants to, not because it's
-        // thriving.
-        int militiaThreshold = militaristic ? MilitaristicInvasionMilitiaThreshold : InvasionMilitiaThreshold;
-        bool moraleOk = militaristic || village.Morale >= HighMoraleThreshold;
-        if (!moraleOk || ourMilitia <= militiaThreshold)
-        {
-            village.InvasionTarget = null;
-            return;
-        }
-
-        // Already marching on someone who's still a valid target. A
-        // Militaristic tribe doesn't care whether its current target is
-        // still weaker than it — it committed to the nearest rival and
-        // sees it through; everyone else keeps re-checking relative
-        // strength every call.
-        if (village.InvasionTarget is { } current && Villages.Contains(current) &&
-            !(current.IsVassal && current.CapitalFactionID == village.FactionID) &&
-            (militaristic || IsWeakerThan(current, village, ourMilitia)))
-            return;
-
         VillageHeart? best = null;
-        float bestDistanceSquared = float.MaxValue;
-        foreach (VillageHeart candidate in Villages)
-        {
-            if (candidate.FactionID == village.FactionID)
-                continue;
-            if (candidate.IsVassal && candidate.CapitalFactionID == village.FactionID)
-                continue; // Already ours.
-            // Trait-Driven Warfare: Militaristic ignores relative strength
-            // entirely and picks the nearest rival regardless; everyone
-            // else still only ever picks on someone weaker.
-            if (!militaristic && !IsWeakerThan(candidate, village, ourMilitia))
-                continue;
+        string reason = "";
 
-            float distanceSquared = Vector3.DistanceSquared(village.Center, candidate.Center);
-            if (distanceSquared < bestDistanceSquared)
+        // (a) Grievance.
+        int grievanceThreshold = militaristic ? MilitaristicInvasionMilitiaThreshold : GrievanceMilitiaThreshold;
+        if (village.HostileFactions.Count > 0 && ourMilitia > grievanceThreshold)
+        {
+            float bestDistanceSquared = float.MaxValue;
+            foreach (VillageHeart candidate in Villages)
             {
-                best = candidate;
-                bestDistanceSquared = distanceSquared;
+                if (candidate.FactionID == village.FactionID || !village.HostileFactions.ContainsKey(candidate.FactionID))
+                    continue;
+                if (candidate.IsVassal && candidate.CapitalFactionID == village.FactionID)
+                    continue; // Already ours.
+                if (!militaristic && !IsWeakerThan(candidate, village, ourMilitia))
+                    continue;
+
+                float distanceSquared = Vector3.DistanceSquared(village.Center, candidate.Center);
+                if (distanceSquared < bestDistanceSquared)
+                {
+                    best = candidate;
+                    bestDistanceSquared = distanceSquared;
+                }
             }
+            reason = "avenging a Blood Feud";
         }
+
+        // (b) Desperation.
+        if (best is null && village.FoodStored < DesperationFoodThreshold &&
+            village.Population >= DesperationMinPopulation && ourMilitia >= DesperationMinMilitia)
+        {
+            float bestDistanceSquared = float.MaxValue;
+            foreach (VillageHeart candidate in Villages)
+            {
+                if (candidate.FactionID == village.FactionID)
+                    continue;
+                if (candidate.IsVassal && candidate.CapitalFactionID == village.FactionID)
+                    continue; // Already ours.
+
+                float distanceSquared = Vector3.DistanceSquared(village.Center, candidate.Center);
+                if (distanceSquared < bestDistanceSquared)
+                {
+                    best = candidate;
+                    bestDistanceSquared = distanceSquared;
+                }
+            }
+            reason = "starving, raiding for food";
+        }
+
+        if (best is null)
+            return;
+
         village.InvasionTarget = best;
         village.InvasionIsCrusade = false;
-        if (best is not null)
-            CommitFactionMilitiaToWar(village);
+        CommitFactionMilitiaToWar(village);
+
+        string warMessage = $"[WAR] Tribe {village.FactionID} marches on {FactionColorName(best.FactionColor)} ({reason}).";
+        Raylib.TraceLog(TraceLogLevel.Info, warMessage);
+        Game.AddEventLog(warMessage);
+    }
+
+    /// <summary>War Weariness: clears <paramref name="village"/>'s war orders and starts its <see cref="VillageHeart.WarCooldown"/> — every war-ending path goes through here.</summary>
+    private void EndWar(VillageHeart village)
+    {
+        village.InvasionTarget = null;
+        village.InvasionIsCrusade = false;
+        village.WarCooldown = WarCooldownSeconds;
     }
 
     /// <summary>
     /// Fixed-Roster Invasions: called the instant <see cref="UpdateInvasionOrders"/>
-    /// or <see cref="LaunchOverpopulationCrusade"/> commits <paramref name="village"/>'s
+    /// commits <paramref name="village"/>'s
     /// faction to marching on a brand new <see cref="VillageHeart.InvasionTarget"/>
     /// — bumps <see cref="VillageHeart.InvasionWarGeneration"/> and stamps
     /// every currently-living Militia of this faction with that new
@@ -3034,8 +3076,7 @@ public sealed class World
         string invasionFailedMessage = $"[INVASION FAILED] Tribe {village.FactionID}'s war effort was wiped out before reaching the target ({targetName}).";
         Raylib.TraceLog(TraceLogLevel.Info, invasionFailedMessage);
         Game.AddEventLog(invasionFailedMessage);
-        village.InvasionTarget = null;
-        village.InvasionIsCrusade = false;
+        EndWar(village);
     }
 
     /// <summary>Invasion &amp; Conquest: whether <paramref name="candidate"/> counts as weaker than <paramref name="invader"/> — lower Population, or fewer living Militia, than the invader's own count.</summary>
@@ -3153,7 +3194,7 @@ public sealed class World
     ///
     /// Overpopulation Crusades: <paramref name="forceRaze"/> (see
     /// <see cref="Bramblekin.UpdateInvading"/>'s <c>_isCrusading</c> flag,
-    /// set by <see cref="LaunchOverpopulationCrusade"/>) skips the
+    /// historically set by Overpopulation Crusades) skips the
     /// <see cref="RazeInsteadOfVassalRadius"/> distance check entirely and
     /// always takes the Raze branch — deliberately, on purpose: this is
     /// extermination, not conquest, and a distant Crusade target left
@@ -3174,7 +3215,8 @@ public sealed class World
         target.IsVassal = true;
         target.CapitalFactionID = invaderFactionId;
         target.TributeTimer = TributeInterval;
-        target.InvasionTarget = null;
+        if (target.InvasionTarget is not null)
+            EndWar(target);
         target.FactionColor = capital.FactionColor;
 
         // Default Peace resumes between conqueror and vassal — a Tribute
@@ -3522,7 +3564,8 @@ public sealed class World
             UpdateJobManager(village, deltaTime);
             UpdateMorale(village, deltaTime);
             village.DamageFlashTimer = MathF.Max(0f, village.DamageFlashTimer - deltaTime);
-            village.CrusadeSkipLogCooldown = MathF.Max(0f, village.CrusadeSkipLogCooldown - deltaTime);
+            village.WarCooldown = MathF.Max(0f, village.WarCooldown - deltaTime);
+            village.ProsperityCooldown = MathF.Max(0f, village.ProsperityCooldown - deltaTime);
 
             // The Blood Feud: every declared war's timer counts down toward
             // 0 regardless of anything else this Village Heart is doing;
@@ -3604,9 +3647,8 @@ public sealed class World
             // this tribe is populous and wealthy enough — see UpdateVillageTier.
             UpdateVillageTier(village);
 
-            // Invasion & Conquest: a high-Morale, militarily dominant tribe
-            // picks a weaker neighbor to march its idle Militia on — see
-            // UpdateInvasionOrders.
+            // Peace by Default: war only with a reason (Blood Feud grievance
+            // or starvation) — see UpdateInvasionOrders.
             UpdateInvasionOrders(village);
 
             // Fixed-Roster Invasions: a war whose entire committed roster
@@ -4309,7 +4351,7 @@ public sealed class World
     /// </summary>
     private void UpdateAutoTent(VillageHeart village)
     {
-        if (village.MaxPopulation >= MaxPopulationCap)
+        if (village.MaxPopulation >= village.EffectiveMaxPopulationCap)
             return; // Hard Cap: no more Tents, ever, regardless of Food Stored.
         if (village.Population < village.MaxPopulation)
             return; // Housing Phase not triggered: still room to grow.
@@ -4335,7 +4377,7 @@ public sealed class World
     /// </summary>
     private void UpdateAutoCabin(VillageHeart village)
     {
-        if (village.MaxPopulation >= MaxPopulationCap)
+        if (village.MaxPopulation >= village.EffectiveMaxPopulationCap)
             return; // Hard Cap: no more Cabins, ever, regardless of Food/Amber Stored.
         if (village.Population < village.MaxPopulation)
             return; // Housing Phase not triggered: still room to grow.
@@ -4652,26 +4694,12 @@ public sealed class World
         if (village.FoodStored < SchismFoodThreshold)
             return; // The Split Fix: 100 Food is plenty to send a party off safely — no need to wait for a full silo.
 
-        // Map Density Control: the True Schism would otherwise found yet
-        // another independent faction — with the map already at
-        // MaxActiveFactions, that's clutter and lost frame time, not
-        // growth. Redirect the same trigger into a Crusade instead.
+        // Map Density Control: with the map already at MaxActiveFactions,
+        // founding yet another faction is clutter — the surplus goes into
+        // peaceful Prosperity instead (see TryInvestInProsperity).
         if (Villages.Count >= MaxActiveFactions)
         {
-            // The Re-Fire Fix: a Crusade already under way (InvasionTarget
-            // still set from a previous LaunchOverpopulationCrusade call)
-            // must not be re-launched every single frame the trigger
-            // conditions keep holding — Population stays at cap and Food
-            // keeps regenerating above SchismFoodThreshold long after the
-            // first Crusade fires, so without this guard this branch used
-            // to fire dozens of times per second, drafting a fresh wave of
-            // Militia and spending Food every tick. The ongoing war still
-            // runs its course untouched via UpdateInvasionOrders/
-            // CheckInvasionFailure/ConquerVillage — this only blocks a
-            // second, redundant declaration on top of it.
-            if (village.InvasionTarget is not null)
-                return;
-            LaunchOverpopulationCrusade(village, SchismPioneerFood);
+            TryInvestInProsperity(village);
             return;
         }
 
@@ -4779,19 +4807,11 @@ public sealed class World
         if (Colony.Any(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Settler))
             return; // Already got one on the road.
 
-        // Map Density Control: same reasoning as UpdateSchism above — with
-        // the map already at MaxActiveFactions, dispatching a Settler to
-        // found yet another faction is exactly the clutter Part 3 exists
-        // to prevent. Crusade instead.
+        // Map Density Control: same reasoning as UpdateSchism above —
+        // invest the surplus in Prosperity rather than a new faction.
         if (Villages.Count >= MaxActiveFactions)
         {
-            // The Re-Fire Fix: see the identical guard in UpdateSchism above
-            // — a Crusade already in flight (InvasionTarget already set)
-            // must not be re-launched every frame this trigger keeps
-            // holding true.
-            if (village.InvasionTarget is not null)
-                return;
-            LaunchOverpopulationCrusade(village, SettlerFoodCost);
+            TryInvestInProsperity(village);
             return;
         }
 
@@ -4815,118 +4835,38 @@ public sealed class World
     }
 
     /// <summary>
-    /// Map Density Control — Overpopulation Crusades: the Faction Limit's
-    /// fallback for a tribe that's hit the Schism/Settler trigger (Population
-    /// overcap and a Food surplus banked) with <see cref="World.Villages"/>
-    /// already sitting at <see cref="MaxActiveFactions"/> — spawning a new
-    /// faction is off the table, so the same Food surplus is spent instead on
-    /// an instant, forced draft: enough Gatherers are promoted straight to
-    /// Militia (<see cref="Bramblekin.PromoteToMilitia"/>, the same
-    /// conscription every faction already uses one-at-a-time — just applied
-    /// in one lump here) that roughly <see cref="CrusadeForceFraction"/> of
-    /// this faction's entire military-eligible force (living Gatherers +
-    /// Militia, counting any Militia that already existed before this
-    /// draft) ends up committed to the march — a large field army, by
-    /// design: a Crusade is meant to feel risky, leaving this tribe's home
-    /// lightly defended, not a token gesture. This village's own
-    /// <see cref="VillageHeart.InvasionTarget"/> is pointed at the NEAREST
-    /// other active Village Heart (excluding this faction's own Vassals,
-    /// which are already its territory, not a rival to clear) — ruthless,
-    /// not blind: unlike the ordinary Invasion &amp; Conquest AI (see
-    /// <see cref="UpdateInvasionOrders"/>) this never checks whether the
-    /// target is actually weaker, only how close it is, since a Crusade
-    /// exists purely to clear the physical overcrowding immediately around
-    /// this tribe's own borders. <see cref="VillageHeart.InvasionIsCrusade"/>
-    /// is set alongside the target so <see cref="Bramblekin.UpdateInvading"/>
-    /// knows to force an unconditional Raze on conquest (see
-    /// <see cref="World.ConquerVillage"/>'s <c>forceRaze</c> parameter)
-    /// regardless of distance from this faction's own capital — a Crusade
-    /// that merely Vassalizes the overcrowding away has failed its one job.
-    /// The freshly drafted Militia pick the order up the same way any other
-    /// idle Militia does (<see cref="Bramblekin.Update"/>'s Invasion
-    /// priority) and march out immediately. Composes with Part 2: a
-    /// Militaristic faction hitting the cap crusades exactly the same way —
-    /// this check only ever looks at <see cref="World.Villages"/>.Count,
-    /// never at <see cref="FactionTrait"/>.
+    /// Prosperity: the peaceful sink for a capped tribe's surplus once the
+    /// map is at <see cref="MaxActiveFactions"/>. When housing is already
+    /// maxed out at <see cref="VillageHeart.EffectiveMaxPopulationCap"/>, and
+    /// the tribe can afford <see cref="ProsperityFoodCost"/> Food plus
+    /// (level+1) x <see cref="ProsperityAmberCostPerLevel"/> Amber, it raises
+    /// <see cref="VillageHeart.ProsperityLevel"/> by one (up to
+    /// <see cref="MaxProsperityLevel"/>), lifting its population ceiling by
+    /// <see cref="ProsperityPopulationStep"/> and granting that housing at
+    /// once. Otherwise it simply banks. Rate-limited by
+    /// <see cref="ProsperityCooldownSeconds"/>.
     /// </summary>
-    private void LaunchOverpopulationCrusade(VillageHeart village, int foodCost)
+    private void TryInvestInProsperity(VillageHeart village)
     {
-        // Find a target FIRST: drafting ~75% of the tribe's workforce into
-        // Militia and spending Food is only worth paying for if there's
-        // actually someone left to march on. Checking this before spending
-        // anything fixes a real bug where a Crusade would fire, pay its
-        // full cost, and mobilize a huge army that then just sat there
-        // forever (InvasionTarget staying null) whenever every reachable
-        // rival happened to already be this faction's own Vassal — visible
-        // as Militia count spiking then slowly demobilizing back down, with
-        // no fighting or marching ever actually happening.
-        VillageHeart? nearestRival = null;
-        float bestDistanceSquared = float.MaxValue;
-        foreach (VillageHeart candidate in Villages)
-        {
-            if (candidate.FactionID == village.FactionID)
-                continue;
-            if (candidate.IsVassal && candidate.CapitalFactionID == village.FactionID)
-                continue; // Already ours — not a rival to clear.
-
-            float distanceSquared = Vector3.DistanceSquared(village.Center, candidate.Center);
-            if (distanceSquared < bestDistanceSquared)
-            {
-                nearestRival = candidate;
-                bestDistanceSquared = distanceSquared;
-            }
-        }
-
-        if (nearestRival is null)
-        {
-            // This condition can hold every single tick (Population/Food
-            // sitting right at the trigger thresholds), so logging it
-            // unconditionally would just recreate the exact same on-screen
-            // spam problem an earlier fix already solved for successful
-            // Crusades — cooldown it instead of logging every frame.
-            if (village.CrusadeSkipLogCooldown <= 0f)
-            {
-                string noRivalMessage = $"[CRUSADE SKIPPED] Tribe {village.FactionID} is at the Faction Limit with no rivals left to crusade against — standing down instead of wasting Food and manpower.";
-                Raylib.TraceLog(TraceLogLevel.Info, noRivalMessage);
-                Game.AddEventLog(noRivalMessage);
-                village.CrusadeSkipLogCooldown = CrusadeSkipLogCooldownSeconds;
-            }
+        if (village.ProsperityCooldown > 0f || village.ProsperityLevel >= MaxProsperityLevel)
             return;
-        }
+        if (village.MaxPopulation < village.EffectiveMaxPopulationCap)
+            return; // Tents/Cabins can still raise housing — let them.
 
-        village.FoodStored -= foodCost;
+        int amberCost = (village.ProsperityLevel + 1) * ProsperityAmberCostPerLevel;
+        if (village.FoodStored < ProsperityFoodCost || village.AmberStored < amberCost)
+            return; // Bank toward it.
 
-        // Risky Crusades: size the drafted wave so that roughly
-        // CrusadeForceFraction of the whole eligible force (existing
-        // Militia plus freshly drafted Gatherers) ends up marching — not
-        // CrusadeForceFraction freshly drafted ON TOP of whatever Militia
-        // already existed.
-        int eligible = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID &&
-                                          (b.Role == BramblekinRole.Gatherer || b.Role == BramblekinRole.Militia));
-        int currentMilitia = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
-        int waveTarget = Math.Max(CrusadeMinimumForce, (int)(eligible * CrusadeForceFraction));
-        int toDraft = Math.Max(0, waveTarget - currentMilitia);
+        village.FoodStored -= ProsperityFoodCost;
+        village.AmberStored -= amberCost;
+        village.ProsperityLevel++;
+        village.MaxPopulation = village.EffectiveMaxPopulationCap;
+        village.ProsperityCooldown = ProsperityCooldownSeconds;
 
-        int drafted = 0;
-        for (int i = 0; i < toDraft; i++)
-        {
-            Bramblekin? recruit = NearestByRole(village, BramblekinRole.Gatherer);
-            if (recruit is null)
-                break; // Ran out of spare Gatherers to draft — take whatever wave we got.
-            recruit.PromoteToMilitia();
-            drafted++;
-        }
-
-        village.InvasionTarget = nearestRival;
-        village.InvasionIsCrusade = true;
-        CommitFactionMilitiaToWar(village); // Fixed-Roster Invasions: freshly drafted Militia are already promoted above, so this snapshot includes them.
-
-        string targetName = FactionColorName(nearestRival.FactionColor);
-        QueueFloatingText(village.Center, $"[-{foodCost} Food] Overpopulation Crusade!", new Color(220, 30, 30, 255));
-        QueueGlobalAlert($"[CRUSADE] Tribe {village.FactionID} drafts {drafted} Militia (~{(int)(CrusadeForceFraction * 100)}% of its force) and launches a desperate crusade against {targetName}!", village.FactionColor);
-        string crusadeMessage = $"[CRUSADE] Tribe {village.FactionID} at Faction Limit ({Villages.Count}/{MaxActiveFactions}) — drafted {drafted} Militia, crusading against {targetName} instead of spawning a new faction.";
-        Raylib.TraceLog(TraceLogLevel.Info, crusadeMessage);
-        Game.AddEventLog(crusadeMessage);
+        QueueFloatingText(village.Center, $"[-{ProsperityFoodCost} Food, -{amberCost} Amber] Prosperity {village.ProsperityLevel}!", new Color(255, 203, 0, 255));
+        string prosperityMessage = $"[PROSPERITY] Tribe {village.FactionID} invests in Prosperity level {village.ProsperityLevel} (cap now {village.EffectiveMaxPopulationCap}).";
+        Raylib.TraceLog(TraceLogLevel.Info, prosperityMessage);
+        Game.AddEventLog(prosperityMessage);
     }
 
     /// <summary>
@@ -5683,9 +5623,9 @@ public sealed class World
         if (blueprint.Kind == BuildingKind.Granary)
             owner.MaxFoodCapacity += GranaryFoodBonus;
         else if (blueprint.Kind == BuildingKind.Tent)
-            owner.MaxPopulation = Math.Min(owner.MaxPopulation + TentPopulationBonus, MaxPopulationCap);
+            owner.MaxPopulation = Math.Min(owner.MaxPopulation + TentPopulationBonus, owner.EffectiveMaxPopulationCap);
         else if (blueprint.Kind == BuildingKind.Cabin)
-            owner.MaxPopulation = Math.Min(owner.MaxPopulation + CabinPopulationBonus, MaxPopulationCap);
+            owner.MaxPopulation = Math.Min(owner.MaxPopulation + CabinPopulationBonus, owner.EffectiveMaxPopulationCap);
         else if (blueprint.Kind == BuildingKind.Monument)
             _completedMonuments.Add((blueprint.FactionID, blueprint.FactionColor));
         else if (blueprint.Kind == BuildingKind.TradingPost)
@@ -6166,7 +6106,7 @@ public sealed class VillageHeart
 
     /// <summary>
     /// Overpopulation Crusades: true exactly when <see cref="InvasionTarget"/>
-    /// was set by <see cref="World.LaunchOverpopulationCrusade"/> rather than
+    /// was set by a (now retired) Overpopulation Crusade rather than
     /// the ordinary <see cref="World.UpdateInvasionOrders"/> — a Militia unit
     /// snapshots this alongside <see cref="InvasionTarget"/> the instant it
     /// picks the order up (see <see cref="Bramblekin.Update"/>'s Invasion
@@ -6266,17 +6206,17 @@ public sealed class VillageHeart
     /// </summary>
     internal bool BuilderStallWarned { get; set; }
 
-    /// <summary>
-    /// Overpopulation Crusades: counts down after a Crusade trigger finds no
-    /// valid rival to target (see <see cref="World.LaunchOverpopulationCrusade"/>'s
-    /// early "no rivals left" return) — while positive, the skip is silent,
-    /// so the same faction hitting this same condition every single tick
-    /// (Population/Food staying at their trigger thresholds) doesn't spam
-    /// the on-screen log with an identical message forever. Set to
-    /// <see cref="World.CrusadeSkipLogCooldownSeconds"/> each time the skip
-    /// message actually logs.
-    /// </summary>
-    internal float CrusadeSkipLogCooldown { get; set; }
+    /// <summary>Prosperity: how many Prosperity levels this tribe has invested in (0 to <see cref="World.MaxProsperityLevel"/>) — see <see cref="World.TryInvestInProsperity"/>.</summary>
+    public int ProsperityLevel { get; internal set; }
+
+    /// <summary>Prosperity: this tribe's population ceiling — <see cref="World.MaxPopulationCap"/> plus <see cref="World.ProsperityPopulationStep"/> per <see cref="ProsperityLevel"/>.</summary>
+    public int EffectiveMaxPopulationCap => World.MaxPopulationCap + ProsperityLevel * World.ProsperityPopulationStep;
+
+    /// <summary>Prosperity: seconds until this tribe may invest in Prosperity again.</summary>
+    internal float ProsperityCooldown { get; set; }
+
+    /// <summary>War Weariness: seconds until this tribe may declare a new war — set by <see cref="World"/>'s EndWar on every war-ending path.</summary>
+    public float WarCooldown { get; internal set; }
 
     /// <summary>Counts down to this faction's next Upkeep tax. Internal bookkeeping for <see cref="World"/>.</summary>
     internal float UpkeepTimer { get; set; }
