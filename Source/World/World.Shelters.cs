@@ -22,7 +22,7 @@ public sealed partial class World
     private const float TwigPatchRadius = 3f;
 
     /// <summary>Odds a fallen twig lands near a big Twig prop rather than anywhere on the map.</summary>
-    private const double TwigPatchChance = 0.7;
+    private const double TwigPatchChance = 0.5;
 
     // --- Shelters --------------------------------------------------------------------
 
@@ -44,6 +44,19 @@ public sealed partial class World
     public List<Shelter> Shelters { get; } = new();
 
     public int LooseTwigCount { get; private set; }
+
+    private double _tentBuildSeconds;
+    private double _houseUpgradeSeconds;
+
+    /// <summary>Average seconds from marking out a site to a finished Tent. NaN before the first.</summary>
+    public double AverageTentBuildSeconds => TentsBuilt > 0 ? _tentBuildSeconds / TentsBuilt : double.NaN;
+
+    /// <summary>Average seconds from starting a House upgrade to finishing it. NaN before the first.</summary>
+    public double AverageHouseUpgradeSeconds => HousesBuilt > 0 ? _houseUpgradeSeconds / HousesBuilt : double.NaN;
+
+    /// <summary>Construction stages (sites, or upgrades) under way for longer than <paramref name="seconds"/> — a sign building has stalled.</summary>
+    public int StagesOlderThan(float seconds) =>
+        Shelters.Count(s => (!s.IsBuilt || s.IsUpgrading) && ElapsedSeconds - s.StageStartedAt > seconds);
 
     public int TentsBuilt { get; private set; }
     public int HousesBuilt { get; private set; }
@@ -92,12 +105,22 @@ public sealed partial class World
         return RandomFreePoint(0.3f, edgeMargin: 1f);
     }
 
-    /// <summary>A twig falls every <see cref="TwigSpawnInterval"/> seconds while fewer than <see cref="MaxLooseTwigs"/> lie loose.</summary>
+    /// <summary>A twig falls every <see cref="TwigSpawnInterval"/> seconds while fewer than <see cref="MaxLooseTwigs"/> lie loose; loose twigs decompose after <see cref="Twig.DespawnLifespan"/>.</summary>
     private void UpdateTwigSpawn(float deltaTime)
     {
         foreach (Twig twig in Twigs)
         {
-            if (!twig.IsActive || twig.ClaimedBy is null)
+            if (!twig.IsActive || twig.IsCarried)
+                continue;
+
+            twig.DespawnTimer -= deltaTime;
+            if (twig.DespawnTimer <= 0f)
+            {
+                twig.Deactivate(); // Decomposed: room for a fresh one somewhere else.
+                continue;
+            }
+
+            if (twig.ClaimedBy is null)
                 continue;
 
             twig.ClaimTimer += deltaTime;
@@ -178,6 +201,16 @@ public sealed partial class World
             return;
 
         builder.AddReputation(0.5f);
+        float buildTime = ElapsedSeconds - shelter.StageStartedAt;
+        shelter.StageStartedAt = ElapsedSeconds;
+        if (shelter.Tier == ShelterTier.House)
+        {
+            _houseUpgradeSeconds += buildTime;
+        }
+        else
+        {
+            _tentBuildSeconds += buildTime;
+        }
         if (shelter.Tier == ShelterTier.House)
         {
             HousesBuilt++;
@@ -217,7 +250,7 @@ public sealed partial class World
             if (Shelters.Any(s => GroundMover.HorizontalDistanceSquared(s.Position, candidate) < MinShelterSpacing * MinShelterSpacing))
                 continue;
 
-            var shelter = new Shelter(candidate) { Owner = owner, GroupId = groupId };
+            var shelter = new Shelter(candidate) { Owner = owner, GroupId = groupId, StageStartedAt = ElapsedSeconds };
             Shelters.Add(shelter);
             return shelter;
         }

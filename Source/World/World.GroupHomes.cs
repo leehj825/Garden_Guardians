@@ -52,6 +52,7 @@ public sealed partial class World
             if (ShouldUpgrade(group, home))
             {
                 home.BeginUpgrade();
+                home.StageStartedAt = ElapsedSeconds;
                 Game.AddEventLog($"[SETTLE] Group {group.ShortId} ({group.Members.Count} strong) is upgrading its Tent into a House");
             }
         }

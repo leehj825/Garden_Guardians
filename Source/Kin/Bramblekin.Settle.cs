@@ -34,6 +34,16 @@ public sealed partial class Bramblekin
 
     private float _settleRetryTimer;
 
+    /// <summary>How many twig-search legs in a row came up empty — each one ranges further from the site.</summary>
+    private int _twigSearchLegs;
+
+    /// <summary>Radius (m) of the first twig-search leg around a site; each empty leg adds this much again, up to <see cref="MaxTwigSearchRadius"/>.</summary>
+    private const float TwigSearchStep = 15f;
+
+    private const float MaxTwigSearchRadius = 60f;
+
+    private float TwigSearchRadius => MathF.Min(MaxTwigSearchRadius, TwigSearchStep * (1 + _twigSearchLegs));
+
     private float SettleDelay => MaxSettleDelay - (MaxSettleDelay - MinSettleDelay) * Personality.Intelligence;
 
     /// <summary>True while it's the one who should be fetching twigs for its home's current construction stage.</summary>
@@ -156,7 +166,7 @@ public sealed partial class Bramblekin
         return Home is not null;
     }
 
-    /// <summary>Carries a twig to <paramref name="site"/>; else picks up the nearest visible one; else goes looking where twigs were last seen, or around the site.</summary>
+    /// <summary>Carries a twig to <paramref name="site"/>; else picks up the nearest visible one; else goes looking where twigs were last seen, or in ever-wider legs around the site.</summary>
     private void DoBuildWork(Shelter site, float deltaTime, World world)
     {
         if (_carriedTwig is { } twig)
@@ -185,21 +195,25 @@ public sealed partial class Bramblekin
                 World.PickUpTwig(seen);
                 _carriedTwig = seen;
                 _perceivedTwig = null;
+                _twigSearchLegs = 0;
                 return;
             }
             MoveTo(seen.Position, WalkSpeed, deltaTime, world);
             return;
         }
 
+        // Nothing in sight: back to where twigs were last seen, else search
+        // around the site — each empty leg ranging further out.
         if (State != BramblekinState.Collecting)
         {
-            _wanderTarget = _twigMemory ?? RandomWanderPointAround(site.Position, WanderRadius * 1.5f, world);
+            _wanderTarget = _twigMemory ?? RandomWanderPointAround(site.Position, TwigSearchRadius, world);
             SetState(BramblekinState.Collecting);
         }
         if (MoveTo(_wanderTarget, WalkSpeed, deltaTime, world))
         {
             _twigMemory = null; // Nothing left there.
-            _wanderTarget = RandomWanderPointAround(site.Position, WanderRadius * 1.5f, world);
+            _twigSearchLegs++;
+            _wanderTarget = RandomWanderPointAround(site.Position, TwigSearchRadius, world);
         }
     }
 

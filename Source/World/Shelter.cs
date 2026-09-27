@@ -111,6 +111,9 @@ public sealed class Shelter
 
     public bool IsOvercrowded => Occupants > ResidentCapacity;
 
+    /// <summary>Game time (s) its current construction stage began — the site marked out, or the House upgrade started. For progress statistics.</summary>
+    public float StageStartedAt { get; set; }
+
     /// <summary>True once it has fallen down and been removed from the map; anyone still calling it home must find another.</summary>
     public bool IsCollapsed { get; private set; }
 

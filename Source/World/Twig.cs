@@ -7,7 +7,9 @@ namespace GardenGuardians;
 /// Building material: a fallen twig lying on the lawn, mostly around the
 /// big Twig props (see <see cref="World.UpdateTwigSpawn"/>). A Bramblekin
 /// carries one at a time to a <see cref="Shelter"/> under construction.
-/// Unlike Food, twigs never rot.
+/// A twig nobody picks up decomposes after <see cref="DespawnLifespan"/>,
+/// so the supply keeps turning over across the map instead of piling up,
+/// capped, in places nobody goes.
 /// </summary>
 public sealed class Twig
 {
@@ -33,6 +35,12 @@ public sealed class Twig
     /// <summary>Seconds since <see cref="ClaimedBy"/> was last set; World force-releases stale claims.</summary>
     public float ClaimTimer { get; set; }
 
+    /// <summary>Seconds a loose twig lies on the ground before it decomposes.</summary>
+    public const float DespawnLifespan = 240f;
+
+    /// <summary>Counts down while it lies loose; World removes it at 0.</summary>
+    public float DespawnTimer { get; set; }
+
     /// <summary>Which way it lies (radians).</summary>
     private float _rotation;
 
@@ -48,6 +56,7 @@ public sealed class Twig
         IsCarried = false;
         ClaimedBy = null;
         ClaimTimer = 0f;
+        DespawnTimer = DespawnLifespan;
         IsActive = true;
     }
 

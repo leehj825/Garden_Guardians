@@ -261,6 +261,9 @@ public static class Game
         Console.WriteLine(
             $"Homes: {world.TentsBuilt} tents and {world.HousesBuilt} houses built, {world.SheltersCollapsed} collapsed; " +
             $"{world.StoreMeals} meals eaten from stores, {world.StoreRaids} store raids.");
+        Console.WriteLine(
+            $"Building: a Tent takes {world.AverageTentBuildSeconds:0}s on average, a House upgrade {world.AverageHouseUpgradeSeconds:0}s; " +
+            $"{world.StagesOlderThan(600f)} of {world.Shelters.Count(s => !s.IsBuilt || s.IsUpgrading)} construction stages under way have stalled over 10 min.");
         PrintSurvivalTrend(world);
         PrintLeadership(world);
         PrintRebellion(world);

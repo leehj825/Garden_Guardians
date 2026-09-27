@@ -83,11 +83,13 @@ public sealed partial class World
     /// weighted by the Leader's own personality, picks the best, and hands
     /// out jobs to match.
     ///   * Defend — a threat near home; always wins, more so for a bold Leader.
-    ///   * Settle — the home is a site, or being upgraded; Intelligent Leaders prize it.
+    ///   * Settle — the home is being upgraded (Intelligent Leaders prize
+    ///     it), or is still a site: a first home is urgent.
     ///   * Hunt — a Stag Beetle within reach (further for a bolder Leader) and
     ///     at least two to hunt it; Aggressive Leaders prize it, and an
     ///     emptier store makes it more urgent.
-    ///   * Stockpile — fill the store; the emptier it is, the more urgent.
+    ///   * Stockpile — fill the store (once there is one); the emptier it
+    ///     is, the more urgent.
     /// The sharing rule follows the Leader's personality: an unsociable,
     /// Aggressive Leader eats first.
     /// </summary>
@@ -102,10 +104,14 @@ public sealed partial class World
         float huntRadius = BaseHuntSearchRadius + HuntSearchRadiusPerAggression * p.Aggression;
         group.HuntTarget = group.Members.Count >= 2 ? NearestLiveBeetle(center, huntRadius) : null;
 
+        // A first home comes before anything but a fight or a beetle: until
+        // it's finished there's no store to stock, so Stockpile means nothing.
         float defend = group.DefendTarget is not null ? 5f + 2f * p.Aggression : 0f;
-        float settle = home is { NeedsTwigs: true } ? 1.5f + 2f * p.Intelligence : 0f;
+        float settle = home is not { NeedsTwigs: true } ? 0f
+            : home.IsBuilt ? 1.5f + 2f * p.Intelligence
+            : 3f + 2f * p.Intelligence;
         float hunt = group.HuntTarget is not null ? 0.8f + 2f * p.Aggression + (1f - storeFill) : 0f;
-        float stockpile = 1f + 2f * (1f - storeFill) + 0.5f * (1f - p.Aggression);
+        float stockpile = home is { IsBuilt: true } ? 1f + 2f * (1f - storeFill) + 0.5f * (1f - p.Aggression) : 0f;
 
         GroupGoal goal = GroupGoal.Stockpile;
         float best = stockpile;
@@ -139,8 +145,9 @@ public sealed partial class World
 
     /// <summary>
     /// Hands out jobs for the current goal, by fit: Guards from the
-    /// Aggressive and healthy, Builders from the Intelligent, Hunters from
-    /// the Aggressive; everyone else gathers. The Leader takes a job too.
+    /// Aggressive and healthy, Builders from the Intelligent (everyone, for
+    /// a first home), Hunters from the Aggressive; everyone else gathers.
+    /// The Leader takes a job too.
     /// </summary>
     private static void AssignJobs(KinGroup group)
     {
@@ -159,7 +166,9 @@ public sealed partial class World
                 break;
 
             case GroupGoal.Settle:
-                foreach (Bramblekin member in members.OrderByDescending(m => m.Personality.Intelligence).Take(Math.Max(1, (members.Count + 1) / 2)))
+                // Everyone builds a first home; an upgrade takes the most Intelligent half.
+                int builders = group.Home is { IsBuilt: false } ? members.Count : Math.Max(1, (members.Count + 1) / 2);
+                foreach (Bramblekin member in members.OrderByDescending(m => m.Personality.Intelligence).Take(builders))
                     member.AssignJob(KinJob.Builder);
                 break;
 
