@@ -442,9 +442,14 @@ public static class Game
         // a distinct amber/black striped colour so it reads apart from
         // Amber's gold and Nectar's purple.
         string stingers = $"Stingers: {village.StingersStored}";
+        // The Builder Upgrade: GrubHides get their own tracked-resource line too.
+        string grubHides = $"Grub Hides: {village.GrubHidesStored}";
+        // The Scout Job: whether this faction currently has its one Scout drafted.
+        bool hasScout = world.Colony.Any(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Scout);
+        string scoutLine = $"Scout: {(hasScout ? "Y" : "N")}";
         string prosperity = $"Prosperity: {village.ProsperityLevel}";
         string warStatus = village.InvasionTarget is not null ? "At War" : "At Peace";
-        string[] lines = { header, food, population, militiaLine, builderLine, farmerLine, morale, amber, nectar, stingers, prosperity, warStatus };
+        string[] lines = { header, food, population, militiaLine, builderLine, farmerLine, morale, amber, nectar, stingers, grubHides, scoutLine, prosperity, warStatus };
 
         // Narrow-and-Tall: a fixed, narrower width (proportional to UiScale,
         // matching DrawHud's own responsive-sizing convention) instead of
@@ -480,9 +485,11 @@ public static class Game
         Raylib.DrawText(amber, x, textInset + lineHeight * 7, fontSize, new Color(255, 203, 0, 255));
         Raylib.DrawText(nectar, x, textInset + lineHeight * 8, fontSize, new Color(215, 80, 210, 255));
         Raylib.DrawText(stingers, x, textInset + lineHeight * 9, fontSize, new Color(225, 165, 20, 255));
-        Raylib.DrawText(prosperity, x, textInset + lineHeight * 10, fontSize, new Color(255, 203, 0, 255));
+        Raylib.DrawText(grubHides, x, textInset + lineHeight * 10, fontSize, new Color(120, 95, 60, 255));
+        Raylib.DrawText(scoutLine, x, textInset + lineHeight * 11, fontSize, ink);
+        Raylib.DrawText(prosperity, x, textInset + lineHeight * 12, fontSize, new Color(255, 203, 0, 255));
         Color warColor = village.InvasionTarget is not null ? new Color(170, 60, 40, 255) : new Color(60, 130, 70, 255);
-        Raylib.DrawText(warStatus, x, textInset + lineHeight * 11, fontSize, warColor);
+        Raylib.DrawText(warStatus, x, textInset + lineHeight * 13, fontSize, warColor);
     }
 
     /// <summary>
@@ -1663,6 +1670,27 @@ public sealed class World
     /// <summary>The Hornet Swarm: chance (0-1) a killed Hornet drops a <see cref="Stinger"/> for a victorious Militia unit to carry home.</summary>
     public const float HornetStingerDropChance = 0.65f;
 
+    /// <summary>Economy Threat: total live Grubs the world tries to keep on the map at once — a rarer, solitary, more dangerous economic threat than the Hornet Swarm, so this is deliberately tiny compared to <see cref="MaxHornetsOnMap"/> rather than spawning in clusters.</summary>
+    public const int MaxGrubsOnMap = 2;
+
+    /// <summary>Economy Threat: seconds between checks that top the Grub population back up toward <see cref="MaxGrubsOnMap"/> — a single Grub at a time, much slower than <see cref="HornetSpawnInterval"/> since one loose Grub is already a genuine threat to a tribe's Food Stored.</summary>
+    public const float GrubSpawnInterval = 30f;
+
+    /// <summary>Economy Threat: how much Food a successful Grub steal drains from its target's <see cref="VillageHeart.FoodStored"/> in one theft, capped at whatever's actually on hand.</summary>
+    public const int GrubStealAmount = 5;
+
+    /// <summary>Economy Threat: how close (m, horizontal) a Grub must be to its target's centre to attempt a steal — <see cref="VillageHeart.DeliveryDistance"/> (an ordinary Gatherer's own delivery contact range) plus a small margin for the Grub's own body.</summary>
+    public const float GrubContactMargin = 0.4f;
+
+    /// <summary>Economy Threat: a target is "unguarded" (and so stealable) when no living Militia of its own faction is within this many meters (horizontal) of it — deliberately smaller than a typical <see cref="VillageHeart.TerritoryRadius"/> so a Grub still has to sneak past whoever's actually standing at the doorstep, not merely anyone patrolling the wider territory ring.</summary>
+    public const float GrubDefenseRadius = 8f;
+
+    /// <summary>Economy Threat: chance (0-1) a Grub killed before it escapes drops a <see cref="GrubHide"/> — set high (unlike the Hornet Swarm's <see cref="HornetStingerDropChance"/>) since the ask calls for a Grub to "always" leave one behind for the Builder Upgrade to ever get off the ground.</summary>
+    public const float GrubHideDropChance = 0.9f;
+
+    /// <summary>Economy Threat: FoodShards scattered back near a killed Grub's body are capped at this many regardless of how much it had actually stolen, matching the modest scatter sizes <see cref="AphidFoodShardYield"/>/Spoils of War already use rather than potentially dumping a huge pile at once.</summary>
+    public const int GrubStolenFoodShardCap = 4;
+
     /// <summary>The Village Heart's base food storage cap, before any Granary bonus.</summary>
     public const int BaseMaxFoodCapacity = 10;
 
@@ -1705,6 +1733,18 @@ public sealed class World
     /// the only way left for it to keep growing.
     /// </summary>
     public const int MaxPopulationCap = 40;
+
+    /// <summary>The Scout Job (Early Warning): Population a faction needs before the Job Manager drafts its one and only Scout — picked well below <see cref="MaxPopulationCap"/> so an established (not yet maxed-out) tribe can afford to spare a single Gatherer for reconnaissance.</summary>
+    public const int ScoutPopulationThreshold = 16;
+
+    /// <summary>The Scout Job: how far out (m, horizontal) from a Scout's own position it can spot a threat — deliberately larger than a typical <see cref="VillageHeart.TerritoryRadius"/> so it genuinely gives early warning rather than merely duplicating what a Militia unit standing at home would already notice.</summary>
+    public const float ScoutVisionRadius = 30f;
+
+    /// <summary>The Scout Job: how far out, as multiples of home's own <see cref="VillageHeart.TerritoryRadius"/>, a Scout wanders while patrolling — see <see cref="RandomScoutWanderPoint"/>.</summary>
+    public const float ScoutWanderMinMultiplier = 1.5f, ScoutWanderMaxMultiplier = 2.5f;
+
+    /// <summary>The Scout Job: seconds a detected threat's <see cref="VillageHeart.AlertTarget"/> stays live before it auto-clears, if the threat isn't dealt with (or re-detected) before then.</summary>
+    public const float ScoutAlertDuration = 6f;
 
     /// <summary>The Split Fix: Food Stored the True Schism needs banked before it fires — no longer tied to MaxFoodCapacity, so a tribe sitting on a 260-capacity silo doesn't wait to fill it before relieving population pressure.</summary>
     public const int SchismFoodThreshold = 100;
@@ -2094,6 +2134,10 @@ public sealed class World
     private readonly List<Hornet> _pendingHornetRemovals = new();
     private readonly List<Stinger> _pendingStingerSpawns = new();
     private readonly List<Stinger> _pendingStingerRemovals = new();
+    private readonly List<Grub> _pendingGrubSpawns = new();
+    private readonly List<Grub> _pendingGrubRemovals = new();
+    private readonly List<GrubHide> _pendingGrubHideSpawns = new();
+    private readonly List<GrubHide> _pendingGrubHideRemovals = new();
 
     // The Spatial Grid: see RebuildSpatialGrids. Query results are written
     // into these reusable scratch buffers rather than allocating a fresh
@@ -2221,6 +2265,12 @@ public sealed class World
 
     /// <summary>The Hornet Swarm: every live (and recently dead, until the end-of-frame removal sweep) Hornet currently on the map — spawned in clusters near a Garden Prop or a random wilderness spot, see <see cref="UpdateHornetSpawn"/>.</summary>
     public List<Hornet> Hornets { get; } = new();
+
+    /// <summary>Economy Threat: every live (and recently dead, until the end-of-frame removal sweep) Grub currently on the map — spawned solo near the map's edges rather than clustered like the Hornet Swarm, see <see cref="UpdateGrubSpawn"/>.</summary>
+    public List<Grub> Grubs { get; } = new();
+
+    /// <summary>Economy Threat: the Grub's raw material — dropped where a Grub dies to a Militia unit (see <see cref="KillGrub"/>) with <see cref="GrubHideDropChance"/> odds. A banked, carried resource like a <see cref="Stinger"/>, not an instant-consume item like a <see cref="SpiderFang"/>/<see cref="Chitin"/> — claimed and carried home through the exact same claim-limited (<see cref="EquipmentSearchRadius"/>) search and claim-walk-carry-deliver shape.</summary>
+    public List<GrubHide> GrubHides { get; } = new();
 
     /// <summary>Stingers dropped by dead Hornets, waiting for a victorious Militia unit to claim, carry home and deposit — see <see cref="Stinger"/>'s own doc comment.</summary>
     public List<Stinger> Stingers { get; } = new();
@@ -2530,6 +2580,33 @@ public sealed class World
         else if (currentFarmers > farmerTarget)
             NearestByRole(village, BramblekinRole.Farmer)?.DemoteToGatherer(this);
 
+        // The Scout Job (Early Warning): drafts exactly one Scout once
+        // Population reaches ScoutPopulationThreshold, and stands it back
+        // down (demotes to Gatherer) if Population later drops back below
+        // it — same one-target, one-nudge-per-frame shape as Farmer
+        // Conscription just above, just gated on raw Population rather than
+        // a completed-building count.
+        int currentScouts = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Scout);
+        int scoutTarget = village.Population >= ScoutPopulationThreshold ? 1 : 0;
+        if (currentScouts < scoutTarget)
+            NearestByRole(village, BramblekinRole.Gatherer)?.PromoteToScout();
+        else if (currentScouts > scoutTarget)
+            NearestByRole(village, BramblekinRole.Scout)?.DemoteToGatherer(this);
+
+        // The Builder Upgrade (GrubHide): consumes one banked GrubHide to
+        // permanently upgrade the nearest still-un-upgraded Builder's
+        // tools — a per-unit perk that perishes with the unit, same
+        // philosophy as HasFangPike/HasChitinMallet, never a village-wide
+        // unlock. If every current Builder is already upgraded (or there
+        // are no Builders at all), the hide is simply left banked rather
+        // than wasted — NearestUnreinforcedBuilder returns null and this
+        // does nothing this tick, checked again next tick.
+        if (village.GrubHidesStored >= 1 && NearestUnreinforcedBuilder(village) is { } toolsRecipient)
+        {
+            village.GrubHidesStored--;
+            toolsRecipient.ApplyReinforcedTools();
+        }
+
         // Builder Stall Detector: independent of (and running after) all of
         // the above, so it reports the counts as they actually stand once
         // this tick's own promotions/demotions have already happened —
@@ -2705,6 +2782,41 @@ public sealed class World
 
     /// <summary>Cultural Borders: whether <paramref name="claimant"/>'s Militia has anything huntable within <paramref name="home"/>'s own (wealth-scaled — see <see cref="VillageHeart.TerritoryRadius"/>) territory ring.</summary>
     public bool HasHuntableAphidNearVillage(Bramblekin claimant, VillageHeart home) => NearestLiveAphidNearVillage(claimant.Position, claimant, home) is not null;
+
+    /// <summary>Economy Threat: whether <paramref name="claimant"/>'s Militia has a Grub huntable within <paramref name="home"/>'s own territory ring — same rule as <see cref="HasHuntableHornetNearVillage"/>.</summary>
+    public bool HasHuntableGrubNearVillage(Bramblekin claimant, VillageHeart home) => NearestLiveGrubNearVillage(claimant.Position, claimant, home) is not null;
+
+    /// <summary>
+    /// Economy Threat + Dibs: the nearest still-live, unclaimed (or already
+    /// claimed by <paramref name="claimant"/>) Grub to <paramref name="from"/>,
+    /// considering only ones within <paramref name="home"/>'s own
+    /// <see cref="VillageHeart.TerritoryRadius"/> — the same Cultural Borders
+    /// rule <see cref="NearestLiveHornetNearVillage"/>/<see cref="NearestLiveAphidNearVillage"/>
+    /// already apply. A Grub is a more pressing economic threat than either,
+    /// so <see cref="Bramblekin.UpdateHunting"/> checks this one first.
+    /// </summary>
+    public Grub? NearestLiveGrubNearVillage(Vector3 from, Bramblekin claimant, VillageHeart home)
+    {
+        Grub? nearest = null;
+        float bestDistanceSquared = float.MaxValue;
+        float territoryRadiusSquared = home.TerritoryRadius * home.TerritoryRadius;
+        for (int i = Grubs.Count - 1; i >= 0; i--)
+        {
+            Grub grub = Grubs[i];
+            if (grub.IsDead || (grub.ClaimedBy is not null && grub.ClaimedBy != claimant))
+                continue;
+            if (GroundMover.HorizontalDistanceSquared(grub.Position, home.Center) > territoryRadiusSquared)
+                continue;
+
+            float distanceSquared = GroundMover.HorizontalDistanceSquared(from, grub.Position);
+            if (distanceSquared < bestDistanceSquared)
+            {
+                bestDistanceSquared = distanceSquared;
+                nearest = grub;
+            }
+        }
+        return nearest;
+    }
 
     /// <summary>
     /// Cultural Borders + Dibs: the nearest still-live, unclaimed (or
@@ -3624,6 +3736,183 @@ public sealed class World
         }
     }
 
+    /// <summary>Seconds between checks that top the Grub population back up toward <see cref="MaxGrubsOnMap"/> — see <see cref="GrubSpawnInterval"/>.</summary>
+    private float _grubSpawnTimer = GrubSpawnInterval;
+
+    /// <summary>
+    /// Economy Threat: same cadence/cap shape as <see cref="UpdateHornetSpawn"/>,
+    /// but tops the population up one Grub at a time — a solo, rarer,
+    /// more dangerous threat than a whole Hornet Swarm cluster — near the
+    /// map's own edges (see <see cref="RandomEdgeSpot"/>) rather than near a
+    /// Garden Prop, since a Grub sneaks in from outside rather than
+    /// nesting near the flowerbeds.
+    /// </summary>
+    private void UpdateGrubSpawn(float deltaTime)
+    {
+        _grubSpawnTimer -= deltaTime;
+        if (_grubSpawnTimer > 0f)
+            return;
+        _grubSpawnTimer = GrubSpawnInterval;
+
+        int living = Grubs.Count(g => !g.IsDead) + _pendingGrubSpawns.Count;
+        if (living >= MaxGrubsOnMap)
+            return;
+
+        Vector3 spot = RandomEdgeSpot(Grub.BodyRadius + 0.1f, Grub.EdgeMargin);
+        _pendingGrubSpawns.Add(new Grub(spot, Rng));
+    }
+
+    /// <summary>Economy Threat: a random point right along one of the map's four edges — the Grub's own spawn convention, distinct from <see cref="RandomWildernessSpot"/>'s uniform-across-the-map sampling, since the ask is specifically "spawn near the map edges".</summary>
+    private Vector3 RandomEdgeSpot(float clearance, float edgeMargin)
+    {
+        float half = Terrain.Size / 2f - edgeMargin;
+        Vector3 candidate = new(-half, 0f, 0f);
+        for (int attempt = 0; attempt < 20; attempt++)
+        {
+            float along = (float)(Rng.NextDouble() * 2.0 - 1.0) * half;
+            candidate = Rng.Next(4) switch
+            {
+                0 => new Vector3(-half, 0f, along),
+                1 => new Vector3(half, 0f, along),
+                2 => new Vector3(along, 0f, -half),
+                _ => new Vector3(along, 0f, half),
+            };
+            if (!IsBlocked(candidate, clearance))
+                return candidate;
+        }
+        return candidate;
+    }
+
+    /// <summary>Economy Threat: the geometrically nearest point on the map's own edge to <paramref name="from"/> — where a Grub flees toward once it's successfully stolen Food, so it always runs away from its target rather than toward one of the four edges at random.</summary>
+    public Vector3 NearestEdgePoint(Vector3 from)
+    {
+        float half = Terrain.Size / 2f - Grub.EdgeMargin;
+        float toLeft = from.X - (-half), toRight = half - from.X, toTop = from.Z - (-half), toBottom = half - from.Z;
+        float nearest = MathF.Min(MathF.Min(toLeft, toRight), MathF.Min(toTop, toBottom));
+        if (nearest == toLeft)
+            return new Vector3(-half, 0f, from.Z);
+        if (nearest == toRight)
+            return new Vector3(half, 0f, from.Z);
+        return nearest == toTop ? new Vector3(from.X, 0f, -half) : new Vector3(from.X, 0f, half);
+    }
+
+    /// <summary>
+    /// Economy Threat: the globally nearest Village Heart (across every
+    /// faction, regardless of hostility — a Grub doesn't take sides) with
+    /// any Food actually banked in <see cref="VillageHeart.FoodStored"/> to
+    /// steal — a Granary is purely a capacity-raising building with no
+    /// Food pool of its own (see <see cref="Building.Kind"/>'s own doc
+    /// comments), so the real steal always comes out of the Village
+    /// Heart's stores; "or a Granary" is simply flavor here.
+    /// </summary>
+    public VillageHeart? NearestFoodTargetForGrub(Vector3 from)
+    {
+        VillageHeart? best = null;
+        float bestDistanceSquared = float.MaxValue;
+        foreach (VillageHeart village in Villages)
+        {
+            if (village.FoodStored <= 0)
+                continue;
+
+            float distanceSquared = GroundMover.HorizontalDistanceSquared(from, village.Center);
+            if (distanceSquared < bestDistanceSquared)
+            {
+                bestDistanceSquared = distanceSquared;
+                best = village;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Economy Threat: whether <paramref name="target"/> currently has any
+    /// living Militia of its own faction within <see cref="GrubDefenseRadius"/>
+    /// of its own centre — "unguarded" and so stealable if not.
+    /// </summary>
+    public bool IsUnguardedForGrub(VillageHeart target)
+    {
+        float radiusSquared = GrubDefenseRadius * GrubDefenseRadius;
+        for (int i = Colony.Count - 1; i >= 0; i--)
+        {
+            Bramblekin b = Colony[i];
+            if (b.IsDead || b.FactionID != target.FactionID || b.Role != BramblekinRole.Militia)
+                continue;
+            if (GroundMover.HorizontalDistanceSquared(b.Position, target.Center) <= radiusSquared)
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Economy Threat: the actual theft — only succeeds while
+    /// <paramref name="target"/> is genuinely <see cref="IsUnguardedForGrub"/>
+    /// and still has any Food Stored left (another Grub, or a delivery in
+    /// the meantime, may have already changed that). Subtracts up to
+    /// <see cref="GrubStealAmount"/> (capped at what's actually on hand)
+    /// straight out of <see cref="VillageHeart.FoodStored"/> and hands it to
+    /// <paramref name="grub"/> to carry off — <see cref="Grub.AddStolenFood"/>.
+    /// </summary>
+    public bool TryGrubSteal(Grub grub, VillageHeart target)
+    {
+        if (target.FoodStored <= 0 || !IsUnguardedForGrub(target))
+            return false;
+
+        int amount = Math.Min(GrubStealAmount, target.FoodStored);
+        target.FoodStored -= amount;
+        grub.AddStolenFood(amount);
+        return true;
+    }
+
+    /// <summary>Economy Threat: a Grub that made it off-map with stolen Food — simply vanishes with it; the theft is a permanent loss, not merely a delay. No Militia kill, so no <see cref="GrubHide"/> drop either.</summary>
+    public void DespawnGrub(Grub grub)
+    {
+        if (grub.IsDead)
+            return;
+
+        grub.MarkDead();
+        _pendingGrubRemovals.Add(grub);
+    }
+
+    /// <summary>
+    /// Economy Threat: a Grub caught by a Militia unit before it could
+    /// escape. Always a clean, instant kill (contact damage / hunt-style),
+    /// same one-hunt-contact-one-kill convention <see cref="KillHornet"/>
+    /// already uses. Drops a <see cref="GrubHide"/> with
+    /// <see cref="GrubHideDropChance"/> odds, and — the reward for stopping
+    /// it before it got away — if it was actively fleeing with stolen Food
+    /// in hand, that Food is scattered back onto the ground as loose
+    /// FoodShards (capped at <see cref="GrubStolenFoodShardCap"/>, same
+    /// modest-scatter philosophy as <see cref="KillAphid"/>) rather than
+    /// simply vanishing the way a successful escape's theft does.
+    /// </summary>
+    public void KillGrub(Grub grub)
+    {
+        if (grub.IsDead)
+            return;
+
+        Vector3 spot = grub.Position;
+        int stolenFood = grub.StolenFood;
+        grub.MarkDead();
+        _pendingGrubRemovals.Add(grub);
+
+        if (Rng.NextDouble() < GrubHideDropChance)
+            _pendingGrubHideSpawns.Add(new GrubHide(spot));
+
+        if (stolenFood > 0)
+        {
+            float half = Terrain.Size / 2f - Bramblekin.EdgeMargin;
+            int shards = Math.Min(stolenFood, GrubStolenFoodShardCap);
+            for (int i = 0; i < shards; i++)
+            {
+                float angle = (float)(Rng.NextDouble() * MathF.Tau);
+                var position = spot + new Vector3(MathF.Cos(angle), 0, MathF.Sin(angle)) * 0.3f;
+                position.X = Math.Clamp(position.X, -half, half);
+                position.Z = Math.Clamp(position.Z, -half, half);
+                _pendingShardSpawns.Add((position, FoodShardKind.Cracked));
+            }
+        }
+    }
+
     /// <summary>
     /// Timeout Failsafe against the "dibs" deadlock: a claimed Food Shard whose
     /// claimant never actually closes the distance (stuck, jittering, or
@@ -3724,6 +4013,12 @@ public sealed class World
         for (int i = Hornets.Count - 1; i >= 0; i--)
             Hornets[i].Update(deltaTime, this);
 
+        // Economy Threat: same reverse for-loop/deferred-removal reasoning —
+        // a Grub's own Update() can call DespawnGrub (a clean escape), and a
+        // Militia's own Update() (below) can call KillGrub.
+        for (int i = Grubs.Count - 1; i >= 0; i--)
+            Grubs[i].Update(deltaTime, this);
+
         // Reverse for-loop: a Bramblekin's own Update() can indirectly queue
         // a sprout (via DeliverFood), a kill (via the spider's pounce), or
         // now a dead Aphid (via Militia Hunting) — none of them touch their
@@ -3750,6 +4045,17 @@ public sealed class World
             VillageHeart village = Villages[villageIndex];
             UpdateJobManager(village, deltaTime);
             UpdateMorale(village, deltaTime);
+
+            // The Scout Job's Early Warning: an alert a Scout raised (see
+            // World.CheckScoutAlert) auto-clears after ScoutAlertDuration if
+            // nothing dealt with it (or re-detected it) before then.
+            if (village.AlertTimer > 0f)
+            {
+                village.AlertTimer -= deltaTime;
+                if (village.AlertTimer <= 0f)
+                    village.AlertTarget = null;
+            }
+
             village.DamageFlashTimer = MathF.Max(0f, village.DamageFlashTimer - deltaTime);
             village.WarCooldown = MathF.Max(0f, village.WarCooldown - deltaTime);
             village.ProsperityCooldown = MathF.Max(0f, village.ProsperityCooldown - deltaTime);
@@ -3909,6 +4215,7 @@ public sealed class World
         UpdateBerrySpawn(deltaTime);
         UpdateAphidRespawn(deltaTime);
         UpdateHornetSpawn(deltaTime);
+        UpdateGrubSpawn(deltaTime);
         UpdateLootDespawn(deltaTime);
 
         for (int i = _splats.Count - 1; i >= 0; i--)
@@ -4072,6 +4379,32 @@ public sealed class World
             Stingers.AddRange(_pendingStingerSpawns);
             _pendingStingerSpawns.Clear();
         }
+
+        if (_pendingGrubRemovals.Count > 0)
+        {
+            for (int i = _pendingGrubRemovals.Count - 1; i >= 0; i--)
+                Grubs.Remove(_pendingGrubRemovals[i]);
+            _pendingGrubRemovals.Clear();
+        }
+
+        if (_pendingGrubSpawns.Count > 0)
+        {
+            Grubs.AddRange(_pendingGrubSpawns);
+            _pendingGrubSpawns.Clear();
+        }
+
+        if (_pendingGrubHideRemovals.Count > 0)
+        {
+            for (int i = _pendingGrubHideRemovals.Count - 1; i >= 0; i--)
+                GrubHides.Remove(_pendingGrubHideRemovals[i]);
+            _pendingGrubHideRemovals.Clear();
+        }
+
+        if (_pendingGrubHideSpawns.Count > 0)
+        {
+            GrubHides.AddRange(_pendingGrubHideSpawns);
+            _pendingGrubHideSpawns.Clear();
+        }
     }
 
     /// <summary>
@@ -4192,6 +4525,13 @@ public sealed class World
                 stinger.Draw(stinger.Position);
         }
 
+        for (int i = GrubHides.Count - 1; i >= 0; i--)
+        {
+            GrubHide hide = GrubHides[i];
+            if (!hide.IsCarried)
+                hide.Draw(hide.Position);
+        }
+
         // Same reverse-for/skip-dead pattern as the Colony loop below.
         for (int i = Aphids.Count - 1; i >= 0; i--)
         {
@@ -4204,6 +4544,13 @@ public sealed class World
         {
             if (!Hornets[i].IsDead)
                 Hornets[i].Draw();
+        }
+
+        // Economy Threat: same reverse-for/skip-dead pattern.
+        for (int i = Grubs.Count - 1; i >= 0; i--)
+        {
+            if (!Grubs[i].IsDead)
+                Grubs[i].Draw();
         }
 
         // Reverse for-loop, and skip anything marked dead this frame: its
@@ -4614,6 +4961,60 @@ public sealed class World
         if (!_pendingStingerRemovals.Contains(stinger))
             _pendingStingerRemovals.Add(stinger);
         village.StingersStored++;
+    }
+
+    /// <summary>Equipment Dibs: same rule as a Fang/Chitin/Stinger.</summary>
+    public bool IsAvailable(GrubHide hide, Bramblekin claimant) =>
+        !IsBlocked(hide.Position, 0f) && (hide.ClaimedBy is null || hide.ClaimedBy == claimant || hide.ClaimedBy.IsDead);
+
+    /// <summary>The nearest GrubHide within <see cref="EquipmentSearchRadius"/> of <paramref name="from"/> that <paramref name="claimant"/> may take, if any — the exact same claim-limited search <see cref="NearestAvailableStinger"/> already established, so a GrubHide can never lure every unit on the map to converge on one dead Grub.</summary>
+    public GrubHide? NearestAvailableGrubHide(Vector3 from, Bramblekin claimant)
+    {
+        GrubHide? best = null;
+        float bestDistance = EquipmentSearchRadius * EquipmentSearchRadius;
+        for (int i = GrubHides.Count - 1; i >= 0; i--)
+        {
+            GrubHide hide = GrubHides[i];
+            if (!IsAvailable(hide, claimant))
+                continue;
+
+            float distance = GroundMover.HorizontalDistanceSquared(from, hide.Position);
+            if (distance <= bestDistance)
+            {
+                best = hide;
+                bestDistance = distance;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>A delivered GrubHide leaves the map and adds 1 to <paramref name="village"/>'s banked <see cref="VillageHeart.GrubHidesStored"/> — same deferred-removal pattern as <see cref="DeliverStinger"/>.</summary>
+    public void DeliverGrubHide(GrubHide hide, VillageHeart village)
+    {
+        if (!_pendingGrubHideRemovals.Contains(hide))
+            _pendingGrubHideRemovals.Add(hide);
+        village.GrubHidesStored++;
+    }
+
+    /// <summary>The Builder Upgrade: the nearest living, not-yet-<see cref="Bramblekin.HasReinforcedTools"/> Builder of <paramref name="village"/>'s own faction to its Village Heart, if any — mirrors <see cref="NearestByRole"/> but with the extra "still un-upgraded" filter, so a GrubHide is never wasted re-upgrading a Builder that already has one.</summary>
+    private Bramblekin? NearestUnreinforcedBuilder(VillageHeart village)
+    {
+        Bramblekin? nearest = null;
+        float bestDistanceSquared = float.MaxValue;
+        for (int i = Colony.Count - 1; i >= 0; i--)
+        {
+            Bramblekin bramblekin = Colony[i];
+            if (bramblekin.IsDead || bramblekin.Role != BramblekinRole.Builder || bramblekin.FactionID != village.FactionID || bramblekin.HasReinforcedTools)
+                continue;
+
+            float distanceSquared = Vector3.DistanceSquared(bramblekin.Position, village.Center);
+            if (distanceSquared < bestDistanceSquared)
+            {
+                bestDistanceSquared = distanceSquared;
+                nearest = bramblekin;
+            }
+        }
+        return nearest;
     }
 
     /// <summary>
@@ -5951,6 +6352,96 @@ public sealed class World
         return candidate; // Practically unreachable: obstacles cover a tiny fraction of the map.
     }
 
+    /// <summary>
+    /// The Scout Job: a random point well outside <paramref name="home"/>'s
+    /// own standard <see cref="VillageHeart.TerritoryRadius"/> — between
+    /// <see cref="ScoutWanderMinMultiplier"/> and <see cref="ScoutWanderMaxMultiplier"/>
+    /// times it, clamped to the actual map bounds — for a Scout to wander
+    /// toward next, so its patrol genuinely reads as ranging far beyond
+    /// where an ordinary Militia or Gatherer ever goes. Falls back to an
+    /// ordinary <see cref="RandomFreePoint"/> if nothing in that band checks
+    /// out (e.g. the whole band runs off the edge of a small map).
+    /// </summary>
+    public Vector3 RandomScoutWanderPoint(VillageHeart home)
+    {
+        float minRadius = home.TerritoryRadius * ScoutWanderMinMultiplier;
+        float maxRadius = home.TerritoryRadius * ScoutWanderMaxMultiplier;
+        for (int attempt = 0; attempt < 20; attempt++)
+        {
+            float angle = (float)(Rng.NextDouble() * MathF.Tau);
+            float radius = minRadius + (float)Rng.NextDouble() * MathF.Max(maxRadius - minRadius, 0f);
+            Vector3 candidate = home.Center + new Vector3(MathF.Cos(angle) * radius, 0f, MathF.Sin(angle) * radius);
+            if (!Terrain.Contains(candidate, Bramblekin.EdgeMargin))
+                continue;
+            if (IsBlocked(candidate, Bramblekin.BodyRadius))
+                continue;
+            return candidate;
+        }
+        return RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin);
+    }
+
+    /// <summary>
+    /// The Scout Job's Early Warning: an O(n) scan over Colony/Grubs plus
+    /// the Wolf Spider, only ever run from <see cref="Bramblekin.UpdateScouting"/>
+    /// on this Scout's own AI-Time-Sliced frame. Checks, in order, for (a)
+    /// a hostile Militia unit from a faction <paramref name="home"/> has an
+    /// active Blood Feud against (see <see cref="VillageHeart.HostileFactions"/>),
+    /// (b) the Wolf Spider, and (c) any live Grub — all within
+    /// <see cref="ScoutVisionRadius"/> of <paramref name="scout"/>'s own
+    /// position. The instant any one of them is found, sets
+    /// <paramref name="home"/>'s shared <see cref="VillageHeart.AlertTarget"/>/
+    /// <see cref="VillageHeart.AlertTimer"/> — the lightweight, shared
+    /// per-faction target idle Militia pick up next tick, same architecture
+    /// as <see cref="VillageHeart.InvasionTarget"/>.
+    /// </summary>
+    public void CheckScoutAlert(Bramblekin scout, VillageHeart home)
+    {
+        float visionRadiusSquared = ScoutVisionRadius * ScoutVisionRadius;
+        Vector3? threatPosition = null;
+
+        if (home.HostileFactions.Count > 0)
+        {
+            for (int i = Colony.Count - 1; i >= 0; i--)
+            {
+                Bramblekin candidate = Colony[i];
+                if (candidate.IsDead || candidate.Role != BramblekinRole.Militia || !home.HostileFactions.ContainsKey(candidate.FactionID))
+                    continue;
+                if (GroundMover.HorizontalDistanceSquared(scout.Position, candidate.Position) <= visionRadiusSquared)
+                {
+                    threatPosition = candidate.Position;
+                    break;
+                }
+            }
+        }
+
+        if (threatPosition is null && Spider is { } spider &&
+            GroundMover.HorizontalDistanceSquared(scout.Position, spider.Position) <= visionRadiusSquared)
+        {
+            threatPosition = spider.Position;
+        }
+
+        if (threatPosition is null)
+        {
+            for (int i = Grubs.Count - 1; i >= 0; i--)
+            {
+                Grub grub = Grubs[i];
+                if (grub.IsDead)
+                    continue;
+                if (GroundMover.HorizontalDistanceSquared(scout.Position, grub.Position) <= visionRadiusSquared)
+                {
+                    threatPosition = grub.Position;
+                    break;
+                }
+            }
+        }
+
+        if (threatPosition is { } detected)
+        {
+            home.AlertTarget = detected;
+            home.AlertTimer = ScoutAlertDuration;
+        }
+    }
+
     // --- Internals ----------------------------------------------------------------
 
     /// <summary>Collects the solid circles on the ground: every Village Heart's footprint.</summary>
@@ -6433,6 +6924,30 @@ public sealed class VillageHeart
     /// nothing consumes it yet.
     /// </summary>
     public int StingersStored { get; set; } = 0;
+
+    /// <summary>
+    /// Economy Threat: this faction's banked count of GrubHides, carried
+    /// home and deposited by a victorious Militia unit after a Grub's
+    /// death drops one (see <see cref="World.NearestAvailableGrubHide"/>/
+    /// <see cref="Bramblekin.UpdateLooting"/>). Consumed one at a time by
+    /// the Builder Upgrade — see <see cref="World.UpdateJobManager"/>.
+    /// </summary>
+    public int GrubHidesStored { get; set; } = 0;
+
+    /// <summary>
+    /// The Scout Job's Early Warning: the world position of the most
+    /// recent threat a Scout of this faction detected (see
+    /// <see cref="World.CheckScoutAlert"/>), or null while nothing is
+    /// currently flagged. A lightweight, shared per-faction target — same
+    /// architecture as <see cref="InvasionTarget"/> — that an idle Militia
+    /// unit picks up next tick (see <see cref="Bramblekin.UpdateIntercepting"/>)
+    /// rather than a per-unit order. Cleared once <see cref="AlertTimer"/>
+    /// runs out.
+    /// </summary>
+    public Vector3? AlertTarget { get; set; }
+
+    /// <summary>The Scout Job's Early Warning: seconds left before <see cref="AlertTarget"/> auto-clears — see <see cref="World.ScoutAlertDuration"/>.</summary>
+    public float AlertTimer { get; set; }
 
     /// <summary>
     /// This faction's food storage cap. Starts at <see cref="World.BaseMaxFoodCapacity"/>
@@ -8077,6 +8592,24 @@ public enum BramblekinState
     /// method — see <see cref="Bramblekin.UpdateFarming"/>.
     /// </summary>
     Farming,
+
+    /// <summary>
+    /// The Scout Job: patrolling far outside home's own standard
+    /// TerritoryRadius, watching for threats — see
+    /// <see cref="Bramblekin.UpdateScouting"/>.
+    /// </summary>
+    Scouting,
+
+    /// <summary>
+    /// The Scout Job's Early Warning: Militia only — an idle unit picking
+    /// up its own faction's shared <see cref="VillageHeart.AlertTarget"/>
+    /// and moving to intercept a distant threat a Scout just spotted,
+    /// before it ever reaches home. A separate state from
+    /// <see cref="Defending"/> since an alert carries only a bare position,
+    /// not a live combat target to chase/poke — see
+    /// <see cref="Bramblekin.UpdateIntercepting"/>.
+    /// </summary>
+    Intercepting,
 }
 
 /// <summary>A Bramblekin's class: an ordinary worker, a dedicated builder, or a drafted defender.</summary>
@@ -8134,6 +8667,18 @@ public enum BramblekinRole
     /// Shards/Amber/Acorns itself.
     /// </summary>
     Farmer,
+
+    /// <summary>
+    /// The Scout Job (Early Warning): set by Conscription (the Job
+    /// Manager) once a faction's Population reaches
+    /// <see cref="World.ScoutPopulationThreshold"/> — exactly one Gatherer
+    /// drafted per faction, patrolling far outside home's usual
+    /// TerritoryRadius watching for approaching threats (see
+    /// <see cref="Bramblekin.UpdateScouting"/>) and raising a shared
+    /// per-faction alert the instant it spots one. Flees the Wolf Spider
+    /// like a Gatherer, but never gathers food itself.
+    /// </summary>
+    Scout,
 }
 
 /// <summary>
@@ -8346,6 +8891,9 @@ public sealed class Bramblekin
     private static readonly Color FarmerColor = new(215, 155, 40, 255); // Warm harvest-gold — visually distinct from every other Role.
     private static readonly Color SettlerColor = new(90, 80, 65, 255); // A plain, earthy body — the white banner above is what actually reads.
     private static readonly Color SettlerPoleColor = new(120, 90, 50, 255);
+    private static readonly Color ScoutColor = new(60, 130, 150, 255); // A cool watchtower blue-teal — visually distinct from every other Role.
+    private static readonly Color ScoutEyeColor = new(230, 230, 60, 255); // A small bright "eye" accent on top of its head.
+    private static readonly Color ReinforcedToolsColor = new(210, 210, 220, 255); // The Builder Upgrade's small metallic/silver accent.
     private static readonly Color SettlerFlagColor = new(245, 245, 240, 255); // A small white flag: the founder's colours are yet to be decided.
     private static readonly Color PikeColor = new(120, 55, 40, 255);     // Rose-thorn brown-red.
     private static readonly Color FangPikeColor = new(235, 235, 240, 255); // Spider Fang: bright white/silver.
@@ -8407,8 +8955,23 @@ public sealed class Bramblekin
     /// <summary>The Hornet Swarm: the loose Stinger this Militia unit is currently walking to pick up (before it's actually carried) — see <see cref="UpdateLooting"/>. Released alongside <see cref="_claimedFang"/>/<see cref="_claimedChitin"/> by <see cref="ReleaseEquipmentClaim"/>.</summary>
     private Stinger? _claimedStinger;
 
+    /// <summary>Economy Threat: the Grub this Militia unit is currently hunting — see <see cref="World.NearestLiveGrubNearVillage"/>. Same Dibs shape as <see cref="_claimedHornet"/>/<see cref="_claimedAphid"/>.</summary>
+    private Grub? _claimedGrub;
+
+    /// <summary>Economy Threat: the loose GrubHide this Militia unit is currently walking to pick up (before it's actually carried) — see <see cref="UpdateLooting"/>. Released alongside <see cref="_claimedFang"/>/<see cref="_claimedChitin"/>/<see cref="_claimedStinger"/> by <see cref="ReleaseEquipmentClaim"/>.</summary>
+    private GrubHide? _claimedGrubHide;
+
     /// <summary>The Hornet Swarm: the Stinger this Militia unit is physically carrying home to deposit, once picked up — see <see cref="UpdateReturning"/>. An abstract-resource carry slot, same shape as <see cref="_carriedAmber"/>.</summary>
     private Stinger? _carriedStinger;
+
+    /// <summary>Economy Threat: the GrubHide this Militia unit is physically carrying home to deposit, once picked up — see <see cref="UpdateReturning"/>. Same carry-slot shape as <see cref="_carriedStinger"/>.</summary>
+    private GrubHide? _carriedGrubHide;
+
+    /// <summary>The Scout Job: the far-flung wander point this Scout is currently walking to — see <see cref="UpdateScouting"/>.</summary>
+    private Vector3 _scoutWanderTarget;
+
+    /// <summary>The Scout Job: a brief rest at each wander point, same idle-pause philosophy as ordinary Wandering's own Pausing state — see <see cref="UpdateScouting"/>.</summary>
+    private float _scoutPauseTimer;
 
     // Builder Dibs: the Blueprint this Builder is currently claimed onto, mirroring
     // the Food/Aphid/Acorn/Amber claim fields above. Released on any promotion/demotion
@@ -8502,7 +9065,7 @@ public sealed class Bramblekin
     /// <summary>Gatherer by default; the Job Manager promotes/demotes it to track its faction's Militia Target and Builder Conscription.</summary>
     public BramblekinRole Role { get; private set; } = BramblekinRole.Gatherer;
 
-    public bool IsCarrying => _carried is not null || _carriedAmber is not null || _carriedStinger is not null;
+    public bool IsCarrying => _carried is not null || _carriedAmber is not null || _carriedStinger is not null || _carriedGrubHide is not null;
 
     /// <summary>
     /// Individual Equipment: true once this specific Militia unit has
@@ -8519,6 +9082,25 @@ public sealed class Bramblekin
     /// Perishes with it if it dies.
     /// </summary>
     public bool HasChitinMallet { get; private set; }
+
+    /// <summary>
+    /// The Builder Upgrade: true once this specific Builder has been
+    /// upgraded by the Job Manager consuming a banked GrubHide (see
+    /// <see cref="World.UpdateJobManager"/>). Doubles this unit's own
+    /// walk speed (<see cref="EffectiveWalkSpeed"/>) and construction
+    /// progress rate (<see cref="UpdateBuilding"/>) — a permanent per-unit
+    /// perk, same philosophy as <see cref="HasFangPike"/>/
+    /// <see cref="HasChitinMallet"/>, never a village-wide unlock. Perishes
+    /// with it if it dies; the Village Heart's next Builder is always
+    /// un-upgraded again.
+    /// </summary>
+    public bool HasReinforcedTools { get; private set; }
+
+    /// <summary>The Builder Upgrade: the flat speed/construction-progress multiplier <see cref="HasReinforcedTools"/> applies, composing multiplicatively with (not replacing) the Inspired Morale bonus.</summary>
+    public const float ReinforcedToolsMultiplier = 2f;
+
+    /// <summary>The Builder Upgrade: consumes this unit's own upgrade flag on — called once by <see cref="World.UpdateJobManager"/>, never reversible.</summary>
+    public void ApplyReinforcedTools() => HasReinforcedTools = true;
 
     /// <summary>
     /// True once this Bramblekin has been caught by a predator. A dead
@@ -8610,6 +9192,7 @@ public sealed class Bramblekin
         ReleaseFoodClaim();
         ReleaseAphidClaim();
         ReleaseHornetClaim();
+        ReleaseGrubClaim();
         ReleaseAcornClaim();
         ReleaseAmberClaim();
         ReleaseBlueprintClaim();
@@ -8764,6 +9347,31 @@ public sealed class Bramblekin
         // Same reasoning as PromoteToBuilder's own reset: dispatch runs off
         // State, not Role, so a unit left in an old State after this
         // promotion would never actually reach UpdateFarming.
+        if (State is not (BramblekinState.Walking or BramblekinState.Pausing))
+            StartPause();
+    }
+
+    /// <summary>
+    /// The Scout Job (the Job Manager's Scout conscription): pulls this
+    /// Gatherer off ordinary food duty to patrol far outside home's own
+    /// territory instead — see <see cref="UpdateScouting"/>. Mirrors
+    /// <see cref="PromoteToFarmer"/> exactly: drops anything carried,
+    /// releases whatever Gathering claim it was holding, and forces a fresh
+    /// State if it wasn't already idle so dispatch (which runs off State,
+    /// not Role) actually reaches <see cref="UpdateScouting"/> next frame.
+    /// </summary>
+    public void PromoteToScout()
+    {
+        if (Role == BramblekinRole.Scout)
+            return;
+
+        Role = BramblekinRole.Scout;
+        DropCarried();
+        ReleaseFoodClaim();
+        ReleaseAcornClaim();
+        ReleaseAmberClaim();
+        _scoutWanderTarget = Vector3.Zero;
+        _scoutPauseTimer = 0f;
         if (State is not (BramblekinState.Walking or BramblekinState.Pausing))
             StartPause();
     }
@@ -8976,6 +9584,13 @@ public sealed class Bramblekin
         if (Role == BramblekinRole.Farmer && State is BramblekinState.Walking or BramblekinState.Pausing)
             SetState(BramblekinState.Farming);
 
+        // --- 3''. The Scout Job: same unconditional hand-off as Farmer/
+        // Builder above — Scout Conscription already keeps exactly one
+        // Scout drafted per faction once it qualifies, so it simply always
+        // patrols once idle.
+        if (Role == BramblekinRole.Scout && State is BramblekinState.Walking or BramblekinState.Pausing)
+            SetState(BramblekinState.Scouting);
+
         // --- 3a. Individual Equipment: an un-upgraded unit prioritizes
         // gearing up over its ordinary job — a Militia unit fetches a
         // Spider Fang, a Gatherer fetches a Chitin piece.
@@ -9005,18 +9620,31 @@ public sealed class Bramblekin
             SetState(BramblekinState.Looting);
         }
 
+        // --- 3a3. Economy Threat: same claim-limited fetch-and-carry-home
+        // detour as the Hornet Swarm's Stinger just above, reused verbatim
+        // for the GrubHide a killed Grub drops.
+        if (Role == BramblekinRole.Militia && State is BramblekinState.Walking or BramblekinState.Pausing &&
+            _claimedGrubHide is null && world.NearestAvailableGrubHide(Position, this) is { } grubHide)
+        {
+            _claimedGrubHide = grubHide;
+            grubHide.ClaimedBy = this;
+            SetState(BramblekinState.Looting);
+        }
+
         // --- 3b. Economy overrides wandering (Gatherers only) --------------
         if (Role == BramblekinRole.Gatherer && State is BramblekinState.Walking or BramblekinState.Pausing && world.HasAvailableFoodFor(this, home))
             SetState(BramblekinState.Gathering);
 
-        // --- 3c. Militia hunts Hornets or Aphids within the 20-Meter
-        // Territory Rule, when it has no spider to fight. The Hornet
-        // Swarm: a Hornet swarm is a more pressing pest than an ordinary
-        // Aphid (it bites back), so it's checked first at this same
-        // priority tier rather than a separate one of its own.
+        // --- 3c. Militia hunts Grubs, Hornets or Aphids within the
+        // 20-Meter Territory Rule, when it has no spider to fight. Economy
+        // Threat: a Grub is a more pressing economic threat than either —
+        // it's actively stealing — so it's checked first at this same
+        // priority tier, ahead of the Hornet Swarm's own "bites back"
+        // priority over an ordinary Aphid.
         if (Role == BramblekinRole.Militia && State is BramblekinState.Walking or BramblekinState.Pausing && home is not null)
         {
-            Vector3? huntTarget = world.NearestLiveHornetNearVillage(Position, this, home)?.Position
+            Vector3? huntTarget = world.NearestLiveGrubNearVillage(Position, this, home)?.Position
+                ?? world.NearestLiveHornetNearVillage(Position, this, home)?.Position
                 ?? world.NearestLiveAphidNearVillage(Position, this, home)?.Position;
             if (huntTarget is { } huntPosition)
             {
@@ -9113,6 +9741,14 @@ public sealed class Bramblekin
 
             case BramblekinState.Equipping:
                 UpdateEquipping(deltaTime, world);
+                break;
+
+            case BramblekinState.Scouting:
+                UpdateScouting(deltaTime, world, home);
+                break;
+
+            case BramblekinState.Intercepting:
+                UpdateIntercepting(deltaTime, world, home);
                 break;
         }
     }
@@ -9259,6 +9895,25 @@ public sealed class Bramblekin
             }
             return true;
         }
+
+        // --- 2e. The Scout Job's Early Warning: a distant threat a Scout
+        // of this same faction spotted outside territory (see
+        // World.CheckScoutAlert), picked up only once none of 2a-2d above
+        // — an ACTUAL threat already at or near the doorstep — claimed this
+        // frame first. A lower priority than any of those on purpose: a
+        // real threat already in territory always wins over a distant
+        // early-warning ping.
+        if (home is not null && home.AlertTarget is { } alertPosition && home.AlertTimer > 0f)
+        {
+            _combatTarget = null;
+            _target = alertPosition;
+            if (State != BramblekinState.Intercepting)
+            {
+                DropCarried();
+                SetState(BramblekinState.Intercepting);
+            }
+            return true;
+        }
         return false;
     }
 
@@ -9280,6 +9935,12 @@ public sealed class Bramblekin
 
         if (Role == BramblekinRole.Gatherer && home is not null)
             speed *= NectarSpeedMultiplier(home);
+
+        // The Builder Upgrade: doubles a Reinforced Builder's own walk
+        // speed, composing multiplicatively on top of (never replacing)
+        // the Weary/Nectar adjustments above.
+        if (Role == BramblekinRole.Builder && HasReinforcedTools)
+            speed *= ReinforcedToolsMultiplier;
 
         return speed;
     }
@@ -9310,6 +9971,7 @@ public sealed class Bramblekin
                     : Role == BramblekinRole.Merchant ? MerchantColor
                     : Role == BramblekinRole.Settler ? SettlerColor
                     : Role == BramblekinRole.Farmer ? FarmerColor
+                    : Role == BramblekinRole.Scout ? ScoutColor
                     : CalmColor;
         Color color = TintWithFaction(baseColor);
 
@@ -9398,10 +10060,28 @@ public sealed class Bramblekin
             Raylib.DrawCube(flagCenter, 0.18f, 0.12f, 0.02f, SettlerFlagColor);
         }
 
+        // The Scout Job: a small bright "eye" accent riding on top of the
+        // head — on top of its own distinct body colour — so it reads
+        // apart from every other Role at a glance.
+        if (Role == BramblekinRole.Scout)
+        {
+            Raylib.DrawSphere(top + new Vector3(facing.X, BodyRadius * 0.3f, facing.Y) * 0.4f, BodyRadius * 0.25f, ScoutEyeColor);
+        }
+
+        // The Builder Upgrade: a small metallic/silver accent cube riding
+        // where the tools would be — same "small accent" convention as the
+        // Fang Pike/Chitin Mallet's own equipment tells.
+        if (Role == BramblekinRole.Builder && HasReinforcedTools)
+        {
+            var toolCenter = Position + new Vector3(facing.X, BodyHeight * 0.55f, facing.Y) * 0.4f;
+            Raylib.DrawCube(toolCenter, 0.12f, 0.12f, 0.12f, ReinforcedToolsColor);
+        }
+
         // Carried food (or Amber) rides on top of the head.
         _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
         _carriedAmber?.Draw(Position + new Vector3(0, BodyHeight, 0));
         _carriedStinger?.Draw(Position + new Vector3(0, BodyHeight, 0));
+        _carriedGrubHide?.Draw(Position + new Vector3(0, BodyHeight, 0));
     }
 
     /// <summary>
@@ -9451,6 +10131,13 @@ public sealed class Bramblekin
             _carriedStinger.IsCarried = false;
             _carriedStinger = null;
         }
+
+        if (_carriedGrubHide is not null)
+        {
+            _carriedGrubHide.Position = Position;
+            _carriedGrubHide.IsCarried = false;
+            _carriedGrubHide = null;
+        }
     }
 
     /// <summary>Dibs: releases this Bramblekin's claim on its current Food Shard target, if any (a no-op if someone else has since claimed it, e.g. through a race that shouldn't happen but is cheap to guard against).</summary>
@@ -9491,7 +10178,7 @@ public sealed class Bramblekin
     /// <summary>Equipment Dibs: the Chitin piece this Gatherer is currently walking to — see <see cref="UpdateEquipping"/>.</summary>
     private Chitin? _claimedChitin;
 
-    /// <summary>Equipment Dibs: releases whatever Fang/Chitin/Stinger this unit had claimed, so another unit can go for it. Extended to a third item type (the Hornet Swarm's Stinger) rather than standing up a parallel claim system of its own.</summary>
+    /// <summary>Equipment Dibs: releases whatever Fang/Chitin/Stinger/GrubHide this unit had claimed, so another unit can go for it. Extended to a fourth item type (Economy Threat's GrubHide) rather than standing up a parallel claim system of its own.</summary>
     private void ReleaseEquipmentClaim()
     {
         if (_claimedFang is not null && _claimedFang.ClaimedBy == this)
@@ -9503,6 +10190,9 @@ public sealed class Bramblekin
         if (_claimedStinger is not null && _claimedStinger.ClaimedBy == this)
             _claimedStinger.ClaimedBy = null;
         _claimedStinger = null;
+        if (_claimedGrubHide is not null && _claimedGrubHide.ClaimedBy == this)
+            _claimedGrubHide.ClaimedBy = null;
+        _claimedGrubHide = null;
     }
 
     /// <summary>The Hornet Swarm's Dibs: releases this Militia unit's claim on its current Hornet hunt target, if any.</summary>
@@ -9511,6 +10201,14 @@ public sealed class Bramblekin
         if (_claimedHornet is not null && _claimedHornet.ClaimedBy == this)
             _claimedHornet.ClaimedBy = null;
         _claimedHornet = null;
+    }
+
+    /// <summary>Economy Threat's Dibs: releases this Militia unit's claim on its current Grub hunt target, if any.</summary>
+    private void ReleaseGrubClaim()
+    {
+        if (_claimedGrub is not null && _claimedGrub.ClaimedBy == this)
+            _claimedGrub.ClaimedBy = null;
+        _claimedGrub = null;
     }
 
     /// <summary>Cooperative Acorn Cracking: releases this Gatherer's claim slot on its current Acorn target, if any.</summary>
@@ -9789,6 +10487,11 @@ public sealed class Bramblekin
                 world.DeliverStinger(stingerPayload, home);
                 _carriedStinger = null;
             }
+            else if (_carriedGrubHide is { } grubHidePayload)
+            {
+                world.DeliverGrubHide(grubHidePayload, home);
+                _carriedGrubHide = null;
+            }
             // else: reached the Heart carrying nothing (shouldn't happen,
             // but falling through to StartWandering below instead of
             // crashing keeps a stray edge case harmless).
@@ -9835,6 +10538,11 @@ public sealed class Bramblekin
         {
             bool inspired = world.VillageFor(FactionID)?.BuildersAreInspired ?? false;
             float rate = inspired ? World.HighMoraleBuildMultiplier : 1f;
+            // The Builder Upgrade: doubles construction progress on top of
+            // (composing multiplicatively with, never replacing) the
+            // Inspired Morale bonus above.
+            if (HasReinforcedTools)
+                rate *= ReinforcedToolsMultiplier;
             blueprint.AddProgress(rate * deltaTime);
             if (blueprint.IsComplete)
             {
@@ -9930,6 +10638,69 @@ public sealed class Bramblekin
         }
 
         _mover.MoveTowards(farm.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+    }
+
+    // --- The Scout Job (Early Warning) -----------------------------------------------
+
+    /// <summary>
+    /// The Scout Job: wanders between random points far outside home's own
+    /// TerritoryRadius (see <see cref="World.RandomScoutWanderPoint"/>),
+    /// pausing briefly at each one, at an ordinary walk pace — same
+    /// "leisurely wander" shape as ordinary Walking/Pausing, just aimed
+    /// much further out. Each staggered frame (AI Time-Slicing — same
+    /// convention <see cref="TryUpdateMilitiaThreatPriority"/> uses),
+    /// also runs the actual Early Warning scan — see
+    /// <see cref="World.CheckScoutAlert"/>.
+    /// </summary>
+    private void UpdateScouting(float deltaTime, World world, VillageHeart? home)
+    {
+        if (home is null)
+        {
+            StartWandering(world);
+            return;
+        }
+
+        if (world.FrameCounter % 15 == ID % 15)
+            world.CheckScoutAlert(this, home);
+
+        if (_scoutPauseTimer > 0f)
+        {
+            _scoutPauseTimer -= deltaTime;
+            return;
+        }
+
+        if (_scoutWanderTarget == Vector3.Zero || GroundMover.HorizontalDistance(Position, _scoutWanderTarget) <= BodyRadius + 0.2f)
+        {
+            _scoutWanderTarget = world.RandomScoutWanderPoint(home);
+            _scoutPauseTimer = 1f;
+            return;
+        }
+
+        _mover.MoveTowards(_scoutWanderTarget, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+    }
+
+    /// <summary>
+    /// The Scout Job's Early Warning: an idle Militia unit moving to
+    /// intercept its own faction's shared <see cref="VillageHeart.AlertTarget"/>
+    /// — set by <see cref="World.CheckScoutAlert"/>, picked up by
+    /// <see cref="TryUpdateMilitiaThreatPriority"/>'s own 2e step. Unlike
+    /// <see cref="UpdateDefending"/>, there's no live combat target here to
+    /// chase or poke — only a bare position — so this simply walks there
+    /// and, on arrival with nothing left to actually fight, falls back to
+    /// the ordinary priority chain (which re-picks Defending/Hunting/etc.
+    /// fresh, or resumes wandering, on its very next Update()).
+    /// </summary>
+    private void UpdateIntercepting(float deltaTime, World world, VillageHeart? home)
+    {
+        if (home is null || home.AlertTarget is not { } alertPosition || home.AlertTimer <= 0f)
+        {
+            StartWandering(world);
+            return;
+        }
+
+        _target = alertPosition;
+        if (_mover.MoveTowards(_target, DefendSpeed, deltaTime, world, p => IsSafeSpot(p, world)))
+            StartPause();
     }
 
     // --- Militia states -------------------------------------------------------------
@@ -10270,6 +11041,26 @@ public sealed class Bramblekin
             return;
         }
 
+        // Economy Threat: a GrubHide this unit claimed via
+        // World.NearestAvailableGrubHide (see Update()'s own priority
+        // chain) — same claim-walk-carry-deliver shape as the Stinger just
+        // above, reusing this exact state.
+        if (_claimedGrubHide is { } cachedGrubHide)
+        {
+            if (GroundMover.HorizontalDistance(Position, cachedGrubHide.Position) <= PickupDistance)
+            {
+                cachedGrubHide.IsCarried = true;
+                cachedGrubHide.ClaimedBy = null;
+                _claimedGrubHide = null;
+                _carriedGrubHide = cachedGrubHide;
+                SetState(BramblekinState.Returning);
+                return;
+            }
+
+            _mover.MoveTowards(cachedGrubHide.Position, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+            return;
+        }
+
         // Nothing left to loot (despawned, or another Militia beat us to
         // it) -- fall back to standard defense/patrol behavior exactly as
         // an ordinary Invasion ends.
@@ -10291,44 +11082,71 @@ public sealed class Bramblekin
     private void UpdateHunting(float deltaTime, World world, VillageHeart? home)
     {
         // AI Time-Slicing (the "Brain"): re-picking the nearest live,
-        // unclaimed Hornet/Aphid scans the whole Hornets/Aphids arrays, so
-        // — same as UpdateGathering — it's only re-run on this unit's
-        // staggered frame; the cached _claimedHornet/_claimedAphid keeps
-        // being chased every frame in between. The Hornet Swarm: a Hornet
-        // (it bites back) always wins over an Aphid at this same priority
-        // tier — only once nothing huntable Hornet-side is left does this
-        // fall back to Aphid hunting.
+        // unclaimed Grub/Hornet/Aphid scans the whole Grubs/Hornets/Aphids
+        // arrays, so — same as UpdateGathering — it's only re-run on this
+        // unit's staggered frame; the cached _claimedGrub/_claimedHornet/
+        // _claimedAphid keeps being chased every frame in between. Economy
+        // Threat: a Grub (it's actively stealing) always wins over a
+        // Hornet, and a Hornet (it bites back) always wins over an
+        // ordinary Aphid, at this same priority tier — only once nothing
+        // huntable Grub-side is left does this fall back to Hornet, then
+        // Aphid, hunting.
         if (world.FrameCounter % 15 == ID % 15)
         {
             // The 20-Meter Territory Rule: nothing to hunt without a home village.
             // Another Militia unit may have already caught (or claimed) ours, or
             // it may simply have wandered off/out of territory.
-            Hornet? hornet = home is null ? null : world.NearestLiveHornetNearVillage(Position, this, home);
-            if (hornet != _claimedHornet)
+            Grub? grub = home is null ? null : world.NearestLiveGrubNearVillage(Position, this, home);
+            if (grub != _claimedGrub)
             {
-                ReleaseHornetClaim();
-                _claimedHornet = hornet;
-                if (hornet is not null)
-                    hornet.ClaimedBy = this;
+                ReleaseGrubClaim();
+                _claimedGrub = grub;
+                if (grub is not null)
+                    grub.ClaimedBy = this;
             }
 
-            if (hornet is null)
+            if (grub is null)
             {
-                Aphid? aphid = home is null ? null : world.NearestLiveAphidNearVillage(Position, this, home);
-                if (aphid != _claimedAphid)
+                Hornet? hornet = home is null ? null : world.NearestLiveHornetNearVillage(Position, this, home);
+                if (hornet != _claimedHornet)
                 {
-                    ReleaseAphidClaim();
-                    _claimedAphid = aphid;
-                    if (aphid is not null)
-                        aphid.ClaimedBy = this;
+                    ReleaseHornetClaim();
+                    _claimedHornet = hornet;
+                    if (hornet is not null)
+                        hornet.ClaimedBy = this;
                 }
 
-                if (aphid is null)
+                if (hornet is null)
                 {
-                    StartWandering(world);
-                    return;
+                    Aphid? aphid = home is null ? null : world.NearestLiveAphidNearVillage(Position, this, home);
+                    if (aphid != _claimedAphid)
+                    {
+                        ReleaseAphidClaim();
+                        _claimedAphid = aphid;
+                        if (aphid is not null)
+                            aphid.ClaimedBy = this;
+                    }
+
+                    if (aphid is null)
+                    {
+                        StartWandering(world);
+                        return;
+                    }
                 }
             }
+        }
+
+        if (_claimedGrub is { } cachedGrub)
+        {
+            if (GroundMover.HorizontalDistance(Position, cachedGrub.Position) <= HuntContactDistance)
+            {
+                world.KillGrub(cachedGrub);
+                _claimedGrub = null;
+                return; // Re-targets (or wanders) fresh next scan.
+            }
+
+            _mover.MoveTowards(cachedGrub.Position, HuntSpeed, deltaTime, world, p => IsSafeSpot(p, world));
+            return;
         }
 
         if (_claimedHornet is { } cachedHornet)
@@ -10669,10 +11487,22 @@ public sealed class Bramblekin
         if (state != BramblekinState.Gathering && state != BramblekinState.Cracking)
             ReleaseAcornClaim();
         if (state != BramblekinState.Hunting)
+        {
             ReleaseAphidClaim();
+            ReleaseHornetClaim();
+            ReleaseGrubClaim();
+        }
         if (state != BramblekinState.Building)
             ReleaseBlueprintClaim();
-        if (state != BramblekinState.Equipping)
+        // Bugfix: a Stinger/GrubHide fetch sets its own _claimedStinger/
+        // _claimedGrubHide THEN calls SetState(Looting) — releasing
+        // equipment claims on any non-Equipping state (as this used to do
+        // unconditionally) immediately nulled the very claim just made,
+        // silently breaking the whole fetch every time. Looting gets the
+        // same exception Gathering already has for _claimedShard/_claimedAmber
+        // above; nothing else in this file ever holds a Fang/Chitin claim
+        // while entering Looting, so this is otherwise a no-op there.
+        if (state != BramblekinState.Equipping && state != BramblekinState.Looting)
             ReleaseEquipmentClaim();
 
         State = state;
@@ -11608,6 +12438,173 @@ public sealed class Hornet
         Vector3 wingBase = mid;
         Raylib.DrawLine3D(wingBase, wingBase + new Vector3(BodyRadius * 2f, BodyRadius * 0.5f, 0), WingColor);
         Raylib.DrawLine3D(wingBase, wingBase + new Vector3(-BodyRadius * 2f, BodyRadius * 0.5f, 0), WingColor);
+    }
+}
+
+/// <summary>
+/// Economy Threat: a solitary, more dangerous pest than the Hornet Swarm —
+/// spawned one at a time near the map's own edges (see <see cref="World.UpdateGrubSpawn"/>)
+/// rather than clustered near a Garden Prop. Approaches the globally
+/// nearest Village Heart with any Food Stored (see
+/// <see cref="World.NearestFoodTargetForGrub"/>), and on contact, if that
+/// target is currently unguarded (see <see cref="World.IsUnguardedForGrub"/>),
+/// steals a bite of its Food Stored (<see cref="World.TryGrubSteal"/>) and
+/// flees straight for the nearest map edge with it — see
+/// <see cref="World.NearestEdgePoint"/>. Reaching the edge with stolen Food
+/// in hand is a clean escape (<see cref="World.DespawnGrub"/>): the Food is
+/// simply gone, lost for good. Caught by a Militia unit first, instead, it
+/// is always killed outright (<see cref="World.KillGrub"/>) — same
+/// one-hunt-contact-one-kill convention <see cref="Hornet"/> uses — which
+/// drops a <see cref="GrubHide"/> and, if it still had stolen Food on it,
+/// scatters that Food back as loose FoodShards rather than losing it.
+/// </summary>
+public sealed class Grub
+{
+    /// <summary>Collision/body radius in meters.</summary>
+    public const float BodyRadius = 0.18f;
+
+    /// <summary>How far from the terrain edge it may wander/spawn, in meters.</summary>
+    public const float EdgeMargin = 0.3f;
+
+    private const float MoveSpeed = 1.3f;
+    private const float FleeSpeed = 2.4f;
+
+    /// <summary>How close (m, horizontal) a Grub must be to its target's own centre (plus the target's own <see cref="VillageHeart.DeliveryDistance"/>) to attempt a steal.</summary>
+    private const float ContactMargin = 0.4f;
+
+    private readonly GroundMover _mover;
+
+    private VillageHeart? _target;
+    private Vector3 _fleeTarget;
+    private int _stolenFood;
+
+    /// <summary>Part 6: terrain-aware, same treatment as Aphid/Hornet/Bramblekin — Y is snapped to World.GetHeightAt every read.</summary>
+    public Vector3 Position => World.Grounded(_mover.Position);
+
+    /// <summary>True once either killed by a Militia unit or successfully despawned after escaping off-map. Removal from World.Grubs is deferred to the end of the frame.</summary>
+    public bool IsDead { get; private set; }
+
+    /// <summary>Economy Threat + Dibs: the one Militia unit currently hunting this specific Grub, if any — see <see cref="World.NearestLiveGrubNearVillage"/>.</summary>
+    public Bramblekin? ClaimedBy { get; set; }
+
+    /// <summary>How much Food this Grub is currently carrying off, stolen from its last target — see <see cref="World.TryGrubSteal"/>/<see cref="World.KillGrub"/>.</summary>
+    public int StolenFood => _stolenFood;
+
+    public Grub(Vector3 position, Random rng)
+    {
+        _mover = new GroundMover(position, BodyRadius, EdgeMargin, rng);
+    }
+
+    /// <summary>Marks it caught. Called once, from World.KillGrub.</summary>
+    public void MarkDead() => IsDead = true;
+
+    /// <summary>Called once by World.TryGrubSteal the instant a steal actually succeeds.</summary>
+    public void AddStolenFood(int amount) => _stolenFood += amount;
+
+    public void Update(float deltaTime, World world)
+    {
+        if (IsDead)
+            return;
+
+        _mover.Idle();
+
+        if (_stolenFood > 0)
+        {
+            // Fleeing: paths for the nearest map edge with its stolen Food
+            // in hand. Reaching it (or somehow ending up outside the
+            // playable terrain bounds) is a clean escape.
+            if (GroundMover.HorizontalDistance(Position, _fleeTarget) <= 0.3f || !world.Terrain.Contains(Position, EdgeMargin))
+            {
+                world.DespawnGrub(this);
+                return;
+            }
+
+            _mover.MoveTowards(_fleeTarget, FleeSpeed, deltaTime, world, p => world.Terrain.Contains(p, EdgeMargin));
+            return;
+        }
+
+        // Approaching: re-pick a target every frame — cheap (a handful of
+        // Village Hearts at most), and another Grub or an ordinary delivery
+        // may have already emptied the one it had, or it may not have had
+        // one yet.
+        if (_target is null || _target.FoodStored <= 0 || !world.Villages.Contains(_target))
+            _target = world.NearestFoodTargetForGrub(Position);
+
+        if (_target is null)
+        {
+            // Nothing worth stealing anywhere on the map right now -- idle
+            // toward the map's own centre until something changes.
+            _mover.MoveTowards(Vector3.Zero, MoveSpeed, deltaTime, world, p => world.Terrain.Contains(p, EdgeMargin));
+            return;
+        }
+
+        float contactDistance = _target.DeliveryDistance + ContactMargin;
+        if (GroundMover.HorizontalDistance(Position, _target.Center) <= contactDistance)
+        {
+            if (world.TryGrubSteal(this, _target))
+            {
+                _fleeTarget = world.NearestEdgePoint(Position);
+            }
+            // Guarded, or emptied out from under it: simply holds here.
+            // Re-evaluated fresh (a new target, or another steal attempt on
+            // this same one) next frame rather than needing its own
+            // separate cooldown/retreat behavior.
+            return;
+        }
+
+        _mover.MoveTowards(_target.Center, MoveSpeed, deltaTime, world, p => world.Terrain.Contains(p, EdgeMargin));
+    }
+
+    private static readonly Color BodyColor = new(120, 95, 60, 255);
+    private static readonly Color SnoutColor = new(90, 65, 40, 255);
+
+    /// <summary>A small brown/tan mole-like silhouette: a low capsule body with a darker snout, cheap enough to draw many at once, same spirit as Hornet.Draw().</summary>
+    public void Draw()
+    {
+        var bottom = Position + new Vector3(0, BodyRadius * 0.5f, 0);
+        var top = Position + new Vector3(0, BodyRadius * 1.3f, 0);
+        Raylib.DrawCapsule(bottom, top, BodyRadius, 6, 3, BodyColor);
+        Raylib.DrawCapsuleWires(bottom, top, BodyRadius, 6, 3, new Color(40, 30, 20, 255));
+
+        Vector2 heading = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;
+        Vector3 snout = Position + new Vector3(heading.X, BodyRadius * 0.6f, heading.Y) * BodyRadius;
+        Raylib.DrawSphere(snout, BodyRadius * 0.4f, SnoutColor);
+    }
+}
+
+/// <summary>
+/// Economy Threat's raw material: dropped where a Grub dies to a Militia
+/// unit (see <see cref="World.KillGrub"/>) with <see cref="World.GrubHideDropChance"/>
+/// odds. A banked, carried resource like a <see cref="Stinger"/>, not an
+/// instant-consume item like a <see cref="SpiderFang"/>/<see cref="Chitin"/>
+/// — claimed and carried home through the exact same claim-limited
+/// (<see cref="World.EquipmentSearchRadius"/>) search and claim-walk-carry-
+/// deliver shape already established for Stinger, so a GrubHide can never
+/// lure every unit on the map to converge on one spot either.
+/// </summary>
+public sealed class GrubHide
+{
+    public const float Radius = 0.14f;
+
+    /// <summary>Resting spot on the ground (y = GroundHeight). Ignored while carried.</summary>
+    public Vector3 Position { get; set; }
+
+    /// <summary>True while a Bramblekin is holding it; a carried GrubHide is hidden from the map, same as a carried Food Shard/Amber Node/Stinger.</summary>
+    public bool IsCarried { get; set; }
+
+    /// <summary>Equipment Dibs: the one Militia unit currently walking to pick this up — see <see cref="World.NearestAvailableGrubHide"/>.</summary>
+    public Bramblekin? ClaimedBy { get; set; }
+
+    public GrubHide(Vector3 groundPoint) => Position = World.Grounded(groundPoint); // Part 6: snap onto the hilly terrain.
+
+    /// <summary>Draws a small tanned-leather hide patch resting on (or carried above) <paramref name="groundPoint"/>.</summary>
+    public void Draw(Vector3 groundPoint)
+    {
+        var fill = new Color(150, 110, 70, 255);
+        var edge = new Color(95, 65, 35, 255);
+        var center = groundPoint + new Vector3(0, Radius * 0.5f, 0);
+        Raylib.DrawCube(center, Radius * 1.8f, Radius * 0.3f, Radius * 1.4f, fill);
+        Raylib.DrawCubeWires(center, Radius * 1.8f, Radius * 0.3f, Radius * 1.4f, edge);
     }
 }
 
