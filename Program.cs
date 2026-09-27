@@ -10767,7 +10767,7 @@ public sealed class Bramblekin
             // scaled to the ever-growing capacity) is enough to prove the
             // village isn't actively starving without gatekeeping Amber
             // behind an economy that's already thriving by definition.
-            bool wellFed = home is not null && home.FoodStored >= WellFedFoodThreshold;
+            bool wellFed = home is not null && home.FoodStored >= World.WellFedFoodThreshold;
             AmberNode? amber = wellFed ? world.NearestAvailableAmber(Position, this) : null;
             if (amber is not null)
             {
