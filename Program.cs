@@ -4263,24 +4263,32 @@ public sealed class World
         return best;
     }
 
-    /// <summary>A Fang can always be picked up — it's never carried or claimed, just touched and gone.</summary>
-    public bool IsAvailable(SpiderFang fang) => !IsBlocked(fang.Position, 0f);
+    /// <summary>
+    /// Equipment Search Radius: how far (m, horizontal) a unit will walk to
+    /// fetch a Spider Fang or Chitin piece. Without a limit, every
+    /// un-upgraded unit of every tribe on the map dropped its work and
+    /// marched on the Wolf Spider's carcass the instant it died, even
+    /// though only a handful of pieces exist.
+    /// </summary>
+    public const float EquipmentSearchRadius = 20f;
 
-    public bool HasAvailableFang => Fangs.Any(IsAvailable);
+    /// <summary>Equipment Dibs: a Fang is available to <paramref name="claimant"/> if it's reachable and nobody else has already claimed it.</summary>
+    public bool IsAvailable(SpiderFang fang, Bramblekin claimant) =>
+        !IsBlocked(fang.Position, 0f) && (fang.ClaimedBy is null || fang.ClaimedBy == claimant || fang.ClaimedBy.IsDead);
 
-    /// <summary>The nearest available Spider Fang to <paramref name="from"/>, if any.</summary>
-    public SpiderFang? NearestAvailableFang(Vector3 from)
+    /// <summary>The nearest Spider Fang within <see cref="EquipmentSearchRadius"/> of <paramref name="from"/> that <paramref name="claimant"/> may take, if any.</summary>
+    public SpiderFang? NearestAvailableFang(Vector3 from, Bramblekin claimant)
     {
         SpiderFang? best = null;
-        float bestDistance = float.MaxValue;
+        float bestDistance = EquipmentSearchRadius * EquipmentSearchRadius;
         for (int i = Fangs.Count - 1; i >= 0; i--)
         {
             SpiderFang fang = Fangs[i];
-            if (!IsAvailable(fang))
+            if (!IsAvailable(fang, claimant))
                 continue;
 
-            float distance = Vector3.DistanceSquared(from, fang.Position);
-            if (distance < bestDistance)
+            float distance = GroundMover.HorizontalDistanceSquared(from, fang.Position);
+            if (distance <= bestDistance)
             {
                 best = fang;
                 bestDistance = distance;
@@ -4302,24 +4310,23 @@ public sealed class World
             _pendingFangRemovals.Add(fang);
     }
 
-    /// <summary>A Chitin piece can always be picked up — same rule as a Fang.</summary>
-    public bool IsAvailable(Chitin chitin) => !IsBlocked(chitin.Position, 0f);
+    /// <summary>Equipment Dibs: same rule as a Fang.</summary>
+    public bool IsAvailable(Chitin chitin, Bramblekin claimant) =>
+        !IsBlocked(chitin.Position, 0f) && (chitin.ClaimedBy is null || chitin.ClaimedBy == claimant || chitin.ClaimedBy.IsDead);
 
-    public bool HasAvailableChitin => Chitins.Any(IsAvailable);
-
-    /// <summary>The nearest available Chitin piece to <paramref name="from"/>, if any.</summary>
-    public Chitin? NearestAvailableChitin(Vector3 from)
+    /// <summary>The nearest Chitin piece within <see cref="EquipmentSearchRadius"/> of <paramref name="from"/> that <paramref name="claimant"/> may take, if any.</summary>
+    public Chitin? NearestAvailableChitin(Vector3 from, Bramblekin claimant)
     {
         Chitin? best = null;
-        float bestDistance = float.MaxValue;
+        float bestDistance = EquipmentSearchRadius * EquipmentSearchRadius;
         for (int i = Chitins.Count - 1; i >= 0; i--)
         {
             Chitin chitin = Chitins[i];
-            if (!IsAvailable(chitin))
+            if (!IsAvailable(chitin, claimant))
                 continue;
 
-            float distance = Vector3.DistanceSquared(from, chitin.Position);
-            if (distance < bestDistance)
+            float distance = GroundMover.HorizontalDistanceSquared(from, chitin.Position);
+            if (distance <= bestDistance)
             {
                 best = chitin;
                 bestDistance = distance;
@@ -6731,6 +6738,9 @@ public sealed class SpiderFang
     /// <summary>Resting spot on the ground (y = GroundHeight).</summary>
     public Vector3 Position { get; }
 
+    /// <summary>Equipment Dibs: the one Militia unit currently walking to pick this up — see <see cref="World.NearestAvailableFang(Vector3, Bramblekin)"/>.</summary>
+    public Bramblekin? ClaimedBy { get; set; }
+
     public SpiderFang(Vector3 groundPoint) => Position = World.Grounded(groundPoint); // Part 6: snap onto the hilly terrain.
 
     public void Draw()
@@ -6763,6 +6773,9 @@ public sealed class Chitin
 
     /// <summary>Resting spot on the ground (y = GroundHeight).</summary>
     public Vector3 Position { get; }
+
+    /// <summary>Equipment Dibs: the one Gatherer currently walking to pick this up — see <see cref="World.NearestAvailableChitin(Vector3, Bramblekin)"/>.</summary>
+    public Bramblekin? ClaimedBy { get; set; }
 
     public Chitin(Vector3 groundPoint) => Position = World.Grounded(groundPoint); // Part 6: snap onto the hilly terrain.
 
@@ -8242,6 +8255,7 @@ public sealed class Bramblekin
         ReleaseAcornClaim();
         ReleaseAmberClaim();
         ReleaseBlueprintClaim();
+        ReleaseEquipmentClaim();
 
         // The Schism: a Pioneer lost en route. Tells its Migration so the
         // origin's HasActiveMigration eventually clears if all 4 are lost
@@ -8575,9 +8589,9 @@ public sealed class Bramblekin
         // Spider Fang, a Gatherer fetches a Chitin piece.
         if (State is BramblekinState.Walking or BramblekinState.Pausing)
         {
-            if (Role == BramblekinRole.Militia && !HasFangPike && world.HasAvailableFang)
+            if (Role == BramblekinRole.Militia && !HasFangPike && world.NearestAvailableFang(Position, this) is not null)
                 SetState(BramblekinState.Equipping);
-            else if (Role == BramblekinRole.Gatherer && !HasChitinMallet && world.HasAvailableChitin)
+            else if (Role == BramblekinRole.Gatherer && !HasChitinMallet && world.NearestAvailableChitin(Position, this) is not null)
                 SetState(BramblekinState.Equipping);
         }
 
@@ -8716,7 +8730,7 @@ public sealed class Bramblekin
         if (Role != BramblekinRole.Militia || HasFangPike)
             return false;
 
-        SpiderFang? fang = world.NearestAvailableFang(Position);
+        SpiderFang? fang = world.NearestAvailableFang(Position, this);
         if (fang is null)
             return false;
 
@@ -9038,6 +9052,23 @@ public sealed class Bramblekin
         if (_claimedBlueprint is not null && _claimedBlueprint.ClaimedBy == this)
             _claimedBlueprint.ClaimedBy = null;
         _claimedBlueprint = null;
+    }
+
+    /// <summary>Equipment Dibs: the Spider Fang this Militia unit is currently walking to — see <see cref="UpdateEquipping"/>.</summary>
+    private SpiderFang? _claimedFang;
+
+    /// <summary>Equipment Dibs: the Chitin piece this Gatherer is currently walking to — see <see cref="UpdateEquipping"/>.</summary>
+    private Chitin? _claimedChitin;
+
+    /// <summary>Equipment Dibs: releases whatever Fang/Chitin this unit had claimed, so another unit can go for it.</summary>
+    private void ReleaseEquipmentClaim()
+    {
+        if (_claimedFang is not null && _claimedFang.ClaimedBy == this)
+            _claimedFang.ClaimedBy = null;
+        _claimedFang = null;
+        if (_claimedChitin is not null && _claimedChitin.ClaimedBy == this)
+            _claimedChitin.ClaimedBy = null;
+        _claimedChitin = null;
     }
 
     /// <summary>Cooperative Acorn Cracking: releases this Gatherer's claim slot on its current Acorn target, if any.</summary>
@@ -9772,11 +9803,17 @@ public sealed class Bramblekin
                 return;
             }
 
-            SpiderFang? fang = world.NearestAvailableFang(Position);
+            SpiderFang? fang = world.NearestAvailableFang(Position, this);
             if (fang is null)
             {
                 StartWandering(world);
                 return;
+            }
+            if (fang != _claimedFang)
+            {
+                ReleaseEquipmentClaim();
+                fang.ClaimedBy = this;
+                _claimedFang = fang;
             }
 
             if (GroundMover.HorizontalDistance(Position, fang.Position) <= FangPickupDistance)
@@ -9797,11 +9834,17 @@ public sealed class Bramblekin
             return;
         }
 
-        Chitin? chitin = world.NearestAvailableChitin(Position);
+        Chitin? chitin = world.NearestAvailableChitin(Position, this);
         if (chitin is null)
         {
             StartWandering(world);
             return;
+        }
+        if (chitin != _claimedChitin)
+        {
+            ReleaseEquipmentClaim();
+            chitin.ClaimedBy = this;
+            _claimedChitin = chitin;
         }
 
         if (GroundMover.HorizontalDistance(Position, chitin.Position) <= ChitinPickupDistance)
@@ -10053,6 +10096,8 @@ public sealed class Bramblekin
             ReleaseAphidClaim();
         if (state != BramblekinState.Building)
             ReleaseBlueprintClaim();
+        if (state != BramblekinState.Equipping)
+            ReleaseEquipmentClaim();
 
         State = state;
         _mover.ResetProgress();
