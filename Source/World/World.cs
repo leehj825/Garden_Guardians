@@ -357,6 +357,8 @@ public sealed partial class World
         UpdateFoodClaimTimeouts(deltaTime);
         RebuildSpatialGrids();
         RebuildGroups();
+        UpdateGroupHomes(deltaTime);
+        CountShelterOccupants();
 
         // Wildlife moves before the colony reacts to it this frame. Reverse
         // for-loops: a Bramblekin's strike (below) can kill a Hornet or Grub,

@@ -59,6 +59,11 @@ public sealed class WolfSpider : ICombatant
     /// <summary>Dormant: was how far (m) it could feel a pebble slam into the ground, back when the player had a pebble to drop.</summary>
     public const float ImpactHearingRadius = 12f;
 
+    /// <summary>Safety in numbers: prey with at least <see cref="CrowdSize"/> others within this many meters is left alone — see <see cref="IsInACrowd"/>.</summary>
+    public const float CrowdRadius = 2.5f;
+
+    public const int CrowdSize = 2;
+
     /// <summary>Distance (m) at which a hunting spider launches its pounce.</summary>
     public const float PounceRange = 2.5f;
 
@@ -433,13 +438,33 @@ public sealed class WolfSpider : ICombatant
                 continue;
 
             float distanceSquared = GroundMover.HorizontalDistanceSquared(Position, bramblekin.Position);
-            if (distanceSquared <= bestDistanceSquared)
+            if (distanceSquared <= bestDistanceSquared && !IsInACrowd(bramblekin, nearby))
             {
                 best = bramblekin;
                 bestDistanceSquared = distanceSquared;
             }
         }
         return best;
+    }
+
+    /// <summary>
+    /// Safety in numbers: like any predator it singles out the isolated —
+    /// prey with <see cref="CrowdSize"/> or more others within
+    /// <see cref="CrowdRadius"/> isn't worth the risk. <paramref name="nearby"/>
+    /// is the Colony around the spider, which already covers the whole crowd
+    /// radius around anything close enough to be prey.
+    /// </summary>
+    private static bool IsInACrowd(Bramblekin prey, List<Bramblekin> nearby)
+    {
+        int company = 0;
+        foreach (Bramblekin other in nearby)
+        {
+            if (other != prey && !other.IsDead &&
+                GroundMover.HorizontalDistanceSquared(other.Position, prey.Position) <= CrowdRadius * CrowdRadius &&
+                ++company >= CrowdSize)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>The nearest living, Fighting Bramblekin within <paramref name="range"/>, if any — the Bite's target.</summary>

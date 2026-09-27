@@ -144,8 +144,8 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>Chasing speed (fights, robberies) as a multiple of <see cref="WalkSpeed"/>.</summary>
     private const float PursuitSpeedMultiplier = 1.3f;
 
-    /// <summary>Below this fraction of <see cref="MaxHealth"/>, a fighter's nerve breaks and it flees instead.</summary>
-    private const float FightBreakHealthFraction = 0.3f;
+    /// <summary>At or below this fraction of <see cref="MaxHealth"/>, a fighter's nerve breaks and it flees instead — high enough that a fighter at the threshold can still survive one more Wolf Spider bite.</summary>
+    private const float FightBreakHealthFraction = 0.4f;
 
     /// <summary>Keeps running for at least this long after losing sight of whatever it fled from.</summary>
     private const float FleeMinDuration = 2.5f;
@@ -156,7 +156,7 @@ public sealed partial class Bramblekin : ICombatant
     private const float AllySupportBonus = 0.15f;
 
     /// <summary>Group Dynamics: added to the fight roll when the threat is attacking a groupmate.</summary>
-    private const float GroupDefenseBonus = 0.5f;
+    private const float GroupDefenseBonus = 0.3f;
 
     /// <summary>The Wolf Spider is scarier than a Hornet: subtracted from the fight roll.</summary>
     private const float SpiderFearPenalty = 0.25f;
@@ -269,8 +269,14 @@ public sealed partial class Bramblekin : ICombatant
     /// </summary>
     public Shelter? Home { get; private set; }
 
-    /// <summary>True while it's standing inside its own finished home — safe from the Wolf Spider's pounce and from Hornets.</summary>
-    public bool IsSheltered => Home is { IsBuilt: true } home && home.Contains(Position);
+    /// <summary>True while it's standing inside its own finished home — safe from the Wolf Spider's pounce and from Hornets — unless the home is overcrowded.</summary>
+    public bool IsSheltered => IsInsideHome && !Home!.IsOvercrowded;
+
+    /// <summary>True while it's standing inside its own finished home.</summary>
+    public bool IsInsideHome => Home is { IsBuilt: true } home && home.Contains(Position);
+
+    /// <summary>Where it last saw Food, if anywhere.</summary>
+    public Vector3? FoodMemory => _foodMemory;
 
     /// <summary>True while it's holding a twig for building.</summary>
     public bool HasTwig => _carriedTwig is not null;

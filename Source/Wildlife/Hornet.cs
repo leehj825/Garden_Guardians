@@ -90,6 +90,9 @@ public sealed class Hornet : ICombatant
 
     public float CollisionRadius => BodyRadius;
 
+    /// <summary>True while it's chasing a Bramblekin — an idle Hornet at its nest is something to steer around, not to fight.</summary>
+    public bool IsChasing => _chaseTarget is { IsDead: false };
+
     public Hornet(Vector3 position, Vector3 anchor, Random rng)
     {
         _rng = rng;

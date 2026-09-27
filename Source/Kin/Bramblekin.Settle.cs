@@ -39,8 +39,8 @@ public sealed partial class Bramblekin
     /// <summary>True while it's the one who should be fetching twigs for its home's current construction stage.</summary>
     private bool NeedsTwig => _carriedTwig is null && Home is { NeedsTwigs: true } && BuildsForHome;
 
-    /// <summary>A solitary Bramblekin builds its own home.</summary>
-    private bool BuildsForHome => GroupId is null;
+    /// <summary>Whether it fetches twigs for its home: a solitary Bramblekin builds its own, and every member helps build its group's.</summary>
+    private bool BuildsForHome => true;
 
     /// <summary>
     /// Settle need (fed and safe), for a solitary Bramblekin — a group's
@@ -54,13 +54,34 @@ public sealed partial class Bramblekin
     private bool UpdateSettle(float deltaTime, World world)
     {
         if (GroupId is not null)
-            return false;
+            return UpdateGroupSettle(deltaTime, world);
 
         if (Home is null && !TryFindHome(deltaTime, world))
             return false;
 
         Shelter home = Home!;
         if (home.NeedsTwigs)
+        {
+            DoBuildWork(home, deltaTime, world);
+            return true;
+        }
+
+        return TendHome(home, deltaTime, world);
+    }
+
+    /// <summary>
+    /// A group member's part in its group's home (see
+    /// <see cref="World.UpdateGroupHomes"/>): help build or upgrade it,
+    /// then rest in it, stock the shared store and hunt near it just like a
+    /// homesteader does its own. A group still without a home just keeps
+    /// moving with its Leader.
+    /// </summary>
+    private bool UpdateGroupSettle(float deltaTime, World world)
+    {
+        if (Home is not { } home)
+            return false;
+
+        if (home.NeedsTwigs && BuildsForHome)
         {
             DoBuildWork(home, deltaTime, world);
             return true;
@@ -197,7 +218,7 @@ public sealed partial class Bramblekin
         StartPause();
     }
 
-    /// <summary>Goes home and rests inside, healing 1 HP every <see cref="RestHealInterval"/> seconds.</summary>
+    /// <summary>Goes home and rests inside, healing 1 HP every <see cref="RestHealInterval"/> seconds (half again as fast in a House).</summary>
     private void RestAtHome(Shelter home, float deltaTime, World world)
     {
         if (!home.Contains(Position))
@@ -209,9 +230,10 @@ public sealed partial class Bramblekin
 
         SetState(BramblekinState.Resting);
         _restTimer += deltaTime;
-        if (_restTimer >= RestHealInterval)
+        float healInterval = home.Tier == ShelterTier.House ? RestHealInterval / 1.5f : RestHealInterval;
+        if (_restTimer >= healInterval)
         {
-            _restTimer -= RestHealInterval;
+            _restTimer -= healInterval;
             Health = Math.Min(MaxHealth, Health + 1);
         }
     }

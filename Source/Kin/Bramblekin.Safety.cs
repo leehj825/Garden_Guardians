@@ -75,6 +75,11 @@ public sealed partial class Bramblekin
         if (Health <= MaxHealth * FightBreakHealthFraction)
             return false;
 
+        // Nobody picks a fight with a Hornet nest: an idle swarm is just
+        // avoided; only a chasing one gets swatted back.
+        if (threat is Hornet { IsChasing: false })
+            return false;
+
         float chance = Personality.Aggression;
         if (world.GroupOf(this) is { } group)
         {

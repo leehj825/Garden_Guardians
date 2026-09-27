@@ -51,8 +51,16 @@ public sealed partial class World
 
             if (group.Members.Count == 1)
             {
-                group.Members[0].LeaveGroup();
-                Game.AddEventLog($"[GROUP] Group {group.ShortId} is gone; #{group.Members[0].ID} is alone again");
+                Bramblekin survivor = group.Members[0];
+                survivor.LeaveGroup();
+                // The last one standing keeps the group's home as its own.
+                if (group.Home is { IsCollapsed: false } home)
+                {
+                    home.GroupId = null;
+                    home.Owner = survivor;
+                    survivor.SetHome(home);
+                }
+                Game.AddEventLog($"[GROUP] Group {group.ShortId} is gone; #{survivor.ID} is alone again");
             }
             _groupRemovalBuffer.Add(group.Id);
         }
@@ -110,6 +118,8 @@ public sealed partial class World
     ///   4. Friends may share food.
     ///   5. Alliance: if both are threatened by a predator right now, or
     ///      both are highly Sociable, they band together under one GroupId.
+    ///      Failing that, a struggling loner may ask to join the other's
+    ///      settled group (see <see cref="TryJoinSettledGroup"/>).
     ///   6. Otherwise they just become acquainted: Friends with odds equal
     ///      to the product of their Sociability, Neutral otherwise.
     /// Returns true if group membership changed.
@@ -136,6 +146,9 @@ public sealed partial class World
         bool bothSociable = a.Personality.Sociability >= AllianceSociabilityThreshold &&
                             b.Personality.Sociability >= AllianceSociabilityThreshold;
         if ((bothThreatened || bothSociable) && TryFormAlliance(a, b, bothThreatened))
+            return true;
+
+        if (TryJoinSettledGroup(a, b))
             return true;
 
         if (relationship is null)

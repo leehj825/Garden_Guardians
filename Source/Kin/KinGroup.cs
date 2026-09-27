@@ -36,6 +36,12 @@ public sealed class KinGroup
 
     public Bramblekin? Leader { get; private set; }
 
+    /// <summary>The group's shared home (and store), once it has one — see <see cref="World.UpdateGroupHomes"/>.</summary>
+    public Shelter? Home { get; set; }
+
+    /// <summary>Counts down after a failed attempt to find a site for a group home.</summary>
+    public float HomeSiteRetryTimer { get; set; }
+
     public KinGroup(Guid id)
     {
         Id = id;

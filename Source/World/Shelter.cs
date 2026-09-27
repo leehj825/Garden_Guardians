@@ -102,6 +102,15 @@ public sealed class Shelter
     /// <summary>Seconds spent abandoned; World collapses it at <see cref="AbandonedCollapseSeconds"/>.</summary>
     public float AbandonedSeconds { get; set; }
 
+    /// <summary>
+    /// How many of its residents are inside it right now (counted once a
+    /// frame). A shelter crammed past <see cref="ResidentCapacity"/>
+    /// protects nobody — see <see cref="IsOvercrowded"/>.
+    /// </summary>
+    public int Occupants { get; set; }
+
+    public bool IsOvercrowded => Occupants > ResidentCapacity;
+
     /// <summary>True once it has fallen down and been removed from the map; anyone still calling it home must find another.</summary>
     public bool IsCollapsed { get; private set; }
 

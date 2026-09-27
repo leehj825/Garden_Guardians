@@ -25,8 +25,10 @@ public sealed partial class Bramblekin
         if (TryPackHunt(deltaTime, world, hungry: false))
             return;
 
+        // A group without a finished home keeps moving with its Leader; a
+        // settled group lives around its home instead.
         Bramblekin? leader = world.GroupOf(this)?.Leader;
-        if (leader is { IsDead: false } && leader != this)
+        if (leader is { IsDead: false } && leader != this && Home is not { IsBuilt: true })
         {
             FollowLeader(leader, deltaTime, world);
             return;
