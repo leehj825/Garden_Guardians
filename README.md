@@ -1,7 +1,7 @@
 # Garden_Guardians
 Garden Guardians
 
-A god simulation / real-time strategy game where you play a benevolent backyard spirit guiding the Bramblekin through physics-based "miracles."
+An emergent survival simulation set in a procedurally hilly backyard. Every Bramblekin is an individual agent with its own randomly rolled Personality (Aggression, Sociability, Intelligence) and a strict hierarchy of needs — hunger, then safety, then company. Friendships, rivalries, robberies and groups (led by their sharpest member) all emerge from how they meet. You watch, and tap any Bramblekin to see what makes it tick.
 
 See the [Game Design Document](Garden_Guardians_Design.md) for the full design, and the [Development Roadmap](Garden_Guardians_Roadmap.md) for the planned phases.
 
@@ -10,6 +10,7 @@ See the [Game Design Document](Garden_Guardians_Design.md) for the full design, 
 Requires the .NET 8 SDK.
 
 - **Desktop prototype:** `dotnet run -f net8.0 -p:DesktopOnly=true`. The `DesktopOnly` flag skips the Android target, so you don't need the Android workload.
+- **Headless simulation:** `dotnet run -f net8.0 -p:DesktopOnly=true -- --headless 600 --seed 1` runs 600 simulated seconds with no window and prints population reports and notable events — handy for tuning, or on a machine without a GPU.
 - **Android APK:** install the Android workload (`dotnet workload install android`) and the Android NDK. Then run `Platforms/Android/build-raylib.sh` to compile raylib for Android, and `dotnet publish -f net8.0-android -c Debug -p:EmbedAssembliesIntoApk=true`.
 
 GitHub Actions builds the Android APKs automatically:

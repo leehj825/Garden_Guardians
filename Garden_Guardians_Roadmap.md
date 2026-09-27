@@ -2,21 +2,21 @@
 
 **Status key:** ✅ Done · 🟡 In progress (partly done) · ⬜ Not started · ❌ Removed/superseded
 
-*Last updated: 2026-09-26*
+*Last updated: 2026-09-27*
 
 ## Progress Snapshot
-The game is now a **Pure Simulation**: the player has no lever on the
-world at all, not even a miracle. All game code lives in `Program.cs`.
-Every faction's Village Heart runs its own economy end to end —
-sprouting, drafting Militia, farming, building, and now brewing Nectar
-and (eventually) building a Monument — entirely inside `World.Update()`.
-The map is a 100m×100m terrain (grown from an original 20m×20m
-prototype), viewed through a Google-Maps-style spectator camera that
-pans, rotates, tilts and zooms but never touches the simulation itself.
-The only two player actions left are tapping a Village Heart to inspect
-that faction, and tapping anywhere to reseed the world (Genesis) once
-every faction is extinct. Combat, factions, territory, and the economy
-are all described in detail below and in `Garden_Guardians_Design.md`.
+The game has pivoted from a macro-RTS faction simulator to an
+**Emergent Survival** simulation (Phase 7). There are no Village Hearts,
+buildings, jobs, factions, wars or shared economy any more — the map is
+just the procedural terrain and loose entities: wild Food, a Wolf Spider,
+Hornet swarms, Grubs, Garden Props, and the Bramblekin. Every Bramblekin
+is an individual agent with a random Personality (Aggression,
+Sociability, Intelligence) serving a strict Hunger → Safety → Social
+hierarchy of needs; friendships, enmities and groups (led by their most
+Intelligent member) emerge from their encounters. All game code still
+lives in `Program.cs`. The player is a spectator with a Google-Maps-style
+camera whose only action is tapping a Bramblekin to inspect it. See
+`Garden_Guardians_Design.md` for the full current design.
 
 ## Phase 0: Engine & Tooling
 *   ✅ **Engine:** Raylib via Raylib-cs on a .NET 8 project, 1 unit = 1
@@ -60,7 +60,10 @@ Vision" section for the full original write-up.
     every faction gets its own independent spider spawn/respawn cycle
     tied to its own territory rather than one shared map-wide spider.
 
-## Phase 2: Economy & Combat Infrastructure (survived, then expanded)
+## Phase 2: Economy & Combat Infrastructure (survived, then expanded) — ❌ Superseded by Phase 7
+*Only loose Berries, the Wolf Spider (reworked), Hornets and Grubs
+(reworked) survived the Phase 7 pivot; the rest of this phase describes
+systems that no longer exist.*
 *   ✅ **Gathering loop:** wild Berries spawn passively; Acorns are
     cracked via **Cooperative Acorn Cracking** — up to 3 Chitin-Mallet
     Gatherers working the same Acorn at once, their crack rates simply
@@ -131,7 +134,9 @@ Vision" section for the full original write-up.
     per-unit cooldown; the spider Bites back on its own cooldown. Either
     side hitting 0 HP is a permanent kill/razing.
 
-## Phase 3: Factions, Territory & the Pivot to Pure Simulation
+## Phase 3: Factions, Territory & the Pivot to Pure Simulation — ❌ Superseded by Phase 7
+*Pure Simulation (no player lever) survived the Phase 7 pivot; factions,
+territory, schisms and wars did not.*
 *   ✅ **Dynamic Factions & the True Schism:** an overcrowded, food-rich
     Village Heart splits roughly in half; Pioneers migrate well clear of
     every existing Village Heart (a strict minimum distance, not a fixed
@@ -198,6 +203,9 @@ Vision" section for the full original write-up.
     length; the Debug Time Scale +/- buttons were scaled up 3x.
 
 ## Phase 5: Performance for a 5x Larger Map
+*Squared-distance math, the spatial grid, Food pooling and culling all
+survived Phase 7; frame-counter AI time-slicing was replaced by staggered
+per-Bramblekin perception timers.*
 The map grew from 20m×20m to 100m×100m over the course of the project, a
 25x increase in area, which made the original "scan every entity every
 frame" approach to AI targeting a real bottleneck at high time-scales.
@@ -219,7 +227,7 @@ frame" approach to AI targeting a real bottleneck at high time-scales.
 *   ✅ **Raylib culling:** entities and health bars entirely outside the
     camera's current viewport skip their draw call.
 
-## Phase 6: The Refined Economy & Civilization Goals
+## Phase 6: The Refined Economy & Civilization Goals — ❌ Superseded by Phase 7
 *   ✅ **The Nectar Brewery:** auto-queued once a Village Heart reaches
     20 Population and 10 Amber Stored (25 Construction Progress to
     build). Once built, it consumes 2 Food + 1 Amber every 30 seconds to
@@ -243,27 +251,62 @@ frame" approach to AI targeting a real bottleneck at high time-scales.
     transition into an advanced civilization even if its Village Heart
     is later razed.
 
+## Phase 7: The Emergent Survival Pivot
+*   ✅ **The Engine Purge:** kept Raylib, the procedural terrain
+    (`World.GetHeightAt`/`GetNormalAt`), the cached Bramblekin body model,
+    the spectator camera and the environmental entities; deleted
+    `VillageHeart`, `Blueprint`, `Building` (Spore Farms, Granaries and
+    every other building), the Job Managers, Crusades, Invasions, Vassal
+    Tributes, Diplomacy/Goodwill, Amber, Acorns, Aphids, the Rival Ant
+    Colony and the Elder Spider. `Program.cs` went from ~14,300 lines to
+    ~5,600.
+*   ✅ **Personality (DNA):** Aggression, Sociability and Intelligence,
+    each rolled uniformly 0..1 whenever a Bramblekin is spawned.
+    Intelligence scales detection radius from 5m to 20m.
+*   ✅ **The autonomous survival loop:** a strict Hunger → Safety →
+    Social hierarchy (see the Design doc). Hunger rises constantly and
+    kills at the top; threats get a per-threat fight-or-flight roll off
+    Aggression; fed and safe, Bramblekin wander, pocket a spare bite, and
+    seek out (or avoid) others by Sociability.
+*   ✅ **Emergent relationships & grouping:** each Bramblekin has a
+    nullable `GroupId` (a `Guid`) and `KnownKins` (Friend / Neutral /
+    Enemy). Encounters resolve into robbery (starving + Aggressive),
+    alliance (both threatened by a predator, or both Sociable), food
+    sharing or plain acquaintance. Groups cap at 6, are led by their most
+    Intelligent member, follow their Leader, borrow its senses when
+    hungry, and defend each other from predators and hostile Bramblekin.
+*   ✅ **Wildlife reworked for individuals:** the Wolf Spider hunts any
+    Bramblekin busy with food and drops meat when a group brings it
+    down; Grubs now compete for loose Food and are fallback prey;
+    Berries grow in patches around Dandelions; Pebbles are solid.
+*   ✅ **Wandering Arrivals:** new solitary Bramblekin drift in from the
+    edge while the population is under 40, so the world never ends.
+*   ✅ **Kin Inspector & HUD:** tap a Bramblekin to see its Personality,
+    needs, group role and relationships; the HUD tracks activity, deaths
+    by cause, thefts and sharing; group tethers, Leader banners and
+    social pop-ups ("+Ally", "Stolen!", "Shared") show the social web on
+    the map.
+*   ✅ **Headless mode:** `--headless [seconds] [--seed N]` runs the
+    simulation with no window and prints population reports, for tuning
+    and smoke-testing.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:
-*   ⬜ **Real pathfinding.** Bramblekin still steer around a rebuilt-
-    every-frame obstacle list with a short sideways detour when stuck,
-    rather than any actual NavMesh/grid pathfinding. Fine at current
-    obstacle density; would need work if the map ever gets denser
-    terrain features.
-*   ⬜ **A genuine win/loss/endgame arc.** Extinction is recoverable
-    (Genesis) and the Great Monument marks an achievement, but nothing
-    currently *ends* the simulation or declares an overall winner across
-    multiple competing factions.
-*   ⬜ **Diplomacy beyond Default Peace/Thievery/Blood Feud.** No
-    Diplomat unit, no negotiated (as opposed to Refugee-Protocol)
-    assimilation, no paid truces — see `Garden_Guardians_Design.md`'s
-    "Original Vision" for what was designed but never built here.
-*   ⬜ **Further Individual Equipment / tech-tree entries** beyond Fang
-    Pikes and the Chitin Mallet — no Stag Beetle/Silkworm-style new
-    PvE entities, no Armory building, no player-visible tech tree (every
-    unlock so far is an automatic, banked-item threshold).
-*   ⬜ **Multiple simultaneous predators / ecosystem cascades.** Each
-    faction gets its own independent Wolf Spider, but there's no
-    population-cascade ecology (e.g. aphids exploding if too many
-    spiders die) beyond the fixed respawn timers already in place.
+*   ⬜ **Reproduction / lineage.** New Bramblekin only arrive from the
+    map's edge with random Personalities; nothing is inherited, so
+    there's no selection pressure on traits yet.
+*   ⬜ **Richer group behaviour.** Groups follow and defend their Leader,
+    but don't yet coordinate foraging, split up, exile members, or feud
+    as a unit; Enemy relationships are strictly individual.
+*   ⬜ **Memory beyond the last Food sighting.** No remembered danger
+    zones (a Bramblekin will happily wander back toward the Hornet nest
+    it just fled) and no reputation shared between groupmates.
+*   ⬜ **Real pathfinding.** Bramblekin still steer around obstacles with
+    a short sideways detour when stuck, rather than any actual NavMesh/
+    grid pathfinding. Fine at current Pebble density.
+*   ⬜ **Tuning.** Hunger rate, Food supply, predator counts and the
+    trait thresholds were tuned against headless runs for a population
+    that hovers near the cap with a steady trickle of starvation,
+    predation and the occasional robbery; they're all constants at the
+    top of `World`/`Bramblekin` and worth revisiting as behaviours grow.
