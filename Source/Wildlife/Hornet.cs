@@ -119,7 +119,7 @@ public sealed class Hornet : ICombatant
 
         // Safety net: the Bramblekin we're chasing may have died, or
         // simply out-run the leash, since last frame.
-        if (_chaseTarget is { } stale && (stale.IsDead || !world.Colony.Contains(stale) ||
+        if (_chaseTarget is { } stale && (stale.IsDead || stale.IsSheltered || !world.Colony.Contains(stale) ||
             GroundMover.HorizontalDistanceSquared(Position, stale.Position) > ChaseLeashRadius * ChaseLeashRadius))
         {
             _chaseTarget = null;
@@ -179,7 +179,7 @@ public sealed class Hornet : ICombatant
         for (int i = nearby.Count - 1; i >= 0; i--)
         {
             Bramblekin bramblekin = nearby[i];
-            if (bramblekin.IsDead)
+            if (bramblekin.IsDead || bramblekin.IsSheltered)
                 continue;
 
             float distanceSquared = GroundMover.HorizontalDistanceSquared(Position, bramblekin.Position);

@@ -133,6 +133,20 @@ public sealed partial class Bramblekin
         away = away.LengthSquared() > 1e-4f ? Vector2.Normalize(away) : _mover.Heading;
         var left = new Vector2(-away.Y, away.X);
 
+        // Home is the safest place there is: run there instead, unless that
+        // means running past the threat.
+        if (Home is { IsBuilt: true } home)
+        {
+            var toHome = new Vector2(home.Position.X - Position.X, home.Position.Z - Position.Z);
+            float homeDistance = toHome.Length();
+            if (homeDistance <= FleeToHomeRange &&
+                (homeDistance < 3f || Vector2.Dot(toHome / homeDistance, away) > -0.3f))
+            {
+                MoveTo(home.Position, WalkSpeed * FleeSpeedMultiplier, deltaTime, world);
+                return;
+            }
+        }
+
         Vector3 best = Position;
         float bestDistanceSquared = -1f;
         foreach (Vector2 direction in stackalloc[] { away, Vector2.Normalize(away + left), Vector2.Normalize(away - left), left, -left })
@@ -171,8 +185,12 @@ public sealed partial class Bramblekin
 
         if (State == BramblekinState.Foraging)
             ReleaseFoodClaim();
+        if (State == BramblekinState.Collecting)
+            ReleaseTwigClaim();
         if (State == BramblekinState.Socializing)
             _companion = null;
+        if (state == BramblekinState.Resting)
+            _restTimer = 0f;
 
         State = state;
         if (state is not (BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting))
@@ -181,13 +199,16 @@ public sealed partial class Bramblekin
     }
 
     /// <summary>A random reachable point within <paramref name="radius"/> of where it stands (anywhere on the map as a fallback).</summary>
-    private Vector3 RandomWanderPoint(World world, float radius)
+    private Vector3 RandomWanderPoint(World world, float radius) => RandomWanderPointAround(Position, radius, world);
+
+    /// <summary>A random reachable point within <paramref name="radius"/> of <paramref name="center"/> (anywhere on the map as a fallback).</summary>
+    private Vector3 RandomWanderPointAround(Vector3 center, float radius, World world)
     {
         for (int attempt = 0; attempt < 10; attempt++)
         {
             float angle = (float)(_rng.NextDouble() * MathF.Tau);
             float distance = MathF.Sqrt((float)_rng.NextDouble()) * radius;
-            Vector3 candidate = Position + new Vector3(MathF.Cos(angle) * distance, 0f, MathF.Sin(angle) * distance);
+            Vector3 candidate = center + new Vector3(MathF.Cos(angle) * distance, 0f, MathF.Sin(angle) * distance);
             if (world.Terrain.Contains(candidate, EdgeMargin + 1f) && !world.IsBlocked(candidate, BodyRadius))
                 return candidate;
         }

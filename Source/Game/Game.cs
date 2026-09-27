@@ -280,11 +280,23 @@ public static class Game
         float averageHunger = living.Count > 0 ? living.Average(b => b.Hunger) : 0f;
         int solitary = living.Count(b => b.GroupId is null);
         int largestGroup = world.Groups.Count > 0 ? world.Groups.Max(g => g.Members.Count) : 0;
+        int tents = world.Shelters.Count(s => s.IsBuilt && s.Tier == ShelterTier.Tent);
+        int houses = world.Shelters.Count(s => s.Tier == ShelterTier.House);
+        int stored = world.Shelters.Sum(s => s.StoredFood);
         Console.WriteLine(
             $"[t={world.ElapsedSeconds,6:0}s] kin {living.Count,3} (solitary {solitary}, groups {world.Groups.Count}, largest {largestGroup}) " +
-            $"avg hunger {averageHunger,5:0.0}  food on map {world.LooseFoodCount,3}  " +
+            $"avg hunger {averageHunger,5:0.0}  food on map {world.LooseFoodCount,3}, stored {stored,3}  tents {tents} houses {houses}  " +
             $"arrived {world.Arrivals}  died: starved {world.DeathsByStarvation}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}");
     }
+
+    /// <summary>One line describing a Bramblekin's home for the Kin Inspector.</summary>
+    private static string DescribeHome(Bramblekin kin) => kin.Home switch
+    {
+        null => "Home: none",
+        { IsBuilt: false } site => $"Home: building a Tent ({site.TwigsDelivered}/{site.TwigsNeeded} twigs)",
+        { IsUpgrading: true } home => $"Home: Tent -> House ({home.TwigsDelivered}/{home.TwigsNeeded}), store {home.StoredFood}/{home.StoreCapacity}",
+        { } home => $"Home: {home.Tier}{(home.GroupId is null ? "" : " (group)")}, store {home.StoredFood}/{home.StoreCapacity}",
+    };
 
     /// <summary>Debug Time Scale: steps down to the previous speed in <see cref="TimeScaleSteps"/>, clamped at 1x.</summary>
     private static void DecreaseTimeScale()
@@ -438,6 +450,7 @@ public static class Game
             ($"Sociability:  {kin.Personality.Sociability:0.00}", new Color(60, 130, 70, 255)),
             ($"Intelligence: {kin.Personality.Intelligence:0.00} ({kin.DetectionRadius:0}m)", new Color(60, 100, 170, 255)),
             (group is null ? "Group: none" : $"Group {group.ShortId}: {group.Members.Count} members", ink),
+            (DescribeHome(kin), ink),
             ($"Known: {friends} friend, {enemies} enemy, {neutral} neutral", ink),
         };
 
@@ -472,6 +485,8 @@ public static class Game
         string[] lines =
         {
             $"Speed {_timeScale}x   FPS {Raylib.GetFPS()}   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
+            $"Homes: {world.Shelters.Count(s => s.IsBuilt && s.Tier == ShelterTier.Tent)} tents, {world.Shelters.Count(s => s.Tier == ShelterTier.House)} houses, " +
+            $"{world.Shelters.Count(s => !s.IsBuilt)} being built   Food stored {world.Shelters.Sum(s => s.StoredFood)}",
             $"Bramblekin {living}: {solitary} solitary, {world.Groups.Count} groups (largest {largestGroup})",
             $"Foraging {Count(BramblekinState.Foraging) + Count(BramblekinState.Hunting)}   Eating {Count(BramblekinState.Eating)}   " +
             $"Fleeing {Count(BramblekinState.Fleeing)}   Fighting {Count(BramblekinState.Fighting)}   Robbing {Count(BramblekinState.Attacking)}",

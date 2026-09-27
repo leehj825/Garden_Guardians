@@ -20,6 +20,23 @@ public enum BramblekinState
     /// <summary>A follower catching up with its group's Leader.</summary>
     Following,
 
+    // --- Settle (fed and safe) ---
+
+    /// <summary>Walking to pick up a twig for building.</summary>
+    Collecting,
+
+    /// <summary>Carrying a twig to its home's construction site.</summary>
+    Building,
+
+    /// <summary>Carrying food home to put in the store.</summary>
+    Stockpiling,
+
+    /// <summary>On its way home — to eat from the store, rest, or hide.</summary>
+    HeadingHome,
+
+    /// <summary>Inside its home: healing, and safe from the Wolf Spider and Hornets.</summary>
+    Resting,
+
     // --- Critical (hunger) ---
 
     /// <summary>Hungry with no food in sight: roaming further afield to find some.</summary>

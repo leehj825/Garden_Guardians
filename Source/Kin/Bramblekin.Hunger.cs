@@ -8,7 +8,8 @@ public sealed partial class Bramblekin
     /// <summary>
     /// Critical need: eat what it's holding; else rob the neighbour it
     /// committed to (see <see cref="BeginRobbery"/>); else forage the nearest
-    /// visible Food; else hunt a visible Grub; else — a follower borrows its
+    /// visible Food; else eat from its home's store; else hunt a visible
+    /// Grub; else — a follower borrows its
     /// Leader's sharper senses, or tags along if the Leader is searching too
     /// — else it searches further afield.
     /// </summary>
@@ -43,6 +44,14 @@ public sealed partial class Bramblekin
         if (ValidPerceivedFood(world) is { } food)
         {
             ApproachFood(food, WalkSpeed * (IsStarving ? 1.25f : 1f), deltaTime, world, eatOnArrival: true);
+            return;
+        }
+
+        // Settling pays off: with nothing loose in sight, it goes home and
+        // eats from its own (or its group's) store.
+        if (Home is { } home && CanEatFromStore(world))
+        {
+            GoHomeAndEat(home, deltaTime, world);
             return;
         }
 

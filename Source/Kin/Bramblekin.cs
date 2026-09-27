@@ -220,6 +220,16 @@ public sealed partial class Bramblekin : ICombatant
 
     private FoodShard? _carried;
     private FoodShard? _claimedFood;
+    private Twig? _carriedTwig;
+    private Twig? _claimedTwig;
+
+    /// <summary>Where it last saw a loose twig — where it looks first when it needs building material.</summary>
+    private Vector3? _twigMemory;
+
+    /// <summary>Seconds alive — a newcomer looks around for a while before it settles.</summary>
+    private float _age;
+
+    private float _restTimer;
     private Bramblekin? _robTarget;
     private Bramblekin? _companion;
     private ICombatant? _lastAttacker;
@@ -227,6 +237,7 @@ public sealed partial class Bramblekin : ICombatant
     // Perception results, refreshed every PerceptionInterval.
     private FoodShard? _perceivedFood;
     private Grub? _perceivedGrub;
+    private Twig? _perceivedTwig;
     private ICombatant? _perceivedThreat;
     private bool _threatIsAllyDefense;
 
@@ -252,6 +263,17 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>The group this Bramblekin has joined, or null while solitary.</summary>
     public Guid? GroupId { get; private set; }
 
+    /// <summary>
+    /// Where it lives: its own Tent while solitary, or its group's home. May
+    /// still be a construction site (<see cref="Shelter.IsBuilt"/> false).
+    /// </summary>
+    public Shelter? Home { get; private set; }
+
+    /// <summary>True while it's standing inside its own finished home — safe from the Wolf Spider's pounce and from Hornets.</summary>
+    public bool IsSheltered => Home is { IsBuilt: true } home && home.Contains(Position);
+
+    /// <summary>True while it's holding a twig for building.</summary>
+    public bool HasTwig => _carriedTwig is not null;
     /// <summary>Every Bramblekin it has met (by <see cref="ID"/>) and how it regards them.</summary>
     public IReadOnlyDictionary<int, RelationshipState> KnownKins => _knownKins;
 
@@ -288,6 +310,7 @@ public sealed partial class Bramblekin : ICombatant
     public SurvivalStatus Status =>
         GroupId is not null ? SurvivalStatus.Member
         : HasLeftGroup ? SurvivalStatus.Independent
+        : Home is { IsBuilt: true } ? SurvivalStatus.Homesteader
         : SurvivalStatus.Wanderer;
 
     /// <summary>Intelligence-scaled radius (m) for spotting food, threats and other Bramblekin.</summary>
@@ -399,7 +422,13 @@ public sealed partial class Bramblekin : ICombatant
             World.DropFood(_carried, Position);
             _carried = null;
         }
+        if (_carriedTwig is not null)
+        {
+            World.DropTwig(_carriedTwig, Position);
+            _carriedTwig = null;
+        }
         ReleaseFoodClaim();
+        ReleaseTwigClaim();
         _robTarget = null;
         _companion = null;
         CombatTarget = null;
@@ -419,6 +448,9 @@ public sealed partial class Bramblekin : ICombatant
 
         _mover.Idle();
         _strikeCooldown = MathF.Max(0f, _strikeCooldown - deltaTime);
+        _age += deltaTime;
+        if (Home is { IsCollapsed: true })
+            Home = null;
 
         // Metabolism: Hunger always rises; at the very top it starts costing Health.
         Hunger = MathF.Min(MaxHunger, Hunger + HungerPerSecond * deltaTime);
@@ -458,7 +490,11 @@ public sealed partial class Bramblekin : ICombatant
         if (UpdateSafety(deltaTime, world))
             return;
 
-        // 3) Social.
+        // 3) Settle: build a home, stock its store, rest up in it.
+        if (UpdateSettle(deltaTime, world))
+            return;
+
+        // 4) Social.
         UpdateSocial(deltaTime, world);
     }
 
@@ -476,6 +512,9 @@ public sealed partial class Bramblekin : ICombatant
         if (_perceivedFood is not null)
             _foodMemory = _perceivedFood.Position;
         _perceivedGrub = world.NearestLiveGrub(Position, radius);
+        _perceivedTwig = NeedsTwig ? world.NearestAvailableTwig(Position, radius, this) : null;
+        if (_perceivedTwig is not null)
+            _twigMemory = _perceivedTwig.Position;
 
         float leash = radius * ThreatLeashMultiplier;
         if (RecentAttacker(world) is { } attacker &&

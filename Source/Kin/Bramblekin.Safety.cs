@@ -53,6 +53,13 @@ public sealed partial class Bramblekin
             CombatTarget = threat;
             PursueAndStrike(threat, WalkSpeed * PursuitSpeedMultiplier, deltaTime, world);
         }
+        else if (IsSheltered)
+        {
+            // Hiding at home: the Wolf Spider can't pounce and Hornets won't
+            // follow it in here, so it simply stays put.
+            _fleeTimer = FleeMinDuration;
+            SetState(BramblekinState.Resting);
+        }
         else
         {
             SetState(BramblekinState.Fleeing);

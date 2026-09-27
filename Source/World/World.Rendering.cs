@@ -60,6 +60,20 @@ public sealed partial class World
                 prop.Draw();
         }
 
+        foreach (Shelter shelter in Shelters)
+        {
+            if (!IsVisible(shelter.Position, camera))
+                continue;
+            Color? flag = shelter.GroupId is { } groupId && _groups.TryGetValue(groupId, out KinGroup? owner) ? owner.Color : null;
+            shelter.Draw(flag);
+        }
+
+        foreach (Twig twig in Twigs)
+        {
+            if (twig.IsActive && !twig.IsCarried && IsVisible(twig.Position, camera))
+                twig.Draw();
+        }
+
         // Object Pooling: most Food slots sit inactive at any given time, so
         // every loop over the pool must skip anything with IsActive false.
         for (int i = FoodShards.Count - 1; i >= 0; i--)

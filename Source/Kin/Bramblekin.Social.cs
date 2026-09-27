@@ -13,7 +13,8 @@ public sealed partial class Bramblekin
     /// </summary>
     private void UpdateSocial(float deltaTime, World world)
     {
-        if (_carried is null && ValidPerceivedFood(world) is { } food &&
+        // Without a finished home to stock, it just pockets one spare bite.
+        if (_carried is null && Home is not { IsBuilt: true } && ValidPerceivedFood(world) is { } food &&
             GroundMover.HorizontalDistance(Position, food.Position) <= DetectionRadius * ReserveGrabRadiusFraction)
         {
             ApproachFood(food, WalkSpeed, deltaTime, world, eatOnArrival: false);
@@ -71,6 +72,14 @@ public sealed partial class Bramblekin
         if (Personality.Sociability < LonerThreshold && NearestOutsiderWithin(world, PersonalSpaceRadius) is { } crowder)
         {
             _wanderTarget = PointAwayFrom(crowder.Position, WanderRadius * 0.5f, world);
+            SetState(BramblekinState.Wandering);
+            return;
+        }
+
+        // Settled, it stays around home — and spends some of its time inside.
+        if (Home is { IsBuilt: true } home)
+        {
+            _wanderTarget = _rng.NextDouble() < 0.35 ? home.Position : RandomWanderPointAround(home.Position, HomeRange, world);
             SetState(BramblekinState.Wandering);
             return;
         }

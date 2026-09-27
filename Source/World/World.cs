@@ -261,6 +261,7 @@ public sealed partial class World
             FoodShards.Add(new FoodShard());
         for (int i = 0; i < InitialBerries; i++)
             ActivateFood(RandomBerrySpot(), FoodShardKind.Berry);
+        InitializeTwigs();
 
         // Every starting Bramblekin is solitary, with its own freshly
         // rolled Personality (see the Bramblekin constructor) — groups only
@@ -333,17 +334,18 @@ public sealed partial class World
 
     // --- Object Pooling ----------------------------------------------------------
 
-    /// <summary>Activates the first inactive slot in <see cref="FoodShards"/> at <paramref name="position"/>, or silently does nothing if the pool is exhausted.</summary>
-    private void ActivateFood(Vector3 position, FoodShardKind kind)
+    /// <summary>Activates the first inactive slot in <see cref="FoodShards"/> at <paramref name="position"/> and returns it, or returns null if the pool is exhausted.</summary>
+    private FoodShard? ActivateFood(Vector3 position, FoodShardKind kind)
     {
         foreach (FoodShard food in FoodShards)
         {
             if (!food.IsActive)
             {
                 food.Activate(position, kind);
-                return;
+                return food;
             }
         }
+        return null;
     }
 
     // --- The frame -------------------------------------------------------------------
@@ -376,7 +378,9 @@ public sealed partial class World
 
         ResolveEncounters();
 
+        UpdateShelters(deltaTime);
         UpdateBerrySpawn(deltaTime);
+        UpdateTwigSpawn(deltaTime);
         UpdateSpiderRespawn(deltaTime);
         UpdateHornetSpawn(deltaTime);
         UpdateGrubSpawn(deltaTime);
@@ -493,6 +497,8 @@ public sealed partial class World
             if (!bramblekin.IsDead)
                 _colonyGrid.Register(bramblekin, bramblekin.Position);
         }
+
+        RebuildTwigGrid();
     }
 
     // --- Queries used by the AI ------------------------------------------------------

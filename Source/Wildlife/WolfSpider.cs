@@ -327,7 +327,7 @@ public sealed class WolfSpider : ICombatant
         for (int i = world.Colony.Count - 1; i >= 0; i--)
         {
             Bramblekin bramblekin = world.Colony[i];
-            if (bramblekin.IsDead || bramblekin.State == BramblekinState.Fighting)
+            if (bramblekin.IsDead || bramblekin.State == BramblekinState.Fighting || bramblekin.IsSheltered)
                 continue;
 
             if (GroundMover.HorizontalDistance(Position, bramblekin.Position) >= BodyRadius + Bramblekin.BodyRadius)
@@ -429,7 +429,7 @@ public sealed class WolfSpider : ICombatant
             Bramblekin bramblekin = nearby[i];
             // IsVibrating is already false for a dead Bramblekin; checked
             // again explicitly so this never targets one even if that changes.
-            if (bramblekin.IsDead || !bramblekin.IsVibrating)
+            if (bramblekin.IsDead || !bramblekin.IsVibrating || bramblekin.IsSheltered)
                 continue;
 
             float distanceSquared = GroundMover.HorizontalDistanceSquared(Position, bramblekin.Position);
