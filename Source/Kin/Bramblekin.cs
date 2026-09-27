@@ -353,7 +353,22 @@ public sealed partial class Bramblekin : ICombatant
 
     public void JoinGroup(Guid groupId) => GroupId = groupId;
 
-    public void LeaveGroup() => GroupId = null;
+    public void LeaveGroup()
+    {
+        GroupId = null;
+        Job = KinJob.None;
+    }
+
+    /// <summary>
+    /// Takes orders only while this is true. Phase E ties it to loyalty; a
+    /// member always obeys until then.
+    /// </summary>
+    private bool IsObedient => true;
+
+    /// <summary>Set whenever its group's sharing rule turned it away from the store.</summary>
+    private bool _deniedFood;
+
+    public void NoteDeniedFood() => _deniedFood = true;
 
     /// <summary>Hostility: commits to attacking <paramref name="victim"/> until its food is stolen, it gets away, or this Bramblekin eats.</summary>
     public void BeginRobbery(Bramblekin victim) => _robTarget = victim;
@@ -497,11 +512,15 @@ public sealed partial class Bramblekin : ICombatant
         if (UpdateSafety(deltaTime, world))
             return;
 
-        // 3) Settle: build a home, stock its store, rest up in it.
+        // 3) Duty: the job its group's Leader gave it.
+        if (UpdateDuty(deltaTime, world))
+            return;
+
+        // 4) Settle: build a home, stock its store, rest up in it.
         if (UpdateSettle(deltaTime, world))
             return;
 
-        // 4) Social.
+        // 5) Social.
         UpdateSocial(deltaTime, world);
     }
 

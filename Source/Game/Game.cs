@@ -262,6 +262,24 @@ public static class Game
             $"Homes: {world.TentsBuilt} tents and {world.HousesBuilt} houses built, {world.SheltersCollapsed} collapsed; " +
             $"{world.StoreMeals} meals eaten from stores, {world.StoreRaids} store raids.");
         PrintSurvivalTrend(world);
+        PrintLeadership(world);
+    }
+
+    /// <summary>Headless summary: how groups under each style of Leader spent their time, and how often their Leader ate first.</summary>
+    private static void PrintLeadership(World world)
+    {
+        Console.WriteLine("Leadership (share of group-time on each goal, by Leader style):");
+        foreach (LeaderStyle style in Enum.GetValues<LeaderStyle>())
+        {
+            double hours = world.GroupHoursLedBy(style);
+            if (hours <= 0)
+            {
+                Console.WriteLine($"  {style,-9} -");
+                continue;
+            }
+            string goals = string.Join("  ", Enum.GetValues<GroupGoal>().Select(g => $"{g} {world.GoalShare(style, g),4:P0}"));
+            Console.WriteLine($"  {style,-9} {goals}   leader-first {world.LeaderFirstShare(style),4:P0}   ({hours:0.0} group-hours)");
+        }
     }
 
     /// <summary>Headless summary: deaths per kin-hour lived in each social status — the survival trend of an individual by how it lives.</summary>
@@ -455,6 +473,7 @@ public static class Game
             ($"Intelligence: {kin.Personality.Intelligence:0.00} ({kin.DetectionRadius:0}m)", new Color(60, 100, 170, 255)),
             (group is null ? "Group: none" : $"Group {group.ShortId}: {group.Members.Count} members", ink),
             (DescribeHome(kin), ink),
+            (group is null ? "Job: none" : $"Job: {kin.Job} (group goal: {group.Goal}{(group.Sharing == SharingRule.LeaderFirst ? ", leader eats first" : "")})", ink),
             ($"Known: {friends} friend, {enemies} enemy, {neutral} neutral", ink),
         };
 

@@ -42,6 +42,27 @@ public sealed class KinGroup
     /// <summary>Counts down after a failed attempt to find a site for a group home.</summary>
     public float HomeSiteRetryTimer { get; set; }
 
+    /// <summary>What the Leader has decided the group should be doing.</summary>
+    public GroupGoal Goal { get; set; } = GroupGoal.Stockpile;
+
+    /// <summary>Who may eat from the shared store — set whenever a new Leader takes over.</summary>
+    public SharingRule Sharing { get; set; } = SharingRule.Equal;
+
+    /// <summary>The Stag Beetle the Leader sent its Hunters after, if any.</summary>
+    public StagBeetle? HuntTarget { get; set; }
+
+    /// <summary>The threat near home the Leader sent its Guards against, if any.</summary>
+    public ICombatant? DefendTarget { get; set; }
+
+    /// <summary>Counts down to the Leader's next decision.</summary>
+    public float DecisionTimer { get; set; }
+
+    /// <summary>The Leader's broad character — see <see cref="LeaderStyle"/>.</summary>
+    public LeaderStyle Style => Leader is not { } leader ? LeaderStyle.Moderate
+        : leader.Personality.Aggression >= 0.6f && leader.Personality.Aggression >= leader.Personality.Intelligence ? LeaderStyle.Warlike
+        : leader.Personality.Intelligence >= 0.6f ? LeaderStyle.Planner
+        : LeaderStyle.Moderate;
+
     public KinGroup(Guid id)
     {
         Id = id;

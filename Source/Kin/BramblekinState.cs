@@ -37,6 +37,11 @@ public enum BramblekinState
     /// <summary>Inside its home: healing, and safe from the Wolf Spider and Hornets.</summary>
     Resting,
 
+    // --- Duty (a group member's job) ---
+
+    /// <summary>A Guard returning to its post by the group's home.</summary>
+    Guarding,
+
     // --- Critical (hunger) ---
 
     /// <summary>Hungry with no food in sight: roaming further afield to find some.</summary>

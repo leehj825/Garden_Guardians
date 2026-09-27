@@ -367,9 +367,6 @@ public sealed partial class World
         return best;
     }
 
-    /// <summary>Whether <paramref name="kin"/> may eat from <paramref name="home"/>'s store right now.</summary>
-    public bool MayEatFromStore(Bramblekin kin, Shelter home) => kin.Home == home;
-
     /// <summary>Bookkeeping hook for a meal taken from a store.</summary>
     public void NoteAteFromStore(Bramblekin kin, Shelter home)
     {

@@ -39,8 +39,8 @@ public sealed partial class Bramblekin
     /// <summary>True while it's the one who should be fetching twigs for its home's current construction stage.</summary>
     private bool NeedsTwig => _carriedTwig is null && Home is { NeedsTwigs: true } && BuildsForHome;
 
-    /// <summary>Whether it fetches twigs for its home: a solitary Bramblekin builds its own, and every member helps build its group's.</summary>
-    private bool BuildsForHome => true;
+    /// <summary>Whether it fetches twigs for its home: a solitary Bramblekin builds its own; in a group, that's the Builders' job (see Bramblekin.Duty) — or everyone's, while the group has no Leader's orders yet.</summary>
+    private bool BuildsForHome => GroupId is null || Job is KinJob.Builder or KinJob.None;
 
     /// <summary>
     /// Settle need (fed and safe), for a solitary Bramblekin — a group's

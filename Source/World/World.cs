@@ -358,6 +358,7 @@ public sealed partial class World
         RebuildSpatialGrids();
         RebuildGroups();
         UpdateGroupHomes(deltaTime);
+        UpdateGroupDecisions(deltaTime);
         CountShelterOccupants();
 
         // Wildlife moves before the colony reacts to it this frame. Reverse
