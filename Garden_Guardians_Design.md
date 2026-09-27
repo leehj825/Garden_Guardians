@@ -1,35 +1,44 @@
 # Garden_Guardians_Design.md
 
-*Last updated: 2026-09-27 — rewritten for the **Emergent Survival** pivot.
-The game is no longer a macro-RTS faction simulator: there are no Village
-Hearts, no buildings, no shared economy and no faction wars. Every
-Bramblekin is now an individual agent with its own Personality and needs,
-and any groups that exist are formed by the Bramblekin themselves. The
-macro-RTS design that preceded this is kept below, clearly marked, as a
-historical record; the original "player-as-god" pitch that preceded
-*that* is kept at the very bottom.*
+*Last updated: 2026-09-27 — the **Emergent Survival** pivot, now with
+**settling and society**. The game is no longer a macro-RTS faction
+simulator: there are no factions, no top-down economy and no faction wars.
+Every Bramblekin is an individual agent with its own Personality and needs.
+Individuals survive alone, settle into homes they build, and band together
+because groups survive better; groups are run by a Leader whose decisions
+followers can obey, resent, or rebel against. The macro-RTS design that
+preceded this is kept below, clearly marked, as a historical record; the
+original "player-as-god" pitch that preceded *that* is kept at the very
+bottom.*
 
 ## Core Concept
 **Genre:** Emergent Individual-Agent Survival Simulation / Spectator Game
 **The Hook:** A 100m×100m procedurally hilly backyard is home to a
 population of Bramblekin — tiny creatures who each have to find their own
 food, survive the local wildlife, and decide for themselves whom to trust.
-Nobody assigns them jobs or teams. Some stay loners; some band together
-under the sharpest mind among them; a starving, aggressive one may turn on
-a neighbour for the berry in its hands. The player is a spectator with a
-camera, and can tap any single Bramblekin to see what makes it tick.
+Nobody assigns them teams. A newcomer forages alone, then builds a tent
+from fallen twigs and stocks it with food. Some stay homesteaders; others
+band together, move into one home, upgrade it into a house and hunt big
+game as a pack, under a Leader who decides what the group does and who
+eats first. Followers who don't like how they're led can walk out,
+split off, or challenge the Leader for the job — at the cost of losing the
+group's protection. The player is a spectator with a camera, and can tap
+any single Bramblekin to see what makes it tick.
 
 ## The Core Loop (as implemented)
-Hunger rises → each Bramblekin forages loose Food (wild Berries, or meat
-from a hunted Grub or a slain Wolf Spider) within its own
-Intelligence-scaled senses → threats (the Wolf Spider, Hornet swarms,
-hostile Bramblekin) are fought or fled on a per-individual Aggression roll
-→ fed and safe, Bramblekin wander, pocket a spare bite, and meet each
-other → every meeting is resolved from both sides' situation and traits:
-a friendship, a new or bigger group, a shared meal, or a robbery and a
-lifelong enmity → groups follow their most Intelligent member and defend
-each other → new solitary wanderers keep drifting in from the map's edge
-to replace the dead.
+Hunger rises → each Bramblekin forages loose Food within its own
+Intelligence-scaled senses, or eats from its home's store → threats (the
+Wolf Spider, Hornets, raiders, hostile Bramblekin) are fought or fled on a
+per-individual Aggression roll — or hidden from at home → fed and safe, a
+group member does the job its Leader gave it, and anyone else builds,
+stocks and rests in its home → the rest of the time Bramblekin wander and
+meet each other → every meeting is resolved from both sides' situation
+and traits: a friendship, a new or bigger group, a shared meal, a
+struggling loner taken in, or a robbery and a lifelong enmity → Leaders
+decide group goals every few seconds; followers' loyalty rises and falls
+with how they're treated, and the disloyal leave, split off or stage a
+coup → new solitary wanderers keep drifting in from the map's edge to
+replace the dead.
 
 ## The Spectator Camera
 The player's entire "input" is camera control — a smooth, Google-Maps-style
@@ -69,95 +78,157 @@ overhead camera:
     live state in the top-right Kin Inspector — State, Health, Hunger,
     its three Personality traits (and the detection radius its
     Intelligence buys it), its group and role (Solitary/Leader/Follower),
-    and how many Friends, Enemies and Neutral acquaintances it has. The
-    selected Bramblekin is ringed on the map, with its detection radius
-    traced over the hills. Tapping empty ground clears the selection.
-*   Everything else — eating, fighting, fleeing, befriending, robbing,
-    grouping, leading and following — is the Bramblekin's own business.
-*   There is no Genesis/extinction screen any more: Wandering Arrivals
-    (below) mean the population always recovers on its own.
+    its home (tent or house, construction progress, store), its job and
+    its group's current goal (and whether the Leader eats first), its
+    Loyalty (followers) and Reputation, and how many Friends, Enemies and
+    Neutral acquaintances it has. The selected Bramblekin is ringed on
+    the map, with its detection radius traced over the hills. Tapping
+    empty ground clears the selection.
+*   Everything else — eating, fighting, fleeing, building, befriending,
+    robbing, raiding, grouping, leading, obeying and rebelling — is the
+    Bramblekin's own business.
+*   The HUD shows homes (tents, houses, sites, food stored), what the
+    colony is doing, deaths by cause, and the politics so far (walk-outs,
+    splits, coups, exiles, raids). The event console on the left narrates
+    alliances, settlements, hunts, leader decisions, rebellions and deaths.
 
-## Performance Architecture
+## Code Layout & Performance
+*   **Layout:** `Program.cs` is only the entry point. Everything else is
+    under `Source/`, one type per file: `Engine/` (camera, terrain, tap
+    input, spatial grid, movement), `World/` (the `World` partial class
+    split by concern — core, society, group homes, leadership, rebellion,
+    shelters, hunting, interactions, spawning, stats, rendering — plus
+    Food, Twigs, Shelters and Garden Props), `Kin/` (the `Bramblekin`
+    partial class with one file per need — Hunger, Safety, Duty, Settle,
+    Social — plus Hunting, Loyalty, Actions and Drawing, and the
+    Personality, relationship, group and society types), `Wildlife/` and
+    `Game/`.
 *   **Squared-distance math everywhere:** targeting/aggro/encounter checks
-    compare squared distances against a squared threshold instead of
-    calling `Vector3.Distance`/`MathF.Sqrt`.
+    compare squared distances against a squared threshold.
 *   **Staggered perception:** each Bramblekin rescans its surroundings
-    (nearest Food, nearest Grub, most pressing threat) every 0.25s on its
-    own randomly offset timer, so the colony never all scans on the same
-    frame; movement and combat still run every frame off the cached
-    results.
-*   **A spatial grid** (`SpatialGrid<T>`) buckets loose Food and the
-    Colony into 10m×10m chunks, rebuilt once a frame. `QueryRadius` walks
-    exactly the chunks an Intelligence-scaled detection radius (5–20m)
-    overlaps; encounter detection only looks at a Bramblekin's own chunk
-    and its 8 neighbors.
-*   **Object pooling:** Food is a pre-allocated fixed-size pool at startup
-    (`IsActive` flag, `Activate`/`Deactivate`).
-*   **Deferred spawns/removals:** arrivals, deaths, new Hornets/Grubs and
-    dropped Food are queued and applied once per frame
-    (`World.CommitPendingChanges`), so no entity list changes size while
-    something is iterating it.
-*   **Raylib culling:** entities, status bars and pop-ups that project
-    entirely outside the camera's view (or beyond `World.RenderRadius`)
-    skip their draw call.
+    (nearest Food, Twig, Grub, Stag Beetle, most pressing threat) every
+    0.25s on its own randomly offset timer; movement and combat run every
+    frame off the cached results. Leaders decide every 5s.
+*   **A spatial grid** (`SpatialGrid<T>`) buckets loose Food, Twigs and
+    the Colony into 10m×10m chunks, rebuilt once a frame; `QueryRadius`
+    walks exactly the chunks a detection radius overlaps.
+*   **Object pooling:** Food and Twigs are pre-allocated fixed-size pools.
+*   **Deferred spawns/removals** are applied once per frame
+    (`World.CommitPendingChanges`); rebellions are queued during the
+    Leaders' decision pass and applied after it.
+*   **Raylib culling** skips anything off-screen or beyond
+    `World.RenderRadius`.
 *   **Headless mode:** `dotnet run -f net8.0 -p:DesktopOnly=true --
-    --headless 600 --seed 1` steps the simulation with no window at all
-    (roughly 150× real time) and prints a population report every 30
-    simulated seconds plus every notable event — for tuning and for
-    checking the survival loop on a machine without a GPU.
+    --headless 600 --seed 1` steps the simulation with no window (roughly
+    150× real time) and prints a population report every 30 simulated
+    seconds, every notable event, and a summary with the **survival
+    trend** (deaths and meat hunted per kin-hour lived as a Wanderer,
+    Homesteader, Member or Independent), how differently each style of
+    Leader runs its group, and the tally of rebellions. Measuring per
+    kin-hour, rather than by average lifespan, keeps the comparison fair
+    however late each Bramblekin arrived.
 
 ## Individuals: Personality & the Needs Hierarchy
 *   **Personality (DNA):** every Bramblekin rolls three traits, each
     uniformly random in 0..1, the moment it's spawned, fixed for life:
     *   **Aggression** — the odds of fighting rather than fleeing a
-        threat, the odds of turning on a neighbour when starving, and how
-        hard it hits (5–11 damage per strike). Its body is tinted
-        redder the more Aggressive it is.
-    *   **Sociability** — the urge to go and meet strangers (vs. walking
-        away from anyone who crowds it, below 0.35), the odds a meeting
-        ends in friendship, and whether two meeting Bramblekin band
-        together (both ≥ 0.6).
-    *   **Intelligence** — detection radius for Food, Grubs, threats and
-        other Bramblekin, from 5m (0) to 20m (1). The most Intelligent
-        member of a group leads it.
+        threat, of turning on a neighbour or raiding a store when
+        starving, of challenging a Leader; how hard it hits (5–11 per
+        strike); and, as a Leader, how much it prizes hunting and whether
+        it eats first. Its body is tinted redder the more Aggressive it is.
+    *   **Sociability** — the urge to meet strangers (vs. walking away
+        from anyone who crowds it, below 0.35), the odds a meeting ends
+        in friendship, whether two meeting Bramblekin band together (both
+        ≥ 0.6), how readily a struggling loner asks to join a group, how
+        loyal it naturally is, and — as a Leader — whether it shares the
+        store fairly and takes in newcomers.
+    *   **Intelligence** — detection radius from 5m to 20m, how soon a
+        newcomer settles (10–50s), and its claim to lead.
 *   **Hunger:** rises 1 point per second from 0 to 100. At 60 a
-    Bramblekin is *hungry*; at 80 it's *starving*; at 100 it loses 1 HP
-    a second until it eats or dies. One piece of Food removes 40 Hunger
-    and restores 6 HP (the only way to heal). New Bramblekin start with
-    0–40 Hunger.
+    Bramblekin is *hungry*; at 80 *starving*; at 100 it loses 1 HP a
+    second until it eats or dies. One piece of Food removes 40 Hunger and
+    restores 6 HP. Resting at home heals too (1 HP per 1.5s; faster in a
+    House).
 *   **The strict needs hierarchy** — every frame, each Bramblekin serves
-    exactly one need:
-    1.  **Critical (Hunger):** once hungry, nothing else matters. It eats
-        what it's carrying; else keeps robbing the neighbour it committed
-        to; else walks to the nearest loose Food it can see; else hunts a
-        visible Grub; else (starving and Aggression ≥ 0.55) stalks the
-        nearest outsider carrying food; else a follower goes for Food its
-        Leader can see, or tags along if the Leader is searching too;
-        else it searches — first back where it last saw Food (Berries
-        keep growing in the same patches), then ever further afield. A
-        hungry Bramblekin *will* brave a Hornet swarm for a berry.
+    exactly one need, in this order:
+    0.  **A leadership duel,** once started, is settled first.
+    1.  **Critical (Hunger):** eat what it's carrying; else keep robbing
+        the neighbour it committed to; else, with a predator about, go
+        home to eat from the store; else walk to the nearest loose Food it
+        can see; else eat from its home's store (if the group's sharing
+        rule allows); else scavenge an abandoned store; else hunt a
+        visible Grub, or a Stag Beetle with its pack; else (starving and
+        Aggression ≥ 0.55) raid someone's store, or stalk the nearest
+        outsider carrying food; else a follower goes for Food its Leader
+        can see, or tags along if the Leader is searching too; else it
+        searches — first back where it last saw Food, then further afield.
+        A hungry Bramblekin *will* brave a Hornet swarm for a berry.
     2.  **Safety:** the most pressing threat inside its detection radius
         — whoever just hit it, else the nearest Wolf Spider, Hornet,
-        Bramblekin attacking it, or foe attacking/fighting one of its
-        groupmates — gets one fight-or-flight roll: its Aggression, +0.15
-        per groupmate within 6m, +0.5 if defending a groupmate, −0.25
-        against the Wolf Spider. Fighters close in and strike on a 1s
-        cooldown, and flee instead once below 30% Health; fleers run
-        straight away (turning along the map's edge) and keep running
-        2.5s after losing sight of it.
-    3.  **Social (fed and safe):** it pockets a spare piece of visible
-        Food as a reserve (carrying at most one — which is exactly what a
-        starving neighbour may try to steal); a follower stays within 3m
-        of its Leader; anyone else rests and then — with odds of
-        Sociability × 0.8 — goes to meet the nearest stranger it can see,
-        or (as a loner) walks away from whoever is crowding it, or just
-        wanders.
+        Bramblekin attacking it, raider heading for its home, or foe
+        attacking/fighting a groupmate — gets one fight-or-flight roll:
+        Aggression, +0.15 per groupmate within 6m, +0.3 if defending a
+        groupmate or its home, −0.25 against the Wolf Spider; an idle
+        Hornet at its nest is always avoided, never fought. Fighters flee
+        once at or below 40% Health. Fleers run home if it's close,
+        otherwise straight away; inside a home they simply hide.
+    3.  **Duty:** a group member loyal enough to take orders does the job
+        its Leader gave it (see Leadership below).
+    4.  **Settle:** a loner with no home, once it has looked around a
+        while, moves into an abandoned shelter it can see or marks out a
+        site near where it last found food and builds a Tent. With a home
+        (its own, or its group's), it rests there when hurt, carries food
+        into the store, fetches food lying within 20m of home, and hunts
+        Grubs near home while the store is low.
+    5.  **Social:** a homeless loner pockets one spare bite; a group
+        member helps any Stag Beetle hunt its pack starts; a member of a
+        homeless group stays within 3m of its Leader; anyone settled
+        wanders around home (and spends some time inside); anyone else
+        rests and then — with odds of Sociability × 0.8 — goes to meet a
+        stranger, or (as a loner) walks away from whoever is crowding it,
+        or just wanders.
+
+## Settling: Shelters & Stores
+*   **Twigs** fall around the big Twig props (up to 50 loose, pooled);
+    they never rot. A builder carries one at a time to its site.
+*   **Tent:** 3 twigs. Room for 2, a store of 4 Food that never rots.
+*   **House:** a group's upgrade of its Tent, once the group outgrows it
+    (more than 2 members) — 6 more twigs. Room for 6, a store of 12, and
+    healing half again as fast. Drawn as walls under a roof, flying its
+    group's colour.
+*   A built home hides whoever is inside it from the Wolf Spider's pounce
+    and from Hornets — unless more residents are crammed inside than it
+    has room for, in which case it protects nobody.
+*   **Ownership:** a home belongs to one Bramblekin or to a group. Nobody
+    else may eat from it except by raiding. A home whose owner died (or
+    whose group dissolved) is **abandoned**: anyone hungry may scavenge its
+    store, a homeless Bramblekin may move in, and after 90s it collapses,
+    spilling its store as loose Food.
+*   **Group homes:** a group adopts the best home any member already has
+    (a House over a Tent, finished over a site, then the fuller store);
+    failing that, its Leader marks out a site. Every member moves in,
+    carrying its old store over; old personal tents are abandoned. The
+    last survivor of a group keeps its home.
+
+## Hunting & Defending
+*   **Stag Beetles** (60 HP, at most 2 on the map) graze peacefully until
+    attacked, then turn on their attackers and bite for 7. A lone
+    Bramblekin usually has to break off before it wins; a pack brings one
+    down for **8 pieces of meat**. A Bramblekin attacks one only when a
+    groupmate is on it or within 8m — or alone when hungry and at least
+    0.75 Aggressive — or when its Leader sends it as a Hunter.
+*   **Grubs** are small prey for anyone: a hungry Bramblekin that can't
+    see Food hunts one; a settler with a low store hunts those near home.
+*   **Defending home:** residents who see a raider heading for their home
+    treat it as a threat they're keen to fight; a Leader rallies its group
+    to Defend against anything that comes within 10m of home.
+*   **Raids:** a starving, highly Aggressive Bramblekin raids someone
+    else's store, making Enemies of everyone who lives there.
 
 ## Encounters, Relationships & Groups
 *   **Relationships:** each Bramblekin keeps `KnownKins` — every other
     Bramblekin it has met, by ID, as **Friend**, **Neutral** or
-    **Enemy**. Enemy is permanent: no later encounter can undo it. Dead
-    Bramblekin are forgotten.
+    **Enemy**. Enemy is permanent. Dead Bramblekin are forgotten.
 *   **The Encounter:** whenever two living Bramblekin come within 1.2m of
     each other (at most once per pair every 12s), the World resolves it,
     in priority order:
@@ -166,53 +237,126 @@ overhead camera:
     2.  **Hostility:** a Bramblekin that's starving, empty-handed, can't
         see any loose Food, and has Aggression ≥ 0.55 rolls its
         Aggression (halved against a Friend) to attack the other — which
-        must be carrying food. Both become Enemies for good; the attacker
-        pursues and its first landed blow steals the food. The victim
-        rolls fight-or-flight against it like any other threat, and its
-        groupmates come to its defence.
+        must be carrying food. Both become Enemies for good; the attacker's
+        first landed blow steals the food.
     3.  **Enemies** simply pass each other by.
     4.  **Friends** may share food (odds: the giver's Sociability).
     5.  **Alliance:** if both are threatened by a predator right now, or
         both have Sociability ≥ 0.6, they band together under one
-        `GroupId` — a new group, or the one either already belongs to, or
-        (both grouped) the larger of the two absorbs the smaller. Refused
-        if the group would exceed 6 members, or would contain a known
-        Enemy.
-    6.  Otherwise they become **acquainted**: Friends with odds of the
+        `GroupId` — a new group, the one either already belongs to, or
+        (both grouped) the larger absorbs the smaller. Refused past 6
+        members, with a known Enemy inside, or into a group either once
+        left.
+    6.  **Joining for survival:** failing that, a *struggling* loner
+        (hungry, hurt or homeless) meeting a member of a group with a
+        finished home may ask to join (odds 0.3 + 0.5 × its Sociability),
+        and is taken in if there's room and — once the group has 3 or
+        more — its Leader is welcoming enough (odds 0.3 + 0.7 × the
+        Leader's Sociability).
+    7.  Otherwise they become **acquainted**: Friends with odds of the
         product of their Sociability, Neutral otherwise.
-*   **Group Dynamics:** a group's **Leader** is always its most
-    Intelligent living member — re-elected every frame, so losing a
-    Leader simply promotes the next-sharpest. Followers override their
-    own wandering to stay near the Leader (a faint tether in the group's
-    colour shows who follows whom; the Leader carries a banner), lend
-    each other courage in a fight, and treat anything attacking or
-    fighting a groupmate as their own threat. A group whittled down to
-    one survivor dissolves, and that survivor is solitary again.
+*   **Group Dynamics:** followers of a homeless group stay near their
+    Leader; a settled group lives around its home. Members lend each
+    other courage in a fight, treat anything attacking or fighting a
+    groupmate as their own threat, borrow their Leader's sharper senses
+    when hungry, and — the Wolf Spider leaves anyone with 2 or more others
+    within 2.5m alone — are safer in company. A group whittled down to one
+    survivor dissolves.
+
+## Leadership & Society
+*   **The Leader** is elected when a group forms (or its Leader is gone):
+    the member with the highest **leadership score**, Intelligence +
+    0.15 × **Reputation**. Reputation (up to 3) is earned by felling a
+    Stag Beetle or the Wolf Spider (+1), finishing a home (+0.5) and
+    winning a leadership duel (+1). A sitting Leader stays until it dies,
+    leaves, or loses a challenge.
+*   **Decisions:** every 5s (at once if a threat turns up near home) the
+    Leader scores four **goals** from the group's situation, weighted by
+    its own personality, and picks the best:
+    *   **Defend** — a threat within 10m of home: 5 + 2 × Aggression.
+    *   **Settle** — the home is a site or being upgraded: 1.5 + 2 ×
+        Intelligence.
+    *   **Hunt** — a Stag Beetle within 20–40m of home (further for a
+        bolder Leader) and at least 2 members: 0.8 + 2 × Aggression +
+        how empty the store is.
+    *   **Stockpile** — 1 + 2 × how empty the store is + 0.5 × (1 −
+        Aggression).
+*   **Jobs:** the Leader hands out jobs to match — Guards from the
+    Aggressive and healthy (Defend), Builders from the most Intelligent
+    half (Settle), Hunters from the most Aggressive half (Hunt), and
+    Gatherers otherwise (with one Guard kept home in a group of 4+).
+    Members carry them out in the Duty need: Guards attack the threat or
+    keep within 3m of home; Hunters chase the chosen beetle (or a Grub);
+    Builders fetch twigs; Gatherers bring food within 25m of home into the
+    store. Hunters and Guards stand down to rest at half Health.
+*   **The sharing rule:** an unsociable (< 0.4), Aggressive (≥ 0.5)
+    Leader **eats first** — everyone else may only take from the store once
+    starving. Otherwise the store is shared equally.
+*   **Leader styles:** Warlike (Aggression ≥ 0.6), Planner (Intelligence
+    ≥ 0.6) or Moderate. In headless runs, Warlike-led groups spend roughly
+    a quarter of their time hunting and often eat leader-first; Planners
+    and Moderates mostly stockpile and build, and nearly always share.
+
+## Loyalty & Rebellion
+*   **Loyalty** (0..1, followers only) is re-weighed at every Leader
+    decision. Left alone it settles back toward a natural level (0.45 +
+    0.3 × Sociability). It rises with meals from the store, a home with
+    food in it, having been defended by a groupmate and friendship with
+    the Leader; it falls with hunger (more when starving), being turned
+    away from the store, a Leader who eats first, dangerous orders
+    (Hunter on a hunt, Guard on a defence — felt less by the Aggressive)
+    and injury. Members of a badly run group share most of those
+    grievances, so they tend to sour together.
+*   **Obedience:** below 0.3 a follower ignores its job and fends for
+    itself.
+*   **Rebellion:** below 0.2, at each decision a follower rebels with odds
+    of 0.35, according to its personality:
+    *   **Challenge** — Aggression ≥ 0.6, healthy, and at least 85% as
+        strong as the Leader (leadership score + half its Aggression +
+        a little for its current health): a **duel** fought until one
+        yields at half Health. It's a contest, not a feud — no enmity, and
+        groupmates stay out of it. A winning challenger becomes Leader; a
+        Leader who wins exiles the challenger if at all Aggressive (≥ 0.4),
+        otherwise keeps it on, humbled.
+    *   **Splinter** — Sociability ≥ 0.4, with at least one other follower
+        below 0.4 loyalty: the unhappy members leave together as a new,
+        homeless group with a Leader of their own.
+    *   **Leave** — otherwise: it walks out and goes it alone as an
+        **Independent**, losing the group's home, store and defenders.
+*   **Exile:** an Aggressive Leader (≥ 0.5) throws out a follower below
+    0.15 loyalty (odds 0.25 per decision); the two become Enemies.
+*   Nobody ever rejoins a group it left. An Independent can be taken in
+    by another group, or build a home of its own.
+*   **The survival trend** (headless, 8 seeds × 30 min): deaths per
+    kin-hour are roughly 2.2 for Wanderers, 1.1 for Homesteaders, 1.2 for
+    group Members and 1.9 for Independents; Members hunt 20–27 pieces of
+    meat per kin-hour against 2–7 for anyone alone. Settling roughly
+    halves the death rate; grouping matches that and feeds far better;
+    walking out of a group costs most of that back.
 
 ## Food & Wildlife
 *   **Food:** wild Berries grow passively (one every 0.6s, up to 100 on
-    the map), about two-thirds of them in eight fixed Berry Patches
-    around Dandelions — which is where Bramblekin keep running into each
-    other. Hunted Grubs and a slain Wolf Spider drop meat (same value).
-    Loose Food rots after 60s; a Bramblekin walking to a piece claims it
-    (Dibs) so others look elsewhere.
+    the map), about two-thirds in eight Berry Patches around Dandelions.
+    Hunted Grubs, Stag Beetles and a slain Wolf Spider drop meat (same
+    value). Loose Food rots after 60s; stored Food never does. A
+    Bramblekin walking to a piece claims it (Dibs) so others look
+    elsewhere.
 *   **The Wolf Spider** (50 HP): hunts by vibration — any Bramblekin
-    busy foraging, eating, hunting or robbing within 7m — and pounces;
-    whatever it touches mid-pounce dies, except a Bramblekin that is
-    Fighting it, which it Bites (10 damage) instead. After a kill it
-    feeds for 20s. Brought down (usually by a group), it leaves 6 pieces
-    of meat and a new spider moves in 60s later.
+    busy foraging, eating, hunting, robbing or raiding within 7m, unless
+    it's inside a home or has company (2+ others within 2.5m) — and
+    pounces; whatever it touches mid-pounce dies, except a Bramblekin
+    that is Fighting it, which it Bites (10 damage) instead. After a kill
+    it feeds for 20s. Brought down, it leaves 6 pieces of meat and a new
+    spider moves in 60s later.
 *   **Hornet swarms** (4 HP each, up to 12 on the map): nest in clusters
-    of 3–5 around a random Garden Prop — sometimes right on a Berry Patch
-    — chase anything within 3m and sting for 3 damage a second. A single
-    strike swats one.
-*   **Grubs** (12 HP, up to 4): burrow in from the edge, sniff out and eat
-    loose Food (ignoring anyone's claim) and grow fatter with every bite,
-    skitter away from nearby Bramblekin, and drop 1–4 pieces of meat when
-    hunted down — the fallback meal for a hungry Bramblekin that can't
-    see any Food.
-*   **Garden Props:** Pebbles (solid — walkers steer around them), Twigs
-    and Dandelions, scattered across the lawn.
+    of 3–5 around a random Garden Prop, chase anything within 3m that
+    isn't inside a home, and sting for 3 damage a second.
+*   **Grubs** (12 HP, up to 4): burrow in from the edge, eat loose Food
+    (ignoring claims), skitter away from nearby Bramblekin, and drop 1–4
+    pieces of meat when hunted down.
+*   **Stag Beetles** (60 HP, up to 2): see Hunting & Defending.
+*   **Garden Props:** Pebbles (solid), Twigs (where fallen twigs gather)
+    and Dandelions (where berries grow).
 *   **Wandering Arrivals:** every 15s, while fewer than 40 Bramblekin are
     alive, a new solitary one with a freshly rolled Personality wanders
     in from a random edge of the map.

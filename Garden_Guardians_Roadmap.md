@@ -5,18 +5,22 @@
 *Last updated: 2026-09-27*
 
 ## Progress Snapshot
-The game has pivoted from a macro-RTS faction simulator to an
-**Emergent Survival** simulation (Phase 7). There are no Village Hearts,
-buildings, jobs, factions, wars or shared economy any more — the map is
-just the procedural terrain and loose entities: wild Food, a Wolf Spider,
-Hornet swarms, Grubs, Garden Props, and the Bramblekin. Every Bramblekin
-is an individual agent with a random Personality (Aggression,
-Sociability, Intelligence) serving a strict Hunger → Safety → Social
-hierarchy of needs; friendships, enmities and groups (led by their most
-Intelligent member) emerge from their encounters. All game code still
-lives in `Program.cs`. The player is a spectator with a Google-Maps-style
-camera whose only action is tapping a Bramblekin to inspect it. See
-`Garden_Guardians_Design.md` for the full current design.
+The game is an **Emergent Survival** simulation (Phase 7) that has grown
+a **society** (Phase 8). There are no factions or top-down economy: the
+map is the procedural terrain and loose entities — wild Food, Twigs, a
+Wolf Spider, Hornet swarms, Grubs, Stag Beetles, Garden Props — and the
+Bramblekin. Every Bramblekin is an individual agent with a random
+Personality (Aggression, Sociability, Intelligence) serving a strict
+Hunger → Safety → Duty → Settle → Social hierarchy of needs. Loners build
+tents and stock them; groups form from encounters, share a home they
+upgrade into a house, hunt big game as a pack, and are run by a Leader
+who picks the group's goal, hands out jobs and decides who eats first.
+Followers' loyalty rises and falls with how they're treated; the disloyal
+walk out, split off, or challenge the Leader, and Leaders exile
+troublemakers. Code lives under `Source/` (one type per file; see the
+Design doc's Code Layout). The player is a spectator with a
+Google-Maps-style camera whose only action is tapping a Bramblekin to
+inspect it. See `Garden_Guardians_Design.md` for the full current design.
 
 ## Phase 0: Engine & Tooling
 *   ✅ **Engine:** Raylib via Raylib-cs on a .NET 8 project, 1 unit = 1
@@ -259,7 +263,7 @@ frame" approach to AI targeting a real bottleneck at high time-scales.
     every other building), the Job Managers, Crusades, Invasions, Vassal
     Tributes, Diplomacy/Goodwill, Amber, Acorns, Aphids, the Rival Ant
     Colony and the Elder Spider. `Program.cs` went from ~14,300 lines to
-    ~5,600.
+    ~5,600 (and was later split into `Source/` — see Phase 8).
 *   ✅ **Personality (DNA):** Aggression, Sociability and Intelligence,
     each rolled uniformly 0..1 whenever a Bramblekin is spawned.
     Intelligence scales detection radius from 5m to 20m.
@@ -273,8 +277,9 @@ frame" approach to AI targeting a real bottleneck at high time-scales.
     Enemy). Encounters resolve into robbery (starving + Aggressive),
     alliance (both threatened by a predator, or both Sociable), food
     sharing or plain acquaintance. Groups cap at 6, are led by their most
-    Intelligent member, follow their Leader, borrow its senses when
-    hungry, and defend each other from predators and hostile Bramblekin.
+    Intelligent member (Phase 8 replaced this with a leadership score and
+    challenges), follow their Leader, borrow its senses when hungry, and
+    defend each other from predators and hostile Bramblekin.
 *   ✅ **Wildlife reworked for individuals:** the Wolf Spider hunts any
     Bramblekin busy with food and drops meat when a group brings it
     down; Grubs now compete for loose Food and are fallback prey;
@@ -290,23 +295,71 @@ frame" approach to AI targeting a real bottleneck at high time-scales.
     simulation with no window and prints population reports, for tuning
     and smoke-testing.
 
+## Phase 8: Settling & Society
+Each step was checked against the headless **survival trend** — deaths
+and meat hunted per kin-hour lived as a Wanderer, Homesteader, group
+Member or Independent, aggregated over 8 seeds × 30 simulated minutes.
+*   ✅ **Code split:** `Program.cs` now holds only the entry point;
+    everything else moved under `Source/`, one type per file, with
+    `World` and `Bramblekin` as partial classes split by concern (one
+    Bramblekin file per need). Verified byte-identical headless output
+    before and after.
+*   ✅ **Survival trend metric** in the headless summary.
+*   ✅ **A — Settling:** Twigs (pooled, never rot) fall around the big
+    Twig props. After looking around (10–50s, sooner for sharper minds)
+    a loner moves into an abandoned shelter or builds a Tent (3 twigs):
+    a store of 4 that never rots, healing while resting inside, and
+    shelter from the Wolf Spider's pounce and Hornets. Abandoned shelters
+    can be scavenged or moved into, and collapse after 90s. *Result:
+    homesteaders died at roughly half the rate of wanderers.*
+*   ✅ **B — Hunting & defending:** Stag Beetles (60 HP, bite back,
+    8 meat) are pack work; settlers hunt Grubs near home while the store
+    is low; starving, aggressive kin raid other stores, and residents
+    defend them; a hungry kin with a predator about eats at home. *Result:
+    members hunted ~25 meat per kin-hour vs 5–9 for loners.*
+*   ✅ **C — Group homes:** a group adopts the best member home (or its
+    Leader marks out a site), everyone moves in with their stores, and a
+    group of 3+ upgrades its Tent into a House (room for 6, store of 12,
+    faster healing); an overcrowded shelter protects nobody; a struggling
+    loner may ask to join a settled group. Fixes found on the way: a
+    fighter's nerve now breaks at 40% (at 30% a spider bite always killed
+    first), the spider leaves company alone, and idle Hornet nests are
+    avoided rather than fought. *Result: members outlived loners overall.*
+*   ✅ **D — Leadership:** every 5s the Leader scores Defend / Settle /
+    Hunt / Stockpile from the situation and its own personality, assigns
+    Guard / Builder / Hunter / Gatherer jobs by fit (carried out in the new
+    Duty need), and sets the sharing rule — unsociable, aggressive Leaders
+    eat first. *Result: Warlike-led groups hunted ~24% of the time and ate
+    leader-first ~37% of the time, vs ~0–4% and ~10% for other Leaders.*
+*   ✅ **E — Loyalty & rebellion:** persistent Leaders elected by
+    Intelligence + Reputation; per-follower loyalty that settles toward a
+    Sociability-based baseline and moves with meals, hunger, denial,
+    greed, danger and friendship; disobedience below 0.3; below 0.2 a
+    follower challenges the Leader to a duel, splinters off with the other
+    unhappy members, or walks out as an Independent; aggressive Leaders
+    exile the disloyal. Nobody rejoins a group it left. *Result:
+    independents died at ~1.9 per kin-hour vs ~1.2 for members; some were
+    taken in elsewhere or survived alone with a home.*
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:
 *   ⬜ **Reproduction / lineage.** New Bramblekin only arrive from the
     map's edge with random Personalities; nothing is inherited, so
     there's no selection pressure on traits yet.
-*   ⬜ **Richer group behaviour.** Groups follow and defend their Leader,
-    but don't yet coordinate foraging, split up, exile members, or feud
-    as a unit; Enemy relationships are strictly individual.
-*   ⬜ **Memory beyond the last Food sighting.** No remembered danger
+*   ⬜ **Groups as actors.** Groups now have homes, goals, jobs and
+    politics, but they don't raid, trade with or ally with *other groups*;
+    enmity is still strictly between individuals.
+*   ⬜ **Memory beyond the last Food/Twig sighting.** No remembered danger
     zones (a Bramblekin will happily wander back toward the Hornet nest
     it just fled) and no reputation shared between groupmates.
+*   ⬜ **Group vs. homestead balance.** Settling alone and living in a group
+    now have similar death rates; groups win on food and lose some of that
+    edge to risky hunts and defence. Worth tuning if groups should be the
+    clearly safer choice.
 *   ⬜ **Real pathfinding.** Bramblekin still steer around obstacles with
     a short sideways detour when stuck, rather than any actual NavMesh/
     grid pathfinding. Fine at current Pebble density.
-*   ⬜ **Tuning.** Hunger rate, Food supply, predator counts and the
-    trait thresholds were tuned against headless runs for a population
-    that hovers near the cap with a steady trickle of starvation,
-    predation and the occasional robbery; they're all constants at the
-    top of `World`/`Bramblekin` and worth revisiting as behaviours grow.
+*   ⬜ **Tuning.** Every rate and threshold is a constant at the top of its
+    class (`World`, `Bramblekin`, `Shelter`, the wildlife); the headless
+    survival trend is the tool for revisiting them.

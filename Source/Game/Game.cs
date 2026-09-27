@@ -204,8 +204,8 @@ public static class Game
             DrawSpeedLabel(speedLabelBounds, uiScale);
             speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
             DrawKinPanel(world);
-            DrawHud(world);
-            DrawDebugConsole();
+            int hudTop = DrawHud(world);
+            DrawDebugConsole(top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
 
             Raylib.EndDrawing();
 
@@ -511,7 +511,8 @@ public static class Game
         baseColor.A);
 
     /// <summary>Sim status, who's alive and in which groups, what they're doing right now, and the running tallies, in a bar along the bottom of the screen.</summary>
-    private static void DrawHud(World world)
+    /// <returns>The screen Y of the bar's top edge, so other panels can stay clear of it.</returns>
+    private static int DrawHud(World world)
     {
         int Count(BramblekinState state) => world.Colony.Count(b => !b.IsDead && b.State == state);
 
@@ -535,13 +536,14 @@ public static class Game
 
         // UI Text Scaling: a background bar goes underneath, sized off
         // fontSize/lineHeight, so the text stays legible over a busy map.
-        int fontSize = ScaledFontSize();
+        int fontSize = ScaledFontSize(0.8f);
         int lineHeight = fontSize + fontSize / 6;
         int barHeight = lineHeight * lines.Length + 20;
         int y = Raylib.GetScreenHeight() - barHeight + 10;
         Raylib.DrawRectangle(0, y - 10, Raylib.GetScreenWidth(), barHeight, new Color(0, 0, 0, 90));
         for (int i = 0; i < lines.Length; i++)
             Raylib.DrawText(lines[i], 20, y + lineHeight * i, fontSize, Color.RayWhite);
+        return y - 10;
     }
 
     private static string SpiderStatus(World world) =>
@@ -552,11 +554,13 @@ public static class Game
     /// <summary>
     /// On-Screen Debug Console: renders <see cref="_debugLogs"/> (see
     /// <see cref="AddEventLog"/>) as a small, semi-transparent panel on the
-    /// middle-left of the screen — a running history of recent notable
-    /// events for on-device debugging. Newest entry at the bottom, oldest at
-    /// top, matching the natural reading order of a scrolling log.
+    /// left of the screen, between <paramref name="top"/> and
+    /// <paramref name="bottom"/> (below the speed buttons, above the HUD) —
+    /// a running history of recent notable events for on-device debugging.
+    /// Newest entry at the bottom, oldest at top, matching the natural
+    /// reading order of a scrolling log.
     /// </summary>
-    private static void DrawDebugConsole()
+    private static void DrawDebugConsole(int top, int bottom)
     {
         if (_debugLogs.Count == 0)
             return;
@@ -574,9 +578,10 @@ public static class Game
         for (int i = 0; i < _debugLogs.Count; i++)
             WrapLine(_debugLogs[i], fontSize, maxWidth, wrappedLines);
 
-        // Only the newest lines that fit in the middle of the screen, so a
-        // burst of long entries never grows the panel into the HUD below.
-        int maxLines = Math.Max(1, (int)(Raylib.GetScreenHeight() * 0.45f) / lineHeight);
+        // Only the newest lines that fit between the speed buttons and the
+        // HUD, so a burst of long entries never grows the panel into either.
+        const int gap = 10;
+        int maxLines = Math.Max(1, (bottom - top - 2 * gap - 16) / lineHeight);
         if (wrappedLines.Count > maxLines)
             wrappedLines.RemoveRange(0, wrappedLines.Count - maxLines);
 
@@ -587,7 +592,7 @@ public static class Game
         int width = widestLine + 16;
         int height = wrappedLines.Count * lineHeight + 16;
         int x = 10;
-        int y = (Raylib.GetScreenHeight() - height) / 2;
+        int y = bottom - gap - height;
 
         Raylib.DrawRectangle(x, y, width, height, new Color(0, 0, 0, 150));
         Raylib.DrawRectangleLines(x, y, width, height, new Color(255, 255, 255, 60));

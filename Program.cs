@@ -5,17 +5,23 @@
 //    * A fixed isometric camera looking down at a 100 m x 100 m patch of
 //      procedurally-hilly terrain, with a mobile-friendly one-finger-pan/
 //      two-finger-pinch camera controller layered on top.
-//    * No factions, no villages, no economy. The map is just the terrain and
-//      whatever loose things live on it: wild Berries (Food), Hornet swarms,
-//      a Wolf Spider, burrowing Grubs, and the Bramblekin themselves.
+//    * No factions, no top-down economy. The map is the terrain and whatever
+//      loose things live on it: wild Berries (Food), fallen Twigs, Hornet
+//      swarms, a Wolf Spider, Grubs, Stag Beetles, and the Bramblekin.
 //    * Every Bramblekin is an individual agent with its own randomly rolled
 //      Personality (Aggression, Sociability, Intelligence) and a strict
-//      hierarchy of needs: Hunger first, then Safety, then Social.
+//      hierarchy of needs: Hunger, then Safety, then its group Duty, then
+//      Settling (its home), then Social.
 //    * Groups are emergent, not assigned: two Bramblekin that cross paths
 //      resolve the encounter from their situation and traits — a starving,
 //      aggressive one may rob the other; two sociable ones (or two that are
 //      both being hunted) may band together under a shared GroupId, led by
-//      whichever member is the most Intelligent.
+//      whichever member has the best claim to lead (Intelligence plus
+//      earned Reputation). The Leader picks the group's goal, hands out
+//      jobs and decides who eats first; disloyal followers walk out,
+//      split off, or challenge it.
+//    * Loners build tents from fallen twigs and stock them with food;
+//      groups share a home they upgrade into a house.
 //    * The player has no lever on the world; the only tap left is inspecting
 //      a single Bramblekin (WorldTapInput).
 //

@@ -6,19 +6,27 @@ namespace GardenGuardians;
 /// <summary>
 /// An individual survival agent. Each Bramblekin is born solitary with a
 /// random <see cref="Personality"/> and, every frame, serves exactly one
-/// need, in strict priority order:
+/// need, in strict priority order (a leadership duel, once started, comes
+/// before all of them):
 ///
-///   1. Critical — Hunger: once <see cref="IsHungry"/>, it eats what it's
-///      carrying, or forages the nearest loose Food it can see, or hunts a
-///      Grub, or robs a neighbour (see <see cref="World.ResolveEncounter"/>),
-///      or searches further afield. Nothing else matters until it's fed —
-///      a hungry Bramblekin will brave a Hornet swarm for a berry.
-///   2. Safety: a predator (or a hostile Bramblekin, or anything attacking
-///      a groupmate) inside its Intelligence-scaled <see cref="DetectionRadius"/>
-///      triggers one Aggression roll per threat — fight or flee.
-///   3. Social: fed and safe, a follower stays near its group's Leader;
-///      anyone else wanders, pockets a spare piece of Food, and — depending
-///      on Sociability — seeks out strangers or keeps its distance.
+///   1. Critical — Hunger (Bramblekin.Hunger.cs): once <see cref="IsHungry"/>,
+///      it eats what it's carrying, forages visible Food, eats from its
+///      home's store, scavenges, hunts, raids or robs, or searches further
+///      afield. Nothing else matters until it's fed — a hungry Bramblekin
+///      will brave a Hornet swarm for a berry.
+///   2. Safety (Bramblekin.Safety.cs): a predator, a raider, a hostile
+///      Bramblekin, or anything attacking a groupmate inside its
+///      Intelligence-scaled <see cref="DetectionRadius"/> triggers one
+///      Aggression roll per threat — fight, flee, or hide at home.
+///   3. Duty (Bramblekin.Duty.cs): a loyal group member does the job its
+///      Leader gave it.
+///   4. Settle (Bramblekin.Settle.cs): build a home, rest in it when hurt,
+///      and stock its store.
+///   5. Social (Bramblekin.Social.cs): fed and safe, it wanders (around
+///      home, if it has one), and — depending on Sociability — seeks out
+///      strangers or keeps its distance; a homeless group follows its
+///      Leader.
+/// Loyalty, Reputation and leadership duels live in Bramblekin.Loyalty.cs.
 /// </summary>
 public sealed partial class Bramblekin : ICombatant
 {

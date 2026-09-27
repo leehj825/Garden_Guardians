@@ -1,7 +1,7 @@
 # Garden_Guardians
 Garden Guardians
 
-An emergent survival simulation set in a procedurally hilly backyard. Every Bramblekin is an individual agent with its own randomly rolled Personality (Aggression, Sociability, Intelligence) and a strict hierarchy of needs — hunger, then safety, then company. Friendships, rivalries, robberies and groups (led by their sharpest member) all emerge from how they meet. You watch, and tap any Bramblekin to see what makes it tick.
+An emergent survival simulation set in a procedurally hilly backyard. Every Bramblekin is an individual agent with its own randomly rolled Personality (Aggression, Sociability, Intelligence) and a strict hierarchy of needs — hunger, then safety, then its duties, its home, and company. Loners build tents from fallen twigs and stock them with food; groups form from how they meet, share a home they upgrade into a house, and hunt big game together under a Leader who decides what the group does and who eats first. Followers who don't like how they're led walk out, split off, or challenge the Leader — at the cost of the group's protection. You watch, and tap any Bramblekin to see what makes it tick.
 
 See the [Game Design Document](Garden_Guardians_Design.md) for the full design, and the [Development Roadmap](Garden_Guardians_Roadmap.md) for the planned phases.
 
@@ -10,7 +10,9 @@ See the [Game Design Document](Garden_Guardians_Design.md) for the full design, 
 Requires the .NET 8 SDK.
 
 - **Desktop prototype:** `dotnet run -f net8.0 -p:DesktopOnly=true`. The `DesktopOnly` flag skips the Android target, so you don't need the Android workload.
-- **Headless simulation:** `dotnet run -f net8.0 -p:DesktopOnly=true -- --headless 600 --seed 1` runs 600 simulated seconds with no window and prints population reports and notable events — handy for tuning, or on a machine without a GPU.
+- **Headless simulation:** `dotnet run -f net8.0 -p:DesktopOnly=true -- --headless 600 --seed 1` runs 600 simulated seconds with no window and prints population reports, notable events, and a summary of the survival trend (deaths per kin-hour by social status), leadership styles and rebellions — handy for tuning, or on a machine without a GPU.
+
+Code lives under `Source/` (engine, world, kin, wildlife, game), one type per file; `Program.cs` is just the entry point.
 - **Android APK:** install the Android workload (`dotnet workload install android`) and the Android NDK. Then run `Platforms/Android/build-raylib.sh` to compile raylib for Android, and `dotnet publish -f net8.0-android -c Debug -p:EmbedAssembliesIntoApk=true`.
 
 GitHub Actions builds the Android APKs automatically:
