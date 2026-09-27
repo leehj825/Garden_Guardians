@@ -65,6 +65,7 @@ public sealed partial class World
 
             _goalSeconds[(int)group.Style, (int)group.Goal] += deltaTime;
             _sharingSeconds[(int)group.Style, (int)group.Sharing] += deltaTime;
+            group.BirthCooldown = MathF.Max(0f, group.BirthCooldown - deltaTime);
 
             group.DecisionTimer -= deltaTime;
             bool emergency = group.Goal != GroupGoal.Defend && ThreatNearHome(group) is not null;
@@ -74,6 +75,7 @@ public sealed partial class World
             group.DecisionTimer = LeaderDecisionInterval;
             DecideGroupGoal(group, leader);
             ReviewLoyalty(group, leader);
+            TryBirth(group);
         }
         ProcessRebellions();
     }
@@ -158,7 +160,11 @@ public sealed partial class World
     /// </summary>
     private static void AssignJobs(KinGroup group)
     {
-        List<Bramblekin> members = group.Members.Where(m => !m.IsDead).ToList();
+        foreach (Bramblekin young in group.Members.Where(m => m.IsYoung))
+            young.AssignJob(KinJob.None);
+        List<Bramblekin> members = group.Members.Where(m => !m.IsDead && !m.IsYoung).ToList();
+        if (members.Count == 0)
+            return;
         foreach (Bramblekin member in members)
             member.AssignJob(KinJob.Gatherer);
 
@@ -241,7 +247,7 @@ public sealed partial class World
             return false;
         if (home.GroupId is not { } groupId || !_groups.TryGetValue(groupId, out KinGroup? group))
             return true;
-        if (group.Sharing == SharingRule.Equal || group.Leader == kin || kin.IsStarving)
+        if (group.Sharing == SharingRule.Equal || group.Leader == kin || kin.IsStarving || kin.IsYoung)
             return true;
 
         kin.NoteDeniedFood();

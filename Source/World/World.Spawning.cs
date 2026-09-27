@@ -109,7 +109,7 @@ public sealed partial class World
     /// Wandering Arrivals: a new solitary Bramblekin, with its own freshly
     /// randomized Personality, drifts in from a random edge every
     /// <see cref="ArrivalInterval"/> seconds while the population is below
-    /// <see cref="MaxPopulation"/>.
+    /// <see cref="ArrivalPopulationLimit"/>.
     /// </summary>
     private void UpdateArrivals(float deltaTime)
     {
@@ -119,7 +119,7 @@ public sealed partial class World
         _arrivalTimer = ArrivalInterval;
 
         int living = Colony.Count(b => !b.IsDead) + _pendingKinSpawns.Count;
-        if (living >= MaxPopulation)
+        if (living >= ArrivalPopulationLimit)
             return;
 
         var kin = new Bramblekin(RandomEdgeSpot(Bramblekin.BodyRadius, Bramblekin.EdgeMargin + 0.5f), Rng);

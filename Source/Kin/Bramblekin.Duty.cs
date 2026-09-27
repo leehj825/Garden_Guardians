@@ -27,7 +27,7 @@ public sealed partial class Bramblekin
     /// </summary>
     private bool UpdateDuty(float deltaTime, World world)
     {
-        if (GroupId is null || !IsObedient || world.GroupOf(this) is not { } group)
+        if (GroupId is null || IsYoung || !IsObedient || world.GroupOf(this) is not { } group)
             return false;
 
         return Job switch

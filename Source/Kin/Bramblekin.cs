@@ -253,10 +253,11 @@ public sealed partial class Bramblekin : ICombatant
     private ICombatant? _respondingTo;
     private bool _fightDecision;
 
-    public Bramblekin(Vector3 position, Random rng)
+    /// <summary>A newcomer (or one of the first Bramblekin): a freshly rolled Personality, unless given one.</summary>
+    public Bramblekin(Vector3 position, Random rng, Personality? personality = null)
     {
         _rng = rng;
-        Personality = Personality.Roll(rng);
+        Personality = personality ?? Personality.Roll(rng);
         Hunger = (float)rng.NextDouble() * StartingHungerMax;
         _mover = new GroundMover(position, BodyRadius, EdgeMargin, rng);
         _perceptionTimer = (float)rng.NextDouble() * PerceptionInterval;

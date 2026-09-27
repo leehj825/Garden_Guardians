@@ -50,7 +50,7 @@ public sealed partial class Bramblekin
     private bool NeedsTwig => _carriedTwig is null && Home is { NeedsTwigs: true } && BuildsForHome;
 
     /// <summary>Whether it fetches twigs for its home: a solitary Bramblekin builds its own; in a group, that's the Builders' job (see Bramblekin.Duty) — or everyone's, while the group has no Leader's orders yet.</summary>
-    private bool BuildsForHome => GroupId is null || Job is KinJob.Builder or KinJob.None;
+    private bool BuildsForHome => !IsYoung && (GroupId is null || Job is KinJob.Builder or KinJob.None);
 
     /// <summary>
     /// Settle need (fed and safe), for a solitary Bramblekin — a group's
@@ -132,7 +132,7 @@ public sealed partial class Bramblekin
         }
 
         // A low store is worth a hunt: a Grub near home becomes meat to stock.
-        if (home.StoredFood < home.StoreCapacity / 2 && _perceivedGrub is { IsDead: false } grub &&
+        if (!IsYoung && home.StoredFood < home.StoreCapacity / 2 && _perceivedGrub is { IsDead: false } grub &&
             GroundMover.HorizontalDistanceSquared(grub.Position, home.Position) <= StockpileRange * StockpileRange)
         {
             HuntGrub(grub, deltaTime, world);

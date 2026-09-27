@@ -267,6 +267,7 @@ public static class Game
         PrintSurvivalTrend(world);
         PrintLeadership(world);
         PrintRebellion(world);
+        PrintLineage(world);
     }
 
     /// <summary>Headless summary: how often followers rebelled, and how the Independents who left are faring.</summary>
@@ -323,7 +324,21 @@ public static class Game
         Console.WriteLine(
             $"[t={world.ElapsedSeconds,6:0}s Y{world.Year} {world.CurrentSeason,-6}] kin {living.Count,3} (solitary {solitary}, groups {world.Groups.Count}, largest {largestGroup}) " +
             $"avg hunger {averageHunger,5:0.0}  food on map {world.LooseFoodCount,3}, stored {stored,3}  tents {tents} houses {houses}  " +
-            $"arrived {world.Arrivals}  died: starved {world.DeathsByStarvation}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}");
+            $"arrived {world.Arrivals} born {world.Births}  died: starved {world.DeathsByStarvation}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}");
+    }
+
+    /// <summary>Headless summary: births, how far the generations have come, and whether the traits of the living have drifted from the 0.5 average a newcomer brings.</summary>
+    private static void PrintLineage(World world)
+    {
+        List<Bramblekin> living = world.Colony.Where(b => !b.IsDead).ToList();
+        int bornHere = living.Count(b => b.Generation > 0);
+        Console.WriteLine($"Lineage: {world.Births} births, generations up to {world.MaxGeneration}; of the {living.Count} alive, {bornHere} were born here.");
+        if (living.Count > 0)
+        {
+            Console.WriteLine(
+                $"  Traits of the living (a newcomer averages 0.50): aggression {living.Average(b => b.Personality.Aggression):0.00}, " +
+                $"sociability {living.Average(b => b.Personality.Sociability):0.00}, intelligence {living.Average(b => b.Personality.Intelligence):0.00}");
+        }
     }
 
     /// <summary>One line describing a Bramblekin's home for the Kin Inspector.</summary>
@@ -478,7 +493,8 @@ public static class Game
 
         var lines = new List<(string Text, Color Color)>
         {
-            ($"Bramblekin #{kin.ID} ({role})", ink),
+            ($"Bramblekin #{kin.ID} ({role}{(kin.IsYoung ? ", young" : "")})", ink),
+            (kin.ParentIds is { } parents ? $"Generation {kin.Generation}, child of #{parents.A} & #{parents.B}" : "Generation 0 (wandered in)", ink),
             ($"State: {kin.State}", ink),
             ($"Health: {kin.Health} / {Bramblekin.MaxHealth}", ink),
             ($"Hunger: {(int)kin.Hunger}%{(kin.IsStarving ? " STARVING" : kin.IsHungry ? " (hungry)" : "")}{(kin.HasFood ? "  +food" : "")}",
@@ -534,7 +550,7 @@ public static class Game
             $"Foraging {Count(BramblekinState.Foraging) + Count(BramblekinState.Hunting)}   Eating {Count(BramblekinState.Eating)}   " +
             $"Fleeing {Count(BramblekinState.Fleeing)}   Fighting {Count(BramblekinState.Fighting)}   Robbing {Count(BramblekinState.Attacking)}",
             $"Arrived {world.Arrivals}   Starved {world.DeathsByStarvation}   Killed by predators {world.DeathsByPredator}, by kin {world.DeathsByKin}   Thefts {world.Thefts}",
-            $"Politics: {world.Departures} left, {world.Splinters} splits, {world.Coups} coups, {world.Exiles} exiles   Raids {world.StoreRaids}   Beetles {world.BeetlesKilled}",
+            $"Born {world.Births} (gen {world.MaxGeneration})   Politics: {world.Departures} left, {world.Splinters} splits, {world.Coups} coups, {world.Exiles} exiles   Raids {world.StoreRaids}",
         };
 
         // UI Text Scaling: a background bar goes underneath, sized off

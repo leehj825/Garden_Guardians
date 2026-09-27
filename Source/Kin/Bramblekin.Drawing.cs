@@ -39,9 +39,10 @@ public sealed partial class Bramblekin
             angleDegrees = MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.UnitY, normal), -1f, 1f)) * (180f / MathF.PI);
         else
             axis = Vector3.UnitY; // Flat ground: any axis is fine at a 0-degree rotation.
-        Raylib.DrawModelEx(_bodyModel, Position, axis, angleDegrees, Vector3.One, color);
+        float scale = BodyScale;
+        Raylib.DrawModelEx(_bodyModel, Position, axis, angleDegrees, new Vector3(scale), color);
 
-        var top = Position + new Vector3(0, BodyHeight - BodyRadius, 0);
+        var top = Position + new Vector3(0, (BodyHeight - BodyRadius) * scale, 0);
         Raylib.DrawSphere(top + new Vector3(0, BodyRadius * 0.5f, 0), BodyRadius * 0.35f, group?.Color ?? SolitaryHeadColor);
 
         Vector2 facing = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;

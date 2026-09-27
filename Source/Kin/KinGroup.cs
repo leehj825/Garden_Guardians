@@ -56,6 +56,9 @@ public sealed class KinGroup
     /// <summary>Counts down to the Leader's next decision.</summary>
     public float DecisionTimer { get; set; }
 
+    /// <summary>Counts down after a birth before the group can raise another — see <see cref="World.TryBirth"/>.</summary>
+    public float BirthCooldown { get; set; }
+
     /// <summary>The Leader's broad character — see <see cref="LeaderStyle"/>.</summary>
     public LeaderStyle Style => Leader is not { } leader ? LeaderStyle.Moderate
         : leader.Personality.Aggression >= 0.6f && leader.Personality.Aggression >= leader.Personality.Intelligence ? LeaderStyle.Warlike
@@ -78,9 +81,10 @@ public sealed class KinGroup
     public void ElectLeader()
     {
         Bramblekin? best = null;
+        bool anyAdult = Members.Any(m => !m.IsDead && !m.IsYoung);
         foreach (Bramblekin member in Members)
         {
-            if (member.IsDead)
+            if (member.IsDead || (anyAdult && member.IsYoung))
                 continue;
             if (best is null ||
                 member.LeadershipScore > best.LeadershipScore ||

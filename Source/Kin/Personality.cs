@@ -28,4 +28,14 @@ public readonly struct Personality
     /// <summary>A fresh, uniformly random Personality.</summary>
     public static Personality Roll(Random rng) =>
         new((float)rng.NextDouble(), (float)rng.NextDouble(), (float)rng.NextDouble());
+
+    /// <summary>How far (±) a child's trait may stray from its parents' average.</summary>
+    public const float InheritanceVariation = 0.15f;
+
+    /// <summary>A child's Personality: each trait the average of its parents', give or take up to <see cref="InheritanceVariation"/>.</summary>
+    public static Personality Inherit(Personality a, Personality b, Random rng)
+    {
+        float Mix(float x, float y) => (x + y) / 2f + ((float)rng.NextDouble() * 2f - 1f) * InheritanceVariation;
+        return new Personality(Mix(a.Aggression, b.Aggression), Mix(a.Sociability, b.Sociability), Mix(a.Intelligence, b.Intelligence));
+    }
 }

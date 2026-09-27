@@ -125,14 +125,22 @@ public sealed partial class World
 
     // --- Bramblekin population ------------------------------------------------------
 
-    /// <summary>Wandering Arrivals stop once this many Bramblekin are alive.</summary>
-    public const int MaxPopulation = 40;
+    /// <summary>
+    /// A safety limit, for performance only: no births or arrivals past this
+    /// many living Bramblekin. In practice the Food supply keeps the
+    /// population well below it.
+    /// </summary>
+    public const int MaxPopulation = 150;
+
+    /// <summary>Wandering Arrivals only come while fewer than this many Bramblekin are alive — once the world is busy, growth has to come from births.</summary>
+    public const int ArrivalPopulationLimit = 30;
 
     /// <summary>
     /// Wandering Arrivals: seconds between new solitary Bramblekin drifting
-    /// in from the map's edge (while below <see cref="MaxPopulation"/>) —
-    /// the world's only source of new life, so a harsh stretch thins the
-    /// population out without ever ending the simulation for good.
+    /// in from the map's edge while the world is sparse (below
+    /// <see cref="ArrivalPopulationLimit"/>) — so a harsh stretch thins the
+    /// population out without ever ending the simulation for good. Beyond
+    /// that, the population only grows by births.
     /// </summary>
     public const float ArrivalInterval = 15f;
 
@@ -149,6 +157,16 @@ public sealed partial class World
 
     /// <summary>A group never grows past this many members, by joining or by merging.</summary>
     public const int MaxGroupSize = 6;
+
+    /// <summary>How big <paramref name="group"/> may grow, by joining or by births.</summary>
+    public int GroupSizeLimit(KinGroup group) => MaxGroupSize;
+
+    /// <summary>Every home <paramref name="group"/> has.</summary>
+    public IEnumerable<Shelter> GroupHomes(KinGroup group)
+    {
+        if (group.Home is { IsCollapsed: false } home)
+            yield return home;
+    }
 
     /// <summary>Two Bramblekin both at least this Sociable band together on meeting — see <see cref="ResolveEncounter"/>.</summary>
     public const float AllianceSociabilityThreshold = 0.6f;

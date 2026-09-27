@@ -72,7 +72,8 @@ public sealed partial class Bramblekin
     /// <summary>The Aggression check: true to fight <paramref name="threat"/>, false to flee it.</summary>
     private bool RollFightOrFlight(ICombatant threat, World world)
     {
-        if (Health <= MaxHealth * FightBreakHealthFraction)
+        // The young never fight — they run (home, if it's close).
+        if (IsYoung || Health <= MaxHealth * FightBreakHealthFraction)
             return false;
 
         // Nobody picks a fight with a Hornet nest: an idle swarm is just

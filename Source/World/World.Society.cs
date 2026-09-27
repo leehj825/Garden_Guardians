@@ -129,6 +129,14 @@ public sealed partial class World
     /// </summary>
     private bool ResolveEncounter(Bramblekin a, Bramblekin b)
     {
+        // The young stay out of it: at most a groupmate feeds them.
+        if (a.IsYoung || b.IsYoung)
+        {
+            if (a.GroupId is { } youngGroup && youngGroup == b.GroupId)
+                TryShareFood(a, b, sameGroup: true);
+            return false;
+        }
+
         if (a.GroupId is { } groupId && groupId == b.GroupId)
         {
             TryShareFood(a, b, sameGroup: true);

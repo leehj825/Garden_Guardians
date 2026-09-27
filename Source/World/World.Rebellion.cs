@@ -48,13 +48,13 @@ public sealed partial class World
     {
         foreach (Bramblekin member in group.Members)
         {
-            if (!member.IsDead)
+            if (!member.IsDead && !member.IsYoung)
                 member.UpdateLoyalty(group);
         }
 
         foreach (Bramblekin member in group.Members)
         {
-            if (member == leader || member.IsDead || member.IsDueling)
+            if (member == leader || member.IsDead || member.IsDueling || member.IsYoung)
                 continue;
 
             if (member.Loyalty < Bramblekin.RebelThreshold && Rng.NextDouble() < RebelChancePerDecision)
@@ -114,7 +114,7 @@ public sealed partial class World
     private bool TrySplinter(KinGroup group, Bramblekin instigator)
     {
         List<Bramblekin> faction = group.Members
-            .Where(m => m != group.Leader && !m.IsDead && !m.IsDueling && m.Loyalty < SplinterLoyaltyThreshold)
+            .Where(m => m != group.Leader && !m.IsDead && !m.IsDueling && !m.IsYoung && m.Loyalty < SplinterLoyaltyThreshold)
             .Take(MaxGroupSize)
             .ToList();
         if (faction.Count < 2 || !faction.Contains(instigator))

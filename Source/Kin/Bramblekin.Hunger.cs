@@ -68,7 +68,7 @@ public sealed partial class Bramblekin
         if (TryTakeFromStore(deltaTime, world, raid: false))
             return;
 
-        if (_perceivedGrub is { IsDead: false } grub)
+        if (!IsYoung && _perceivedGrub is { IsDead: false } grub)
         {
             HuntGrub(grub, deltaTime, world);
             return;
@@ -85,7 +85,7 @@ public sealed partial class Bramblekin
         // else in sight stalks the nearest outsider it can see carrying
         // food, to cross paths with it — whether it then attacks is decided
         // by the encounter (see World.ResolveEncounter).
-        if (IsStarving && Personality.Aggression >= World.HighAggressionThreshold && NearestFoodCarrier(world) is { } mark)
+        if (!IsYoung && IsStarving && Personality.Aggression >= World.HighAggressionThreshold && NearestFoodCarrier(world) is { } mark)
         {
             SetState(BramblekinState.Searching);
             MoveTo(mark.Position, WalkSpeed * 1.1f, deltaTime, world);

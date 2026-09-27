@@ -25,7 +25,7 @@ public sealed partial class Bramblekin
     /// </summary>
     private bool TryPackHunt(float deltaTime, World world, bool hungry)
     {
-        if (_perceivedBeetle is not { IsDead: false } beetle || Health <= MaxHealth * FightBreakHealthFraction)
+        if (IsYoung || _perceivedBeetle is not { IsDead: false } beetle || Health <= MaxHealth * FightBreakHealthFraction)
             return false;
 
         bool packNearby = false;
@@ -69,7 +69,7 @@ public sealed partial class Bramblekin
     /// </summary>
     private bool TryTakeFromStore(float deltaTime, World world, bool raid)
     {
-        if (raid && (!IsStarving || Personality.Aggression < World.HighAggressionThreshold))
+        if (raid && (IsYoung || !IsStarving || Personality.Aggression < World.HighAggressionThreshold))
             return false;
 
         Shelter? target = _raidTarget is { IsCollapsed: false, StoredFood: > 0 } current && IsFairTarget(current, raid)

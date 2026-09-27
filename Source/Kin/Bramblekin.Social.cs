@@ -67,7 +67,7 @@ public sealed partial class Bramblekin
     /// </summary>
     private void ChooseSocialAction(World world)
     {
-        if (_rng.NextDouble() < Personality.Sociability * SocialSeekFactor && NearestStranger(world) is { } stranger)
+        if (!IsYoung && _rng.NextDouble() < Personality.Sociability * SocialSeekFactor && NearestStranger(world) is { } stranger)
         {
             _companion = stranger;
             _socializeTimer = SocializeTimeout;
@@ -83,9 +83,11 @@ public sealed partial class Bramblekin
         }
 
         // Settled, it stays around home — and spends some of its time inside.
+        // The young keep much closer.
         if (Home is { IsBuilt: true } home)
         {
-            _wanderTarget = _rng.NextDouble() < 0.35 ? home.Position : RandomWanderPointAround(home.Position, HomeRange, world);
+            float range = IsYoung ? HomeRange / 3f : HomeRange;
+            _wanderTarget = _rng.NextDouble() < 0.35 ? home.Position : RandomWanderPointAround(home.Position, range, world);
             SetState(BramblekinState.Wandering);
             return;
         }
