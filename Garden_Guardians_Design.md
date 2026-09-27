@@ -1,9 +1,11 @@
 # Garden_Guardians_Design.md
 
 *Last updated: 2026-09-27 — the **Emergent Survival** pivot, now with
-**settling and society**. The game is no longer a macro-RTS faction
-simulator: there are no factions, no top-down economy and no faction wars.
-Every Bramblekin is an individual agent with its own Personality and needs.
+**settling and society**, and a living population: **seasons**, **births**
+and **villages** that bud off daughter groups. The game is no longer a
+macro-RTS faction simulator: there are no factions, no top-down economy
+and no faction wars. Every Bramblekin is an individual agent with its own
+Personality and needs.
 Individuals survive alone, settle into homes they build, and band together
 because groups survive better; groups are run by a Leader whose decisions
 followers can obey, resent, or rebel against. The macro-RTS design that
@@ -22,8 +24,11 @@ band together, move into one home, upgrade it into a house and hunt big
 game as a pack, under a Leader who decides what the group does and who
 eats first. Followers who don't like how they're led can walk out,
 split off, or challenge the Leader for the job — at the cost of losing the
-group's protection. The player is a spectator with a camera, and can tap
-any single Bramblekin to see what makes it tick.
+group's protection. The year turns from a plentiful summer to a lean
+winter; thriving groups raise young who inherit their parents' traits,
+outgrow their House, build a village around it, and bud off daughter
+groups. The player is a spectator with a camera, and can tap any single
+Bramblekin to see what makes it tick.
 
 ## The Core Loop (as implemented)
 Hunger rises → each Bramblekin forages loose Food within its own
@@ -37,8 +42,10 @@ and traits: a friendship, a new or bigger group, a shared meal, a
 struggling loner taken in, or a robbery and a lifelong enmity → Leaders
 decide group goals every few seconds; followers' loyalty rises and falls
 with how they're treated, and the disloyal leave, split off or stage a
-coup → new solitary wanderers keep drifting in from the map's edge to
-replace the dead.
+coup → thriving groups raise young and grow into villages, while the
+seasons swing the food supply from plenty to scarcity and back → new
+solitary wanderers drift in from the map's edge whenever the population
+runs low.
 
 ## The Spectator Camera
 The player's entire "input" is camera control — a smooth, Google-Maps-style
@@ -77,8 +84,9 @@ overhead camera:
 *   **Kin inspection:** tapping a Bramblekin selects it and shows its
     live state in the top-right Kin Inspector — State, Health, Hunger,
     its three Personality traits (and the detection radius its
-    Intelligence buys it), its group and role (Solitary/Leader/Follower),
-    its home (tent or house, construction progress, store), its job and
+    Intelligence buys it), its group and role (Solitary/Leader/Follower,
+    and whether it's still young), its generation and parents, its home
+    (tent or house, construction progress, store), its job and
     its group's current goal (and whether the Leader eats first), its
     Loyalty (followers) and Reputation, and how many Friends, Enemies and
     Neutral acquaintances it has. The selected Bramblekin is ringed on
@@ -87,20 +95,24 @@ overhead camera:
 *   Everything else — eating, fighting, fleeing, building, befriending,
     robbing, raiding, grouping, leading, obeying and rebelling — is the
     Bramblekin's own business.
-*   The HUD shows homes (tents, houses, sites, food stored), what the
-    colony is doing, deaths by cause, and the politics so far (walk-outs,
-    splits, coups, exiles, raids). The event console on the left narrates
-    alliances, settlements, hunts, leader decisions, rebellions and deaths.
+*   The HUD shows the year and season (with its food multiplier), homes
+    (tents, houses, sites, food stored, villages and buddings), what the
+    colony is doing, deaths by cause, births and the highest generation,
+    and the politics so far (walk-outs, splits, coups, exiles, raids).
+    The event console on the left narrates the seasons, alliances,
+    settlements, villages, births, hunts, leader decisions, rebellions
+    and deaths.
 
 ## Code Layout & Performance
 *   **Layout:** `Program.cs` is only the entry point. Everything else is
     under `Source/`, one type per file: `Engine/` (camera, terrain, tap
     input, spatial grid, movement), `World/` (the `World` partial class
-    split by concern — core, society, group homes, leadership, rebellion,
-    shelters, hunting, interactions, spawning, stats, rendering — plus
-    Food, Twigs, Shelters and Garden Props), `Kin/` (the `Bramblekin`
-    partial class with one file per need — Hunger, Safety, Duty, Settle,
-    Social — plus Hunting, Loyalty, Actions and Drawing, and the
+    split by concern — core, society, group homes & villages, leadership,
+    rebellion, seasons, births, shelters, hunting, interactions, spawning,
+    stats, rendering — plus Food, Twigs, Shelters and Garden Props), `Kin/`
+    (the `Bramblekin` partial class with one file per need — Hunger,
+    Safety, Duty, Settle, Social — plus Hunting, Loyalty, Lineage, Actions
+    and Drawing, and the
     Personality, relationship, group and society types), `Wildlife/` and
     `Game/`.
 *   **Squared-distance math everywhere:** targeting/aggro/encounter checks
@@ -124,13 +136,17 @@ overhead camera:
     seconds, every notable event, and a summary with the **survival
     trend** (deaths and meat hunted per kin-hour lived as a Wanderer,
     Homesteader, Member or Independent), how differently each style of
-    Leader runs its group, and the tally of rebellions. Measuring per
+    Leader runs its group, the tally of rebellions, villages and buddings,
+    and the lineage (births, generations, and how the living's traits have
+    drifted). A 4-hour run takes under 3 minutes. Measuring per
     kin-hour, rather than by average lifespan, keeps the comparison fair
     however late each Bramblekin arrived.
 
 ## Individuals: Personality & the Needs Hierarchy
-*   **Personality (DNA):** every Bramblekin rolls three traits, each
-    uniformly random in 0..1, the moment it's spawned, fixed for life:
+*   **Personality (DNA):** every newcomer rolls three traits, each
+    uniformly random in 0..1, the moment it arrives; one born here
+    inherits the average of its parents' (see Growth below). Fixed for
+    life:
     *   **Aggression** — the odds of fighting rather than fleeing a
         threat, of turning on a neighbour or raiding a store when
         starving, of challenging a Leader; how hard it hits (5–11 per
@@ -183,7 +199,8 @@ overhead camera:
     5.  **Social:** a homeless loner pockets one spare bite; a group
         member helps any Stag Beetle hunt its pack starts; a member of a
         homeless group stays within 3m of its Leader; anyone settled
-        wanders around home (and spends some time inside); anyone else
+        wanders around home (and spends some time inside) — in winter it
+        huddles inside instead (see Growth below); anyone else
         rests and then — with odds of Sociability × 0.8 — goes to meet a
         stranger, or (as a loner) walks away from whoever is crowding it,
         or just wanders.
@@ -192,10 +209,9 @@ overhead camera:
 *   **Twigs** fall around the big Twig props (up to 50 loose, pooled);
     they never rot. A builder carries one at a time to its site.
 *   **Tent:** 3 twigs. Room for 2, a store of 4 Food that never rots.
-*   **House:** a group's upgrade of its Tent, once the group outgrows it
-    (more than 2 members) — 6 more twigs. Room for 6, a store of 12, and
-    healing half again as fast. Drawn as walls under a roof, flying its
-    group's colour.
+*   **House:** a group's upgrade of a Tent, once the group outgrows its
+    housing — 6 more twigs. Room for 6, a store of 12, and healing half
+    again as fast. Drawn as walls under a roof, flying its group's colour.
 *   A built home hides whoever is inside it from the Wolf Spider's pounce
     and from Hornets — unless more residents are crammed inside than it
     has room for, in which case it protects nobody.
@@ -208,7 +224,8 @@ overhead camera:
     (a House over a Tent, finished over a site, then the fuller store);
     failing that, its Leader marks out a site. Every member moves in,
     carrying its old store over; old personal tents are abandoned. The
-    last survivor of a group keeps its home.
+    last survivor of a group keeps its main home. A group can grow into a
+    **village** of several homes — see Growth below.
 
 ## Hunting & Defending
 *   **Stag Beetles** (60 HP, at most 2 on the map) graze peacefully until
@@ -220,8 +237,9 @@ overhead camera:
 *   **Grubs** are small prey for anyone: a hungry Bramblekin that can't
     see Food hunts one; a settler with a low store hunts those near home.
 *   **Defending home:** residents who see a raider heading for their home
-    treat it as a threat they're keen to fight; a Leader rallies its group
-    to Defend against anything that comes within 10m of home.
+    (or any of their village's homes) treat it as a threat they're keen to
+    fight; a Leader rallies its group to Defend against anything that
+    comes within 10m of home.
 *   **Raids:** a starving, highly Aggressive Bramblekin raids someone
     else's store, making Enemies of everyone who lives there.
 
@@ -244,9 +262,10 @@ overhead camera:
     5.  **Alliance:** if both are threatened by a predator right now, or
         both have Sociability ≥ 0.6, they band together under one
         `GroupId` — a new group, the one either already belongs to, or
-        (both grouped) the larger absorbs the smaller. Refused past 6
-        members, with a known Enemy inside, or into a group either once
-        left.
+        (both grouped) the larger absorbs the smaller, keeping its homes
+        near its own as part of its village. Refused past the group's
+        housing (at least 6, at most 18), with a known Enemy inside, or
+        into a group either once left.
     6.  **Joining for survival:** failing that, a *struggling* loner
         (hungry, hurt or homeless) meeting a member of a group with a
         finished home may ask to join (odds 0.3 + 0.5 × its Sociability),
@@ -274,13 +293,17 @@ overhead camera:
     Leader scores four **goals** from the group's situation, weighted by
     its own personality, and picks the best:
     *   **Defend** — a threat within 10m of home: 5 + 2 × Aggression.
-    *   **Settle** — the home is a site or being upgraded: 1.5 + 2 ×
-        Intelligence.
+    *   **Settle** — something is under construction: the first home (3 +
+        2 × Intelligence — urgent), or an upgrade or new village home (1.5
+        + 2 × Intelligence).
     *   **Hunt** — a Stag Beetle within 20–40m of home (further for a
         bolder Leader) and at least 2 members: 0.8 + 2 × Aggression +
         how empty the store is.
-    *   **Stockpile** — 1 + 2 × how empty the store is + 0.5 × (1 −
-        Aggression).
+    *   **Stockpile** — 1 + 2 × how empty the stores are + 0.5 × (1 −
+        Aggression); in autumn a far-sighted Leader adds up to 1.5 ×
+        Intelligence more to stock up for winter.
+    *   In winter, Hunt gets +1: big game carries a group through the
+        lean months.
 *   **Jobs:** the Leader hands out jobs to match — Guards from the
     Aggressive and healthy (Defend), Builders from the most Intelligent
     half (Settle), Hunters from the most Aggressive half (Hunt), and
@@ -288,14 +311,17 @@ overhead camera:
     Members carry them out in the Duty need: Guards attack the threat or
     keep within 3m of home; Hunters chase the chosen beetle (or a Grub);
     Builders fetch twigs; Gatherers bring food within 25m of home into the
-    store. Hunters and Guards stand down to rest at half Health.
+    stores (their own home's, or the nearest village home with room).
+    Hunters and Guards stand down to rest at half Health. The young get
+    no job.
 *   **The sharing rule:** an unsociable (< 0.4), Aggressive (≥ 0.5)
     Leader **eats first** — everyone else may only take from the store once
     starving. Otherwise the store is shared equally.
 *   **Leader styles:** Warlike (Aggression ≥ 0.6), Planner (Intelligence
     ≥ 0.6) or Moderate. In headless runs, Warlike-led groups spend roughly
-    a quarter of their time hunting and often eat leader-first; Planners
-    and Moderates mostly stockpile and build, and nearly always share.
+    a quarter of their time hunting; Planners and Moderates mostly
+    stockpile and build. Leader-first groups are rare — the rule needs an
+    unsociable, Aggressive Leader, and those tend to lose their followers.
 
 ## Loyalty & Rebellion
 *   **Loyalty** (0..1, followers only) is re-weighed at every Leader
@@ -327,16 +353,74 @@ overhead camera:
     0.15 loyalty (odds 0.25 per decision); the two become Enemies.
 *   Nobody ever rejoins a group it left. An Independent can be taken in
     by another group, or build a home of its own.
-*   **The survival trend** (headless, 8 seeds × 30 min): deaths per
-    kin-hour are roughly 2.2 for Wanderers, 1.1 for Homesteaders, 1.2 for
-    group Members and 1.9 for Independents; Members hunt 20–27 pieces of
-    meat per kin-hour against 2–7 for anyone alone. Settling roughly
-    halves the death rate; grouping matches that and feeds far better;
-    walking out of a group costs most of that back.
+*   **The survival trend** (headless, 3 seeds × 4 hours, with seasons and
+    births): deaths per kin-hour are roughly 2.3 for Wanderers, 0.9 for
+    Homesteaders, 1.1 for grown group Members and 1.9 for Independents;
+    the young almost never die. Members hunt 15–20 pieces of meat per
+    kin-hour against 5–8 for anyone alone. The summary breaks each rate
+    down by cause: Members starve no more often than Homesteaders (about
+    0.6 per kin-hour each), but die more often in fights with other kin
+    (0.35 against 0.2) — the price of hunting, defending and politics.
+    Settling more than halves a Wanderer's death rate; walking out of a
+    group nearly doubles a Member's. And groups are where the future is: after a
+    few years nearly everyone alive was born into one.
+
+## Growth: Seasons, Births & Villages
+*   **Seasons:** a year is four 150s seasons (10 minutes). Wild Berries
+    grow at, and the lawn holds up to, 1.0× the normal amount in Spring,
+    1.3× in Summer, 0.8× in Autumn and just 0.3× in Winter — the stores
+    and the hunt have to carry everyone through. The lawn and sky shift
+    colour (fresh green, summer green, yellowing brown, frost) and ease
+    into each new season; the HUD shows the year, season and food
+    multiplier, and each change is announced in the log.
+*   **Leaders plan for the year:** in Autumn an Intelligent Leader
+    stockpiles harder for the winter ahead; in Winter hunting big game
+    is worth more.
+*   **Wintering in:** in Winter, a Bramblekin with a home and nothing
+    pressing to do huddles inside it — safe from Hornets and the Spider —
+    and while sheltered its Hunger rises at half the usual rate.
+*   **Births:** a thriving group raises young — checked at each Leader
+    decision. It needs a House with at least 6 Food stored, 2 Food stored
+    per member across its homes (3 in Autumn, enough for the winter; no
+    births at all in Winter), two healthy, fed adults to be the parents,
+    no more than a third of the group hungry, room to grow (see villages)
+    and 60s since its last birth. A birth costs 3 Food from the store.
+*   **The young:** a newborn inherits the average of its parents'
+    Personalities, ±0.15 on each trait; its Generation is one more than
+    its older parent's. For 90s it's young: drawn small and growing, it
+    stays close to home, may always eat from the store, and takes no job,
+    no fights, no hunts, no raids and no part in politics (it can't be
+    elected while there's an adult to lead). Over many generations the
+    traits of the living drift away from a newcomer's 0.5 average — in
+    whichever direction the garden rewards.
+*   **Villages:** a group's size limit follows its housing — whatever its
+    finished homes have room for (Tent 2, House 6), never below 6 or
+    above 18 — and it may raise young up to 2 past that. A group that has
+    outgrown its housing upgrades one of its Tents into a House; one whose
+    homes are all Houses and full, with its stores at least half stocked,
+    marks out another home within 12m of its main one — up to two more,
+    making a village. One construction at a time: the Leader's Settle
+    goal and its Builders work on whichever home is under way. Members
+    live in the roomiest home, spread out of an overcrowded one, eat
+    from and stock any of the village's stores, and defend them all. If
+    the main home is lost, the village's next home becomes the main one.
+*   **Budding:** a village with at least 10 members (plus up to 6 more
+    under a Sociable Leader, who holds a bigger village together) lets
+    the residents of one of its other Houses — at least 3 grown ones, not
+    the Leader — set up as a daughter group of their own, keeping that
+    House and electing a Leader of their own. No quarrel: nobody holds it
+    against the old group. The parent village can then build again.
+*   **The population** is no longer held at a fixed number: it rises
+    through Summer and Autumn and thins in Winter and early Spring, and
+    over hours settles wherever the garden's food allows — about 35–55 in
+    4-hour headless runs, where the old design sat at 30–40. Wandering
+    Arrivals only top it up when it falls below 30; a safety cap of 150
+    is never reached in practice.
 
 ## Food & Wildlife
 *   **Food:** wild Berries grow passively (one every 0.6s, up to 100 on
-    the map), about two-thirds in eight Berry Patches around Dandelions.
+    the map, both scaled by the season), about two-thirds in eight Berry
+    Patches around Dandelions.
     Hunted Grubs, Stag Beetles and a slain Wolf Spider drop meat (same
     value). Loose Food rots after 60s; stored Food never does. A
     Bramblekin walking to a piece claims it (Dibs) so others look
@@ -357,9 +441,10 @@ overhead camera:
 *   **Stag Beetles** (60 HP, up to 2): see Hunting & Defending.
 *   **Garden Props:** Pebbles (solid), Twigs (where fallen twigs gather)
     and Dandelions (where berries grow).
-*   **Wandering Arrivals:** every 15s, while fewer than 40 Bramblekin are
+*   **Wandering Arrivals:** every 15s, while fewer than 30 Bramblekin are
     alive, a new solitary one with a freshly rolled Personality wanders
-    in from a random edge of the map.
+    in from a random edge of the map — so a hard winter never ends the
+    world, but growth beyond that has to come from births.
 
 ---
 

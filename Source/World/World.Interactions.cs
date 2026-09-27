@@ -80,7 +80,7 @@ public sealed partial class World
         if (kin.IsDead)
             return; // Already dead this frame; don't double-count it.
 
-        RecordDeath(kin); // Before MarkDead, while its status is still its own.
+        RecordDeath(kin, cause); // Before MarkDead, while its status is still its own.
         kin.MarkDead();
         _pendingKinRemovals.Add(kin);
 

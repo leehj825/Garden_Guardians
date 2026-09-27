@@ -20,6 +20,9 @@ public enum SurvivalStatus
 
     /// <summary>Alone again after leaving (or being thrown out of) a group.</summary>
     Independent,
+
+    /// <summary>Born here and not yet grown — see <see cref="Bramblekin.IsYoung"/>.</summary>
+    Young,
 }
 
 public sealed partial class World
@@ -31,6 +34,8 @@ public sealed partial class World
 
     /// <summary>Deaths, by the status each Bramblekin held when it died.</summary>
     private readonly int[] _deathsByStatus = new int[SurvivalStatusCount];
+
+    private readonly int[,] _deathCausesByStatus = new int[SurvivalStatusCount, Enum.GetValues<DeathCause>().Length];
 
     /// <summary>
     /// Survival trend: deaths per kin-hour lived in <paramref name="status"/>
@@ -59,5 +64,12 @@ public sealed partial class World
         }
     }
 
-    private void RecordDeath(Bramblekin kin) => _deathsByStatus[(int)kin.Status]++;
+    private void RecordDeath(Bramblekin kin, DeathCause cause)
+    {
+        _deathsByStatus[(int)kin.Status]++;
+        _deathCausesByStatus[(int)kin.Status, (int)cause]++;
+    }
+
+    /// <summary>How many Bramblekin died of <paramref name="cause"/> while in <paramref name="status"/>.</summary>
+    public int DeathsIn(SurvivalStatus status, DeathCause cause) => _deathCausesByStatus[(int)status, (int)cause];
 }

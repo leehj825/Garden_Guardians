@@ -326,7 +326,8 @@ public sealed partial class Bramblekin : ICombatant
 
     /// <summary>Where it stands socially right now, for survival statistics.</summary>
     public SurvivalStatus Status =>
-        GroupId is not null ? SurvivalStatus.Member
+        IsYoung ? SurvivalStatus.Young
+        : GroupId is not null ? SurvivalStatus.Member
         : HasLeftGroup ? SurvivalStatus.Independent
         : Home is { IsBuilt: true } ? SurvivalStatus.Homesteader
         : SurvivalStatus.Wanderer;

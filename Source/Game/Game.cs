@@ -308,7 +308,9 @@ public static class Game
             double hours = world.KinHoursIn(status);
             string rate = hours > 0 ? $"{world.DeathRatePerKinHour(status),5:0.0}/h" : "    -";
             string meat = hours > 0 ? $"{world.MeatHuntedPerKinHour(status),5:0.0}/h" : "    -";
-            Console.WriteLine($"  {status,-12} deaths {rate}   meat hunted {meat}   ({world.DeathsIn(status)} deaths over {hours:0.0} kin-hours)");
+            Console.WriteLine(
+                $"  {status,-12} deaths {rate}   meat hunted {meat}   ({world.DeathsIn(status)} deaths over {hours:0.0} kin-hours: " +
+                $"{world.DeathsIn(status, DeathCause.Starvation)} starved, {world.DeathsIn(status, DeathCause.Predator)} to predators, {world.DeathsIn(status, DeathCause.Kin)} to kin)");
         }
     }
 

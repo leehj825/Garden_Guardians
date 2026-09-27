@@ -6,7 +6,7 @@
 
 ## Progress Snapshot
 The game is an **Emergent Survival** simulation (Phase 7) that has grown
-a **society** (Phase 8). There are no factions or top-down economy: the
+a **society** (Phase 8) and a **living population** (Phase 9). There are no factions or top-down economy: the
 map is the procedural terrain and loose entities — wild Food, Twigs, a
 Wolf Spider, Hornet swarms, Grubs, Stag Beetles, Garden Props — and the
 Bramblekin. Every Bramblekin is an individual agent with a random
@@ -17,7 +17,10 @@ upgrade into a house, hunt big game as a pack, and are run by a Leader
 who picks the group's goal, hands out jobs and decides who eats first.
 Followers' loyalty rises and falls with how they're treated; the disloyal
 walk out, split off, or challenge the Leader, and Leaders exile
-troublemakers. Code lives under `Source/` (one type per file; see the
+troublemakers. The year turns through four seasons of plenty and
+scarcity; thriving groups raise young who inherit their parents' traits,
+grow into villages of up to three homes, and bud off daughter groups.
+Code lives under `Source/` (one type per file; see the
 Design doc's Code Layout). The player is a spectator with a
 Google-Maps-style camera whose only action is tapping a Bramblekin to
 inspect it. See `Garden_Guardians_Design.md` for the full current design.
@@ -341,12 +344,46 @@ Member or Independent, aggregated over 8 seeds × 30 simulated minutes.
     independents died at ~1.9 per kin-hour vs ~1.2 for members; some were
     taken in elsewhere or survived alone with a home.*
 
+## Phase 9: A Living Population
+The population had stopped growing at about 30: arrivals stopped at a
+hard cap of 40 and groups were capped at 6, so a busy garden simply
+froze. Phase 9 replaced the caps with a population the garden's food
+regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
+*   ✅ **Seasons:** a 10-minute year of four 150s seasons; wild Berries
+    grow at 1.0× / 1.3× / 0.8× / 0.3× (Spring → Winter), and the lawn and
+    sky change colour with them. Leaders stockpile harder in Autumn
+    (Intelligent ones most) and value big game more in Winter.
+*   ✅ **Births & inheritance:** a thriving group (a House with 6+ Food,
+    2 Food stored per member — 3 in Autumn, none in Winter — two healthy
+    fed adults, few hungry, room to grow, 60s since the last) raises a
+    young one for 3 Food. It inherits its parents' averaged traits ±0.15
+    and is protected, fed first and kept out of work, fights and politics
+    for 90s while it grows. Arrivals now only come below 30 alive; a
+    safety cap of 150 is never reached.
+*   ✅ **Villages & budding:** a group's size limit follows its housing
+    (6 to 18); a crowded group upgrades a Tent, and a full, well-stocked
+    one of Houses builds up to two more homes nearby. Members share all
+    the village's stores and defend all its homes. At 10–16 members
+    (larger under a Sociable Leader) the residents of one House bud off as
+    a daughter group that keeps it. Merging groups keep the smaller one's
+    nearby homes.
+*   ✅ **Wintering in:** idle kin with a home huddle inside it in Winter,
+    where Hunger rises at half rate.
+*   ✅ **Survival stats:** the young are counted separately, and each
+    status's death rate is broken down by cause.
+*   *Result:* over 4-hour runs the population swings with the seasons
+    between about 35 and 55 (it used to sit at 30), 15–21 villages are
+    founded and 8–19 daughter groups bud off per run, generations reach
+    14–19, and after a few years nearly everyone alive was born here.
+    Group members starve no more often than homesteaders; they die a
+    little more often overall (1.1 vs 0.9 per kin-hour), from fights.
+    A first cut that only limited births by housing let groups breed
+    until winter starved them. Members then died at 1.6 per kin-hour, so
+    births now need stored food per head, and none happen in Winter.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:
-*   ⬜ **Reproduction / lineage.** New Bramblekin only arrive from the
-    map's edge with random Personalities; nothing is inherited, so
-    there's no selection pressure on traits yet.
 *   ⬜ **Groups as actors.** Groups now have homes, goals, jobs and
     politics, but they don't raid, trade with or ally with *other groups*;
     enmity is still strictly between individuals.
@@ -354,9 +391,13 @@ matter most:
     zones (a Bramblekin will happily wander back toward the Hornet nest
     it just fled) and no reputation shared between groupmates.
 *   ⬜ **Group vs. homestead balance.** Settling alone and living in a group
-    now have similar death rates; groups win on food and lose some of that
-    edge to risky hunts and defence. Worth tuning if groups should be the
-    clearly safer choice.
+    now have similar death rates; groups win on food and on numbers, and
+    lose some of that edge to risky hunts, defence and politics. Worth
+    tuning if groups should be the clearly safer choice.
+*   ⬜ **Villages as neighbours.** Daughter groups start next to their
+    parent village but have no special tie to it (no kinship bonus, no
+    shared defence), and nothing makes villages spread out across the
+    map rather than clustering where they began.
 *   ⬜ **Real pathfinding.** Bramblekin still steer around obstacles with
     a short sideways detour when stuck, rather than any actual NavMesh/
     grid pathfinding. Fine at current Pebble density.
