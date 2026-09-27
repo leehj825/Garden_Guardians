@@ -17,7 +17,7 @@ public sealed partial class Bramblekin
     public int Generation { get; private set; }
 
     /// <summary>The two Bramblekin it was born to, if it was born here.</summary>
-    public (int A, int B)? ParentIds { get; private set; }
+    public (int Mother, int Father)? ParentIds { get; private set; }
 
     /// <summary>True for a Bramblekin born here that hasn't reached <see cref="MaturityAge"/> yet.</summary>
     public bool IsYoung => _bornHere && _age < MaturityAge;
@@ -26,23 +26,24 @@ public sealed partial class Bramblekin
     public float BodyScale => !IsYoung ? 1f : NewbornScale + (1f - NewbornScale) * (_age / MaturityAge);
 
     /// <summary>
-    /// A child born to <paramref name="a"/> and <paramref name="b"/>: it
-    /// inherits a mix of their Personalities (see <see cref="Personality.Inherit"/>),
-    /// starts out fed, and already counts its parents as Friends.
+    /// A child born to <paramref name="mother"/> and <paramref name="father"/>:
+    /// it inherits a mix of their Personalities (see <see cref="Personality.Inherit"/>),
+    /// is a daughter or a son at even odds, starts out fed, and already
+    /// counts its parents as Friends.
     /// </summary>
-    public static Bramblekin BornTo(Bramblekin a, Bramblekin b, Vector3 position, Random rng)
+    public static Bramblekin BornTo(Bramblekin mother, Bramblekin father, Vector3 position, Random rng)
     {
-        var child = new Bramblekin(position, rng, Personality.Inherit(a.Personality, b.Personality, rng))
+        var child = new Bramblekin(position, rng, Personality.Inherit(mother.Personality, father.Personality, rng))
         {
             _bornHere = true,
-            Generation = Math.Max(a.Generation, b.Generation) + 1,
-            ParentIds = (a.ID, b.ID),
+            Generation = Math.Max(mother.Generation, father.Generation) + 1,
+            ParentIds = (mother.ID, father.ID),
         };
         child.Hunger = 20f;
-        child.SetRelationship(a, RelationshipState.Friend);
-        child.SetRelationship(b, RelationshipState.Friend);
-        a.SetRelationship(child, RelationshipState.Friend);
-        b.SetRelationship(child, RelationshipState.Friend);
+        child.SetRelationship(mother, RelationshipState.Friend);
+        child.SetRelationship(father, RelationshipState.Friend);
+        mother.SetRelationship(child, RelationshipState.Friend);
+        father.SetRelationship(child, RelationshipState.Friend);
         return child;
     }
 }

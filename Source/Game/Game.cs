@@ -336,7 +336,9 @@ public static class Game
     {
         List<Bramblekin> living = world.Colony.Where(b => !b.IsDead).ToList();
         int bornHere = living.Count(b => b.Generation > 0);
-        Console.WriteLine($"Lineage: {world.Births} births, generations up to {world.MaxGeneration}; of the {living.Count} alive, {bornHere} were born here.");
+        Console.WriteLine(
+            $"Lineage: {world.Births} births, generations up to {world.MaxGeneration}; of the {living.Count} alive, {bornHere} were born here " +
+            $"({living.Count(b => b.Sex == Sex.Female)} female, {living.Count(b => b.Sex == Sex.Male)} male).");
         if (living.Count > 0)
         {
             Console.WriteLine(
@@ -497,8 +499,8 @@ public static class Game
 
         var lines = new List<(string Text, Color Color)>
         {
-            ($"Bramblekin #{kin.ID} ({role}{(kin.IsYoung ? ", young" : "")})", ink),
-            (kin.ParentIds is { } parents ? $"Generation {kin.Generation}, child of #{parents.A} & #{parents.B}" : "Generation 0 (wandered in)", ink),
+            ($"Bramblekin #{kin.ID} ({kin.Sex.ToString().ToLowerInvariant()}, {role}{(kin.IsYoung ? ", young" : "")})", ink),
+            (kin.ParentIds is { } parents ? $"Generation {kin.Generation}, mother #{parents.Mother}, father #{parents.Father}" : "Generation 0 (wandered in)", ink),
             ($"State: {kin.State}", ink),
             ($"Health: {kin.Health} / {Bramblekin.MaxHealth}", ink),
             ($"Hunger: {(int)kin.Hunger}%{(kin.IsStarving ? " STARVING" : kin.IsHungry ? " (hungry)" : "")}{(kin.HasFood ? "  +food" : "")}",

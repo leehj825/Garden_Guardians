@@ -261,6 +261,7 @@ public sealed partial class Bramblekin : ICombatant
     {
         _rng = rng;
         Personality = personality ?? Personality.Roll(rng);
+        Sex = rng.Next(2) == 0 ? Sex.Female : Sex.Male;
         Hunger = (float)rng.NextDouble() * StartingHungerMax;
         _mover = new GroundMover(position, BodyRadius, EdgeMargin, rng);
         _perceptionTimer = (float)rng.NextDouble() * PerceptionInterval;
@@ -271,6 +272,9 @@ public sealed partial class Bramblekin : ICombatant
     }
 
     public Personality Personality { get; }
+
+    /// <summary>Female or male, at even odds — see <see cref="GardenGuardians.Sex"/>. Only births care.</summary>
+    public Sex Sex { get; }
 
     /// <summary>The group this Bramblekin has joined, or null while solitary.</summary>
     public Guid? GroupId { get; private set; }

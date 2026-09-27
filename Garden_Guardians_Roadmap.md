@@ -369,12 +369,19 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     nearby homes.
 *   ✅ **Wintering in:** idle kin with a home huddle inside it in Winter,
     where Hunger rises at half rate.
+*   ✅ **Female & male:** every Bramblekin is one or the other at even
+    odds, and a birth takes a fit mother and father; otherwise no role
+    difference yet. It cost about 45% of births over 4-hour runs (a group
+    often has nobody of one sex fit to be a parent right then), with fewer
+    villages and buddings and a population averaging ~37 instead of ~42.
 *   ✅ **Survival stats:** the young are counted separately, and each
     status's death rate is broken down by cause.
-*   *Result:* over 4-hour runs the population swings with the seasons
-    between about 35 and 55 (it used to sit at 30), 15–21 villages are
-    founded and 8–19 daughter groups bud off per run, generations reach
-    14–19, and after a few years nearly everyone alive was born here.
+*   *Result* (before sexes): over 4-hour runs the population swings with
+    the seasons between about 35 and 55 (it used to sit at 30), 15–21
+    villages are founded and 8–19 daughter groups bud off per run,
+    generations reach 14–19, and after a few years nearly everyone alive
+    was born here. With sexes: 8–13 villages, 3–6 buddings, generations
+    6–15.
     Group members starve no more often than homesteaders; they die a
     little more often overall (1.1 vs 0.9 per kin-hour), from fights.
     A first cut that only limited births by housing let groups breed

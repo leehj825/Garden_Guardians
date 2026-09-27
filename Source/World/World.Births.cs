@@ -33,9 +33,10 @@ public sealed partial class World
 
     /// <summary>
     /// Growth: a thriving group raises young. It needs a House with at
-    /// least <see cref="BirthStoreThreshold"/> Food stored, two healthy, fed
-    /// adults to be the parents, few hungry members, room to grow (see
-    /// <see cref="BirthLimit"/>) and <see cref="BirthCooldownSeconds"/>
+    /// least <see cref="BirthStoreThreshold"/> Food stored, a healthy, fed
+    /// grown female and male to be the mother and father, few hungry
+    /// members, room to grow (see <see cref="BirthLimit"/>) and
+    /// <see cref="BirthCooldownSeconds"/>
     /// since its last birth, <see cref="BirthFoodPerMember"/> Food stored per
     /// member — and the right time of year: never in winter, and in autumn
     /// only with <see cref="AutumnBirthFoodPerMember"/> per member for the
@@ -67,12 +68,9 @@ public sealed partial class World
         if (nursery is null)
             return;
 
-        List<Bramblekin> parents = group.Members
-            .Where(m => !m.IsDead && !m.IsYoung && !m.IsHungry && !m.IsDueling && m.Health >= Bramblekin.MaxHealth * ParentHealthFraction)
-            .OrderBy(_ => Rng.Next())
-            .Take(2)
-            .ToList();
-        if (parents.Count < 2)
+        Bramblekin? mother = RandomFitParent(group, Sex.Female);
+        Bramblekin? father = RandomFitParent(group, Sex.Male);
+        if (mother is null || father is null)
             return;
 
         for (int i = 0; i < BirthFoodCost; i++)
@@ -80,7 +78,7 @@ public sealed partial class World
 
         float angle = (float)(Rng.NextDouble() * MathF.Tau);
         Vector3 spot = nursery.Position + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * (nursery.Radius * 0.5f);
-        Bramblekin child = Bramblekin.BornTo(parents[0], parents[1], spot, Rng);
+        Bramblekin child = Bramblekin.BornTo(mother, father, spot, Rng);
         child.JoinGroup(group.Id);
         child.SetHome(nursery);
         _pendingKinSpawns.Add(child);
@@ -89,6 +87,22 @@ public sealed partial class World
         MaxGeneration = Math.Max(MaxGeneration, child.Generation);
         group.BirthCooldown = BirthCooldownSeconds;
         QueueFloatingText(nursery.Position, "Born!", group.Color);
-        Game.AddEventLog($"[BIRTH] #{child.ID} was born to #{parents[0].ID} and #{parents[1].ID} in group {group.ShortId} (generation {child.Generation})");
+        Game.AddEventLog($"[BIRTH] A {(child.Sex == Sex.Female ? "daughter" : "son")}, #{child.ID}, was born to #{mother.ID} and #{father.ID} in group {group.ShortId} (generation {child.Generation})");
+    }
+
+    /// <summary>A random healthy, fed, grown member of <paramref name="group"/> of the given sex, fit to be a parent — null if there's none.</summary>
+    private Bramblekin? RandomFitParent(KinGroup group, Sex sex)
+    {
+        Bramblekin? chosen = null;
+        int seen = 0;
+        foreach (Bramblekin m in group.Members)
+        {
+            if (m.Sex != sex || m.IsDead || m.IsYoung || m.IsHungry || m.IsDueling || m.Health < Bramblekin.MaxHealth * ParentHealthFraction)
+                continue;
+            // Reservoir sampling: each fit candidate ends up chosen with equal odds.
+            if (Rng.Next(++seen) == 0)
+                chosen = m;
+        }
+        return chosen;
     }
 }

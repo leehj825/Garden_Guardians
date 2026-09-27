@@ -84,8 +84,9 @@ overhead camera:
 *   **Kin inspection:** tapping a Bramblekin selects it and shows its
     live state in the top-right Kin Inspector — State, Health, Hunger,
     its three Personality traits (and the detection radius its
-    Intelligence buys it), its group and role (Solitary/Leader/Follower,
-    and whether it's still young), its generation and parents, its home
+    Intelligence buys it), its sex, its group and role (Solitary/Leader/
+    Follower, and whether it's still young), its generation and mother
+    and father, its home
     (tent or house, construction progress, store), its job and
     its group's current goal (and whether the Leader eats first), its
     Loyalty (followers) and Reputation, and how many Friends, Enemies and
@@ -382,9 +383,12 @@ overhead camera:
 *   **Births:** a thriving group raises young — checked at each Leader
     decision. It needs a House with at least 6 Food stored, 2 Food stored
     per member across its homes (3 in Autumn, enough for the winter; no
-    births at all in Winter), two healthy, fed adults to be the parents,
-    no more than a third of the group hungry, room to grow (see villages)
+    births at all in Winter), a healthy, fed grown female and male to be
+    the mother and father, no more than a third of the group hungry, room to grow (see villages)
     and 60s since its last birth. A birth costs 3 Food from the store.
+*   **Sex:** every Bramblekin is female or male at even odds, newcomers
+    and newborns alike. For now the only difference is that a birth takes
+    one of each; the sexes forage, fight, build, lead and rebel alike.
 *   **The young:** a newborn inherits the average of its parents'
     Personalities, ±0.15 on each trait; its Generation is one more than
     its older parent's. For 90s it's young: drawn small and growing, it
@@ -412,8 +416,9 @@ overhead camera:
     against the old group. The parent village can then build again.
 *   **The population** is no longer held at a fixed number: it rises
     through Summer and Autumn and thins in Winter and early Spring, and
-    over hours settles wherever the garden's food allows — about 35–55 in
-    4-hour headless runs, where the old design sat at 30–40. Wandering
+    over hours settles wherever the garden's food and its pairings allow
+    — about 28–50 in 4-hour headless runs (averaging ~37), where the old
+    design sat at 30–40. Wandering
     Arrivals only top it up when it falls below 30; a safety cap of 150
     is never reached in practice.
 
