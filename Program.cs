@@ -2917,6 +2917,24 @@ public sealed class World
     /// </summary>
     private void UpdateInvasionOrders(VillageHeart village)
     {
+        // A Crusade is its own committed war, declared by
+        // LaunchOverpopulationCrusade — the ordinary Morale/Militia gates
+        // below must never cancel it, or a low-Morale tribe's Crusade gets
+        // erased the tick after it's declared (its drafted army then
+        // demobilizes and the Crusade re-fires, forever). It only ends when
+        // its target is gone/ours (here), it wins (ConquerVillage), or its
+        // roster is wiped out (CheckInvasionFailure).
+        if (village.InvasionIsCrusade)
+        {
+            if (village.InvasionTarget is { } crusadeTarget && Villages.Contains(crusadeTarget) &&
+                !(crusadeTarget.IsVassal && crusadeTarget.CapitalFactionID == village.FactionID))
+                return;
+
+            village.InvasionTarget = null;
+            village.InvasionIsCrusade = false;
+            return;
+        }
+
         bool militaristic = village.Trait == FactionTrait.Militaristic;
         int ourMilitia = LivingMilitiaCountFor(village.FactionID);
 
