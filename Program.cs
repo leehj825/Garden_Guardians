@@ -1912,7 +1912,7 @@ public sealed class World
     public const int GrievanceMilitiaThreshold = 6;
 
     /// <summary>Desperation Raids: a tribe with less than this much Food Stored counts as starving — see <see cref="UpdateInvasionOrders"/>.</summary>
-    public const int DesperationFoodThreshold = 10;
+    public const int WarDesperationFoodThreshold = 10;
 
     /// <summary>Desperation Raids: a starving tribe only raids if it is at least this populous (otherwise it is too small to field an army).</summary>
     public const int DesperationMinPopulation = 12;
@@ -2936,7 +2936,7 @@ public sealed class World
     /// rival, targeting the nearest hostile faction (non-Militaristic tribes
     /// still only pick a hostile that is weaker than them; Militaristic
     /// tribes hold the grudge regardless and need fewer Militia), or (b)
-    /// Desperation: starving (<see cref="DesperationFoodThreshold"/>) and
+    /// Desperation: starving (<see cref="WarDesperationFoodThreshold"/>) and
     /// populous enough to field a raid, targeting the nearest rival for its
     /// stores (Spoils of War). No new war while <see cref="VillageHeart.WarCooldown"/>
     /// is running. A declared war runs until its target is gone or ours,
@@ -2988,7 +2988,7 @@ public sealed class World
         }
 
         // (b) Desperation.
-        if (best is null && village.FoodStored < DesperationFoodThreshold &&
+        if (best is null && village.FoodStored < WarDesperationFoodThreshold &&
             village.Population >= DesperationMinPopulation && ourMilitia >= DesperationMinMilitia)
         {
             float bestDistanceSquared = float.MaxValue;
