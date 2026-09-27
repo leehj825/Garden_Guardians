@@ -677,8 +677,13 @@ public static class Game
             $"fleeing {Count(BramblekinState.Fleeing)}, defending {Count(BramblekinState.Defending)}, " +
             $"hunting {Count(BramblekinState.Hunting)}, raiding {Count(BramblekinState.Raiding)}, lost {world.Casualties})   " +
             $"Aphids: {world.Aphids.Count(a => !a.IsDead)}   Spider: {SpiderStatus(world)}";
-        // Line 3: Faction counts.
-        string factions = $"Sprouted: {world.Births}   Active Factions: {world.Villages.Count}";
+        // Line 3: Faction counts, plus the Elder Spider's own global (not
+        // per-faction) status once it exists — a map-wide event, so it
+        // belongs in this global bar rather than the per-faction Ledger.
+        string elderSpiderStatus = world.ElderSpiderActive
+            ? $"   [ELDER SPIDER] {world.ElderSpider!.Health}/{global::ElderSpider.MaxHealth} HP — [TRUCE] all wars frozen"
+            : "";
+        string factions = $"Sprouted: {world.Births}   Active Factions: {world.Villages.Count}{elderSpiderStatus}";
 
         Raylib.DrawText(status, 20, y, fontSize, Color.RayWhite);
         Raylib.DrawText(entities, 20, y + lineHeight, fontSize, Color.RayWhite);
@@ -1697,6 +1702,32 @@ public sealed class World
     /// <summary>Economy Threat: a target is "unguarded" (and so stealable) when no living Militia of its own faction is within this many meters (horizontal) of it — deliberately smaller than a typical <see cref="VillageHeart.TerritoryRadius"/> so a Grub still has to sneak past whoever's actually standing at the doorstep, not merely anyone patrolling the wider territory ring.</summary>
     public const float GrubDefenseRadius = 8f;
 
+    /// <summary>The Rival Ant Colony: total live Ants the world tries to keep on the map at once — a steady stream, but capped modestly to save frames since each is a cheap, harmless scavenger rather than a threat worth flooding the map with.</summary>
+    public const int MaxAntsOnMap = 14;
+
+    /// <summary>The Rival Ant Colony: seconds between checks that top the Ant population back up toward <see cref="MaxAntsOnMap"/>, one at a time, from the Anthill's own position — same cadence shape as <see cref="GrubSpawnInterval"/>.</summary>
+    public const float AntSpawnInterval = 12f;
+
+    /// <summary>The Elder Spider: simulation time (accumulated deltaTime — scales with the Debug Time Scale, since World.Update() itself is called once per Time Scale substep with a real, un-scaled deltaTime) after which it spawns, if the population threshold hasn't already triggered it first.</summary>
+    public const float ElderSpiderSpawnTimeSeconds = 12f * 60f;
+
+    /// <summary>The Elder Spider: total living Bramblekin across every faction on the map after which it spawns, if the elapsed-time threshold hasn't already triggered it first.</summary>
+    public const int ElderSpiderSpawnPopulationThreshold = 160;
+
+    /// <summary>The Elder Spider's death bounty: how many Food Shards/Amber Nodes scatter near its corpse — same shape as <see cref="ScatterSpoils"/>'s own Invasion/Conquest spoils, just a bigger one-time burst befitting a map-wide boss kill.</summary>
+    public const int ElderSpiderFoodBounty = 20;
+    public const int ElderSpiderAmberBounty = 10;
+
+    /// <summary>
+    /// The Elder Spider's death bounty's Nectar share: there is no physical,
+    /// ground-pickup Nectar entity anywhere in this file (Nectar is a purely
+    /// abstract per-Village stat — see <see cref="VillageHeart.NectarStored"/>),
+    /// so rather than invent a whole new physical pickup class for a single
+    /// one-time event, "a burst of Nectar" is a direct flat credit to every
+    /// currently active Village's own <see cref="VillageHeart.NectarStored"/>.
+    /// </summary>
+    public const int ElderSpiderNectarBountyPerVillage = 3;
+
     /// <summary>Economy Threat: chance (0-1) a Grub killed before it escapes drops a <see cref="GrubHide"/> — set high (unlike the Hornet Swarm's <see cref="HornetStingerDropChance"/>) since the ask calls for a Grub to "always" leave one behind for the Builder Upgrade to ever get off the ground.</summary>
     public const float GrubHideDropChance = 0.9f;
 
@@ -2189,6 +2220,8 @@ public sealed class World
     private readonly List<Grub> _pendingGrubRemovals = new();
     private readonly List<GrubHide> _pendingGrubHideSpawns = new();
     private readonly List<GrubHide> _pendingGrubHideRemovals = new();
+    private readonly List<Ant> _pendingAntSpawns = new();
+    private readonly List<Ant> _pendingAntRemovals = new();
 
     // The Spatial Grid: see RebuildSpatialGrids. Query results are written
     // into these reusable scratch buffers rather than allocating a fresh
@@ -2326,6 +2359,18 @@ public sealed class World
     /// <summary>Stingers dropped by dead Hornets, waiting for a victorious Militia unit to claim, carry home and deposit — see <see cref="Stinger"/>'s own doc comment.</summary>
     public List<Stinger> Stingers { get; } = new();
 
+    /// <summary>The Rival Ant Colony's home structure — a single, permanent, neutral landmark spawned once near the start of the game. Null only in the instant before <see cref="SpawnAnthill"/> runs inside the constructor; never null (nor removable) afterward.</summary>
+    public Anthill? Anthill { get; private set; }
+
+    /// <summary>The Rival Ant Colony: every live (and recently dead, until the end-of-frame removal sweep) Ant currently on the map — spawned one at a time from the Anthill's own position, see <see cref="UpdateAntSpawn"/>.</summary>
+    public List<Ant> Ants { get; } = new();
+
+    /// <summary>The Elder Spider: the map's single boss instance, if it has spawned and hasn't died yet — see <see cref="ElderSpiderActive"/>/<see cref="UpdateElderSpiderSpawnCheck"/>.</summary>
+    public ElderSpider? ElderSpider { get; private set; }
+
+    /// <summary>The Global Truce: true exactly while the Elder Spider exists and is alive — checked by <see cref="UpdateInvasionOrders"/>/<see cref="CheckInvasionFailure"/> (no war may be declared or resolved) and by <see cref="Bramblekin.Update"/>'s own highest-priority Militia check (converge on it instead).</summary>
+    public bool ElderSpiderActive => ElderSpider is not null;
+
     /// <summary>Under-construction sites; a Blueprint becomes a <see cref="Building"/> once its Construction Progress is complete.</summary>
     public List<Blueprint> Blueprints { get; } = new();
 
@@ -2399,6 +2444,31 @@ public sealed class World
             Aphids.Add(new Aphid(RandomFreePoint(Aphid.BodyRadius, Aphid.EdgeMargin), rng));
 
         SpawnGardenProps();
+
+        // The Rival Ant Colony: a single, permanent, neutral landmark
+        // spawned once here at game start — same one-time-init spirit as
+        // the original Village Heart above, just for a structure that
+        // belongs to no faction at all.
+        SpawnAnthill();
+    }
+
+    /// <summary>
+    /// The Rival Ant Colony: places the one and only <see cref="Anthill"/>
+    /// somewhere in the wilderness, clear of the original Village Heart's
+    /// own territory ring — reusing <see cref="RandomWildernessSpot"/>
+    /// (which already excludes every Village Heart's TerritoryRadius, not
+    /// just this first one) with a generous clearance so the mound itself
+    /// never visually overlaps a base. Called exactly once, from the
+    /// constructor.
+    /// </summary>
+    private void SpawnAnthill()
+    {
+        // Anthill.Radius here means the type's constant, not the World's own
+        // Anthill property of the same name — global:: forces that reading
+        // (a bare "Anthill.Radius" would otherwise try, and fail, to read a
+        // static member off the property's instance).
+        Vector3 spot = RandomWildernessSpot(global::Anthill.Radius + 1f, edgeMargin: 2f);
+        Anthill = new global::Anthill(Grounded(spot));
     }
 
     /// <summary>Part 4, Oversized Garden Props: how many static decorations to scatter across the map.</summary>
@@ -3281,6 +3351,16 @@ public sealed class World
     /// </summary>
     private void UpdateInvasionOrders(VillageHeart village)
     {
+        // The Global Truce: no faction may declare a new war (nor is an
+        // existing one's target-vanished/Vassal-conquered cleanup path
+        // below even reached) while the Elder Spider lives — every war on
+        // the map is simply frozen in place until it's dealt with. A
+        // no-op whenever ElderSpiderActive is false, so ordinary
+        // peacetime/wartime behavior is completely unaffected until the
+        // boss actually spawns.
+        if (ElderSpiderActive)
+            return;
+
         if (village.InvasionTarget is { } current)
         {
             if (Villages.Contains(current) &&
@@ -3530,6 +3610,13 @@ public sealed class World
     /// </summary>
     private void CheckInvasionFailure(VillageHeart village)
     {
+        // The Global Truce: a war's committed roster wiped out mid-truce
+        // stays frozen rather than resolving as a failure — it's
+        // re-evaluated fresh the instant ElderSpiderActive goes false. A
+        // no-op whenever it's false, same as UpdateInvasionOrders' own gate.
+        if (ElderSpiderActive)
+            return;
+
         if (village.InvasionTarget is not { } target)
             return;
         if (CommittedInvasionForceCountFor(village) > 0)
@@ -3996,6 +4083,229 @@ public sealed class World
         _pendingGrubSpawns.Add(new Grub(spot, Rng));
     }
 
+    /// <summary>The Rival Ant Colony: seconds between checks that top the Ant population back up toward <see cref="MaxAntsOnMap"/> — see <see cref="AntSpawnInterval"/>.</summary>
+    private float _antSpawnTimer = AntSpawnInterval;
+
+    /// <summary>
+    /// The Rival Ant Colony's spawner: same cadence/cap shape as
+    /// <see cref="UpdateGrubSpawn"/> — a steady stream, one Ant at a time,
+    /// but always from the Anthill's own position rather than a random
+    /// map-wide or edge spot, since every Ant belongs to (and ultimately
+    /// answers to) that one structure.
+    /// </summary>
+    private void UpdateAntSpawn(float deltaTime)
+    {
+        if (Anthill is null)
+            return;
+
+        _antSpawnTimer -= deltaTime;
+        if (_antSpawnTimer > 0f)
+            return;
+        _antSpawnTimer = AntSpawnInterval;
+
+        int living = Ants.Count(a => !a.IsDead) + _pendingAntSpawns.Count;
+        if (living >= MaxAntsOnMap)
+            return;
+
+        Vector3 spot = Anthill.Position + new Vector3((float)(Rng.NextDouble() * 2.0 - 1.0), 0f, (float)(Rng.NextDouble() * 2.0 - 1.0)) * global::Anthill.Radius;
+        _pendingAntSpawns.Add(new Ant(Grounded(spot), Rng));
+    }
+
+    /// <summary>
+    /// The Elder Spider: how long (accumulated, un-scaled per-substep
+    /// deltaTime — see <see cref="ElderSpiderSpawnTimeSeconds"/>'s own doc
+    /// comment) the current game has been running.
+    /// </summary>
+    private float _elderSpiderElapsedSeconds;
+
+    /// <summary>The Elder Spider spawns exactly once per game — set the instant it does, so a later death never triggers a second spawn.</summary>
+    private bool _elderSpiderHasSpawned;
+
+    /// <summary>
+    /// Checked once per <see cref="Update"/>: spawns the Elder Spider,
+    /// exactly once for the whole game, the moment either the elapsed
+    /// simulation time (<see cref="ElderSpiderSpawnTimeSeconds"/>) or the
+    /// total living Bramblekin population across every faction
+    /// (<see cref="ElderSpiderSpawnPopulationThreshold"/>) crosses its
+    /// threshold — whichever comes first. Placed away from every current
+    /// Village Heart via <see cref="RandomWildernessSpot"/>, same as the
+    /// Anthill.
+    /// </summary>
+    private void UpdateElderSpiderSpawnCheck(float deltaTime)
+    {
+        if (_elderSpiderHasSpawned)
+            return;
+
+        _elderSpiderElapsedSeconds += deltaTime;
+
+        int totalPopulation = Colony.Count(b => !b.IsDead);
+        if (_elderSpiderElapsedSeconds < ElderSpiderSpawnTimeSeconds && totalPopulation < ElderSpiderSpawnPopulationThreshold)
+            return;
+
+        _elderSpiderHasSpawned = true;
+        Vector3 spot = RandomWildernessSpot(global::ElderSpider.BodyRadius + 1f, edgeMargin: 2f);
+        ElderSpider = new global::ElderSpider(Grounded(spot), Rng);
+
+        string spawnMessage = "[ELDER SPIDER] The Elder Spider has awoken! Every faction's wars are frozen — all drafted Militia converge on it.";
+        Raylib.TraceLog(TraceLogLevel.Warning, spawnMessage);
+        Game.AddEventLog(spawnMessage);
+        QueueGlobalAlert("[ELDER SPIDER] A map-wide threat has awoken! [TRUCE] All wars are frozen.", new Color(180, 30, 30, 255));
+    }
+
+    /// <summary>
+    /// Sustained Combat: applies Militia poke damage to the Elder Spider
+    /// and, if that brings its Health to 0, kills it outright — same
+    /// pure-Health-mutation-then-death-check shape as <see cref="DamageSpider"/>.
+    /// </summary>
+    public void DamageElderSpider(int amount)
+    {
+        if (ElderSpider is null)
+            return;
+
+        ElderSpider.TakeDamage(amount);
+        if (ElderSpider.Health <= 0)
+            DespawnElderSpider();
+    }
+
+    /// <summary>
+    /// The Elder Spider's death: lifts the Global Truce (<see cref="ElderSpiderActive"/>
+    /// goes false, so <see cref="UpdateInvasionOrders"/>/<see cref="CheckInvasionFailure"/>
+    /// resume normally next frame with no further code needed, and every
+    /// Militia unit's own convergence check in <see cref="Bramblekin.Update"/>
+    /// simply stops matching) and drops its one-time bounty: a burst of
+    /// loose, claimable-by-anyone Food/Amber scattered near the corpse
+    /// (same <see cref="_pendingShardSpawns"/>/<see cref="_pendingAmberSpawns"/>
+    /// queued-spawn shape <see cref="ScatterSpoils"/> already established)
+    /// plus a flat Nectar credit to every currently active Village — see
+    /// <see cref="ElderSpiderNectarBountyPerVillage"/>'s own doc comment for
+    /// why Nectar is a direct stat credit rather than a new physical pickup.
+    /// </summary>
+    private void DespawnElderSpider()
+    {
+        if (ElderSpider is null)
+            return;
+
+        Vector3 deathSpot = ElderSpider.Position;
+        _splats.Add((deathSpot, SplatDuration));
+
+        float half = Terrain.Size / 2f - Bramblekin.EdgeMargin;
+        for (int i = 0; i < ElderSpiderFoodBounty; i++)
+        {
+            float angle = (float)(Rng.NextDouble() * MathF.Tau);
+            float radius = (float)Rng.NextDouble() * 3f;
+            var position = deathSpot + new Vector3(MathF.Cos(angle) * radius, 0, MathF.Sin(angle) * radius);
+            position.X = Math.Clamp(position.X, -half, half);
+            position.Z = Math.Clamp(position.Z, -half, half);
+            _pendingShardSpawns.Add((position, FoodShardKind.Cracked));
+        }
+        for (int i = 0; i < ElderSpiderAmberBounty; i++)
+        {
+            float angle = (float)(Rng.NextDouble() * MathF.Tau);
+            float radius = (float)Rng.NextDouble() * 3f;
+            var position = deathSpot + new Vector3(MathF.Cos(angle) * radius, 0, MathF.Sin(angle) * radius);
+            position.X = Math.Clamp(position.X, -half, half);
+            position.Z = Math.Clamp(position.Z, -half, half);
+            _pendingAmberSpawns.Add(position);
+        }
+
+        foreach (VillageHeart village in Villages)
+            village.NectarStored += ElderSpiderNectarBountyPerVillage;
+
+        ElderSpider = null;
+
+        string deathMessage = "[ELDER SPIDER] The Elder Spider has fallen! [TRUCE] Wars resume, and its hoard scatters across the ground.";
+        Raylib.TraceLog(TraceLogLevel.Warning, deathMessage);
+        Game.AddEventLog(deathMessage);
+        QueueGlobalAlert("[ELDER SPIDER] The Elder Spider has fallen! [TRUCE] Wars resume.", new Color(230, 200, 60, 255));
+    }
+
+    /// <summary>
+    /// The Rival Ant Colony's only combat hook on the Militia side: the
+    /// nearest living Ant within <paramref name="radius"/> of
+    /// <paramref name="from"/>, if any — used exclusively by
+    /// <see cref="Bramblekin.Update"/>'s own incidental "in the way" poke,
+    /// never a deliberate hunt (Ants are never added to the Grub/Hornet/
+    /// Aphid hunting-priority tier). A small linear scan rather than the
+    /// Spatial Grid: <see cref="MaxAntsOnMap"/> keeps the live population
+    /// tiny enough that this is cheap even checked from every idle Militia
+    /// unit every frame.
+    /// </summary>
+    public Ant? NearestLiveAntWithin(Vector3 from, float radius)
+    {
+        Ant? best = null;
+        float bestDistanceSquared = radius * radius;
+        for (int i = Ants.Count - 1; i >= 0; i--)
+        {
+            Ant ant = Ants[i];
+            if (ant.IsDead)
+                continue;
+
+            float distanceSquared = GroundMover.HorizontalDistanceSquared(from, ant.Position);
+            if (distanceSquared <= bestDistanceSquared)
+            {
+                best = ant;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>The Rival Ant Colony: called once, from <see cref="Ant.MarkDead"/> via <see cref="Ant.TakeDamage"/> — marks it caught and queues its removal, exactly like every other combatant here. No loot drop: an Ant killed simply stops being a scavenger, nothing more.</summary>
+    public void KillAnt(Ant ant)
+    {
+        if (ant.IsDead)
+            return;
+
+        ant.MarkDead();
+        _pendingAntRemovals.Add(ant);
+    }
+
+    /// <summary>The Rival Ant Colony: an Ant's own version of <see cref="DeliverFood"/> — the shard leaves the map, but nothing is credited to any Village Heart's <see cref="VillageHeart.FoodStored"/>; only the Anthill's own flavor-only tally moves.</summary>
+    public void AntCollectFood(FoodShard shard)
+    {
+        if (!_pendingShardRemovals.Contains(shard))
+            _pendingShardRemovals.Add(shard);
+        if (Anthill is { } anthill)
+            anthill.BankedFood++;
+    }
+
+    /// <summary>The Rival Ant Colony: an Ant's own version of <see cref="DeliverAmber"/> — see <see cref="AntCollectFood"/> for why nothing is credited to any Village.</summary>
+    public void AntCollectAmber(AmberNode amber)
+    {
+        if (!_pendingAmberRemovals.Contains(amber))
+            _pendingAmberRemovals.Add(amber);
+        if (Anthill is { } anthill)
+            anthill.BankedAmber++;
+    }
+
+    /// <summary>The Rival Ant Colony: an Ant's own version of <see cref="DeliverStinger"/> — see <see cref="AntCollectFood"/> for why nothing is credited to any Village.</summary>
+    public void AntCollectStinger(Stinger stinger)
+    {
+        if (!_pendingStingerRemovals.Contains(stinger))
+            _pendingStingerRemovals.Add(stinger);
+        if (Anthill is { } anthill)
+            anthill.BankedStingers++;
+    }
+
+    /// <summary>The Rival Ant Colony: an Ant's own version of <see cref="DeliverGrubHide"/> — see <see cref="AntCollectFood"/> for why nothing is credited to any Village.</summary>
+    public void AntCollectGrubHide(GrubHide hide)
+    {
+        if (!_pendingGrubHideRemovals.Contains(hide))
+            _pendingGrubHideRemovals.Add(hide);
+        if (Anthill is { } anthill)
+            anthill.BankedGrubHides++;
+    }
+
+    /// <summary>The Rival Ant Colony: called the instant a Carrying Ant reaches the Anthill — the resource it fetched already left the map at claim time (see the AntCollect* methods above), so this only needs to reset the Ant's own carrying state, which <see cref="Ant.Update"/> does itself right after calling this.</summary>
+    public void DepositAtAnthill(Ant ant)
+    {
+        // Intentionally a no-op beyond what Ant.Update already does on its
+        // own side — kept as a dedicated hook (rather than inlined) so a
+        // future visible/audible "deposit" effect has one obvious place to
+        // live, matching this file's habit of a named hand-off method per
+        // event even when today it does nothing further.
+    }
+
     /// <summary>Economy Threat: a random point right along one of the map's four edges — the Grub's own spawn convention, distinct from <see cref="RandomWildernessSpot"/>'s uniform-across-the-map sampling, since the ask is specifically "spawn near the map edges".</summary>
     private Vector3 RandomEdgeSpot(float clearance, float edgeMargin)
     {
@@ -4253,6 +4563,13 @@ public sealed class World
         for (int i = Grubs.Count - 1; i >= 0; i--)
             Grubs[i].Update(deltaTime, this);
 
+        // The Rival Ant Colony: same reverse for-loop/deferred-removal
+        // reasoning — a Militia's own Update() (below) can incidentally
+        // poke an Ant, whose own retaliation TakeDamage can in turn call
+        // World.KillAnt.
+        for (int i = Ants.Count - 1; i >= 0; i--)
+            Ants[i].Update(deltaTime, this);
+
         // Reverse for-loop: a Bramblekin's own Update() can indirectly queue
         // a sprout (via DeliverFood), a kill (via the spider's pounce), or
         // now a dead Aphid (via Militia Hunting) — none of them touch their
@@ -4269,6 +4586,7 @@ public sealed class World
         UpdateBlueprintStallTimers(deltaTime);
 
         Spider?.Update(deltaTime, this);
+        ElderSpider?.Update(deltaTime, this);
 
         // The Simulation Loop: every faction's Village Heart runs its own
         // Auto-Conscription, War Weariness, Upkeep and Auto-Construction
@@ -4465,6 +4783,8 @@ public sealed class World
         UpdateAphidRespawn(deltaTime);
         UpdateHornetSpawn(deltaTime);
         UpdateGrubSpawn(deltaTime);
+        UpdateAntSpawn(deltaTime);
+        UpdateElderSpiderSpawnCheck(deltaTime);
         UpdateLootDespawn(deltaTime);
 
         for (int i = _splats.Count - 1; i >= 0; i--)
@@ -4654,6 +4974,19 @@ public sealed class World
             GrubHides.AddRange(_pendingGrubHideSpawns);
             _pendingGrubHideSpawns.Clear();
         }
+
+        if (_pendingAntRemovals.Count > 0)
+        {
+            for (int i = _pendingAntRemovals.Count - 1; i >= 0; i--)
+                Ants.Remove(_pendingAntRemovals[i]);
+            _pendingAntRemovals.Clear();
+        }
+
+        if (_pendingAntSpawns.Count > 0)
+        {
+            Ants.AddRange(_pendingAntSpawns);
+            _pendingAntSpawns.Clear();
+        }
     }
 
     /// <summary>
@@ -4719,6 +5052,8 @@ public sealed class World
 
         for (int i = Villages.Count - 1; i >= 0; i--)
             Villages[i].Draw();
+
+        Anthill?.Draw();
 
         for (int i = GardenProps.Count - 1; i >= 0; i--)
         {
@@ -4802,6 +5137,13 @@ public sealed class World
                 Grubs[i].Draw();
         }
 
+        // The Rival Ant Colony: same reverse-for/skip-dead pattern.
+        for (int i = Ants.Count - 1; i >= 0; i--)
+        {
+            if (!Ants[i].IsDead)
+                Ants[i].Draw();
+        }
+
         // Reverse for-loop, and skip anything marked dead this frame: its
         // removal from Colony is deferred, so without this check a
         // Bramblekin caught a moment ago would still be drawn standing there.
@@ -4813,6 +5155,7 @@ public sealed class World
         }
 
         Spider?.Draw();
+        ElderSpider?.Draw();
     }
 
     // --- Queries used by the Bramblekin AI ------------------------------------
@@ -4839,7 +5182,7 @@ public sealed class World
     /// shove them aside — but the blocked check stays as a safety net for a
     /// shard wedged somewhere unreachable.
     /// </summary>
-    public bool IsAvailable(FoodShard shard, Bramblekin claimant) =>
+    public bool IsAvailable(FoodShard shard, IResourceClaimant claimant) =>
         shard.IsActive // Object Pooling: an inactive slot is not a real shard.
         && !shard.IsCarried
         && (shard.ClaimedBy is null || shard.ClaimedBy == claimant)
@@ -4960,7 +5303,7 @@ public sealed class World
     }
 
     /// <summary>Tycoon Economy Dibs: same rules as <see cref="IsAvailable(FoodShard, Bramblekin)"/> — nobody carrying it, unclaimed (or claimed by <paramref name="claimant"/>).</summary>
-    public bool IsAvailable(AmberNode amber, Bramblekin claimant) =>
+    public bool IsAvailable(AmberNode amber, IResourceClaimant claimant) =>
         amber.IsActive // Object Pooling: an inactive slot is not a real Amber node.
         && !amber.IsCarried
         && (amber.ClaimedBy is null || amber.ClaimedBy == claimant)
@@ -5030,7 +5373,7 @@ public sealed class World
     /// removes it from <see cref="Villages"/> first), so there is no
     /// foreign border left to violate.
     /// </summary>
-    public AmberNode? NearestUnclaimedAmberNear(Vector3 area, Bramblekin claimant, float radius)
+    public AmberNode? NearestUnclaimedAmberNear(Vector3 area, IResourceClaimant claimant, float radius)
     {
         AmberNode? best = null;
         float bestDistanceSquared = float.MaxValue;
@@ -5061,7 +5404,7 @@ public sealed class World
     /// separate, radius-bounded, border-check-free search rather than a
     /// reuse of the ordinary Gathering one.
     /// </summary>
-    public FoodShard? NearestUnclaimedShardNear(Vector3 area, Bramblekin claimant, float radius)
+    public FoodShard? NearestUnclaimedShardNear(Vector3 area, IResourceClaimant claimant, float radius)
     {
         FoodShard? best = null;
         float bestDistanceSquared = float.MaxValue;
@@ -5166,7 +5509,7 @@ public sealed class World
     }
 
     /// <summary>The Hornet Swarm's Equipment Dibs: a Stinger is available to <paramref name="claimant"/> if nobody else has already claimed it — same rule as a Fang/Chitin.</summary>
-    public bool IsAvailable(Stinger stinger, Bramblekin claimant) =>
+    public bool IsAvailable(Stinger stinger, IResourceClaimant claimant) =>
         !stinger.IsCarried && (stinger.ClaimedBy is null || stinger.ClaimedBy == claimant || stinger.ClaimedBy.IsDead);
 
     /// <summary>
@@ -5178,7 +5521,7 @@ public sealed class World
     /// search that would otherwise let every unit on the map converge on
     /// one dead Hornet's Stinger.
     /// </summary>
-    public Stinger? NearestAvailableStinger(Vector3 from, Bramblekin claimant)
+    public Stinger? NearestAvailableStinger(Vector3 from, IResourceClaimant claimant)
     {
         Stinger? best = null;
         float bestDistance = EquipmentSearchRadius * EquipmentSearchRadius;
@@ -5213,11 +5556,11 @@ public sealed class World
     }
 
     /// <summary>Equipment Dibs: same rule as a Fang/Chitin/Stinger.</summary>
-    public bool IsAvailable(GrubHide hide, Bramblekin claimant) =>
+    public bool IsAvailable(GrubHide hide, IResourceClaimant claimant) =>
         !IsBlocked(hide.Position, 0f) && (hide.ClaimedBy is null || hide.ClaimedBy == claimant || hide.ClaimedBy.IsDead);
 
     /// <summary>The nearest GrubHide within <see cref="EquipmentSearchRadius"/> of <paramref name="from"/> that <paramref name="claimant"/> may take, if any — the exact same claim-limited search <see cref="NearestAvailableStinger"/> already established, so a GrubHide can never lure every unit on the map to converge on one dead Grub.</summary>
-    public GrubHide? NearestAvailableGrubHide(Vector3 from, Bramblekin claimant)
+    public GrubHide? NearestAvailableGrubHide(Vector3 from, IResourceClaimant claimant)
     {
         GrubHide? best = null;
         float bestDistance = EquipmentSearchRadius * EquipmentSearchRadius;
@@ -7615,6 +7958,25 @@ public sealed class Acorn
 }
 
 /// <summary>
+/// The Rival Ant Colony: the shared claim/ownership contract a Bramblekin
+/// AND an Ant can both hold against a loose <see cref="FoodShard"/>/
+/// <see cref="AmberNode"/>/<see cref="Stinger"/>/<see cref="GrubHide"/>'s
+/// <c>ClaimedBy</c> field — the least invasive fix that lets the two
+/// entirely separate entity hierarchies (neither derives from the other;
+/// see <see cref="Bramblekin"/>/<see cref="Ant"/>) compete fairly for the
+/// same ground loot on a first-come-first-served basis, without widening
+/// <c>ClaimedBy</c> all the way to <c>object</c>. Only <see cref="IsDead"/>
+/// is needed by the claim/timeout logic (a dead claimant's Dibs are always
+/// treated as stale — see every <c>IsAvailable</c> overload's own
+/// <c>ClaimedBy.IsDead</c> check), so that's all this interface asks for.
+/// </summary>
+public interface IResourceClaimant
+{
+    /// <summary>True once this claimant is gone and its claim should be treated as abandoned.</summary>
+    bool IsDead { get; }
+}
+
+/// <summary>
 /// Tycoon Economy: a rare, wealth-only resource — scarce on the map (see
 /// <see cref="World.MaxAmberOnMap"/>/<see cref="World.AmberSpawnInterval"/>)
 /// and pursued by a Gatherer only once its home Village Heart's
@@ -7637,9 +7999,11 @@ public sealed class AmberNode
     /// <summary>
     /// Dibs: the one Gatherer currently pursuing this Amber, if any — same
     /// claim/timeout pattern as <see cref="FoodShard.ClaimedBy"/>/<see cref="FoodShard.ClaimTimer"/>,
-    /// enforced by <see cref="World"/>.
+    /// enforced by <see cref="World"/>. The Rival Ant Colony: typed as
+    /// <see cref="IResourceClaimant"/> rather than <see cref="Bramblekin"/>
+    /// so an <see cref="Ant"/> can hold this exact same claim.
     /// </summary>
-    public Bramblekin? ClaimedBy { get; set; }
+    public IResourceClaimant? ClaimedBy { get; set; }
 
     /// <summary>Seconds since <see cref="ClaimedBy"/> was last set. Reset to 0 on every new claim; ticked and enforced by World.</summary>
     public float ClaimTimer { get; set; }
@@ -7743,9 +8107,11 @@ public sealed class FoodShard
     /// or otherwise never actually closes the distance, it's also force-
     /// released after <see cref="World.FoodClaimTimeoutSeconds"/> of game
     /// time (see <see cref="ClaimTimer"/> and <see cref="World.Update"/>'s
-    /// timeout sweep) so nobody else is ever locked out forever.
+    /// timeout sweep) so nobody else is ever locked out forever. The Rival
+    /// Ant Colony: typed as <see cref="IResourceClaimant"/> so an
+    /// <see cref="Ant"/> can hold this exact same claim as a Bramblekin.
     /// </summary>
-    public Bramblekin? ClaimedBy { get; set; }
+    public IResourceClaimant? ClaimedBy { get; set; }
 
     /// <summary>Seconds since <see cref="ClaimedBy"/> was last set. Reset to 0 on every new claim; ticked and enforced by World.</summary>
     public float ClaimTimer { get; set; }
@@ -7886,8 +8252,8 @@ public sealed class Stinger
     /// <summary>True while a Bramblekin is holding it; a carried Stinger is hidden from the map, same as a carried Food Shard/Amber Node.</summary>
     public bool IsCarried { get; set; }
 
-    /// <summary>Equipment Dibs: the one Militia unit currently walking to pick this up — see <see cref="World.NearestAvailableStinger"/>.</summary>
-    public Bramblekin? ClaimedBy { get; set; }
+    /// <summary>Equipment Dibs: the one Militia unit currently walking to pick this up — see <see cref="World.NearestAvailableStinger"/>. The Rival Ant Colony: typed as <see cref="IResourceClaimant"/> so an <see cref="Ant"/> can hold this exact same claim.</summary>
+    public IResourceClaimant? ClaimedBy { get; set; }
 
     public Stinger(Vector3 groundPoint) => Position = World.Grounded(groundPoint); // Part 6: snap onto the hilly terrain.
 
@@ -8915,6 +9281,16 @@ public enum BramblekinState
     /// <see cref="Bramblekin.UpdateBartering"/>. Trader only.
     /// </summary>
     Bartering,
+
+    /// <summary>
+    /// The Global Truce: Militia only — while the Elder Spider lives (see
+    /// <see cref="World.ElderSpiderActive"/>), every drafted Militia unit
+    /// map-wide converges on it instead of anything else, existing wars
+    /// and ordinary Wolf Spider defense included — the single highest
+    /// priority in the whole chain. See <see cref="Bramblekin.Update"/>'s
+    /// own top-of-chain check and <see cref="Bramblekin.UpdateConvergingOnElderSpider"/>.
+    /// </summary>
+    ConvergingOnElderSpider,
 }
 
 /// <summary>A Bramblekin's class: an ordinary worker, a dedicated builder, or a drafted defender.</summary>
@@ -9058,7 +9434,7 @@ public enum BramblekinRole
 /// dies (see <see cref="MarkDead"/>). The Wolf Spider is exempt — any number
 /// of Militia can pile onto it at once.
 /// </summary>
-public sealed class Bramblekin
+public sealed class Bramblekin : IResourceClaimant
 {
     private static int _nextId = 0;
 
@@ -9922,6 +10298,30 @@ public sealed class Bramblekin
             return;
         }
 
+        // --- 1'. The Global Truce (absolute priority for Militia): while
+        // the Elder Spider lives, every drafted Militia unit map-wide
+        // converges on it — an existential, map-wide crisis that overrides
+        // even ordinary Wolf Spider home defense (checked in "2." just
+        // below), current Invasion orders, Scout alerts, everything. A
+        // no-op whenever World.ElderSpiderActive is false (the common
+        // case, for the entire game until the boss actually spawns), so
+        // ordinary priority ordering is completely unaffected until then.
+        // Once the truce lifts (the spider dies, clearing
+        // World.ElderSpider), this simply stops matching and the unit
+        // falls back to its ordinary priority chain the very next frame —
+        // nothing here needs to be manually cleaned up.
+        if (Role == BramblekinRole.Militia && world.ElderSpiderActive && world.ElderSpider is { } elderSpider)
+        {
+            if (State != BramblekinState.ConvergingOnElderSpider)
+            {
+                _combatTarget = null;
+                DropCarried();
+                SetState(BramblekinState.ConvergingOnElderSpider);
+            }
+            UpdateConvergingOnElderSpider(deltaTime, world, elderSpider);
+            return;
+        }
+
         bool isSafe(Vector3 p) => IsSafeSpot(p, world);
 
         VillageHeart? home = world.VillageFor(FactionID);
@@ -10091,6 +10491,22 @@ public sealed class Bramblekin
             _invasionTarget = invasionTarget;
             _isCrusading = home.InvasionIsCrusade;
             SetState(BramblekinState.Invading);
+        }
+
+        // --- 3e. The Rival Ant Colony: purely incidental melee, never a
+        // deliberate hunt — Militia never seeks an Ant out (unlike Grubs/
+        // Hornets/Aphids in 3c above), but an idle, still-Walking-or-
+        // Pausing unit that happens to have wandered right up against one
+        // pokes it like anything else within reach. Only fires while
+        // otherwise doing nothing (Walking/Pausing), so it can never steal
+        // _pokeCooldown from a real fight already under way in Defending/
+        // Raiding/Invading/Looting/ConvergingOnElderSpider — those all run
+        // their own separate poke checks against their own real targets.
+        if (Role == BramblekinRole.Militia && State is BramblekinState.Walking or BramblekinState.Pausing &&
+            _pokeCooldown <= 0f && world.NearestLiveAntWithin(Position, PokeRange) is { } nearAnt)
+        {
+            nearAnt.TakeDamage(HasFangPike ? UpgradedPokeDamage : PokeDamage, world, this);
+            _pokeCooldown = PokeCooldownDuration;
         }
 
         // --- 4. Run the current state -------------------------------------------
@@ -11255,6 +11671,42 @@ public sealed class Bramblekin
         // Nothing left to fight: stand down.
         _combatTarget = null;
         StartWandering(world);
+    }
+
+    /// <summary>
+    /// The Global Truce: unconditional convergence on the Elder Spider —
+    /// no leash, no territory check, no "is it actually in my home
+    /// ground" gate the way ordinary Wolf Spider defense (UpdateDefending)
+    /// has, since this is deliberately a genuine, map-wide, all-hands
+    /// crisis that's meant to pull Militia away from their own territory
+    /// even if that leaves it undefended. Sustained Combat: the same
+    /// Poke/PokeCooldown mechanics as every other melee exchange here,
+    /// just aimed at <see cref="World.DamageElderSpider"/> instead of
+    /// <see cref="World.DamageSpider"/>. If the truce lifts mid-step
+    /// (<paramref name="world"/>'s own <see cref="World.ElderSpiderActive"/>
+    /// goes false between one frame and the next — e.g. another unit's
+    /// poke this same frame landed the killing blow), simply falls back to
+    /// ordinary wandering immediately rather than continuing to chase a
+    /// gone target; the outer priority chain in <see cref="Update"/>
+    /// already stops calling this at all the next frame either way.
+    /// </summary>
+    private void UpdateConvergingOnElderSpider(float deltaTime, World world, ElderSpider elderSpider)
+    {
+        if (!world.ElderSpiderActive || world.ElderSpider != elderSpider)
+        {
+            StartWandering(world);
+            return;
+        }
+
+        _target = elderSpider.Position;
+
+        if (_pokeCooldown <= 0f && GroundMover.HorizontalDistance(Position, elderSpider.Position) <= PokeRange)
+        {
+            world.DamageElderSpider(HasFangPike ? UpgradedPokeDamage : PokeDamage);
+            _pokeCooldown = PokeCooldownDuration;
+        }
+
+        _mover.MoveTowards(_target, DefendSpeed, deltaTime, world, p => IsSafeSpot(p, world));
     }
 
     /// <summary>
@@ -13198,8 +13650,8 @@ public sealed class GrubHide
     /// <summary>True while a Bramblekin is holding it; a carried GrubHide is hidden from the map, same as a carried Food Shard/Amber Node/Stinger.</summary>
     public bool IsCarried { get; set; }
 
-    /// <summary>Equipment Dibs: the one Militia unit currently walking to pick this up — see <see cref="World.NearestAvailableGrubHide"/>.</summary>
-    public Bramblekin? ClaimedBy { get; set; }
+    /// <summary>Equipment Dibs: the one Militia unit currently walking to pick this up — see <see cref="World.NearestAvailableGrubHide"/>. The Rival Ant Colony: typed as <see cref="IResourceClaimant"/> so an <see cref="Ant"/> can hold this exact same claim.</summary>
+    public IResourceClaimant? ClaimedBy { get; set; }
 
     public GrubHide(Vector3 groundPoint) => Position = World.Grounded(groundPoint); // Part 6: snap onto the hilly terrain.
 
@@ -13211,6 +13663,565 @@ public sealed class GrubHide
         var center = groundPoint + new Vector3(0, Radius * 0.5f, 0);
         Raylib.DrawCube(center, Radius * 1.8f, Radius * 0.3f, Radius * 1.4f, fill);
         Raylib.DrawCubeWires(center, Radius * 1.8f, Radius * 0.3f, Radius * 1.4f, edge);
+    }
+}
+
+// =============================================================================
+//  The Rival Ant Colony: a neutral scavenger faction
+// =============================================================================
+
+/// <summary>
+/// A neutral landmark: the Rival Ant Colony's home structure. Spawns once,
+/// near the start of the game, well clear of the original Village Heart's
+/// own territory (see <see cref="World.SpawnAnthill"/>). Has no Health and
+/// cannot be attacked or destroyed — a passive, permanent fixture of the
+/// map, not a <see cref="Building"/> (it belongs to no faction) and not a
+/// <see cref="VillageHeart"/>. Every <see cref="Ant"/> is spawned from, and
+/// ultimately delivers its scavenged loot back to, this single instance.
+/// </summary>
+public sealed class Anthill
+{
+    /// <summary>Footprint radius (m) — deliberately small; Ants spawn and deposit right at <see cref="Position"/>, no separate delivery-distance margin needed.</summary>
+    public const float Radius = 1.1f;
+
+    public Vector3 Position { get; }
+
+    /// <summary>Flavor-only tallies of what the Colony has scavenged so far — never spent, never affects gameplay; see this class's own doc comment on <see cref="World.AntCollectFood"/>'s "why no drop/credit" reasoning.</summary>
+    public int BankedFood { get; internal set; }
+    public int BankedAmber { get; internal set; }
+    public int BankedStingers { get; internal set; }
+    public int BankedGrubHides { get; internal set; }
+
+    public Anthill(Vector3 position) => Position = position;
+
+    private static readonly Color MoundColor = new(120, 90, 55, 255);
+    private static readonly Color MoundEdgeColor = new(70, 50, 30, 255);
+    private static readonly Color TunnelColor = new(40, 28, 18, 255);
+
+    /// <summary>A squat brown dome (mound) with a dark tunnel entrance dimple on top — distinct at a glance from a GardenProp (which never uses this silhouette) or any faction Building (never brown/dome-shaped).</summary>
+    public void Draw()
+    {
+        Raylib.DrawCylinder(Position, Radius, Radius * 0.55f, Radius * 0.85f, 16, MoundColor);
+        Raylib.DrawCylinderWires(Position, Radius, Radius * 0.55f, Radius * 0.85f, 16, MoundEdgeColor);
+        Vector3 top = Position + new Vector3(0, Radius * 0.85f, 0);
+        Raylib.DrawSphere(top, Radius * 0.3f, MoundColor);
+        Raylib.DrawSphere(top + new Vector3(0, Radius * 0.1f, 0), Radius * 0.16f, TunnelColor);
+    }
+}
+
+/// <summary>What an Ant is currently doing.</summary>
+public enum AntState
+{
+    /// <summary>Idle: nothing worth fetching right now — wanders a short distance from the Anthill.</summary>
+    Wandering,
+
+    /// <summary>Walking to a loose resource it has already claimed.</summary>
+    Fetching,
+
+    /// <summary>Carrying a claimed resource back to the Anthill to deposit it.</summary>
+    Carrying,
+
+    /// <summary>Retaliating: something hit it, and it's fighting back for a short window — see <see cref="World.DamageAnt"/>.</summary>
+    Retaliating,
+}
+
+/// <summary>
+/// The Rival Ant Colony's worker: a small, simple, strictly neutral
+/// scavenger. Its entire AI is "path to any loose, unclaimed Food Shard,
+/// Amber Node, Stinger or GrubHide anywhere on the map, pick it up, carry
+/// it back to the <see cref="Anthill"/>, repeat" — sharing the exact same
+/// claim system (<see cref="IResourceClaimant"/>/<c>ClaimedBy</c>) a
+/// Bramblekin already competes through, so the two simply race fairly for
+/// the same loot. Never initiates aggression against a Bramblekin — no
+/// aggro radius, no chasing — but fights back for a short window if
+/// something actually hurts it (<see cref="TakeDamage"/>). Architecturally
+/// this mirrors <see cref="Grub"/>'s carry-mechanic shape (claim, walk,
+/// carry, deliver) but is simpler: it never steals FROM a building and
+/// never flees, it only ever picks up loose ground items that are already
+/// just lying there.
+/// </summary>
+public sealed class Ant : IResourceClaimant
+{
+    /// <summary>Collision/body radius in meters — smaller than a Bramblekin, about a Hornet's size.</summary>
+    public const float BodyRadius = 0.12f;
+
+    /// <summary>How far from the terrain edge it may wander, in meters.</summary>
+    public const float EdgeMargin = 0.3f;
+
+    private const float MoveSpeed = 1.1f;
+    private const float ChaseSpeed = 1.6f;
+
+    /// <summary>Reach (m, horizontal) to pick up a claimed resource or deposit at the Anthill.</summary>
+    private const float ContactRange = 0.4f;
+
+    /// <summary>Reach (m, horizontal) to bite back at whatever it's retaliating against.</summary>
+    private const float BiteRange = 0.3f;
+
+    /// <summary>Low Attack Damage: a scavenger, not a real combat threat — a few bites do almost nothing to a Militia unit's own <see cref="Bramblekin.MaxHealth"/>.</summary>
+    private const int BiteDamage = 2;
+
+    private const float BiteCooldownDuration = 1f;
+
+    /// <summary>How long (s) an Ant keeps fighting back after being hit before giving up and returning to scavenging, regardless of whether it ever actually landed a hit.</summary>
+    private const float RetaliationWindow = 5f;
+
+    /// <summary>Gives up the chase if its attacker gets this far away (m) — an Ant is no threat and shouldn't be able to be kited across the whole map.</summary>
+    private const float RetaliationLeashRadius = 6f;
+
+    /// <summary>Hit points out of this — modest: enough that it isn't a one-poke death, but far below anything meant to actually threaten a Militia unit.</summary>
+    public const int MaxHealth = 8;
+
+    private readonly GroundMover _mover;
+    private Vector3 _wanderTarget;
+    private float _wanderPauseTimer;
+    private float _biteCooldown;
+    private float _retaliationTimer;
+    private Bramblekin? _attacker;
+
+    private FoodShard? _claimedShard;
+    private AmberNode? _claimedAmber;
+    private Stinger? _claimedStinger;
+    private GrubHide? _claimedGrubHide;
+
+    /// <summary>Part 6: terrain-aware, same treatment as every other entity — Y is snapped to World.GetHeightAt every read.</summary>
+    public Vector3 Position => World.Grounded(_mover.Position);
+
+    public AntState State { get; private set; } = AntState.Wandering;
+
+    /// <summary>True once killed by a Militia unit. Removal from World.Ants is deferred to the end of the frame, same convention as every other entity here.</summary>
+    public bool IsDead { get; private set; }
+
+    /// <summary>Hit points out of <see cref="MaxHealth"/>.</summary>
+    public int Health { get; private set; } = MaxHealth;
+
+    public Ant(Vector3 position, Random rng)
+    {
+        _mover = new GroundMover(position, BodyRadius, EdgeMargin, rng);
+        _wanderTarget = position;
+    }
+
+    /// <summary>Marks it caught. Called once, from World.KillAnt.</summary>
+    public void MarkDead()
+    {
+        IsDead = true;
+        ReleaseAllClaims();
+    }
+
+    /// <summary>
+    /// Never initiated by the Ant itself — only ever called when a Militia
+    /// unit incidentally pokes one (see <see cref="Bramblekin.Update"/>'s
+    /// own "in the way" reflex). Starts (or refreshes) a short retaliation
+    /// window against <paramref name="attacker"/>; death is World's call,
+    /// same convention as every other combatant here.
+    /// </summary>
+    public void TakeDamage(int amount, World world, Bramblekin attacker)
+    {
+        if (IsDead)
+            return;
+
+        Health = Math.Max(0, Health - amount);
+        _attacker = attacker;
+        _retaliationTimer = RetaliationWindow;
+        if (State != AntState.Retaliating)
+            State = AntState.Retaliating;
+
+        if (Health <= 0)
+            world.KillAnt(this);
+    }
+
+    private void ReleaseAllClaims()
+    {
+        if (_claimedShard is { } shard && shard.ClaimedBy == this)
+            shard.ClaimedBy = null;
+        if (_claimedAmber is { } amber && amber.ClaimedBy == this)
+            amber.ClaimedBy = null;
+        if (_claimedStinger is { } stinger && stinger.ClaimedBy == this)
+            stinger.ClaimedBy = null;
+        if (_claimedGrubHide is { } hide && hide.ClaimedBy == this)
+            hide.ClaimedBy = null;
+        _claimedShard = null;
+        _claimedAmber = null;
+        _claimedStinger = null;
+        _claimedGrubHide = null;
+    }
+
+    public void Update(float deltaTime, World world)
+    {
+        if (IsDead)
+            return;
+
+        _mover.Idle();
+        _biteCooldown = MathF.Max(0f, _biteCooldown - deltaTime);
+
+        // Retaliation: a short window of fighting back against whoever hit
+        // it — never a target it picked for itself. Falls straight back to
+        // ordinary scavenging once the window runs out or the attacker is
+        // gone/too far to matter.
+        if (State == AntState.Retaliating)
+        {
+            _retaliationTimer -= deltaTime;
+            if (_retaliationTimer <= 0f || _attacker is not { IsDead: false } attacker || !world.Colony.Contains(attacker) ||
+                GroundMover.HorizontalDistanceSquared(Position, attacker.Position) > RetaliationLeashRadius * RetaliationLeashRadius)
+            {
+                _attacker = null;
+                State = AntState.Wandering;
+            }
+            else
+            {
+                float distance = GroundMover.HorizontalDistance(Position, attacker.Position);
+                if (distance <= BiteRange)
+                {
+                    if (_biteCooldown <= 0f)
+                    {
+                        attacker.TakeDamage(BiteDamage, world);
+                        _biteCooldown = BiteCooldownDuration;
+                    }
+                    return;
+                }
+
+                _mover.MoveTowards(attacker.Position, ChaseSpeed, deltaTime, world, p => world.Terrain.Contains(p, EdgeMargin));
+                return;
+            }
+        }
+
+        if (State == AntState.Carrying)
+        {
+            Vector3 home = world.Anthill!.Position;
+            if (GroundMover.HorizontalDistance(Position, home) <= ContactRange + Anthill.Radius)
+            {
+                world.DepositAtAnthill(this);
+                State = AntState.Wandering;
+                return;
+            }
+            _mover.MoveTowards(home, MoveSpeed, deltaTime, world, p => world.Terrain.Contains(p, EdgeMargin));
+            return;
+        }
+
+        // Object Pooling safety net: a claimed shard/amber may have
+        // despawned since it was claimed.
+        if (_claimedShard is { IsActive: false })
+            _claimedShard = null;
+        if (_claimedAmber is { IsActive: false })
+            _claimedAmber = null;
+
+        if (_claimedShard is null && _claimedAmber is null && _claimedStinger is null && _claimedGrubHide is null)
+            AcquireTarget(world);
+
+        if (_claimedShard is { } shard)
+        {
+            if (GroundMover.HorizontalDistance(Position, shard.Position) <= ContactRange)
+            {
+                world.AntCollectFood(shard);
+                _claimedShard = null;
+                State = AntState.Carrying;
+                return;
+            }
+            State = AntState.Fetching;
+            _mover.MoveTowards(shard.Position, MoveSpeed, deltaTime, world, p => world.Terrain.Contains(p, EdgeMargin));
+            return;
+        }
+
+        if (_claimedAmber is { } amber)
+        {
+            if (GroundMover.HorizontalDistance(Position, amber.Position) <= ContactRange)
+            {
+                world.AntCollectAmber(amber);
+                _claimedAmber = null;
+                State = AntState.Carrying;
+                return;
+            }
+            State = AntState.Fetching;
+            _mover.MoveTowards(amber.Position, MoveSpeed, deltaTime, world, p => world.Terrain.Contains(p, EdgeMargin));
+            return;
+        }
+
+        if (_claimedStinger is { } stinger)
+        {
+            if (GroundMover.HorizontalDistance(Position, stinger.Position) <= ContactRange)
+            {
+                world.AntCollectStinger(stinger);
+                _claimedStinger = null;
+                State = AntState.Carrying;
+                return;
+            }
+            State = AntState.Fetching;
+            _mover.MoveTowards(stinger.Position, MoveSpeed, deltaTime, world, p => world.Terrain.Contains(p, EdgeMargin));
+            return;
+        }
+
+        if (_claimedGrubHide is { } hide)
+        {
+            if (GroundMover.HorizontalDistance(Position, hide.Position) <= ContactRange)
+            {
+                world.AntCollectGrubHide(hide);
+                _claimedGrubHide = null;
+                State = AntState.Carrying;
+                return;
+            }
+            State = AntState.Fetching;
+            _mover.MoveTowards(hide.Position, MoveSpeed, deltaTime, world, p => world.Terrain.Contains(p, EdgeMargin));
+            return;
+        }
+
+        // Nothing to scavenge right now: idle wander near wherever it is.
+        State = AntState.Wandering;
+        if (_wanderPauseTimer > 0f)
+        {
+            _wanderPauseTimer -= deltaTime;
+            return;
+        }
+        if (_mover.MoveTowards(_wanderTarget, MoveSpeed * 0.6f, deltaTime, world, p => world.Terrain.Contains(p, EdgeMargin)))
+        {
+            _wanderPauseTimer = 1.5f;
+            float angle = (float)(world.Rng.NextDouble() * MathF.Tau);
+            float radius = (float)world.Rng.NextDouble() * 3f;
+            _wanderTarget = Position + new Vector3(MathF.Cos(angle) * radius, 0, MathF.Sin(angle) * radius);
+        }
+    }
+
+    /// <summary>
+    /// Claims the nearest available Food Shard, Amber Node, Stinger or
+    /// GrubHide, in that order — reusing the exact same claim-limited
+    /// search methods a Bramblekin already uses (see
+    /// <see cref="World.NearestUnclaimedShardNear"/>/<see cref="World.NearestUnclaimedAmberNear"/>/
+    /// <see cref="World.NearestAvailableStinger"/>/<see cref="World.NearestAvailableGrubHide"/>)
+    /// with this Ant as the claimant, rather than any new unbounded scan.
+    /// </summary>
+    private void AcquireTarget(World world)
+    {
+        if (world.NearestUnclaimedShardNear(Position, this, World.MaxGatherSearchRadius) is { } shard)
+        {
+            _claimedShard = shard;
+            shard.ClaimedBy = this;
+            return;
+        }
+        if (world.NearestUnclaimedAmberNear(Position, this, World.MaxGatherSearchRadius) is { } amber)
+        {
+            _claimedAmber = amber;
+            amber.ClaimedBy = this;
+            return;
+        }
+        if (world.NearestAvailableStinger(Position, this) is { } stinger)
+        {
+            _claimedStinger = stinger;
+            stinger.ClaimedBy = this;
+            return;
+        }
+        if (world.NearestAvailableGrubHide(Position, this) is { } hide)
+        {
+            _claimedGrubHide = hide;
+            hide.ClaimedBy = this;
+        }
+    }
+
+    private static readonly Color BodyColor = new(35, 28, 22, 255);
+
+    /// <summary>A tiny dark capsule-and-sphere silhouette — cheap enough to draw many at once, same spirit as Hornet.Draw()/Aphid.Draw().</summary>
+    public void Draw()
+    {
+        var bottom = Position + new Vector3(0, BodyRadius * 0.4f, 0);
+        var top = Position + new Vector3(0, BodyRadius * 1.1f, 0);
+        Raylib.DrawCapsule(bottom, top, BodyRadius * 0.6f, 5, 3, BodyColor);
+
+        Vector2 heading = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;
+        Vector3 head = Position + new Vector3(heading.X, BodyRadius * 0.5f, heading.Y) * BodyRadius * 1.3f;
+        Raylib.DrawSphere(head, BodyRadius * 0.4f, BodyColor);
+    }
+}
+
+// =============================================================================
+//  The Elder Spider: a map-wide boss event
+// =============================================================================
+
+/// <summary>What the Elder Spider is currently doing — a deliberately simpler
+/// state machine than the ordinary <see cref="WolfSpider"/>'s: this boss
+/// only needs to exist, wander the map, periodically hit every nearby
+/// Militia unit at once, and eventually die.</summary>
+public enum ElderSpiderState
+{
+    /// <summary>Ambling slowly between random points, same as the ordinary Wolf Spider's Prowling.</summary>
+    Wandering,
+
+    /// <summary>An AOE slam just landed — a brief animation beat before it resumes Wandering.</summary>
+    Slamming,
+}
+
+/// <summary>
+/// The Global Truce's trigger and the map's single boss event. A distinct,
+/// independent class from <see cref="WolfSpider"/> (this file gives every
+/// entity — Hornet, Grub, Aphid, WolfSpider — its own independent sealed
+/// class rather than a shared base, so this follows the same convention)
+/// even though its state machine shape and rendering are deliberately
+/// modeled on it. Spawns once, deep into a game (see
+/// <see cref="World.UpdateElderSpiderSpawnCheck"/>), and while alive
+/// (<see cref="World.ElderSpiderActive"/>) it freezes every faction's wars
+/// and pulls every drafted Militia unit map-wide into converging on it —
+/// see <see cref="Bramblekin.Update"/>'s own highest-priority check for
+/// Militia.
+/// </summary>
+public sealed class ElderSpider
+{
+    /// <summary>Collision radius (m) — noticeably bigger than the ordinary Wolf Spider's own (already twice a Bramblekin's).</summary>
+    public const float BodyRadius = WolfSpider.BodyRadius * 1.8f;
+
+    /// <summary>Hit points out of this — 8x the ordinary Wolf Spider's own <see cref="WolfSpider.MaxHealth"/>: this fight is meant to take a real, sustained group effort.</summary>
+    public const int MaxHealth = WolfSpider.MaxHealth * 8;
+
+    private const float WanderSpeed = 0.5f;
+    private const float WanderPauseDuration = 2f;
+
+    /// <summary>How far (m, horizontal) the AOE slam reaches.</summary>
+    public const float SlamRadius = 6f;
+
+    /// <summary>Damage the AOE slam deals to every living Militia unit within <see cref="SlamRadius"/> — dangerous, but not a guaranteed one-shot against a single unit's own <see cref="Bramblekin.MaxHealth"/> (30).</summary>
+    public const int SlamDamage = 18;
+
+    /// <summary>Cooldown (s) between AOE slams.</summary>
+    private const float SlamCooldownDuration = 4f;
+
+    private const float SlamAnimationDuration = 0.6f;
+
+    private readonly Random _rng;
+    private readonly GroundMover _mover;
+    private Vector3 _target;
+    private float _pauseTimer;
+    private float _slamCooldown;
+    private float _slamAnimTimer;
+
+    /// <summary>Part 6: terrain-aware, same treatment as every other entity — Y is snapped to World.GetHeightAt every read.</summary>
+    public Vector3 Position => World.Grounded(_mover.Position);
+
+    public ElderSpiderState State { get; private set; } = ElderSpiderState.Wandering;
+
+    /// <summary>Hit points out of <see cref="MaxHealth"/>.</summary>
+    public int Health { get; private set; } = MaxHealth;
+
+    public ElderSpider(Vector3 position, Random rng)
+    {
+        _rng = rng;
+        _mover = new GroundMover(position, BodyRadius, edgeMargin: 1.5f, rng);
+        _target = position;
+        _pauseTimer = WanderPauseDuration;
+    }
+
+    /// <summary>Sustained Combat: a Militia poke's damage — pure Health mutation, death itself is World's call. See <see cref="World.DamageElderSpider"/>.</summary>
+    public void TakeDamage(int amount) => Health = Math.Max(0, Health - amount);
+
+    public void Update(float deltaTime, World world)
+    {
+        _mover.Idle();
+        _slamCooldown = MathF.Max(0f, _slamCooldown - deltaTime);
+
+        if (State == ElderSpiderState.Slamming)
+        {
+            _slamAnimTimer -= deltaTime;
+            if (_slamAnimTimer <= 0f)
+                State = ElderSpiderState.Wandering;
+            return;
+        }
+
+        // The AOE Slam: every living Militia unit within SlamRadius, not
+        // just the nearest one — a map-wide boss's own signature attack,
+        // checked on its own cooldown regardless of anything else it's
+        // otherwise doing.
+        if (_slamCooldown <= 0f && AnyMilitiaWithin(world, SlamRadius))
+        {
+            List<Bramblekin> nearby = world.QueryNearbyColony(Position);
+            for (int i = nearby.Count - 1; i >= 0; i--)
+            {
+                Bramblekin bramblekin = nearby[i];
+                if (bramblekin.IsDead || bramblekin.Role != BramblekinRole.Militia)
+                    continue;
+                if (GroundMover.HorizontalDistanceSquared(Position, bramblekin.Position) <= SlamRadius * SlamRadius)
+                    bramblekin.TakeDamage(SlamDamage, world);
+            }
+            _slamCooldown = SlamCooldownDuration;
+            _slamAnimTimer = SlamAnimationDuration;
+            State = ElderSpiderState.Slamming;
+            return;
+        }
+
+        // Wandering: same short-pause-then-pick-another-point shape as the
+        // ordinary Wolf Spider's own Prowl.
+        if (_pauseTimer > 0f)
+        {
+            _pauseTimer -= deltaTime;
+            if (_pauseTimer <= 0f)
+            {
+                _target = world.RandomFreePoint(BodyRadius + 0.1f, 1.5f);
+                _mover.ResetProgress();
+            }
+            return;
+        }
+
+        if (_mover.MoveTowards(_target, WanderSpeed, deltaTime, world, p => !world.IsBlocked(p, BodyRadius)))
+            _pauseTimer = WanderPauseDuration;
+    }
+
+    private bool AnyMilitiaWithin(World world, float radius)
+    {
+        List<Bramblekin> nearby = world.QueryNearbyColony(Position);
+        float radiusSquared = radius * radius;
+        for (int i = nearby.Count - 1; i >= 0; i--)
+        {
+            Bramblekin bramblekin = nearby[i];
+            if (!bramblekin.IsDead && bramblekin.Role == BramblekinRole.Militia &&
+                GroundMover.HorizontalDistanceSquared(Position, bramblekin.Position) <= radiusSquared)
+                return true;
+        }
+        return false;
+    }
+
+    private static readonly Color BodyColor = new(15, 12, 12, 255);
+    private static readonly Color LegColor = new(8, 6, 6, 255);
+
+    /// <summary>The ordinary Wolf Spider's own rendering approach (two-part body, eight jointed legs) scaled up and drawn in a darker, more ominous palette so it reads as clearly bigger and scarier at a glance.</summary>
+    public void Draw()
+    {
+        float yawDegrees = -MathF.Atan2(_mover.Heading.Y, _mover.Heading.X) * 180f / MathF.PI;
+
+        Rlgl.PushMatrix();
+        Rlgl.Translatef(Position.X, Position.Y, Position.Z);
+        Rlgl.Rotatef(yawDegrees, 0, 1, 0);
+
+        Rlgl.PushMatrix();
+        Rlgl.Translatef(-0.5f, 0.62f, 0);
+        Rlgl.Scalef(1.3f, 0.65f, 1.05f);
+        Raylib.DrawSphere(Vector3.Zero, 0.65f, BodyColor);
+        Rlgl.PopMatrix();
+
+        Rlgl.PushMatrix();
+        Rlgl.Translatef(0.36f, 0.54f, 0);
+        Rlgl.Scalef(1.1f, 0.72f, 1f);
+        Raylib.DrawSphere(Vector3.Zero, 0.43f, BodyColor);
+        Rlgl.PopMatrix();
+
+        Color eyeColor = State == ElderSpiderState.Slamming ? new Color(230, 30, 20, 255) : new Color(150, 30, 25, 255);
+        Raylib.DrawSphere(new Vector3(0.77f, 0.68f, -0.14f), 0.08f, eyeColor);
+        Raylib.DrawSphere(new Vector3(0.77f, 0.68f, 0.14f), 0.08f, eyeColor);
+
+        float[] attachX = { 0.5f, 0.36f, 0.18f, 0.0f };
+        float[] reachX = { 1f, 0.36f, -0.36f, -1f };
+        for (int side = -1; side <= 1; side += 2)
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                var hip = new Vector3(attachX[i], 0.54f, side * 0.29f);
+                var knee = new Vector3(attachX[i] + reachX[i] * 0.55f, 1.12f, side * 1.12f);
+                var foot = new Vector3(attachX[i] + reachX[i], 0f, side * 1.7f);
+                Raylib.DrawCylinderEx(hip, knee, 0.08f, 0.06f, 5, LegColor);
+                Raylib.DrawCylinderEx(knee, foot, 0.06f, 0.035f, 5, LegColor);
+            }
+        }
+
+        Rlgl.PopMatrix();
+
+        // The AOE Slam: a brief expanding ring while it's actually landing.
+        if (State == ElderSpiderState.Slamming)
+        {
+            byte alpha = (byte)Math.Clamp(200 * (_slamAnimTimer / SlamAnimationDuration), 0, 200);
+            Raylib.DrawCircle3D(Position + new Vector3(0, 0.05f, 0), SlamRadius, new Vector3(1, 0, 0), 90f, new Color(200, 30, 20, alpha));
+        }
     }
 }
 
