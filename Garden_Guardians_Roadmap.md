@@ -2,21 +2,31 @@
 
 **Status key:** ✅ Done · 🟡 In progress (partly done) · ⬜ Not started · ❌ Removed/superseded
 
-*Last updated: 2026-09-26*
+*Last updated: 2026-09-27*
 
 ## Progress Snapshot
-The game is now a **Pure Simulation**: the player has no lever on the
-world at all, not even a miracle. All game code lives in `Program.cs`.
-Every faction's Village Heart runs its own economy end to end —
-sprouting, drafting Militia, farming, building, and now brewing Nectar
-and (eventually) building a Monument — entirely inside `World.Update()`.
-The map is a 100m×100m terrain (grown from an original 20m×20m
-prototype), viewed through a Google-Maps-style spectator camera that
-pans, rotates, tilts and zooms but never touches the simulation itself.
-The only two player actions left are tapping a Village Heart to inspect
-that faction, and tapping anywhere to reseed the world (Genesis) once
-every faction is extinct. Combat, factions, territory, and the economy
-are all described in detail below and in `Garden_Guardians_Design.md`.
+The game is an **Emergent Survival** simulation (Phase 7) that has grown
+a **society** (Phase 8), a **living population** (Phase 9) and **lives
+& lineages** (Phase 10). There are no factions or top-down economy: the
+map is the procedural terrain and loose entities — wild Food, Twigs, a
+Wolf Spider, Hornet swarms, Grubs, Stag Beetles, Garden Props — and the
+Bramblekin. Every Bramblekin is an individual agent with a random
+Personality (Aggression, Sociability, Intelligence) serving a strict
+Hunger → Safety → Duty → Settle → Social hierarchy of needs. Loners build
+tents and stock them; groups form from encounters, share a home they
+upgrade into a house, hunt big game as a pack, and are run by a Leader
+who picks the group's goal, hands out jobs and decides who eats first.
+Followers' loyalty rises and falls with how they're treated; the disloyal
+walk out, split off, or challenge the Leader, and Leaders exile
+troublemakers. The year turns through four seasons of plenty and
+scarcity; named Bramblekin pair up as couples, thriving groups raise
+young who inherit their parents' traits and family names, grow into
+villages of up to three homes, and bud off daughter groups; the old grow
+grey and die. A follow camera keeps any one of them in view.
+Code lives under `Source/` (one type per file; see the
+Design doc's Code Layout). The player is a spectator with a
+Google-Maps-style camera whose only action is tapping a Bramblekin to
+inspect it. See `Garden_Guardians_Design.md` for the full current design.
 
 ## Phase 0: Engine & Tooling
 *   ✅ **Engine:** Raylib via Raylib-cs on a .NET 8 project, 1 unit = 1
@@ -60,7 +70,10 @@ Vision" section for the full original write-up.
     every faction gets its own independent spider spawn/respawn cycle
     tied to its own territory rather than one shared map-wide spider.
 
-## Phase 2: Economy & Combat Infrastructure (survived, then expanded)
+## Phase 2: Economy & Combat Infrastructure (survived, then expanded) — ❌ Superseded by Phase 7
+*Only loose Berries, the Wolf Spider (reworked), Hornets and Grubs
+(reworked) survived the Phase 7 pivot; the rest of this phase describes
+systems that no longer exist.*
 *   ✅ **Gathering loop:** wild Berries spawn passively; Acorns are
     cracked via **Cooperative Acorn Cracking** — up to 3 Chitin-Mallet
     Gatherers working the same Acorn at once, their crack rates simply
@@ -131,7 +144,9 @@ Vision" section for the full original write-up.
     per-unit cooldown; the spider Bites back on its own cooldown. Either
     side hitting 0 HP is a permanent kill/razing.
 
-## Phase 3: Factions, Territory & the Pivot to Pure Simulation
+## Phase 3: Factions, Territory & the Pivot to Pure Simulation — ❌ Superseded by Phase 7
+*Pure Simulation (no player lever) survived the Phase 7 pivot; factions,
+territory, schisms and wars did not.*
 *   ✅ **Dynamic Factions & the True Schism:** an overcrowded, food-rich
     Village Heart splits roughly in half; Pioneers migrate well clear of
     every existing Village Heart (a strict minimum distance, not a fixed
@@ -198,6 +213,9 @@ Vision" section for the full original write-up.
     length; the Debug Time Scale +/- buttons were scaled up 3x.
 
 ## Phase 5: Performance for a 5x Larger Map
+*Squared-distance math, the spatial grid, Food pooling and culling all
+survived Phase 7; frame-counter AI time-slicing was replaced by staggered
+per-Bramblekin perception timers.*
 The map grew from 20m×20m to 100m×100m over the course of the project, a
 25x increase in area, which made the original "scan every entity every
 frame" approach to AI targeting a real bottleneck at high time-scales.
@@ -219,7 +237,7 @@ frame" approach to AI targeting a real bottleneck at high time-scales.
 *   ✅ **Raylib culling:** entities and health bars entirely outside the
     camera's current viewport skip their draw call.
 
-## Phase 6: The Refined Economy & Civilization Goals
+## Phase 6: The Refined Economy & Civilization Goals — ❌ Superseded by Phase 7
 *   ✅ **The Nectar Brewery:** auto-queued once a Village Heart reaches
     20 Population and 10 Amber Stored (25 Construction Progress to
     build). Once built, it consumes 2 Food + 1 Amber every 30 seconds to
@@ -243,27 +261,188 @@ frame" approach to AI targeting a real bottleneck at high time-scales.
     transition into an advanced civilization even if its Village Heart
     is later razed.
 
+## Phase 7: The Emergent Survival Pivot
+*   ✅ **The Engine Purge:** kept Raylib, the procedural terrain
+    (`World.GetHeightAt`/`GetNormalAt`), the cached Bramblekin body model,
+    the spectator camera and the environmental entities; deleted
+    `VillageHeart`, `Blueprint`, `Building` (Spore Farms, Granaries and
+    every other building), the Job Managers, Crusades, Invasions, Vassal
+    Tributes, Diplomacy/Goodwill, Amber, Acorns, Aphids, the Rival Ant
+    Colony and the Elder Spider. `Program.cs` went from ~14,300 lines to
+    ~5,600 (and was later split into `Source/` — see Phase 8).
+*   ✅ **Personality (DNA):** Aggression, Sociability and Intelligence,
+    each rolled uniformly 0..1 whenever a Bramblekin is spawned.
+    Intelligence scales detection radius from 5m to 20m.
+*   ✅ **The autonomous survival loop:** a strict Hunger → Safety →
+    Social hierarchy (see the Design doc). Hunger rises constantly and
+    kills at the top; threats get a per-threat fight-or-flight roll off
+    Aggression; fed and safe, Bramblekin wander, pocket a spare bite, and
+    seek out (or avoid) others by Sociability.
+*   ✅ **Emergent relationships & grouping:** each Bramblekin has a
+    nullable `GroupId` (a `Guid`) and `KnownKins` (Friend / Neutral /
+    Enemy). Encounters resolve into robbery (starving + Aggressive),
+    alliance (both threatened by a predator, or both Sociable), food
+    sharing or plain acquaintance. Groups cap at 6, are led by their most
+    Intelligent member (Phase 8 replaced this with a leadership score and
+    challenges), follow their Leader, borrow its senses when hungry, and
+    defend each other from predators and hostile Bramblekin.
+*   ✅ **Wildlife reworked for individuals:** the Wolf Spider hunts any
+    Bramblekin busy with food and drops meat when a group brings it
+    down; Grubs now compete for loose Food and are fallback prey;
+    Berries grow in patches around Dandelions; Pebbles are solid.
+*   ✅ **Wandering Arrivals:** new solitary Bramblekin drift in from the
+    edge while the population is under 40, so the world never ends.
+*   ✅ **Kin Inspector & HUD:** tap a Bramblekin to see its Personality,
+    needs, group role and relationships; the HUD tracks activity, deaths
+    by cause, thefts and sharing; group tethers, Leader banners and
+    social pop-ups ("+Ally", "Stolen!", "Shared") show the social web on
+    the map.
+*   ✅ **Headless mode:** `--headless [seconds] [--seed N]` runs the
+    simulation with no window and prints population reports, for tuning
+    and smoke-testing.
+
+## Phase 8: Settling & Society
+Each step was checked against the headless **survival trend** — deaths
+and meat hunted per kin-hour lived as a Wanderer, Homesteader, group
+Member or Independent, aggregated over 8 seeds × 30 simulated minutes.
+*   ✅ **Code split:** `Program.cs` now holds only the entry point;
+    everything else moved under `Source/`, one type per file, with
+    `World` and `Bramblekin` as partial classes split by concern (one
+    Bramblekin file per need). Verified byte-identical headless output
+    before and after.
+*   ✅ **Survival trend metric** in the headless summary.
+*   ✅ **A — Settling:** Twigs (pooled, never rot) fall around the big
+    Twig props. After looking around (10–50s, sooner for sharper minds)
+    a loner moves into an abandoned shelter or builds a Tent (3 twigs):
+    a store of 4 that never rots, healing while resting inside, and
+    shelter from the Wolf Spider's pounce and Hornets. Abandoned shelters
+    can be scavenged or moved into, and collapse after 90s. *Result:
+    homesteaders died at roughly half the rate of wanderers.*
+*   ✅ **B — Hunting & defending:** Stag Beetles (60 HP, bite back,
+    8 meat) are pack work; settlers hunt Grubs near home while the store
+    is low; starving, aggressive kin raid other stores, and residents
+    defend them; a hungry kin with a predator about eats at home. *Result:
+    members hunted ~25 meat per kin-hour vs 5–9 for loners.*
+*   ✅ **C — Group homes:** a group adopts the best member home (or its
+    Leader marks out a site), everyone moves in with their stores, and a
+    group of 3+ upgrades its Tent into a House (room for 6, store of 12,
+    faster healing); an overcrowded shelter protects nobody; a struggling
+    loner may ask to join a settled group. Fixes found on the way: a
+    fighter's nerve now breaks at 40% (at 30% a spider bite always killed
+    first), the spider leaves company alone, and idle Hornet nests are
+    avoided rather than fought. *Result: members outlived loners overall.*
+*   ✅ **D — Leadership:** every 5s the Leader scores Defend / Settle /
+    Hunt / Stockpile from the situation and its own personality, assigns
+    Guard / Builder / Hunter / Gatherer jobs by fit (carried out in the new
+    Duty need), and sets the sharing rule — unsociable, aggressive Leaders
+    eat first. *Result: Warlike-led groups hunted ~24% of the time and ate
+    leader-first ~37% of the time, vs ~0–4% and ~10% for other Leaders.*
+*   ✅ **E — Loyalty & rebellion:** persistent Leaders elected by
+    Intelligence + Reputation; per-follower loyalty that settles toward a
+    Sociability-based baseline and moves with meals, hunger, denial,
+    greed, danger and friendship; disobedience below 0.3; below 0.2 a
+    follower challenges the Leader to a duel, splinters off with the other
+    unhappy members, or walks out as an Independent; aggressive Leaders
+    exile the disloyal. Nobody rejoins a group it left. *Result:
+    independents died at ~1.9 per kin-hour vs ~1.2 for members; some were
+    taken in elsewhere or survived alone with a home.*
+
+## Phase 9: A Living Population
+The population had stopped growing at about 30: arrivals stopped at a
+hard cap of 40 and groups were capped at 6, so a busy garden simply
+froze. Phase 9 replaced the caps with a population the garden's food
+regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
+*   ✅ **Seasons:** a 10-minute year of four 150s seasons; wild Berries
+    grow at 1.0× / 1.3× / 0.8× / 0.3× (Spring → Winter), and the lawn and
+    sky change colour with them. Leaders stockpile harder in Autumn
+    (Intelligent ones most) and value big game more in Winter.
+*   ✅ **Births & inheritance:** a thriving group (a House with 6+ Food,
+    2 Food stored per member — 3 in Autumn, none in Winter — two healthy
+    fed adults, few hungry, room to grow, 60s since the last) raises a
+    young one for 3 Food. It inherits its parents' averaged traits ±0.15
+    and is protected, fed first and kept out of work, fights and politics
+    for 90s while it grows. Arrivals now only come below 30 alive; a
+    safety cap of 150 is never reached.
+*   ✅ **Villages & budding:** a group's size limit follows its housing
+    (6 to 18); a crowded group upgrades a Tent, and a full, well-stocked
+    one of Houses builds up to two more homes nearby. Members share all
+    the village's stores and defend all its homes. At 10–16 members
+    (larger under a Sociable Leader) the residents of one House bud off as
+    a daughter group that keeps it. Merging groups keep the smaller one's
+    nearby homes.
+*   ✅ **Wintering in:** idle kin with a home huddle inside it in Winter,
+    where Hunger rises at half rate.
+*   ✅ **Female & male:** every Bramblekin is one or the other at even
+    odds, and a birth takes a fit mother and father; otherwise no role
+    difference yet. It cost about 45% of births over 4-hour runs (a group
+    often has nobody of one sex fit to be a parent right then), with fewer
+    villages and buddings and a population averaging ~37 instead of ~42.
+*   ✅ **Survival stats:** the young are counted separately, and each
+    status's death rate is broken down by cause.
+*   *Result* (before sexes): over 4-hour runs the population swings with
+    the seasons between about 35 and 55 (it used to sit at 30), 15–21
+    villages are founded and 8–19 daughter groups bud off per run,
+    generations reach 14–19, and after a few years nearly everyone alive
+    was born here. With sexes: 8–13 villages, 3–6 buddings, generations
+    6–15.
+    Group members starve no more often than homesteaders; they die a
+    little more often overall (1.1 vs 0.9 per kin-hour), from fights.
+    A first cut that only limited births by housing let groups breed
+    until winter starved them. Members then died at 1.6 per kin-hour, so
+    births now need stored food per head, and none happen in Winter.
+
+## Phase 10: Lives & Lineages
+*   ✅ **Follow camera:** tapping a Bramblekin swoops the camera in and
+    follows it, with its name (and its partner's) floating above it;
+    pinch/twist/tilt still work, a pan stops following, a **Follow**
+    button under the Kin Inspector toggles it, and a **Map** button flies
+    back out to the whole garden.
+*   ✅ **Names:** given names and garden-flavoured family names; newcomers
+    found families, children take a parent's family name, groups are
+    named for their founding Leader's family ("the Thornwood clan"), and
+    the event log reads as a story instead of a list of #IDs.
+*   ✅ **Couples:** single, grown, unrelated kin of opposite sex pair up
+    on meeting (odds rising with Sociability), live together, raise the
+    young (births now need a fit couple rather than any fit female and
+    male), leave together when one walks out or is exiled — unless the
+    other is loyal enough to stay, which splits them up — and are widowed
+    by death.
+*   ✅ **Old age:** lifespans of 4–6.5 years (a year is 600s), newcomers
+    arriving 0.3–1.5 years old, a grey, slower, weaker but respected elder
+    stage from 3.5 years, and death of old age as its own cause in the
+    log, HUD and survival stats.
+*   ✅ **Fixes found in a 9-year review:** hungry kin chased loose food
+    past a full store until they starved (now they pick the nearer, and
+    the sure meal at home once starving); kin at home sat unresisting
+    while other kin killed them (home now only hides them from wildlife);
+    dirt patches now take the season's tint.
+*   *Result* (3 seeds × 4 hours): stable, no exceptions; population
+    30–50; 150–210 births per run against 60–120 newcomers, so the world
+    sustains itself; ~110 couples per run; generations up to 11–14; old
+    age about a third of all deaths. Births now had to be tuned back to 1
+    Food stored per member (2 in autumn) — with old age thinning the
+    population, food per head was the main thing holding births back.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:
-*   ⬜ **Real pathfinding.** Bramblekin still steer around a rebuilt-
-    every-frame obstacle list with a short sideways detour when stuck,
-    rather than any actual NavMesh/grid pathfinding. Fine at current
-    obstacle density; would need work if the map ever gets denser
-    terrain features.
-*   ⬜ **A genuine win/loss/endgame arc.** Extinction is recoverable
-    (Genesis) and the Great Monument marks an achievement, but nothing
-    currently *ends* the simulation or declares an overall winner across
-    multiple competing factions.
-*   ⬜ **Diplomacy beyond Default Peace/Thievery/Blood Feud.** No
-    Diplomat unit, no negotiated (as opposed to Refugee-Protocol)
-    assimilation, no paid truces — see `Garden_Guardians_Design.md`'s
-    "Original Vision" for what was designed but never built here.
-*   ⬜ **Further Individual Equipment / tech-tree entries** beyond Fang
-    Pikes and the Chitin Mallet — no Stag Beetle/Silkworm-style new
-    PvE entities, no Armory building, no player-visible tech tree (every
-    unlock so far is an automatic, banked-item threshold).
-*   ⬜ **Multiple simultaneous predators / ecosystem cascades.** Each
-    faction gets its own independent Wolf Spider, but there's no
-    population-cascade ecology (e.g. aphids exploding if too many
-    spiders die) beyond the fixed respawn timers already in place.
+*   ⬜ **Groups as actors.** Groups now have homes, goals, jobs and
+    politics, but they don't raid, trade with or ally with *other groups*;
+    enmity is still strictly between individuals.
+*   ⬜ **Memory beyond the last Food/Twig sighting.** No remembered danger
+    zones (a Bramblekin will happily wander back toward the Hornet nest
+    it just fled) and no reputation shared between groupmates.
+*   ⬜ **Group vs. homestead balance.** Settling alone and living in a group
+    now have similar death rates; groups win on food and on numbers, and
+    lose some of that edge to risky hunts, defence and politics. Worth
+    tuning if groups should be the clearly safer choice.
+*   ⬜ **Villages as neighbours.** Daughter groups start next to their
+    parent village but have no special tie to it (no kinship bonus, no
+    shared defence), and nothing makes villages spread out across the
+    map rather than clustering where they began.
+*   ⬜ **Real pathfinding.** Bramblekin still steer around obstacles with
+    a short sideways detour when stuck, rather than any actual NavMesh/
+    grid pathfinding. Fine at current Pebble density.
+*   ⬜ **Tuning.** Every rate and threshold is a constant at the top of its
+    class (`World`, `Bramblekin`, `Shelter`, the wildlife); the headless
+    survival trend is the tool for revisiting them.
