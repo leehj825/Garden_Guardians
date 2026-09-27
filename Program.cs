@@ -449,7 +449,17 @@ public static class Game
         string scoutLine = $"Scout: {(hasScout ? "Y" : "N")}";
         string prosperity = $"Prosperity: {village.ProsperityLevel}";
         string warStatus = village.InvasionTarget is not null ? "At War" : "At Peace";
-        string[] lines = { header, food, population, militiaLine, builderLine, farmerLine, morale, amber, nectar, stingers, grubHides, scoutLine, prosperity, warStatus };
+        // The Diplomat/Foreign Aid: whether this faction currently has one
+        // of each drafted, same "Y"/"N" convention as the Scout line.
+        bool hasDiplomat = world.Colony.Any(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Diplomat);
+        bool hasTrader = world.Colony.Any(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Trader);
+        string diplomacyLine = $"Diplomat: {(hasDiplomat ? "Y" : "N")}   Trader: {(hasTrader ? "Y" : "N")}";
+        // Foreign Aid: the highest Goodwill this faction has banked toward
+        // any single rival, so the player can see Foreign Aid's slow
+        // payoff building even without opening the rival's own panel.
+        int bestGoodwill = village.Goodwill.Count > 0 ? village.Goodwill.Values.Max() : 0;
+        string goodwillLine = $"Goodwill: {bestGoodwill} / {World.MaxGoodwillStacks}";
+        string[] lines = { header, food, population, militiaLine, builderLine, farmerLine, morale, amber, nectar, stingers, grubHides, scoutLine, prosperity, warStatus, diplomacyLine, goodwillLine };
 
         // Narrow-and-Tall: a fixed, narrower width (proportional to UiScale,
         // matching DrawHud's own responsive-sizing convention) instead of
@@ -490,6 +500,8 @@ public static class Game
         Raylib.DrawText(prosperity, x, textInset + lineHeight * 12, fontSize, new Color(255, 203, 0, 255));
         Color warColor = village.InvasionTarget is not null ? new Color(170, 60, 40, 255) : new Color(60, 130, 70, 255);
         Raylib.DrawText(warStatus, x, textInset + lineHeight * 13, fontSize, warColor);
+        Raylib.DrawText(diplomacyLine, x, textInset + lineHeight * 14, fontSize, ink);
+        Raylib.DrawText(goodwillLine, x, textInset + lineHeight * 15, fontSize, new Color(215, 80, 210, 255));
     }
 
     /// <summary>
@@ -1981,6 +1993,39 @@ public sealed class World
     /// <summary>Desperation Raids: a starving tribe needs at least this many living Militia to raid.</summary>
     public const int DesperationMinMilitia = 2;
 
+    /// <summary>
+    /// The Diplomat (Peace Treaties): how many seconds a negotiated Truce
+    /// blocks either side of it from re-targeting the other for a fresh
+    /// Invasion (grievance or desperation) — see
+    /// <see cref="VillageHeart.TruceCooldowns"/>/<see cref="ResolvePeace"/>.
+    /// Deliberately a separate, per-rival concept from
+    /// <see cref="VillageHeart.WarCooldown"/> (a blanket "no new war with
+    /// ANYONE" weariness timer that already exists for every war-ending
+    /// path): a Truce is specific to the one rival it was negotiated with,
+    /// so a tribe can still go to war with a THIRD faction the very same
+    /// tick a Truce with a different one takes hold, something a single
+    /// blanket cooldown could never express.
+    /// </summary>
+    public const float TruceCooldownSeconds = 60f;
+
+    /// <summary>The Diplomat: contact distance for arriving at either the target rival's Village Heart or home — same convention as <see cref="Bramblekin.MerchantContactDistance"/>.</summary>
+    public const float DiplomatContactDistance = 0.8f;
+
+    /// <summary>The Diplomat: walks slightly faster than an ordinary Gatherer — a multiplier on top of <see cref="Bramblekin.EffectiveWalkSpeed"/>, composing with Weary/Nectar exactly like the Builder Upgrade's own speed bonus does.</summary>
+    public const float DiplomatSpeedMultiplier = 1.3f;
+
+    /// <summary>Foreign Aid: a tribe with more than this much banked Amber drafts a Trader to spend the surplus on Goodwill abroad — see <see cref="UpdateJobManager"/>.</summary>
+    public const int TraderAmberThreshold = 10;
+
+    /// <summary>The Trader Job: contact distance for arriving at either a delivery target's Village Heart or home — same convention as <see cref="Bramblekin.MerchantContactDistance"/>.</summary>
+    public const float TraderContactDistance = 0.8f;
+
+    /// <summary>Foreign Aid: the maximum Goodwill a faction may bank toward any single rival — see <see cref="VillageHeart.Goodwill"/>. Never decays; this cap alone keeps it bounded.</summary>
+    public const int MaxGoodwillStacks = 5;
+
+    /// <summary>Foreign Aid: Goodwill toward a rival at or above this makes <see cref="UpdateInvasionOrders"/> refuse to target it for a fresh Invasion, same protective effect as an active <see cref="VillageHeart.TruceCooldowns"/> entry.</summary>
+    public const int GoodwillExclusionThreshold = 3;
+
 
     // --- Vassal Colonies (Tribute Economy) ---------------------------------------
 
@@ -2593,6 +2638,49 @@ public sealed class World
         else if (currentScouts > scoutTarget)
             NearestByRole(village, BramblekinRole.Scout)?.DemoteToGatherer(this);
 
+        // The Diplomat (Peace Treaties): a tribe in an active Blood Feud
+        // that's currently LOSING it — Morale already below
+        // WearyMoraleThreshold, the same "Weary" signal the Faction Ledger
+        // UI already shows — drafts exactly one Diplomat to sue for peace,
+        // same one-target, one-nudge-per-frame shape as every other
+        // conscription above. A tribe that's winning/dominant (Morale
+        // still healthy) never sends one; there's nothing to negotiate
+        // away from a position of strength. Fighting on multiple fronts
+        // at once still only sends a single Diplomat, aimed at whichever
+        // one rival NearestHostileVillageForDiplomacy picks (the one
+        // actively being Invaded, if any, otherwise the nearest by Blood
+        // Feud). The Diplomat is a one-shot mission, not a permanent Role
+        // — DemoteToGatherer here only ever stands down a Diplomat whose
+        // Morale has already recovered past the threshold mid-mission; a
+        // successful negotiation reverts it on its own the instant it
+        // completes (see Bramblekin.UpdateNegotiating).
+        int currentDiplomats = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Diplomat);
+        VillageHeart? diplomaticTarget = village.HostileFactions.Count > 0 && village.Morale < WearyMoraleThreshold
+            ? NearestHostileVillageForDiplomacy(village)
+            : null;
+        int diplomatTarget = diplomaticTarget is not null ? 1 : 0;
+        if (currentDiplomats < diplomatTarget)
+            NearestByRole(village, BramblekinRole.Gatherer)?.PromoteToDiplomat(diplomaticTarget!);
+        else if (currentDiplomats > diplomatTarget)
+            NearestByRole(village, BramblekinRole.Diplomat)?.DemoteToGatherer(this);
+
+        // Foreign Aid (the Trader Job): while this faction has excess
+        // banked Amber (above TraderAmberThreshold) and at least one
+        // eligible non-hostile, non-Vassal rival exists to deliver it to,
+        // keeps exactly one Trader on permanent standing duty — same
+        // one-target, nudge-one-per-frame shape as every other
+        // conscription above, but a PERSISTENT role like Merchant
+        // (repeating round trips for as long as the condition holds)
+        // rather than a one-shot mission like the Diplomat: Foreign Aid is
+        // an ongoing posture, not a single errand.
+        int currentTraders = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Trader);
+        bool wantsTrader = village.AmberStored > TraderAmberThreshold && NearestEligibleTradePartner(village, village.Center) is not null;
+        int traderTarget = wantsTrader ? 1 : 0;
+        if (currentTraders < traderTarget)
+            NearestByRole(village, BramblekinRole.Gatherer)?.PromoteToTrader();
+        else if (currentTraders > traderTarget)
+            NearestByRole(village, BramblekinRole.Trader)?.DemoteToGatherer(this);
+
         // The Builder Upgrade (GrubHide): consumes one banked GrubHide to
         // permanently upgrade the nearest still-un-upgraded Builder's
         // tools — a per-unit perk that perishes with the unit, same
@@ -2946,8 +3034,8 @@ public sealed class World
         for (int i = _colonyQueryBuffer.Count - 1; i >= 0; i--)
         {
             Bramblekin intruder = _colonyQueryBuffer[i];
-            if (intruder.IsDead || intruder.FactionID == home.FactionID || intruder.Role == BramblekinRole.Merchant)
-                continue; // Physical Trade: Merchants are strictly neutral, never a threat.
+            if (intruder.IsDead || intruder.FactionID == home.FactionID || intruder.Role is BramblekinRole.Merchant or BramblekinRole.Diplomat or BramblekinRole.Trader)
+                continue; // Physical Trade/Peace Treaties/Foreign Aid: Merchants, Diplomats and Traders are all strictly neutral, never a threat.
 
             float distanceSquared = Vector3.DistanceSquared(intruder.Position, home.Center);
             if (distanceSquared > bestDistanceSquared)
@@ -3046,8 +3134,8 @@ public sealed class World
         for (int i = _colonyQueryBuffer.Count - 1; i >= 0; i--)
         {
             Bramblekin enemy = _colonyQueryBuffer[i];
-            if (enemy.IsDead || enemy.Role == BramblekinRole.Merchant || !home.HostileFactions.ContainsKey(enemy.FactionID))
-                continue; // Physical Trade: Merchants are strictly neutral, never a threat.
+            if (enemy.IsDead || enemy.Role is BramblekinRole.Merchant or BramblekinRole.Diplomat or BramblekinRole.Trader || !home.HostileFactions.ContainsKey(enemy.FactionID))
+                continue; // Physical Trade/Peace Treaties/Foreign Aid: Merchants, Diplomats and Traders are all strictly neutral, never a threat.
             if (Vector3.DistanceSquared(enemy.Position, position) <= radiusSquared)
                 return true;
         }
@@ -3081,8 +3169,8 @@ public sealed class World
         for (int i = _colonyQueryBuffer.Count - 1; i >= 0; i--)
         {
             Bramblekin enemy = _colonyQueryBuffer[i];
-            if (enemy.IsDead || enemy.Role == BramblekinRole.Merchant || !home.HostileFactions.ContainsKey(enemy.FactionID))
-                continue; // Physical Trade: Merchants are strictly neutral, never a threat.
+            if (enemy.IsDead || enemy.Role is BramblekinRole.Merchant or BramblekinRole.Diplomat or BramblekinRole.Trader || !home.HostileFactions.ContainsKey(enemy.FactionID))
+                continue; // Physical Trade/Peace Treaties/Foreign Aid: Merchants, Diplomats and Traders are all strictly neutral, never a threat.
 
             float distanceSquared = Vector3.DistanceSquared(enemy.Position, home.Center);
             if (distanceSquared > territoryRadiusSquared || distanceSquared >= bestDistanceSquared)
@@ -3203,6 +3291,10 @@ public sealed class World
                     continue;
                 if (candidate.IsVassal && candidate.CapitalFactionID == village.FactionID)
                     continue; // Already ours.
+                if (village.TruceCooldowns.TryGetValue(candidate.FactionID, out float truceRemaining) && truceRemaining > 0f)
+                    continue; // The Diplomat: a negotiated Truce is still in force — let peace hold.
+                if (village.Goodwill.TryGetValue(candidate.FactionID, out int grievanceGoodwill) && grievanceGoodwill >= GoodwillExclusionThreshold)
+                    continue; // Foreign Aid: too much banked Goodwill toward this rival to march on it.
                 if (!militaristic && !IsWeakerThan(candidate, village, ourMilitia))
                     continue;
 
@@ -3227,6 +3319,10 @@ public sealed class World
                     continue;
                 if (candidate.IsVassal && candidate.CapitalFactionID == village.FactionID)
                     continue; // Already ours.
+                if (village.TruceCooldowns.TryGetValue(candidate.FactionID, out float truceRemaining) && truceRemaining > 0f)
+                    continue; // The Diplomat: a negotiated Truce is still in force — let peace hold.
+                if (village.Goodwill.TryGetValue(candidate.FactionID, out int desperationGoodwill) && desperationGoodwill >= GoodwillExclusionThreshold)
+                    continue; // Foreign Aid: too much banked Goodwill toward this rival to raid it.
 
                 float distanceSquared = Vector3.DistanceSquared(village.Center, candidate.Center);
                 if (distanceSquared < bestDistanceSquared)
@@ -3256,6 +3352,125 @@ public sealed class World
         village.InvasionTarget = null;
         village.InvasionIsCrusade = false;
         village.WarCooldown = WarCooldownSeconds;
+    }
+
+    /// <summary>
+    /// The Diplomat's mission goal: the nearest hostile rival a Diplomat
+    /// should be sent to negotiate peace with, for a faction fighting on
+    /// multiple fronts at once. If <paramref name="village"/> is actively
+    /// marching on one of its own <see cref="VillageHeart.HostileFactions"/>
+    /// (<see cref="VillageHeart.InvasionTarget"/> is set and still hostile),
+    /// that's the most urgent fight to end and is returned outright;
+    /// otherwise picks the nearest rival by <see cref="VillageHeart.HostileFactions"/>
+    /// membership alone (a Blood Feud with no active march yet still
+    /// counts — the Diplomat can pre-empt an Invasion, not just end one
+    /// already underway).
+    /// </summary>
+    private VillageHeart? NearestHostileVillageForDiplomacy(VillageHeart village)
+    {
+        if (village.InvasionTarget is { } current && village.HostileFactions.ContainsKey(current.FactionID))
+            return current;
+
+        VillageHeart? nearest = null;
+        float bestDistanceSquared = float.MaxValue;
+        foreach (int factionId in village.HostileFactions.Keys)
+        {
+            if (VillageFor(factionId) is not { } candidate)
+                continue;
+
+            float distanceSquared = Vector3.DistanceSquared(village.Center, candidate.Center);
+            if (distanceSquared < bestDistanceSquared)
+            {
+                nearest = candidate;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+        return nearest;
+    }
+
+    /// <summary>
+    /// The Diplomat's actual peace deal: called by
+    /// <see cref="Bramblekin.UpdateNegotiating"/> the instant a Diplomat
+    /// reaches <paramref name="rival"/>'s own Village Heart. Removes BOTH
+    /// sides' <see cref="VillageHeart.HostileFactions"/> entries against
+    /// each other — the same two-way removal <see cref="ConquerVillage"/>'s
+    /// own Vassal-peace-resumption already does — then starts a bilateral
+    /// <see cref="VillageHeart.TruceCooldowns"/> of
+    /// <see cref="TruceCooldownSeconds"/> on both sides so neither can
+    /// re-target the other for a fresh Invasion the instant the Blood
+    /// Feud's absence alone would otherwise allow. If either side was
+    /// actively marching on the other, <see cref="EndWar"/> clears that
+    /// march too — a peace deal ends a war in progress, not just the
+    /// grievance behind it.
+    /// </summary>
+    public void ResolvePeace(VillageHeart home, VillageHeart rival)
+    {
+        home.HostileFactions.Remove(rival.FactionID);
+        rival.HostileFactions.Remove(home.FactionID);
+
+        home.TruceCooldowns[rival.FactionID] = TruceCooldownSeconds;
+        rival.TruceCooldowns[home.FactionID] = TruceCooldownSeconds;
+
+        if (home.InvasionTarget == rival)
+            EndWar(home);
+        if (rival.InvasionTarget == home)
+            EndWar(rival);
+
+        string peaceMessage = $"[PEACE] Tribe {home.FactionID} negotiates peace with {FactionColorName(rival.FactionColor)}.";
+        Raylib.TraceLog(TraceLogLevel.Info, peaceMessage);
+        Game.AddEventLog(peaceMessage);
+    }
+
+    /// <summary>
+    /// Foreign Aid's eligibility rule: the nearest OTHER Village Heart to
+    /// <paramref name="from"/> that <paramref name="village"/> is neither
+    /// at war with (<see cref="VillageHeart.HostileFactions"/>) nor already
+    /// owns as a Vassal — used both by <see cref="UpdateJobManager"/>'s
+    /// Trader drafting check and by <see cref="Bramblekin.UpdateBartering"/>
+    /// itself to (re-)pick a delivery target each trip, in case a closer
+    /// one is founded or the old one is lost to war/conquest since.
+    /// </summary>
+    public VillageHeart? NearestEligibleTradePartner(VillageHeart village, Vector3 from)
+    {
+        VillageHeart? nearest = null;
+        float bestDistanceSquared = float.MaxValue;
+        foreach (VillageHeart candidate in Villages)
+        {
+            if (candidate.FactionID == village.FactionID)
+                continue;
+            if (village.HostileFactions.ContainsKey(candidate.FactionID))
+                continue;
+            if (candidate.IsVassal && candidate.CapitalFactionID == village.FactionID)
+                continue; // Foreign Aid means diplomacy abroad, not internal tribute to our own Vassal.
+
+            float distanceSquared = Vector3.DistanceSquared(from, candidate.Center);
+            if (distanceSquared < bestDistanceSquared)
+            {
+                nearest = candidate;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+        return nearest;
+    }
+
+    /// <summary>
+    /// Foreign Aid's actual payoff: called by
+    /// <see cref="Bramblekin.UpdateBartering"/> the instant a Trader
+    /// deposits its 1 Amber at <paramref name="target"/>'s own Village
+    /// Heart — banks one Goodwill stack for <paramref name="home"/>'s own
+    /// faction toward <paramref name="target"/>, capped at
+    /// <see cref="MaxGoodwillStacks"/>, and logs a <c>[GOODWILL]</c>-tagged
+    /// message matching this file's <c>[WAR]</c>/<c>[PEACE]</c> conventions.
+    /// </summary>
+    public void RecordGoodwillDelivery(VillageHeart home, VillageHeart target)
+    {
+        int current = home.Goodwill.TryGetValue(target.FactionID, out int stacks) ? stacks : 0;
+        int updated = Math.Min(MaxGoodwillStacks, current + 1);
+        home.Goodwill[target.FactionID] = updated;
+
+        string goodwillMessage = $"[GOODWILL] Tribe {home.FactionID} delivers Amber to {FactionColorName(target.FactionColor)} (Goodwill: {updated}).";
+        Raylib.TraceLog(TraceLogLevel.Info, goodwillMessage);
+        Game.AddEventLog(goodwillMessage);
     }
 
     /// <summary>
@@ -4081,6 +4296,21 @@ public sealed class World
                         village.HostileFactions.Remove(factionId);
                     else
                         village.HostileFactions[factionId] = remaining;
+                }
+            }
+
+            // The Diplomat: a negotiated Truce ticks down exactly like
+            // HostileFactions/WarCooldown above, restoring this rival to
+            // ordinary re-targetability the instant it expires.
+            if (village.TruceCooldowns.Count > 0)
+            {
+                foreach (int factionId in village.TruceCooldowns.Keys.ToList())
+                {
+                    float remaining = village.TruceCooldowns[factionId] - deltaTime;
+                    if (remaining <= 0f)
+                        village.TruceCooldowns.Remove(factionId);
+                    else
+                        village.TruceCooldowns[factionId] = remaining;
                 }
             }
 
@@ -7029,6 +7259,35 @@ public sealed class VillageHeart
     /// </summary>
     public Dictionary<int, float> HostileFactions { get; } = new();
 
+    /// <summary>
+    /// The Diplomat (Peace Treaties): seconds left on a NEGOTIATED Truce
+    /// with a specific rival, keyed by FactionID — bilateral (set on both
+    /// sides at once by <see cref="World.ResolvePeace"/>) and per-rival,
+    /// unlike <see cref="WarCooldown"/> (a blanket "no new war with
+    /// anyone" timer set by every war-ending path). While a FactionID is a
+    /// key here with a positive value, <see cref="World.UpdateInvasionOrders"/>
+    /// refuses to re-target that rival for a fresh Invasion — a negotiated
+    /// peace actually holds rather than being undone the instant an
+    /// unrelated <see cref="WarCooldown"/> expires. Ticks down to removal
+    /// in <see cref="World.Update"/>'s per-village loop, same as
+    /// <see cref="HostileFactions"/>.
+    /// </summary>
+    public Dictionary<int, float> TruceCooldowns { get; } = new();
+
+    /// <summary>
+    /// Foreign Aid: this faction's accumulated goodwill toward a specific
+    /// rival, keyed by FactionID — one stack banked per successful Amber
+    /// delivery by a Trader (see <see cref="Bramblekin.UpdateBartering"/>/
+    /// <see cref="World.RecordGoodwillDelivery"/>), capped at
+    /// <see cref="World.MaxGoodwillStacks"/>. Never decays — Foreign Aid's
+    /// goodwill is meant to persist, the simpler and safer default absent
+    /// any ask for it to fade. At or above <see cref="World.GoodwillExclusionThreshold"/>,
+    /// <see cref="World.UpdateInvasionOrders"/> refuses to target that
+    /// rival for a fresh Invasion, same protective effect as an active
+    /// <see cref="TruceCooldowns"/> entry.
+    /// </summary>
+    public Dictionary<int, int> Goodwill { get; } = new();
+
     /// <summary>Below <see cref="World.WearyMoraleThreshold"/>: this faction's Gatherers walk at <see cref="World.WearySpeedMultiplier"/> speed.</summary>
     public bool GatherersAreWeary => Morale < World.WearyMoraleThreshold;
 
@@ -8610,6 +8869,22 @@ public enum BramblekinState
     /// <see cref="Bramblekin.UpdateIntercepting"/>.
     /// </summary>
     Intercepting,
+
+    /// <summary>
+    /// The Diplomat: walking to (and, on arrival, negotiating peace with)
+    /// a specific hostile rival's own Village Heart, then walking home
+    /// before reverting to Gatherer — see
+    /// <see cref="Bramblekin.UpdateNegotiating"/>. Diplomat only.
+    /// </summary>
+    Negotiating,
+
+    /// <summary>
+    /// The Trader Job: walking to (and, on arrival, delivering Amber to)
+    /// a specific non-hostile rival's own Village Heart, then walking
+    /// home before setting out again — see
+    /// <see cref="Bramblekin.UpdateBartering"/>. Trader only.
+    /// </summary>
+    Bartering,
 }
 
 /// <summary>A Bramblekin's class: an ordinary worker, a dedicated builder, or a drafted defender.</summary>
@@ -8679,6 +8954,38 @@ public enum BramblekinRole
     /// like a Gatherer, but never gathers food itself.
     /// </summary>
     Scout,
+
+    /// <summary>
+    /// The Diplomat (Peace Treaties): a one-shot mission role, set by
+    /// Conscription (the Job Manager) whenever this faction is in an
+    /// active Blood Feud and losing it (Morale already below
+    /// <see cref="World.WearyMoraleThreshold"/>) — a single Gatherer sent
+    /// to negotiate peace with one specific hostile rival (see
+    /// <see cref="Bramblekin.UpdateNegotiating"/>/<see cref="World.ResolvePeace"/>).
+    /// Unlike Merchant/Trader, this is a temporary special mission, not a
+    /// permanent Role: the instant its round trip concludes it reverts to
+    /// Gatherer on its own (<see cref="Bramblekin.DemoteToGatherer"/>)
+    /// rather than waiting for the Job Manager to notice and stand it
+    /// down. Strictly neutral while travelling — excluded from every
+    /// hostile-Militia targeting search, same as Merchant, so it can walk
+    /// straight through the warzone it's trying to end.
+    /// </summary>
+    Diplomat,
+
+    /// <summary>
+    /// The Trader Job (Foreign Aid): set by Conscription (the Job
+    /// Manager) whenever this faction has excess banked Amber (above
+    /// <see cref="World.TraderAmberThreshold"/>) and at least one
+    /// non-hostile, non-Vassal rival exists to deliver it to. Unlike the
+    /// Diplomat's one-shot mission, this is a PERSISTENT role — same
+    /// standing-duty shape as Merchant — that keeps making round trips
+    /// (withdraw 1 Amber, deliver it, bank Goodwill toward that rival, walk
+    /// home, repeat) for as long as those conditions hold, and is stood
+    /// back down to Gatherer by the Job Manager once they no longer do.
+    /// See <see cref="Bramblekin.UpdateBartering"/>/<see cref="VillageHeart.Goodwill"/>.
+    /// Strictly neutral while travelling, same as Merchant/Diplomat.
+    /// </summary>
+    Trader,
 }
 
 /// <summary>
@@ -8895,6 +9202,11 @@ public sealed class Bramblekin
     private static readonly Color ScoutEyeColor = new(230, 230, 60, 255); // A small bright "eye" accent on top of its head.
     private static readonly Color ReinforcedToolsColor = new(210, 210, 220, 255); // The Builder Upgrade's small metallic/silver accent.
     private static readonly Color SettlerFlagColor = new(245, 245, 240, 255); // A small white flag: the founder's colours are yet to be decided.
+    private static readonly Color DiplomatColor = new(95, 100, 80, 255); // A plain, drab olive body — the flag below is what actually reads.
+    private static readonly Color DiplomatPoleColor = new(120, 90, 50, 255); // Same weathered pole colour as a Settler's — a lone envoy's flag, not yet a nation's.
+    private static readonly Color DiplomatFlagColor = new(235, 235, 225, 255); // An off-white flag of parley — distinct from a Settler's brighter pure-white banner.
+    private static readonly Color TraderColor = new(80, 70, 55, 255); // A plain, earthy body — the satchel below is what actually reads.
+    private static readonly Color TraderSatchelColor = new(210, 140, 40, 255); // Amber-orange, calling out this Role's whole purpose — distinct from a Merchant's gold backpack.
     private static readonly Color PikeColor = new(120, 55, 40, 255);     // Rose-thorn brown-red.
     private static readonly Color FangPikeColor = new(235, 235, 240, 255); // Spider Fang: bright white/silver.
     private static readonly Color MalletHandleColor = new(120, 80, 45, 255); // Wooden handle.
@@ -9377,6 +9689,58 @@ public sealed class Bramblekin
     }
 
     /// <summary>
+    /// The Diplomat (Peace Treaties): pulls this Gatherer off food duty to
+    /// carry a one-shot peace mission to <paramref name="target"/>'s own
+    /// Village Heart instead — see <see cref="UpdateNegotiating"/>. Drops
+    /// anything carried and releases whatever Gathering claim it was
+    /// holding, same as every other Job Manager promotion, then dispatches
+    /// straight into <see cref="BramblekinState.Negotiating"/> — Diplomat,
+    /// like Merchant/Settler, runs its own dedicated loop entirely outside
+    /// the ordinary State-switch priority chain (see <see cref="Update"/>),
+    /// so unlike PromoteToScout/PromoteToFarmer there's no need to force a
+    /// fresh idle State first; SetState below is all that's needed.
+    /// </summary>
+    public void PromoteToDiplomat(VillageHeart target)
+    {
+        if (Role == BramblekinRole.Diplomat)
+            return;
+
+        Role = BramblekinRole.Diplomat;
+        DropCarried();
+        ReleaseFoodClaim();
+        ReleaseAcornClaim();
+        ReleaseAmberClaim();
+        _diplomatTarget = target;
+        _diplomatReturning = false;
+        SetState(BramblekinState.Negotiating);
+    }
+
+    /// <summary>
+    /// Foreign Aid (the Trader Job): pulls this Gatherer off food duty to
+    /// stand permanent Trader duty instead — see
+    /// <see cref="UpdateBartering"/>. Mirrors <see cref="PromoteToDiplomat"/>'s
+    /// dispatch shape exactly (its own dedicated loop, outside the
+    /// State-switch chain), but — unlike the Diplomat's one-shot mission —
+    /// never locks in a specific target itself; UpdateBartering re-picks
+    /// the nearest eligible partner fresh on its very first tick.
+    /// </summary>
+    public void PromoteToTrader()
+    {
+        if (Role == BramblekinRole.Trader)
+            return;
+
+        Role = BramblekinRole.Trader;
+        DropCarried();
+        ReleaseFoodClaim();
+        ReleaseAcornClaim();
+        ReleaseAmberClaim();
+        _traderTarget = null;
+        _traderReturning = false;
+        _traderCarryingAmber = false;
+        SetState(BramblekinState.Bartering);
+    }
+
+    /// <summary>
     /// The Schism: this Bramblekin is one of the 4 Pioneers a Village Heart
     /// just sent off. Immediately switches its Faction (and, with it, its
     /// visual tint — see <see cref="Draw"/>) to the new one, drops anything
@@ -9502,6 +9866,29 @@ public sealed class Bramblekin
         if (Role == BramblekinRole.Merchant)
         {
             UpdateMerchant(deltaTime, world);
+            return;
+        }
+
+        // --- The Diplomat: same dedicated-loop shape as Merchant above —
+        // a one-shot peace mission, never gathers, fights or builds.
+        // Strictly neutral while travelling (see the Role != Diplomat
+        // guards added alongside every Role != Merchant one in World's
+        // threat-search methods), so it can walk straight through the
+        // warzone it's trying to end.
+        if (Role == BramblekinRole.Diplomat)
+        {
+            UpdateNegotiating(deltaTime, world);
+            return;
+        }
+
+        // --- Foreign Aid: a Trader runs its own dedicated loop too, same
+        // shape as Merchant — a PERSISTENT role (unlike the Diplomat's
+        // one-shot mission) that keeps making round trips for as long as
+        // the Job Manager keeps it drafted. Strictly neutral while
+        // travelling, same as Merchant/Diplomat.
+        if (Role == BramblekinRole.Trader)
+        {
+            UpdateBartering(deltaTime, world);
             return;
         }
 
@@ -9972,6 +10359,8 @@ public sealed class Bramblekin
                     : Role == BramblekinRole.Settler ? SettlerColor
                     : Role == BramblekinRole.Farmer ? FarmerColor
                     : Role == BramblekinRole.Scout ? ScoutColor
+                    : Role == BramblekinRole.Diplomat ? DiplomatColor
+                    : Role == BramblekinRole.Trader ? TraderColor
                     : CalmColor;
         Color color = TintWithFaction(baseColor);
 
@@ -10058,6 +10447,30 @@ public sealed class Bramblekin
             Raylib.DrawLine3D(poleBase, poleTop, SettlerPoleColor);
             var flagCenter = poleTop + new Vector3(facing.X, -0.06f, facing.Y) * 0.12f;
             Raylib.DrawCube(flagCenter, 0.18f, 0.12f, 0.02f, SettlerFlagColor);
+        }
+
+        // The Diplomat (Peace Treaties): a small olive flag on a pole
+        // above its head, same shape as a Settler's own founder's banner
+        // but in a distinct off-white parley colour — reads as an envoy,
+        // not a founder, at a glance.
+        if (Role == BramblekinRole.Diplomat)
+        {
+            var poleBase = Position + new Vector3(0, BodyHeight, 0);
+            var poleTop = poleBase + new Vector3(0, 0.35f, 0);
+            Raylib.DrawLine3D(poleBase, poleTop, DiplomatPoleColor);
+            var flagCenter = poleTop + new Vector3(facing.X, -0.06f, facing.Y) * 0.12f;
+            Raylib.DrawCube(flagCenter, 0.18f, 0.12f, 0.02f, DiplomatFlagColor);
+        }
+
+        // Foreign Aid: a Trader carries a small amber-orange satchel on
+        // its back, same placement as a Merchant's own gold backpack but
+        // a clearly different colour/trim, so the two Physical Trade
+        // roles never read as the same thing at a glance.
+        if (Role == BramblekinRole.Trader)
+        {
+            var satchelCenter = Position + new Vector3(-facing.X, BodyHeight * 0.55f, -facing.Y) * 0.18f;
+            Raylib.DrawCube(satchelCenter, 0.16f, 0.2f, 0.14f, TraderSatchelColor);
+            Raylib.DrawCubeWires(satchelCenter, 0.16f, 0.2f, 0.14f, new Color(140, 80, 20, 255));
         }
 
         // The Scout Job: a small bright "eye" accent riding on top of the
@@ -11339,6 +11752,155 @@ public sealed class Bramblekin
             home.FoodStored -= World.MerchantFoodTradeAmount;
             home.AmberStored += World.MerchantAmberTradeAmount;
         }
+    }
+
+    // --- The Diplomat (Peace Treaties) --------------------------------------------
+
+    /// <summary>The specific hostile rival's own Village Heart this Diplomat is walking to negotiate peace with — locked in once by <see cref="PromoteToDiplomat"/>, unlike Merchant/Trader's own per-trip re-picked target.</summary>
+    private VillageHeart? _diplomatTarget;
+
+    /// <summary>True once this Diplomat's mission is resolved (peace negotiated, or mooted by the Blood Feud already having lapsed on its own) and it's walking home before reverting to Gatherer.</summary>
+    private bool _diplomatReturning;
+
+    /// <summary>
+    /// The Diplomat's one-shot mission: walk directly to
+    /// <see cref="_diplomatTarget"/>'s own Village Heart at
+    /// <see cref="World.DiplomatSpeedMultiplier"/> times the ordinary walk
+    /// speed, and on arrival negotiate peace (see
+    /// <see cref="World.ResolvePeace"/>) — removing the Blood Feud both
+    /// ways and starting a bilateral Truce on both sides. Re-validates the
+    /// target every frame first: the Village Heart may have been razed, or
+    /// the Blood Feud itself may already have lapsed on its own (see
+    /// <see cref="World.Update"/>'s own HostileFactions countdown) since
+    /// this Diplomat set out, in which case the mission is simply moot and
+    /// it heads home without a fight or a formal deal. Either way, the
+    /// walk home concludes with an immediate <see cref="DemoteToGatherer"/>
+    /// — the Diplomat is a temporary special mission, not a permanent
+    /// Role like Merchant/Trader, so it reverts the instant its round trip
+    /// is done rather than waiting for the Job Manager's next tick to
+    /// notice.
+    /// </summary>
+    private void UpdateNegotiating(float deltaTime, World world)
+    {
+        VillageHeart? home = world.VillageFor(FactionID);
+        if (home is null)
+            return; // Homeless (its own Village Heart was razed): nothing left to negotiate for or return to.
+
+        if (_diplomatReturning)
+        {
+            if (GroundMover.HorizontalDistance(Position, home.Center) <= World.DiplomatContactDistance)
+            {
+                DemoteToGatherer(world);
+                return;
+            }
+
+            _mover.MoveTowards(home.Center, EffectiveWalkSpeed(world) * World.DiplomatSpeedMultiplier, deltaTime, world, p => IsSafeSpot(p, world));
+            return;
+        }
+
+        if (_diplomatTarget is null || !world.Villages.Contains(_diplomatTarget) || !home.HostileFactions.ContainsKey(_diplomatTarget.FactionID))
+        {
+            // Nothing left to negotiate — the Blood Feud already lapsed,
+            // or the rival is simply gone. Mission moot; head home.
+            _diplomatReturning = true;
+            return;
+        }
+
+        if (GroundMover.HorizontalDistance(Position, _diplomatTarget.Center) <= World.DiplomatContactDistance)
+        {
+            world.ResolvePeace(home, _diplomatTarget);
+            _diplomatReturning = true;
+            return;
+        }
+
+        _mover.MoveTowards(_diplomatTarget.Center, EffectiveWalkSpeed(world) * World.DiplomatSpeedMultiplier, deltaTime, world, p => IsSafeSpot(p, world));
+    }
+
+    // --- Foreign Aid (Traders) -----------------------------------------------------
+
+    /// <summary>The non-hostile, non-Vassal rival's own Village Heart this Trader is currently walking to (or delivering at) — re-picked every trip, same as Merchant's own <see cref="_merchantTarget"/>.</summary>
+    private VillageHeart? _traderTarget;
+
+    /// <summary>True while this Trader is walking home after a successful delivery, before setting out on its next trip.</summary>
+    private bool _traderReturning;
+
+    /// <summary>True once this trip's 1 Amber has been withdrawn from home and is (abstractly) in hand, so a re-picked or re-validated target doesn't trigger a second withdrawal for the same trip.</summary>
+    private bool _traderCarryingAmber;
+
+    /// <summary>
+    /// Foreign Aid's whole world: withdraw 1 Amber from home, walk to the
+    /// nearest eligible non-hostile, non-Vassal rival (re-picked every
+    /// trip via <see cref="World.NearestEligibleTradePartner"/>, in case a
+    /// closer one is founded or the old one is lost to war/conquest since),
+    /// deposit it there, bank one Goodwill stack toward that rival (see
+    /// <see cref="World.RecordGoodwillDelivery"/>), then walk home before
+    /// setting out again — forever, for as long as the Job Manager keeps
+    /// this Bramblekin on Trader duty. A PERSISTENT role, unlike the
+    /// Diplomat's one-shot mission — mirrors <see cref="UpdateMerchant"/>'s
+    /// own repeating round-trip shape exactly.
+    /// </summary>
+    private void UpdateBartering(float deltaTime, World world)
+    {
+        VillageHeart? home = world.VillageFor(FactionID);
+        if (home is null)
+            return; // Homeless (its own Village Heart was razed): nothing left to trade for.
+
+        if (_traderReturning)
+        {
+            if (GroundMover.HorizontalDistance(Position, home.Center) <= World.TraderContactDistance)
+            {
+                _traderReturning = false;
+                _traderTarget = null;
+                return; // Stays a Trader — the Job Manager decides when the posture ends, same as Merchant.
+            }
+
+            _mover.MoveTowards(home.Center, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
+            return;
+        }
+
+        // Re-validate/re-pick every frame — the old target may have gone
+        // hostile, been annexed as our own Vassal, or never been found in
+        // the first place.
+        if (_traderTarget is null || !world.Villages.Contains(_traderTarget) ||
+            home.HostileFactions.ContainsKey(_traderTarget.FactionID) ||
+            (_traderTarget.IsVassal && _traderTarget.CapitalFactionID == home.FactionID))
+        {
+            _traderTarget = world.NearestEligibleTradePartner(home, Position);
+        }
+
+        if (_traderTarget is null)
+        {
+            // No eligible partner anywhere on the map right now — hold
+            // position at home rather than wander off aimlessly, same as
+            // Merchant with no foreign Trading Post yet.
+            return;
+        }
+
+        if (!_traderCarryingAmber)
+        {
+            // Withdraw exactly once per trip, right as it sets out. Floor
+            // at 0: home's AmberStored may have dropped (Upkeep, another
+            // spend) between drafting and this very moment.
+            if (home.AmberStored <= 0)
+            {
+                _traderTarget = null;
+                return; // Nothing left to deliver this trip; try again next tick.
+            }
+
+            home.AmberStored--;
+            _traderCarryingAmber = true;
+        }
+
+        if (GroundMover.HorizontalDistance(Position, _traderTarget.Center) <= World.TraderContactDistance)
+        {
+            _traderTarget.AmberStored++;
+            world.RecordGoodwillDelivery(home, _traderTarget);
+            _traderCarryingAmber = false;
+            _traderReturning = true;
+            return;
+        }
+
+        _mover.MoveTowards(_traderTarget.Center, EffectiveWalkSpeed(world), deltaTime, world, p => IsSafeSpot(p, world));
     }
 
     // --- The Schism -------------------------------------------------------------------
