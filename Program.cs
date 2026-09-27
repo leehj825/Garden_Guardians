@@ -2394,9 +2394,28 @@ public sealed class World
 
         int current = Colony.Count(b => !b.IsDead && b.FactionID == village.FactionID && b.Role == BramblekinRole.Militia);
         if (current < village.MilitiaTarget)
+        {
             NearestByRole(village, BramblekinRole.Gatherer)?.PromoteToMilitia();
-        else if (current > village.MilitiaTarget)
+        }
+        else if (current > village.MilitiaTarget && village.InvasionTarget is null)
+        {
+            // Fixed-Roster Invasions: never let ordinary peacetime
+            // rebalancing touch Militia while a war is actually declared.
+            // NearestByRole grabs whichever Militia is nearest the Village
+            // Heart with zero regard for _committedWarGeneration -- since a
+            // Crusade drafts a big burst well above the peacetime target in
+            // one shot, this demotion would otherwise immediately start
+            // eating the committed roster (the units still near the Heart,
+            // not yet marched out) one per tick, which at a high time-scale
+            // can wipe the whole force out before it ever leaves. That made
+            // CheckInvasionFailure see 0 committed troops almost instantly,
+            // clearing the war and letting another Crusade fire right away
+            // -- a rapid promote/demote loop with no fighting ever actually
+            // happening. Peacetime rebalancing resumes the instant the war
+            // concludes (win, loss, or the "no rivals left" skip), once
+            // InvasionTarget is cleared.
             NearestByRole(village, BramblekinRole.Militia)?.DemoteToGatherer(this);
+        }
 
         // One Builder per simultaneously-queued Blueprint (up to
         // MaxConcurrentBuilders): a flat cap of 1 regardless of Blueprint
