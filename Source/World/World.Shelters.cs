@@ -339,6 +339,34 @@ public sealed partial class World
         return food;
     }
 
+    /// <summary>
+    /// The nearest built shelter within <paramref name="radius"/> with Food
+    /// in its store that doesn't belong to <paramref name="kin"/> or its
+    /// group — only abandoned ones when <paramref name="abandonedOnly"/>.
+    /// </summary>
+    public Shelter? NearestForeignStore(Bramblekin kin, float radius, bool abandonedOnly)
+    {
+        Shelter? best = null;
+        float bestDistanceSquared = radius * radius;
+        foreach (Shelter shelter in Shelters)
+        {
+            if (!shelter.IsBuilt || shelter.StoredFood <= 0 || shelter == kin.Home)
+                continue;
+            if (kin.GroupId is not null && shelter.GroupId == kin.GroupId)
+                continue;
+            if (abandonedOnly && !shelter.IsAbandoned)
+                continue;
+
+            float distanceSquared = GroundMover.HorizontalDistanceSquared(kin.Position, shelter.Position);
+            if (distanceSquared <= bestDistanceSquared)
+            {
+                best = shelter;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+        return best;
+    }
+
     /// <summary>Whether <paramref name="kin"/> may eat from <paramref name="home"/>'s store right now.</summary>
     public bool MayEatFromStore(Bramblekin kin, Shelter home) => kin.Home == home;
 

@@ -71,8 +71,9 @@ public sealed partial class Bramblekin
 
     /// <summary>
     /// Life around a finished home: rest there when hurt (until nearly
-    /// healed), carry held Food into the store, and fetch visible Food lying
-    /// near home to stock it. Returns false when there's nothing to do.
+    /// healed), carry held Food into the store, fetch visible Food lying
+    /// near home to stock it, and hunt Grubs near home while the store is
+    /// low. Returns false when there's nothing to do.
     /// </summary>
     private bool TendHome(Shelter home, float deltaTime, World world)
     {
@@ -96,6 +97,14 @@ public sealed partial class Bramblekin
             GroundMover.HorizontalDistanceSquared(food.Position, home.Position) <= StockpileRange * StockpileRange)
         {
             ApproachFood(food, WalkSpeed, deltaTime, world, eatOnArrival: false);
+            return true;
+        }
+
+        // A low store is worth a hunt: a Grub near home becomes meat to stock.
+        if (home.StoredFood < home.StoreCapacity / 2 && _perceivedGrub is { IsDead: false } grub &&
+            GroundMover.HorizontalDistanceSquared(grub.Position, home.Position) <= StockpileRange * StockpileRange)
+        {
+            HuntGrub(grub, deltaTime, world);
             return true;
         }
 

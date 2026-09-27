@@ -21,6 +21,10 @@ public sealed partial class Bramblekin
             return;
         }
 
+        // Big game: a pack that spots a Stag Beetle goes after it together.
+        if (TryPackHunt(deltaTime, world, hungry: false))
+            return;
+
         Bramblekin? leader = world.GroupOf(this)?.Leader;
         if (leader is { IsDead: false } && leader != this)
         {

@@ -323,7 +323,8 @@ public sealed partial class Bramblekin : ICombatant
     public bool SeesFood => _perceivedFood is { IsActive: true, IsCarried: false };
 
     /// <summary>The Wolf Spider hunts by vibration: a Bramblekin busy with food (or a fight over it) gives itself away.</summary>
-    public bool IsVibrating => !IsDead && State is BramblekinState.Foraging or BramblekinState.Eating or BramblekinState.Hunting or BramblekinState.Attacking;
+    public bool IsVibrating => !IsDead && State is BramblekinState.Foraging or BramblekinState.Eating or BramblekinState.Hunting
+        or BramblekinState.Attacking or BramblekinState.Raiding;
 
     private int StrikeDamage => BaseStrikeDamage + (int)MathF.Round(StrikeDamagePerAggression * Personality.Aggression);
 
@@ -512,6 +513,7 @@ public sealed partial class Bramblekin : ICombatant
         if (_perceivedFood is not null)
             _foodMemory = _perceivedFood.Position;
         _perceivedGrub = world.NearestLiveGrub(Position, radius);
+        _perceivedBeetle = world.NearestLiveBeetle(Position, radius);
         _perceivedTwig = NeedsTwig ? world.NearestAvailableTwig(Position, radius, this) : null;
         if (_perceivedTwig is not null)
             _twigMemory = _perceivedTwig.Position;
@@ -558,6 +560,13 @@ public sealed partial class Bramblekin : ICombatant
             if (ReferenceEquals(other.CombatTarget, this))
             {
                 Consider(other, allyDefense: false);
+                continue;
+            }
+
+            // Fight to protect: a raider heading for its home.
+            if (Home is not null && other.RaidTarget == Home)
+            {
+                Consider(other, allyDefense: true);
                 continue;
             }
 

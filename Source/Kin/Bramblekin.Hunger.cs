@@ -8,8 +8,10 @@ public sealed partial class Bramblekin
     /// <summary>
     /// Critical need: eat what it's holding; else rob the neighbour it
     /// committed to (see <see cref="BeginRobbery"/>); else forage the nearest
-    /// visible Food; else eat from its home's store; else hunt a visible
-    /// Grub; else — a follower borrows its
+    /// visible Food; else eat from its home's store; else scavenge an
+    /// abandoned store; else hunt a visible Grub, or a Stag Beetle with its
+    /// pack; else (starving and Aggressive) raid someone's store; else — a
+    /// follower borrows its
     /// Leader's sharper senses, or tags along if the Leader is searching too
     /// — else it searches further afield.
     /// </summary>
@@ -41,6 +43,13 @@ public sealed partial class Bramblekin
             _robTarget = null;
         }
 
+        // With a predator about, a stocked home is the safe place to eat.
+        if (IsThreatenedByPredator && Home is { } safeHome && CanEatFromStore(world))
+        {
+            GoHomeAndEat(safeHome, deltaTime, world);
+            return;
+        }
+
         if (ValidPerceivedFood(world) is { } food)
         {
             ApproachFood(food, WalkSpeed * (IsStarving ? 1.25f : 1f), deltaTime, world, eatOnArrival: true);
@@ -55,13 +64,22 @@ public sealed partial class Bramblekin
             return;
         }
 
+        // An abandoned store it can see is free for the taking.
+        if (TryTakeFromStore(deltaTime, world, raid: false))
+            return;
+
         if (_perceivedGrub is { IsDead: false } grub)
         {
-            SetState(BramblekinState.Hunting);
-            CombatTarget = grub;
-            PursueAndStrike(grub, WalkSpeed * 1.2f, deltaTime, world);
+            HuntGrub(grub, deltaTime, world);
             return;
         }
+
+        if (TryPackHunt(deltaTime, world, hungry: true))
+            return;
+
+        // Starving and Aggressive: raid someone else's store.
+        if (TryTakeFromStore(deltaTime, world, raid: true))
+            return;
 
         // Desperation: a starving, highly Aggressive Bramblekin with nothing
         // else in sight stalks the nearest outsider it can see carrying

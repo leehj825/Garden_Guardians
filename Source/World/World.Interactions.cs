@@ -125,6 +125,7 @@ public sealed partial class World
         spider.MarkDead();
         _splats.Add((spider.Position, SplatDuration));
         ScatterFoodAround(spider.Position, SpiderCarcassFood, 0.6f, FoodShardKind.Meat);
+        CreditMeat(attacker, SpiderCarcassFood);
         Spider = null;
         SpiderRespawnTimer = SpiderRespawnDelay;
         SpidersKilled++;
@@ -147,7 +148,7 @@ public sealed partial class World
     }
 
     /// <summary>A hunted Grub: drops a bit of Food, plus some of whatever it had eaten. Removal from <see cref="Grubs"/> is deferred to the end of the frame.</summary>
-    public void KillGrub(Grub grub)
+    public void KillGrub(Grub grub, Bramblekin killer)
     {
         if (grub.IsDead)
             return;
@@ -155,6 +156,8 @@ public sealed partial class World
         grub.MarkDead();
         _pendingGrubRemovals.Add(grub);
         GrubsKilled++;
-        ScatterFoodAround(grub.Position, 1 + Math.Min(grub.FoodEaten, Grub.MaxCarcassFood - 1), 0.3f, FoodShardKind.Meat);
+        int meat = 1 + Math.Min(grub.FoodEaten, Grub.MaxCarcassFood - 1);
+        ScatterFoodAround(grub.Position, meat, 0.3f, FoodShardKind.Meat);
+        CreditMeat(killer, meat);
     }
 }

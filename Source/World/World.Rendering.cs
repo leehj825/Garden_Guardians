@@ -98,6 +98,12 @@ public sealed partial class World
                 Grubs[i].Draw();
         }
 
+        for (int i = Beetles.Count - 1; i >= 0; i--)
+        {
+            if (!Beetles[i].IsDead && IsVisible(Beetles[i].Position, camera))
+                Beetles[i].Draw();
+        }
+
         // Group tethers: a faint line in the group's colour from every
         // follower's head to its Leader's, so who runs with whom reads at a
         // glance.

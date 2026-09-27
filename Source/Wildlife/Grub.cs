@@ -80,7 +80,7 @@ public sealed class Grub : ICombatant
     {
         Health = Math.Max(0, Health - damage);
         if (Health <= 0)
-            world.KillGrub(this);
+            world.KillGrub(this, attacker);
     }
 
     public void Update(float deltaTime, World world)

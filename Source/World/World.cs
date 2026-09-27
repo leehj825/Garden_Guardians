@@ -367,6 +367,9 @@ public sealed partial class World
         for (int i = Grubs.Count - 1; i >= 0; i--)
             Grubs[i].Update(deltaTime, this);
 
+        for (int i = Beetles.Count - 1; i >= 0; i--)
+            Beetles[i].Update(deltaTime, this);
+
         // Reverse for-loop: a Bramblekin's own Update() can kill another
         // (combat, robbery) — World.Kill only queues the removal, but
         // walking backwards keeps this loop correct even if that changes.
@@ -384,6 +387,7 @@ public sealed partial class World
         UpdateSpiderRespawn(deltaTime);
         UpdateHornetSpawn(deltaTime);
         UpdateGrubSpawn(deltaTime);
+        UpdateBeetleSpawn(deltaTime);
         UpdateArrivals(deltaTime);
         UpdateFoodDespawn(deltaTime);
         UpdateEncounterCleanup(deltaTime);
@@ -474,6 +478,8 @@ public sealed partial class World
             Grubs.AddRange(_pendingGrubSpawns);
             _pendingGrubSpawns.Clear();
         }
+
+        CommitBeetleChanges();
     }
 
     /// <summary>The Spatial Grid: every loose Food and every living Bramblekin, re-registered into its current 10m chunk. Rebuilt fresh once a frame rather than tracked incrementally as each entity moves.</summary>

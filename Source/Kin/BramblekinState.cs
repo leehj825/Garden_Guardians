@@ -54,6 +54,9 @@ public enum BramblekinState
     /// <summary>Starving and Aggressive: attacking another Bramblekin to steal its food.</summary>
     Attacking,
 
+    /// <summary>Hungry: on its way to take Food from someone else's store (or scavenge an abandoned one).</summary>
+    Raiding,
+
     // --- Safety ---
 
     /// <summary>Running from a threat it chose not to fight.</summary>
