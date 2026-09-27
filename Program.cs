@@ -13721,7 +13721,7 @@ public enum AntState
     /// <summary>Carrying a claimed resource back to the Anthill to deposit it.</summary>
     Carrying,
 
-    /// <summary>Retaliating: something hit it, and it's fighting back for a short window — see <see cref="World.DamageAnt"/>.</summary>
+    /// <summary>Retaliating: something hit it, and it's fighting back for a short window — see <see cref="Ant.TakeDamage"/>.</summary>
     Retaliating,
 }
 
@@ -14220,7 +14220,7 @@ public sealed class ElderSpider
         if (State == ElderSpiderState.Slamming)
         {
             byte alpha = (byte)Math.Clamp(200 * (_slamAnimTimer / SlamAnimationDuration), 0, 200);
-            Raylib.DrawCircle3D(Position + new Vector3(0, 0.05f, 0), SlamRadius, new Vector3(1, 0, 0), 90f, new Color(200, 30, 20, alpha));
+            Raylib.DrawCircle3D(Position + new Vector3(0, 0.05f, 0), SlamRadius, new Vector3(1, 0, 0), 90f, new Color(200, 30, 20, (int)alpha));
         }
     }
 }
