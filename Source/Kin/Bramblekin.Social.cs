@@ -1,0 +1,135 @@
+using System.Numerics;
+using Raylib_cs;
+
+namespace GardenGuardians;
+
+public sealed partial class Bramblekin
+{
+    /// <summary>
+    /// Social need (fed and safe): pocket a spare piece of Food if one is
+    /// close and its hands are empty; a follower stays near its Leader;
+    /// anyone else alternates short rests with a move chosen by
+    /// <see cref="ChooseSocialAction"/>.
+    /// </summary>
+    private void UpdateSocial(float deltaTime, World world)
+    {
+        if (_carried is null && ValidPerceivedFood(world) is { } food &&
+            GroundMover.HorizontalDistance(Position, food.Position) <= DetectionRadius * ReserveGrabRadiusFraction)
+        {
+            ApproachFood(food, WalkSpeed, deltaTime, world, eatOnArrival: false);
+            return;
+        }
+
+        Bramblekin? leader = world.GroupOf(this)?.Leader;
+        if (leader is { IsDead: false } && leader != this)
+        {
+            FollowLeader(leader, deltaTime, world);
+            return;
+        }
+
+        switch (State)
+        {
+            case BramblekinState.Socializing:
+                UpdateSocializing(deltaTime, world);
+                return;
+
+            case BramblekinState.Wandering:
+                float speed = leader == this ? WalkSpeed * LeaderWanderSpeedMultiplier : WalkSpeed;
+                if (MoveTo(_wanderTarget, speed, deltaTime, world))
+                    StartPause();
+                return;
+
+            case BramblekinState.Idle:
+                _pauseTimer -= deltaTime;
+                if (_pauseTimer <= 0f)
+                    ChooseSocialAction(world);
+                return;
+
+            default:
+                // Coming out of foraging, fleeing or a fight: catch its breath first.
+                StartPause();
+                return;
+        }
+    }
+
+    /// <summary>
+    /// After each rest: with odds of Sociability × <see cref="SocialSeekFactor"/>
+    /// it goes to meet the nearest stranger it can see; a loner (below
+    /// <see cref="LonerThreshold"/>) walks away from anyone crowding it;
+    /// otherwise it simply wanders.
+    /// </summary>
+    private void ChooseSocialAction(World world)
+    {
+        if (_rng.NextDouble() < Personality.Sociability * SocialSeekFactor && NearestStranger(world) is { } stranger)
+        {
+            _companion = stranger;
+            _socializeTimer = SocializeTimeout;
+            SetState(BramblekinState.Socializing);
+            return;
+        }
+
+        if (Personality.Sociability < LonerThreshold && NearestOutsiderWithin(world, PersonalSpaceRadius) is { } crowder)
+        {
+            _wanderTarget = PointAwayFrom(crowder.Position, WanderRadius * 0.5f, world);
+            SetState(BramblekinState.Wandering);
+            return;
+        }
+
+        _wanderTarget = RandomWanderPoint(world, WanderRadius);
+        SetState(BramblekinState.Wandering);
+    }
+
+    /// <summary>Walks up to the stranger it spotted; the World resolves the encounter once they're close.</summary>
+    private void UpdateSocializing(float deltaTime, World world)
+    {
+        _socializeTimer -= deltaTime;
+        if (_companion is not { IsDead: false } companion || _socializeTimer <= 0f || _knownKins.ContainsKey(companion.ID))
+        {
+            StartPause(); // Met them (or gave up).
+            return;
+        }
+
+        float distance = GroundMover.HorizontalDistance(Position, companion.Position);
+        if (distance > DetectionRadius * ThreatLeashMultiplier || distance <= World.EncounterRadius * 0.8f)
+        {
+            StartPause();
+            return;
+        }
+
+        MoveTo(companion.Position, WalkSpeed, deltaTime, world);
+    }
+
+    /// <summary>Group Dynamics: a follower overrides its own wandering to stay within <see cref="FollowRadius"/> of its Leader, milling about near it once there.</summary>
+    private void FollowLeader(Bramblekin leader, float deltaTime, World world)
+    {
+        float distance = GroundMover.HorizontalDistance(Position, leader.Position);
+        if (distance > FollowRadius)
+        {
+            SetState(BramblekinState.Following);
+            float speed = WalkSpeed * (distance > FollowRadius * 2f ? FollowCatchUpSpeedMultiplier : 1.1f);
+            MoveTo(leader.Position, speed, deltaTime, world);
+            return;
+        }
+
+        switch (State)
+        {
+            case BramblekinState.Idle:
+                _pauseTimer -= deltaTime;
+                if (_pauseTimer <= 0f)
+                {
+                    _wanderTarget = PointNear(leader.Position, FollowRadius * 0.7f, world);
+                    SetState(BramblekinState.Wandering);
+                }
+                return;
+
+            case BramblekinState.Wandering:
+                if (MoveTo(_wanderTarget, WalkSpeed * 0.8f, deltaTime, world))
+                    StartPause();
+                return;
+
+            default:
+                StartPause();
+                return;
+        }
+    }
+}

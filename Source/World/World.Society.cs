@@ -1,0 +1,307 @@
+using System.Numerics;
+using Raylib_cs;
+
+namespace GardenGuardians;
+
+public sealed partial class World
+{
+    // --- Groups ------------------------------------------------------------------
+
+    /// <summary>The group <paramref name="kin"/> currently belongs to, if any.</summary>
+    public KinGroup? GroupOf(Bramblekin kin) =>
+        kin.GroupId is { } id && _groups.TryGetValue(id, out KinGroup? group) ? group : null;
+
+    /// <summary>
+    /// Group Dynamics bookkeeping: rebuilds every group's member list from
+    /// the living Bramblekin's own <see cref="Bramblekin.GroupId"/>s,
+    /// dissolves any group left with a single survivor (it's solitary
+    /// again), and re-elects each remaining group's Leader — always the
+    /// member with the highest Intelligence, so losing a leader simply hands
+    /// the role to the next-sharpest member.
+    /// </summary>
+    private void RebuildGroups()
+    {
+        foreach (KinGroup group in _groups.Values)
+            group.Members.Clear();
+
+        foreach (Bramblekin kin in Colony)
+        {
+            if (kin.IsDead || kin.GroupId is not { } id)
+                continue;
+
+            if (!_groups.TryGetValue(id, out KinGroup? group))
+            {
+                group = new KinGroup(id);
+                _groups[id] = group;
+            }
+            group.Members.Add(kin);
+        }
+
+        _groupRemovalBuffer.Clear();
+        foreach (KinGroup group in _groups.Values)
+        {
+            if (group.Members.Count >= 2)
+            {
+                Bramblekin? previousLeader = group.Leader;
+                group.ElectLeader();
+                if (previousLeader is not null && previousLeader != group.Leader)
+                    Game.AddEventLog($"[GROUP] #{group.Leader!.ID} now leads group {group.ShortId}");
+                continue;
+            }
+
+            if (group.Members.Count == 1)
+            {
+                group.Members[0].LeaveGroup();
+                Game.AddEventLog($"[GROUP] Group {group.ShortId} is gone; #{group.Members[0].ID} is alone again");
+            }
+            _groupRemovalBuffer.Add(group.Id);
+        }
+
+        foreach (Guid id in _groupRemovalBuffer)
+            _groups.Remove(id);
+    }
+
+    // --- Encounters ----------------------------------------------------------------
+
+    /// <summary>
+    /// The Encounter: finds every pair of living Bramblekin within
+    /// <see cref="EncounterRadius"/> of each other that hasn't met within
+    /// the last <see cref="EncounterCooldown"/> seconds, and resolves it.
+    /// </summary>
+    private void ResolveEncounters()
+    {
+        bool groupsChanged = false;
+        for (int i = 0; i < Colony.Count; i++)
+        {
+            Bramblekin a = Colony[i];
+            if (a.IsDead)
+                continue;
+
+            _colonyGrid.QueryNearby(a.Position, _encounterBuffer);
+            for (int j = 0; j < _encounterBuffer.Count; j++)
+            {
+                Bramblekin b = _encounterBuffer[j];
+                if (b.ID <= a.ID || b.IsDead)
+                    continue; // Each pair once, lower ID first.
+                if (GroundMover.HorizontalDistanceSquared(a.Position, b.Position) > EncounterRadius * EncounterRadius)
+                    continue;
+
+                var key = (a.ID, b.ID);
+                if (_lastEncounter.TryGetValue(key, out float last) && ElapsedSeconds - last < EncounterCooldown)
+                    continue;
+                _lastEncounter[key] = ElapsedSeconds;
+
+                groupsChanged |= ResolveEncounter(a, b);
+            }
+        }
+
+        if (groupsChanged)
+            RebuildGroups();
+    }
+
+    /// <summary>
+    /// The social resolution when two Bramblekin cross paths, in priority
+    /// order:
+    ///   1. Groupmates never fight — a fed one shares its food with a hungry one.
+    ///   2. Hostility: a starving, highly Aggressive one may turn on the
+    ///      other to steal its food (see <see cref="TryStartRobbery"/>);
+    ///      both remember each other as Enemies from then on.
+    ///   3. Enemies simply pass each other by.
+    ///   4. Friends may share food.
+    ///   5. Alliance: if both are threatened by a predator right now, or
+    ///      both are highly Sociable, they band together under one GroupId.
+    ///   6. Otherwise they just become acquainted: Friends with odds equal
+    ///      to the product of their Sociability, Neutral otherwise.
+    /// Returns true if group membership changed.
+    /// </summary>
+    private bool ResolveEncounter(Bramblekin a, Bramblekin b)
+    {
+        if (a.GroupId is { } groupId && groupId == b.GroupId)
+        {
+            TryShareFood(a, b, sameGroup: true);
+            return false;
+        }
+
+        if (TryStartRobbery(a, b) || TryStartRobbery(b, a))
+            return false;
+
+        RelationshipState? relationship = a.RelationshipTo(b);
+        if (relationship == RelationshipState.Enemy)
+            return false;
+
+        if (relationship == RelationshipState.Friend)
+            TryShareFood(a, b, sameGroup: false);
+
+        bool bothThreatened = a.IsThreatenedByPredator && b.IsThreatenedByPredator;
+        bool bothSociable = a.Personality.Sociability >= AllianceSociabilityThreshold &&
+                            b.Personality.Sociability >= AllianceSociabilityThreshold;
+        if ((bothThreatened || bothSociable) && TryFormAlliance(a, b, bothThreatened))
+            return true;
+
+        if (relationship is null)
+        {
+            bool friendly = Rng.NextDouble() < a.Personality.Sociability * b.Personality.Sociability;
+            SetMutualRelationship(a, b, friendly ? RelationshipState.Friend : RelationshipState.Neutral);
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Hostility: <paramref name="attacker"/> — starving, empty-handed, with
+    /// no loose Food in sight, and at least <see cref="HighAggressionThreshold"/>
+    /// Aggressive — rolls its Aggression (halved against a Friend) to turn on
+    /// <paramref name="victim"/>, who must actually be carrying food worth
+    /// stealing. On success the two
+    /// are Enemies for good and the attacker starts its robbery (see
+    /// <see cref="Bramblekin.BeginRobbery"/>).
+    /// </summary>
+    private bool TryStartRobbery(Bramblekin attacker, Bramblekin victim)
+    {
+        if (!attacker.IsStarving || attacker.HasFood || attacker.IsRobbing || attacker.SeesFood || !victim.HasFood)
+            return false;
+        if (attacker.Personality.Aggression < HighAggressionThreshold)
+            return false;
+
+        double chance = attacker.Personality.Aggression;
+        if (attacker.RelationshipTo(victim) == RelationshipState.Friend)
+            chance *= 0.5;
+        if (Rng.NextDouble() >= chance)
+            return false;
+
+        DeclareEnemies(attacker, victim);
+        attacker.BeginRobbery(victim);
+        QueueFloatingText(attacker.Position, "Attack!", HostileTextColor);
+        Game.AddEventLog($"[HOSTILITY] Starving #{attacker.ID} turned on #{victim.ID} for its food");
+        return true;
+    }
+
+    /// <summary>
+    /// A fed Bramblekin carrying food hands it to a hungry, empty-handed one:
+    /// always within a group, and with odds equal to the giver's
+    /// Sociability between Friends (who stay Friends).
+    /// </summary>
+    private void TryShareFood(Bramblekin a, Bramblekin b, bool sameGroup)
+    {
+        Bramblekin? giver = null, taker = null;
+        if (a.HasFood && !a.IsHungry && b.IsHungry && !b.HasFood)
+            (giver, taker) = (a, b);
+        else if (b.HasFood && !b.IsHungry && a.IsHungry && !a.HasFood)
+            (giver, taker) = (b, a);
+
+        if (giver is null || taker is null)
+            return;
+        if (!sameGroup && Rng.NextDouble() >= giver.Personality.Sociability)
+            return;
+        if (giver.SurrenderFood() is not { } food)
+            return;
+
+        taker.ReceiveFood(food);
+        FoodShared++;
+        if (!sameGroup)
+            SetMutualRelationship(a, b, RelationshipState.Friend);
+        QueueFloatingText(taker.Position, "Shared", FriendlyTextColor);
+    }
+
+    /// <summary>
+    /// Alliance: puts <paramref name="a"/> and <paramref name="b"/> in the
+    /// same group — a brand-new one if neither has a group, the existing one
+    /// if only one does, or the larger of the two if both do (the smaller is
+    /// merged into it). Refused if the result would exceed
+    /// <see cref="MaxGroupSize"/>, or would put anyone in a group with a
+    /// known Enemy.
+    /// </summary>
+    private bool TryFormAlliance(Bramblekin a, Bramblekin b, bool bothThreatened)
+    {
+        KinGroup? groupA = GroupOf(a);
+        KinGroup? groupB = GroupOf(b);
+        KinGroup group;
+
+        if (groupA is null && groupB is null)
+        {
+            group = new KinGroup(Guid.NewGuid());
+            _groups[group.Id] = group;
+            a.JoinGroup(group.Id);
+            b.JoinGroup(group.Id);
+            group.Members.Add(a);
+            group.Members.Add(b);
+        }
+        else if (groupA is not null && groupB is not null)
+        {
+            if (groupA.Members.Count + groupB.Members.Count > MaxGroupSize)
+                return false;
+
+            var (larger, smaller) = groupA.Members.Count >= groupB.Members.Count ? (groupA, groupB) : (groupB, groupA);
+            foreach (Bramblekin member in smaller.Members)
+            {
+                if (HasEnemyIn(member, larger))
+                    return false;
+            }
+
+            foreach (Bramblekin member in smaller.Members)
+            {
+                member.JoinGroup(larger.Id);
+                larger.Members.Add(member);
+            }
+            smaller.Members.Clear();
+            _groups.Remove(smaller.Id);
+            group = larger;
+        }
+        else
+        {
+            KinGroup existing = groupA ?? groupB!;
+            Bramblekin joiner = groupA is null ? a : b;
+            if (existing.Members.Count >= MaxGroupSize || HasEnemyIn(joiner, existing))
+                return false;
+
+            joiner.JoinGroup(existing.Id);
+            existing.Members.Add(joiner);
+            group = existing;
+        }
+
+        group.ElectLeader();
+        SetMutualRelationship(a, b, RelationshipState.Friend);
+        AlliancesFormed++;
+        QueueFloatingText(a.Position, "+Ally", group.Color);
+        Game.AddEventLog(
+            $"[ALLIANCE] #{a.ID} and #{b.ID} banded together ({(bothThreatened ? "both hunted" : "kindred spirits")}) - " +
+            $"group {group.ShortId} is {group.Members.Count} strong, led by #{group.Leader!.ID}");
+        return true;
+    }
+
+    private static bool HasEnemyIn(Bramblekin kin, KinGroup group)
+    {
+        foreach (Bramblekin member in group.Members)
+        {
+            if (kin.RelationshipTo(member) == RelationshipState.Enemy)
+                return true;
+        }
+        return false;
+    }
+
+    private static void SetMutualRelationship(Bramblekin a, Bramblekin b, RelationshipState state)
+    {
+        a.SetRelationship(b, state);
+        b.SetRelationship(a, state);
+    }
+
+    /// <summary>Any blow struck between two Bramblekin, or a robbery attempt, makes them Enemies for good.</summary>
+    public void DeclareEnemies(Bramblekin a, Bramblekin b) => SetMutualRelationship(a, b, RelationshipState.Enemy);
+
+    /// <summary>Forgets encounter cooldowns that have long since expired, so the table doesn't grow forever.</summary>
+    private void UpdateEncounterCleanup(float deltaTime)
+    {
+        _encounterCleanupTimer -= deltaTime;
+        if (_encounterCleanupTimer > 0f)
+            return;
+        _encounterCleanupTimer = 30f;
+
+        _encounterExpiryBuffer.Clear();
+        foreach (var (pair, time) in _lastEncounter)
+        {
+            if (ElapsedSeconds - time >= EncounterCooldown)
+                _encounterExpiryBuffer.Add(pair);
+        }
+        foreach (var pair in _encounterExpiryBuffer)
+            _lastEncounter.Remove(pair);
+    }
+}

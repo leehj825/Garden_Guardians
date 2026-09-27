@@ -1,0 +1,79 @@
+using System.Numerics;
+using Raylib_cs;
+
+namespace GardenGuardians;
+
+public sealed partial class Bramblekin
+{
+    // --- Drawing ---------------------------------------------------------------------------
+
+    /// <summary>
+    /// A bark-brown body tinted redder the more Aggressive it is (alarm red
+    /// while fleeing), topped with a head in its group's colour (off-white
+    /// while solitary). A Leader carries its group's banner; anything
+    /// fighting, robbing or hunting holds a thorn out front; carried Food
+    /// rides on its head.
+    /// </summary>
+    public void Draw(World world)
+    {
+        KinGroup? group = world.GroupOf(this);
+        Color color = State == BramblekinState.Fleeing
+            ? PanicColor
+            : LerpColor(CalmColor, AggressiveColor, Personality.Aggression);
+
+        // A small, dark, semi-transparent drop shadow at this unit's own X/Z
+        // on the ground, drawn before the body itself — a flat disc laid on
+        // the XZ plane at a tiny epsilon above the terrain to avoid
+        // z-fighting with it.
+        var shadowCenter = new Vector3(Position.X, Position.Y + 0.02f, Position.Z);
+        Raylib.DrawCircle3D(shadowCenter, BodyRadius * 1.3f, new Vector3(1, 0, 0), 90f, new Color(0, 0, 0, 90));
+
+        // Cached-Model body: a cylinder tilted to the terrain's own surface
+        // normal. GenMeshCylinder's mesh runs from local y=0 (base) to
+        // y=BodyHeight (top), so it pivots flush on the ground at Position.
+        EnsureBodyModel();
+        Vector3 normal = World.GetNormalAt(Position.X, Position.Z);
+        Vector3 axis = Vector3.Cross(Vector3.UnitY, normal);
+        float angleDegrees = 0f;
+        if (axis.LengthSquared() > 1e-6f)
+            angleDegrees = MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.UnitY, normal), -1f, 1f)) * (180f / MathF.PI);
+        else
+            axis = Vector3.UnitY; // Flat ground: any axis is fine at a 0-degree rotation.
+        Raylib.DrawModelEx(_bodyModel, Position, axis, angleDegrees, Vector3.One, color);
+
+        var top = Position + new Vector3(0, BodyHeight - BodyRadius, 0);
+        Raylib.DrawSphere(top + new Vector3(0, BodyRadius * 0.5f, 0), BodyRadius * 0.35f, group?.Color ?? SolitaryHeadColor);
+
+        Vector2 facing = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;
+
+        if (group is not null && group.Leader == this)
+        {
+            var poleBase = Position + new Vector3(0, BodyHeight, 0);
+            var poleTop = poleBase + new Vector3(0, 0.4f, 0);
+            Raylib.DrawLine3D(poleBase, poleTop, BannerPoleColor);
+            var flagCenter = poleTop + new Vector3(-facing.X * 0.12f, -0.07f, -facing.Y * 0.12f);
+            Raylib.DrawCube(flagCenter, 0.2f, 0.14f, 0.02f, group.Color);
+        }
+
+        if (State is BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting)
+        {
+            Color thornColor = State == BramblekinState.Attacking ? BloodyThornColor : ThornColor;
+            var grip = Position + new Vector3(0, BodyHeight * 0.6f, 0);
+            var tip = grip + new Vector3(facing.X, 0.55f, facing.Y) * 0.6f;
+            Raylib.DrawLine3D(grip, tip, thornColor);
+            Raylib.DrawSphere(tip, 0.025f, thornColor);
+        }
+
+        _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
+    }
+
+    private static Color LerpColor(Color a, Color b, float t)
+    {
+        t = Math.Clamp(t, 0f, 1f);
+        return new Color(
+            (byte)(a.R + (b.R - a.R) * t),
+            (byte)(a.G + (b.G - a.G) * t),
+            (byte)(a.B + (b.B - a.B) * t),
+            (byte)255);
+    }
+}
