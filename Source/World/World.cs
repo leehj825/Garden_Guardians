@@ -245,7 +245,7 @@ public sealed partial class World
     public int DeathsByPredator { get; private set; }
     public int DeathsByKin { get; private set; }
     public int DeathsByOldAge { get; private set; }
-    public int Casualties => DeathsByStarvation + DeathsByPredator + DeathsByKin + DeathsByOldAge;
+    public int Casualties => DeathsByStarvation + DeathsByPredator + DeathsByKin + DeathsByOldAge + DeathsBySickness;
     public int FoodEaten { get; private set; }
     public int FoodShared { get; private set; }
     public int Thefts { get; private set; }
@@ -409,6 +409,7 @@ public sealed partial class World
         UpdateHornetSpawn(deltaTime);
         UpdateGrubSpawn(deltaTime);
         UpdateBeetleSpawn(deltaTime);
+        UpdateAnts(deltaTime);
         UpdateArrivals(deltaTime);
         UpdateFoodDespawn(deltaTime);
         UpdateEncounterCleanup(deltaTime);
@@ -475,6 +476,8 @@ public sealed partial class World
                 ActivateFood(position, kind);
             _pendingFoodSpawns.Clear();
         }
+
+        CommitAntRemovals();
 
         if (_pendingHornetRemovals.Count > 0)
         {

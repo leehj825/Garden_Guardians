@@ -41,6 +41,8 @@ public sealed class SaveGame
     public List<ChronicleEntry> Chronicle { get; set; } = new();
     public List<HistorySample> History { get; set; } = new();
     public List<LifeRecord> Lives { get; set; } = new();
+    public V3? Anthill { get; set; }
+    public int AnthillStock { get; set; }
 }
 
 public sealed class PropSave
@@ -66,6 +68,8 @@ public sealed class ShelterSave
     public Guid? GroupId { get; set; }
     public float AbandonedSeconds { get; set; }
     public float StageStartedAt { get; set; }
+    public bool Granary { get; set; }
+    public bool Palisade { get; set; }
 }
 
 public sealed class KinSave
@@ -102,6 +106,7 @@ public sealed class KinSave
     public bool Widowed { get; set; }
     public float Mourning { get; set; }
     public bool KnowsFarming { get; set; }
+    public Craft Crafts { get; set; }
     public float JoinedAt { get; set; }
     public List<PlaceSave> Dangers { get; set; } = new();
     public V3? FoodMemory { get; set; }
@@ -109,6 +114,8 @@ public sealed class KinSave
     public ErrandSave? Errand { get; set; }
     public float LeaderSeconds { get; set; }
     public int SpiderKills { get; set; }
+    public float Sickness { get; set; }
+    public float Immunity { get; set; }
 }
 
 public sealed class ErrandSave

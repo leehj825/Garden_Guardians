@@ -436,6 +436,8 @@ public sealed class WolfSpider : ICombatant
             // again explicitly so this never targets one even if that changes.
             if (bramblekin.IsDead || !bramblekin.IsVibrating || bramblekin.IsSheltered)
                 continue;
+            if (world.IsInsidePalisade(bramblekin.Position))
+                continue; // Stakes it won't go past.
 
             float distanceSquared = GroundMover.HorizontalDistanceSquared(Position, bramblekin.Position);
             if (distanceSquared <= bestDistanceSquared && !IsInACrowd(bramblekin, nearby))

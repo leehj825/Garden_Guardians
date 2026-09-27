@@ -92,6 +92,9 @@ public sealed class BerryBush
         WildSeconds = wildSeconds;
     }
 
+    /// <summary>A flood strips its ripe berries.</summary>
+    public void LoseFruit() => Fruit = 0;
+
     /// <summary>Picks one ripe berry. False if there's none.</summary>
     public bool TryPick()
     {

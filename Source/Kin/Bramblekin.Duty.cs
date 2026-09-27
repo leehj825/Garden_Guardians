@@ -125,12 +125,31 @@ public sealed partial class Bramblekin
             return true;
         }
 
+        if (!BreakIn(target, deltaTime))
+            return true;
         _raidTarget = null;
         if (world.RaidStore(this, target) is { } food)
         {
             _carried = food;
             world.NoteWarRaid(this, target);
         }
+        return true;
+    }
+
+    /// <summary>A raider needs this long at a palisaded store to get past the stakes (see <see cref="Craft.Palisade"/>).</summary>
+    private const float PalisadeBreakInSeconds = 4f;
+
+    private float _breakInTimer;
+
+    /// <summary>At a store to raid: true once in — straight away, or after <see cref="PalisadeBreakInSeconds"/> at a palisaded one (time for its defenders to come).</summary>
+    private bool BreakIn(Shelter store, float deltaTime)
+    {
+        if (!store.HasPalisade)
+            return true;
+        _breakInTimer += deltaTime;
+        if (_breakInTimer < PalisadeBreakInSeconds)
+            return false;
+        _breakInTimer = 0f;
         return true;
     }
 

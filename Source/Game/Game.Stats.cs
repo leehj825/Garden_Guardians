@@ -38,6 +38,7 @@ public static partial class Game
             $"Starved: {Share(world.DeathsByStarvation)}",
             $"Predators: {Share(world.DeathsByPredator)}",
             $"Killed by kin: {Share(world.DeathsByKin)}",
+            $"Sickness: {Share(world.DeathsBySickness)} ({world.SicknessCases} fell ill)",
         }));
 
         sections.Add(("Food", new List<string>
@@ -85,6 +86,23 @@ public static partial class Game
             $"Berries picked: {world.FruitHarvested}",
         }));
 
+        int KnowCraft(Craft craft) => world.Groups.Count(g => World.Knows(g, craft));
+        sections.Add(("Crafts", new List<string>
+        {
+            $"Worked out: {world.CraftsDiscovered}, taught {world.CraftsTaught}",
+            $"Clans with granaries: {KnowCraft(Craft.Granary)}",
+            $"With spears: {KnowCraft(Craft.Spears)}",
+            $"With palisades: {KnowCraft(Craft.Palisade)}",
+        }));
+
+        sections.Add(("Pests & plagues", new List<string>
+        {
+            $"Ill now: {world.SickCount}, ever {world.SicknessCases}",
+            $"Died of sickness: {world.DeathsBySickness}",
+            world.Anthill is { } hill ? $"Anthill: {hill.Stock} food, {world.Ants.Count} ants out" : "No ants yet",
+            $"Stolen by ants: {world.AntThefts}, swatted {world.AntsKilled}",
+        }));
+
         sections.Add(("Hunting", new List<string>
         {
             $"Wolf Spiders slain: {world.SpidersKilled}",
@@ -100,6 +118,7 @@ public static partial class Game
             $"Droughts: {world.Droughts}",
             $"Harsh winters: {world.HarshWinters}",
             $"Storms: {world.Storms}",
+            $"Floods: {world.Floods} ({world.HomesFlooded} homes flooded)",
         }));
 
         return sections;
@@ -123,6 +142,7 @@ public static partial class Game
             $"Food stored: {world.StoredFood(clan)}",
             World.KnowsFarming(clan) ? $"Bushes: {world.BushesOf(clan)} of {world.BushAllowance(clan)}" : "Doesn't farm yet",
             $"Wolf Spiders slain: {clan.SpidersSlain}",
+            $"Crafts: {CraftList(World.CraftsOf(clan))}",
             $"Martial {Percent(clan.Culture.Martial)}, hunting {Percent(clan.Culture.Hunting)}, farming {Percent(clan.Culture.Farming)}",
         };
         if (world.FoundingOf(clan.Id) is { } founding)
@@ -130,6 +150,13 @@ public static partial class Game
         if (world.DescribeRelations(clan) is { } relations)
             lines.Add(char.ToUpperInvariant(relations[0]) + relations[1..]);
         return lines;
+    }
+
+    /// <summary>"farming, granary, spears" — or "none".</summary>
+    private static string CraftList(Craft crafts)
+    {
+        string list = string.Join(", ", Enum.GetValues<Craft>().Where(c => c != Craft.None && (crafts & c) == c).Select(c => c.ToString().ToLowerInvariant()));
+        return list.Length > 0 ? list : "none";
     }
 
     private static string Percent(float fraction) => $"{(int)MathF.Round(fraction * 100f)}%";

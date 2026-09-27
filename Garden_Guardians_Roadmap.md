@@ -514,6 +514,13 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
 *   ✅ **Speed:** narrower spatial queries, an array-backed grid, and no
     allocation on the hot paths — about a quarter less CPU and a tenth of
     the garbage, with results identical step for step.
+*   ✅ **New pressures:** crafts clans work out and teach (granary, spears,
+    palisade); sickness that spreads by contact; a rival ant colony
+    raiding stores; floods in spring and autumn downpours.
+    *Result* (24 seeds × 13 years, no exceptions): population unchanged
+    (65.5 vs 65.1), starvation 59 vs 54, predators 30 vs 31, kin
+    killings 25 vs 30; sickness takes about 17 a run, mostly elders, so
+    old-age deaths fall from 69 to 58.
 
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd

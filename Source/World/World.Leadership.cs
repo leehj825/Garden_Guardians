@@ -74,6 +74,7 @@ public sealed partial class World
 
             group.DecisionTimer = LeaderDecisionInterval;
             UpdateFarmingKnowledge(group);
+            UpdateCrafts(group);
             UpdateCulture(group);
             ConsiderNeighbours(group, leader);
             DecideGroupGoal(group, leader);

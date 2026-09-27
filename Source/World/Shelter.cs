@@ -95,7 +95,18 @@ public sealed class Shelter
 
     public int StoredFood { get; private set; }
 
-    public int StoreCapacity => Tier == ShelterTier.House ? HouseStoreCapacity : TentStoreCapacity;
+    public int StoreCapacity => Tier == ShelterTier.House
+        ? HasGranary ? HouseStoreCapacity * 3 / 2 : HouseStoreCapacity
+        : TentStoreCapacity;
+
+    /// <summary>Its clan knows <see cref="Craft.Granary"/> (Houses only): half as much again in store.</summary>
+    public bool HasGranary { get; set; }
+
+    /// <summary>Its clan knows <see cref="Craft.Palisade"/>: a ring of stakes (<see cref="PalisadeRadius"/>) round it.</summary>
+    public bool HasPalisade { get; set; }
+
+    /// <summary>How far out a palisade stands from the home's centre.</summary>
+    public float PalisadeRadius => Radius + 1.6f;
 
     public int ResidentCapacity => Tier == ShelterTier.House ? HouseResidentCapacity : TentResidentCapacity;
 
@@ -231,6 +242,26 @@ public sealed class Shelter
             Vector3 poleTop = poleBase + new Vector3(0f, 0.45f, 0f);
             Raylib.DrawLine3D(poleBase, poleTop, StickColor);
             Raylib.DrawCube(poleTop + new Vector3(0.12f, -0.08f, 0f), 0.22f, 0.15f, 0.02f, color);
+        }
+
+        if (HasGranary && Tier == ShelterTier.House)
+        {
+            // A little round granary on the far side from the door.
+            Vector3 granary = basePosition + new Vector3(-radius - 0.35f, 0f, 0.25f);
+            Raylib.DrawCylinder(granary, 0.28f, 0.28f, 0.55f, 8, Tint(CanvasColor));
+            Raylib.DrawCylinder(granary + new Vector3(0f, 0.55f, 0f), 0f, 0.36f, 0.3f, 8, Tint(RoofColor));
+        }
+
+        if (HasPalisade)
+        {
+            // A ring of stakes, with a gap for the door.
+            float ring = PalisadeRadius;
+            for (int i = 1; i < 22; i++)
+            {
+                float angle = i * MathF.Tau / 22f;
+                Vector3 foot = World.Grounded(Position + new Vector3(MathF.Cos(angle) * ring, 0f, MathF.Sin(angle) * ring));
+                Raylib.DrawCylinder(foot, 0.05f, 0.03f, 0.55f, 4, Tint(StickColor));
+            }
         }
 
         // Stored Food: a little pile by the door, one berry per piece (up to 8 shown).

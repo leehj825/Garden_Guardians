@@ -89,6 +89,8 @@ public sealed partial class Bramblekin
             return true;
         }
 
+        if (!BreakIn(target, deltaTime))
+            return true;
         _raidTarget = null;
         if (world.RaidStore(this, target) is { } food)
         {

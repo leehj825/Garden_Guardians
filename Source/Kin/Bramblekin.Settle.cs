@@ -265,7 +265,7 @@ public sealed partial class Bramblekin
         if (_restTimer >= healInterval)
         {
             _restTimer -= healInterval;
-            Health = Math.Min(MaxHealth, Health + 1);
+            Heal(1);
         }
     }
 

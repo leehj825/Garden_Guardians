@@ -56,7 +56,7 @@ public sealed partial class Bramblekin
             world.ConsumeFood(food);
             _carried = null;
             Hunger = MathF.Max(0f, Hunger - FoodNourishment);
-            Health = Math.Min(MaxHealth, Health + FoodHealing);
+            Heal(FoodHealing);
         }
         _robTarget = null;
         StartPause();
@@ -129,7 +129,7 @@ public sealed partial class Bramblekin
             world.StealFood(this, victim);
         if (State == BramblekinState.Fighting && _threatIsAllyDefense)
             world.NoteDefended(this, target);
-        target.TakeHit(StrikeDamage, this, world);
+        target.TakeHit(target is Bramblekin ? StrikeDamage : HuntingDamage, this, world);
     }
 
     /// <summary>
@@ -181,7 +181,7 @@ public sealed partial class Bramblekin
 
     /// <summary>Walks toward <paramref name="target"/>, steering round Pebbles. Returns true on arrival.</summary>
     private bool MoveTo(Vector3 target, float speed, float deltaTime, World world) =>
-        _mover.MoveTowards(target, speed * AgeSpeedFactor, deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius));
+        _mover.MoveTowards(target, speed * AgeSpeedFactor * (IsSick ? SickSpeedFactor : 1f), deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius));
 
     private void StartPause()
     {

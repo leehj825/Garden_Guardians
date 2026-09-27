@@ -107,6 +107,7 @@ public sealed partial class World
                     continue;
                 _lastEncounter[key] = ElapsedSeconds;
 
+                SpreadSickness(a, b);
                 groupsChanged |= ResolveEncounter(a, b);
             }
         }

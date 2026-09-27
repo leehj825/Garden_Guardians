@@ -361,6 +361,9 @@ public sealed partial class Bramblekin : ICombatant
 
     private int StrikeDamage => (int)MathF.Round((BaseStrikeDamage + StrikeDamagePerAggression * Personality.Aggression) * (IsElder ? ElderStrikeFactor : 1f));
 
+    /// <summary>A blow against a creature: half as hard again with <see cref="Craft.Spears"/>.</summary>
+    private int HuntingDamage => Knows(Craft.Spears) ? StrikeDamage * 3 / 2 : StrikeDamage;
+
     // --- Relationships & groups ----------------------------------------------------------
 
     /// <summary>How this Bramblekin regards <paramref name="other"/>, or null if they've never met.</summary>
@@ -548,6 +551,8 @@ public sealed partial class Bramblekin : ICombatant
         float metabolism = world.CurrentSeason == Season.Winter && IsSheltered ? WinterShelterMetabolism : 1f;
         if (!IsSheltered)
             metabolism *= world.ColdFactor; // A harsh winter bites anyone caught outdoors.
+        if (IsSick)
+            metabolism *= SickHungerFactor;
         Hunger = MathF.Min(MaxHunger, Hunger + HungerPerSecond * metabolism * deltaTime);
         if (Hunger >= MaxHunger)
         {
@@ -564,6 +569,8 @@ public sealed partial class Bramblekin : ICombatant
         {
             _starvationTimer = 0f;
         }
+        if (UpdateSickness(deltaTime, world))
+            return;
 
         _perceptionTimer -= deltaTime;
         if (_perceptionTimer <= 0f)
@@ -587,6 +594,10 @@ public sealed partial class Bramblekin : ICombatant
 
         // 2) Safety.
         if (UpdateSafety(deltaTime, world))
+            return;
+
+        // 2b) Ants at its home's store get swatted.
+        if (UpdateAntDefense(deltaTime, world))
             return;
 
         // 3) Duty: the job its group's Leader gave it.
@@ -621,6 +632,7 @@ public sealed partial class Bramblekin : ICombatant
             world.GroupOf(this)?.FoodSpots.Remember(_perceivedFood.Position, world.ElapsedSeconds);
         }
         _perceivedGrub = world.NearestLiveGrub(Position, radius);
+        _perceivedAnt = world.Ants.Count > 0 ? world.NearestLiveAnt(Position, radius) : null;
         _perceivedBeetle = world.NearestLiveBeetle(Position, radius);
         _perceivedTwig = NeedsTwig ? world.NearestAvailableTwig(Position, radius, this) : null;
         if (_perceivedTwig is not null)

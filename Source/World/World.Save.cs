@@ -30,6 +30,7 @@ public sealed partial class World
                 Id = s.ID, Position = s.Position, Tier = s.Tier, Built = s.IsBuilt, Upgrading = s.IsUpgrading, Twigs = s.TwigsDelivered,
                 Stored = s.StoredFood, Owner = s.Owner is { IsDead: false } owner ? owner.ID : null, GroupId = s.GroupId,
                 AbandonedSeconds = s.AbandonedSeconds, StageStartedAt = s.StageStartedAt,
+                Granary = s.HasGranary, Palisade = s.HasPalisade,
             }).ToList(),
             Kin = Colony.Where(k => !k.IsDead).Select(k => k.ToSave()).ToList(),
             Groups = _groups.Values.Select(g => new GroupSave
@@ -62,6 +63,8 @@ public sealed partial class World
             Chronicle = ChronicleEntries.ToList(),
             History = History.ToList(),
             Lives = _lives.Values.ToList(),
+            Anthill = Anthill is { } hill ? hill.Position : null,
+            AnthillStock = Anthill?.Stock ?? 0,
         };
 
         foreach (PropertyInfo property in SavedProperties)
@@ -70,7 +73,11 @@ public sealed partial class World
         {
             object value = field.GetValue(this)!;
             if (value is Array array)
+            {
                 save.NumberArrays["f:" + field.Name] = array.Cast<object>().Select(Convert.ToDouble).ToArray();
+                if (array.Rank == 2)
+                    save.Numbers["columns:" + field.Name] = array.GetLength(1); // So a later build with more columns reads it right.
+            }
             else
                 save.Numbers["f:" + field.Name] = Convert.ToDouble(value);
         }
@@ -120,7 +127,11 @@ public sealed partial class World
         var shelters = new Dictionary<int, Shelter>();
         foreach (ShelterSave s in save.Shelters)
         {
-            var shelter = new Shelter(s.Position) { GroupId = s.GroupId, AbandonedSeconds = s.AbandonedSeconds, StageStartedAt = s.StageStartedAt };
+            var shelter = new Shelter(s.Position)
+            {
+                GroupId = s.GroupId, AbandonedSeconds = s.AbandonedSeconds, StageStartedAt = s.StageStartedAt,
+                HasGranary = s.Granary, HasPalisade = s.Palisade,
+            };
             shelter.Restore(s.Id, s.Tier, s.Built, s.Upgrading, s.Twigs, s.Stored);
             Shelters.Add(shelter);
             shelters[s.Id] = shelter;
@@ -202,6 +213,7 @@ public sealed partial class World
         History.AddRange(save.History);
         foreach (LifeRecord life in save.Lives)
             _lives[life.Id] = life;
+        RestoreAnthill(save.Anthill, save.AnthillStock);
         foreach (Bramblekin living in Colony)
             RegisterLife(living); // An older save, from before lives were kept.
 
@@ -216,7 +228,7 @@ public sealed partial class World
             if (field.GetValue(this) is Array array)
             {
                 if (save.NumberArrays.TryGetValue("f:" + field.Name, out double[]? values))
-                    RestoreArray(array, values);
+                    RestoreArray(array, values, save.Numbers.TryGetValue("columns:" + field.Name, out double columns) ? (int)columns : null);
             }
             else if (save.Numbers.TryGetValue("f:" + field.Name, out double value))
             {
@@ -253,18 +265,32 @@ public sealed partial class World
         : type.IsEnum ? Enum.ToObject(type, (int)Math.Round(value))
         : value;
 
-    private static void RestoreArray(Array array, double[] values)
+    /// <summary>
+    /// Puts saved numbers back into <paramref name="array"/>. A 2D array is
+    /// matched row by row and column by column, so a save from a build with
+    /// fewer columns (say, before a new cause of death) still lines up —
+    /// <paramref name="savedColumns"/> if the save recorded it, else worked
+    /// out from its size.
+    /// </summary>
+    private static void RestoreArray(Array array, double[] values, int? savedColumns)
     {
         Type element = array.GetType().GetElementType()!;
-        int count = Math.Min(array.Length, values.Length);
         if (array.Rank == 1)
         {
-            for (int i = 0; i < count; i++)
+            for (int i = 0; i < Math.Min(array.Length, values.Length); i++)
                 array.SetValue(FromDouble(values[i], element), i);
             return;
         }
-        int columns = array.GetLength(1);
-        for (int i = 0; i < count; i++)
-            array.SetValue(FromDouble(values[i], element), i / columns, i % columns);
+        int rows = array.GetLength(0), columns = array.GetLength(1);
+        int saved = savedColumns ?? Math.Max(1, values.Length / rows);
+        for (int row = 0; row < rows; row++)
+        {
+            for (int column = 0; column < Math.Min(columns, saved); column++)
+            {
+                int i = row * saved + column;
+                if (i < values.Length)
+                    array.SetValue(FromDouble(values[i], element), row, column);
+            }
+        }
     }
 }

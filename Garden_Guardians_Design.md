@@ -550,6 +550,53 @@ overhead camera:
     Bushes go with the house nearest them when a village buds or two
     groups merge.
 
+## Crafts
+*   **Know-how clans work out**, the way they work out farming: at each
+    Leader decision a clan ready for a craft discovers it with odds
+    0.006 × its cleverest member's Intelligence (one at a time). Crafts
+    live in individuals like farming does: taught to everyone in the clan,
+    inherited by children (both parents' crafts), carried along by anyone
+    who leaves, and taught to allies (odds 0.05 per decision, farming
+    first, then granary, spears, palisade).
+    *   **Granary** (needs farming and a House): each House gets a round
+        granary beside it and holds half as much again in store.
+    *   **Spears** (needs a hunting tradition or a Wolf Spider brought
+        down): half as much again of a blow against the Stag Beetle, the
+        Wolf Spider, Grubs, Hornets and ants — never against kin.
+    *   **Palisade** (needs a House and a martial tradition, or three
+        remembered dangers): a ring of stakes round each home. The Wolf
+        Spider won't hunt anyone inside it, ants can't get at its store,
+        and a raider must spend 4s breaking in first — time for the
+        defenders to come.
+*   The Stats tab and the clan card list a clan's crafts; the headless
+    summary counts them. Over 13 years a clan works out about six and
+    teaches eleven; most clans end up knowing all of them.
+
+## Sickness, Ants & Floods
+*   **Sickness:** anyone may fall ill (odds 1/8000 a second, doubled in
+    Winter and again when hungry), and it spreads: when the sick meet
+    someone (see Encounters) the other catches it at 0.2 odds. An illness
+    lasts 60–150s: the sick walk 25% slower, get hungry 30% faster,
+    can't heal, and lose 1 Health every 7s (every 4.7s for elders and the
+    young). Recovered, they're immune for a year. It kills mostly elders
+    and the already weak — about 17 deaths in 13 years out of some 290
+    cases. Three ill at once in a clan is an outbreak (a headline). The
+    sick carry a pale green blotch over their heads; the HUD counts them.
+*   **Ants:** in the garden's second year a rival ant colony digs in at
+    an edge, as far as it can from any home. From spring to autumn its
+    hill sends out ants — 2, plus one per 15 food it has taken, up to 6 —
+    that rob the nearest store within 55m (never a palisaded one), or
+    glean loose food near the hill, and carry it home; in winter they stay
+    underground. Easily swatted (5 Health), they bite back at whoever
+    hits them. Bramblekin go for any ant near their home, or one biting
+    them. About 34 food stolen from stores in 13 years, 118 ants swatted.
+*   **Floods:** a spring or autumn storm is a downpour 40% of the time.
+    The water rises through it over the lowest 15% of the garden, then
+    drains away over a minute. Under water, loose food and twigs float
+    away and bushes lose their ripe berries; a flooded Tent loses its
+    store and is swept away at even odds, a flooded House loses half its
+    store. About three floods in 13 years.
+
 ## Neighbours: Alliances & War
 *   **Neighbours** are groups whose main homes are within 30m. Between
     any two groups the World keeps a **stance** — Neutral, Allied or At

@@ -64,7 +64,7 @@ public sealed partial class Bramblekin
             FamilyName = rng.Next(2) == 0 ? mother.FamilyName : father.FamilyName,
         };
         child.Hunger = 20f;
-        child.KnowsFarming = mother.KnowsFarming || father.KnowsFarming;
+        child.Crafts = mother.Crafts | father.Crafts;
         child.SetRelationship(mother, RelationshipState.Friend);
         child.SetRelationship(father, RelationshipState.Friend);
         mother.SetRelationship(child, RelationshipState.Friend);

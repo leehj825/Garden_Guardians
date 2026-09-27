@@ -117,6 +117,8 @@ public sealed partial class World
                 Beetles[i].Draw();
         }
 
+        DrawAnts(camera);
+
         // Group tethers: a faint line in the group's colour from every
         // follower's head to its Leader's, so who runs with whom reads at a
         // glance.
@@ -144,6 +146,8 @@ public sealed partial class World
 
         if (Spider is { IsDead: false } spider)
             spider.Draw();
+
+        DrawFlood();
 
         // Kin Inspector: ring the selected Bramblekin, and trace its
         // Intelligence-scaled detection radius over the hills.

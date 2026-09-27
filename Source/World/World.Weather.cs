@@ -120,6 +120,7 @@ public sealed partial class World
     /// <summary>Storms blow up now and then (never in winter or a drought): they strip loose berries and bring down twigs.</summary>
     private void UpdateWeather(float deltaTime)
     {
+        UpdateFlood(deltaTime);
         if (IsStorming)
         {
             StormTimeLeft -= deltaTime;
@@ -144,6 +145,7 @@ public sealed partial class World
         StormTimeLeft = StormDuration;
         _stormTwigTimer = 0f;
         Storms++;
+        MaybeDownpour();
 
         // Half the loose berries nobody is already going for are blown away.
         int stripped = 0;

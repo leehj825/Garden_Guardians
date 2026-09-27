@@ -385,7 +385,14 @@ public static partial class Game
             $"{world.HelpersHired} helpers hired ({world.LabourFoodPaid} food paid), {world.WarRaids} pieces carried off in war raids; " +
             $"at the end {world.CurrentAlliances} alliances and {world.CurrentWars} wars.");
         Console.WriteLine(
-            $"Weather: {world.BountifulSeasons} bountiful seasons, {world.Droughts} droughts, {world.HarshWinters} harsh winters, {world.Storms} storms.");
+            $"Weather: {world.BountifulSeasons} bountiful seasons, {world.Droughts} droughts, {world.HarshWinters} harsh winters, {world.Storms} storms, " +
+            $"{world.Floods} floods ({world.HomesFlooded} homes flooded, {world.FoodWashedAway} food washed away).");
+        Console.WriteLine(
+            $"Ants: {(world.Anthill is { } hill ? $"a hill with {hill.Stock} food" : "none yet")}; {world.AntThefts} food stolen from stores, {world.AntsKilled} ants swatted.");
+        Console.WriteLine(
+            $"Crafts: {world.CraftsDiscovered} worked out, {world.CraftsTaught} taught; at the end {world.Groups.Count(g => World.Knows(g, Craft.Granary))} clans have granaries, " +
+            $"{world.Groups.Count(g => World.Knows(g, Craft.Spears))} spears, {world.Groups.Count(g => World.Knows(g, Craft.Palisade))} palisades. " +
+            $"Sickness: {world.SicknessCases} fell ill, {world.DeathsBySickness} died of it.");
         Console.WriteLine(
             $"Culture: {world.Groups.Count(g => g.Culture.Leading == Tradition.Warlike)} warlike, {world.Groups.Count(g => g.Culture.Leading == Tradition.Hunting)} hunting and " +
             $"{world.Groups.Count(g => g.Culture.Leading == Tradition.Farming)} farming clans of {world.Groups.Count} at the end.");
@@ -448,7 +455,7 @@ public static partial class Game
             Console.WriteLine(
                 $"  {status,-12} deaths {rate}   meat hunted {meat}   ({world.DeathsIn(status)} deaths over {hours:0.0} kin-hours: " +
                 $"{world.DeathsIn(status, DeathCause.Starvation)} starved, {world.DeathsIn(status, DeathCause.Predator)} to predators, " +
-                $"{world.DeathsIn(status, DeathCause.Kin)} to kin, {world.DeathsIn(status, DeathCause.OldAge)} of old age)");
+                $"{world.DeathsIn(status, DeathCause.Kin)} to kin, {world.DeathsIn(status, DeathCause.OldAge)} of old age, {world.DeathsIn(status, DeathCause.Sickness)} of sickness)");
         }
     }
 
@@ -466,7 +473,7 @@ public static partial class Game
         Console.WriteLine(
             $"[t={world.ElapsedSeconds,6:0}s Y{world.Year} {world.CurrentSeason,-6}] kin {living.Count,3} (solitary {solitary}, groups {world.Groups.Count}, largest {largestGroup}, villages {villages}, bushes {world.Bushes.Count}, allies {world.CurrentAlliances}, wars {world.CurrentWars}) " +
             $"avg hunger {averageHunger,5:0.0}  food on map {world.LooseFoodCount,3}, stored {stored,3}  tents {tents} houses {houses}  " +
-            $"arrived {world.Arrivals} born {world.Births}  died: starved {world.DeathsByStarvation}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}, old age {world.DeathsByOldAge}");
+            $"arrived {world.Arrivals} born {world.Births}  died: starved {world.DeathsByStarvation}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}, old age {world.DeathsByOldAge}, sickness {world.DeathsBySickness}");
     }
 
     /// <summary>Headless summary: births, how far the generations have come, and whether the traits of the living have drifted from the 0.5 average a newcomer brings.</summary>
@@ -744,8 +751,8 @@ public static partial class Game
             (kin.ParentNames is { } parents ? $"Child of {parents.Mother} & {parents.Father}" : "Wandered in from the edge", ink),
             (kin.DescribeFamily(), kin.Partner is not null ? new Color(190, 70, 120, 255) : ink),
             ($"State: {kin.State}   Health: {kin.Health} / {Bramblekin.MaxHealth}", ink),
-            ($"Hunger: {(int)kin.Hunger}%{(kin.IsStarving ? " STARVING" : kin.IsHungry ? " (hungry)" : "")}{(kin.HasFood ? "  +food" : "")}",
-                kin.IsStarving ? new Color(170, 60, 40, 255) : ink),
+            ($"Hunger: {(int)kin.Hunger}%{(kin.IsStarving ? " STARVING" : kin.IsHungry ? " (hungry)" : "")}{(kin.HasFood ? "  +food" : "")}{(kin.IsSick ? "  SICK" : "")}",
+                kin.IsStarving || kin.IsSick ? new Color(170, 60, 40, 255) : ink),
             ($"Aggression:   {kin.Personality.Aggression:0.00}", new Color(185, 60, 45, 255)),
             ($"Sociability:  {kin.Personality.Sociability:0.00}", new Color(60, 130, 70, 255)),
             ($"Intelligence: {kin.Personality.Intelligence:0.00} ({kin.DetectionRadius:0}m)", new Color(60, 100, 170, 255)),
@@ -836,7 +843,7 @@ public static partial class Game
             $"Alliances {world.CurrentAlliances}   Wars {world.CurrentWars}",
             $"Foraging {Count(BramblekinState.Foraging) + Count(BramblekinState.Hunting)}   Eating {Count(BramblekinState.Eating)}   " +
             $"Fleeing {Count(BramblekinState.Fleeing)}   Fighting {Count(BramblekinState.Fighting)}   Robbing {Count(BramblekinState.Attacking)}",
-            $"Arrived {world.Arrivals}   Died: starved {world.DeathsByStarvation}, old age {world.DeathsByOldAge}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}   Thefts {world.Thefts}",
+            $"Arrived {world.Arrivals}   Died: starved {world.DeathsByStarvation}, old age {world.DeathsByOldAge}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}, sickness {world.DeathsBySickness}   Sick {world.SickCount}   Thefts {world.Thefts}",
             $"Born {world.Births} (gen {world.MaxGeneration})   Couples {world.LivingCouples}   Politics: {world.Departures} left, {world.Splinters} splits, {world.Coups} coups, {world.Exiles} exiles   Raids {world.StoreRaids}",
         };
 

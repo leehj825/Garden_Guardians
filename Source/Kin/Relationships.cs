@@ -20,4 +20,5 @@ public enum DeathCause
     Predator,
     Kin,
     OldAge,
+    Sickness,
 }

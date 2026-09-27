@@ -40,12 +40,15 @@ public sealed partial class Bramblekin
         Widowed = IsWidowed,
         Mourning = _mourningTimer,
         KnowsFarming = KnowsFarming,
+        Crafts = Crafts,
         JoinedAt = _joinedAt,
         Dangers = _dangers.Places.Select(p => new PlaceSave(p.Where, p.When)).ToList(),
         FoodMemory = _foodMemory is { } memory ? memory : null,
         CarryingFood = _carried is not null,
         LeaderSeconds = LeaderSeconds,
         SpiderKills = SpiderKills,
+        Sickness = SicknessState.Sickness,
+        Immunity = SicknessState.Immunity,
         Errand = _errand is { } errand
             ? new ErrandSave
             {
@@ -77,7 +80,7 @@ public sealed partial class Bramblekin
             HasLeftGroup = save.HasLeftGroup,
             IsWidowed = save.Widowed,
             _mourningTimer = save.Mourning,
-            KnowsFarming = save.KnowsFarming,
+            Crafts = save.Crafts | (save.KnowsFarming ? Craft.Farming : Craft.None),
             _joinedAt = save.JoinedAt,
             _foodMemory = save.FoodMemory is { } memory ? memory : null,
             LeaderSeconds = save.LeaderSeconds,
@@ -94,6 +97,7 @@ public sealed partial class Bramblekin
         foreach (var (id, relationship) in save.KnownKins)
             kin._knownKins[id] = relationship;
         kin._dangers.Load(save.Dangers.Select(p => ((Vector3)p.Where, p.When)));
+        kin.RestoreSickness(save.Sickness, save.Immunity);
         return kin;
     }
 

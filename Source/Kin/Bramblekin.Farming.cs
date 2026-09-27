@@ -14,10 +14,18 @@ public sealed partial class Bramblekin
     private Vector3? _plantSpot;
     private float _plantTimer;
 
-    /// <summary>Whether it knows how to grow berry bushes from seed — worked out by a clever group, then taught to every member, passed on to children, and carried along wherever it goes.</summary>
-    public bool KnowsFarming { get; private set; }
+    /// <summary>The crafts it knows — worked out by a clever group, then taught to every member, passed on to children, and carried along wherever it goes (see <see cref="Craft"/>).</summary>
+    public Craft Crafts { get; private set; }
 
-    public void LearnFarming() => KnowsFarming = true;
+    public bool Knows(Craft craft) => (Crafts & craft) == craft;
+
+    /// <summary>Learns <paramref name="crafts"/> (any number at once).</summary>
+    public void Learn(Craft crafts) => Crafts |= crafts;
+
+    /// <summary>Whether it knows how to grow berry bushes from seed.</summary>
+    public bool KnowsFarming => Knows(Craft.Farming);
+
+    public void LearnFarming() => Learn(Craft.Farming);
 
     /// <summary>
     /// Farmer: picks ripe berries off the group's bushes and carries them

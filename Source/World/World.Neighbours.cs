@@ -223,7 +223,7 @@ public sealed partial class World
                     }
                     TrySendAid(group, other);
                     TryHireHelper(group, other);
-                    TryTeachFarming(group, other);
+                    TryTeachCraft(group, other);
                     break;
             }
         }
@@ -274,17 +274,6 @@ public sealed partial class World
         // Aid goes in person: a runner walks it over (see World.Errands).
         if (DispatchAid(giver, ally, allyHome))
             AidSent++;
-    }
-
-    private void TryTeachFarming(KinGroup teacher, KinGroup ally)
-    {
-        if (!KnowsFarming(teacher) || KnowsFarming(ally) || Rng.NextDouble() >= TeachFarmingChance)
-            return;
-        foreach (Bramblekin member in ally.Members)
-            member.LearnFarming();
-        FarmingTaught++;
-        Game.AddEventLog($"[FARMING] {teacher.CapitalTitle} taught their allies, {ally.Title}, to grow berry bushes");
-        Chronicle($"{teacher.CapitalTitle} taught {ally.Title} to farm", teacher, ally);
     }
 
     /// <summary>The richest store of a group at war with <paramref name="group"/>, within <see cref="WarRaidRange"/> of home — the target for a raiding party.</summary>

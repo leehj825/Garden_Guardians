@@ -121,6 +121,10 @@ public sealed partial class World
                         kin.Position, true, GroupOf(kin));
                 }
                 break;
+            case DeathCause.Sickness:
+                DeathsBySickness++;
+                how = "died of a sickness";
+                break;
             case DeathCause.OldAge:
                 DeathsByOldAge++;
                 how = $"died of old age at {kin.AgeInYears:0.0} years" +
@@ -141,6 +145,7 @@ public sealed partial class World
                 {
                     WolfSpider => "was caught by the Wolf Spider",
                     Hornet => "was stung to death by hornets",
+                    Ant => "was bitten to death by ants",
                     _ => "was killed by a predator",
                 };
                 break;

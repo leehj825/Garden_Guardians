@@ -46,6 +46,7 @@ public sealed partial class Bramblekin
 
         var top = Position + new Vector3(0, (BodyHeight - BodyRadius) * scale, 0);
         Raylib.DrawSphere(top + new Vector3(0, BodyRadius * 0.5f, 0), BodyRadius * 0.35f, group?.Color ?? SolitaryHeadColor);
+        DrawSickness(top);
 
         Vector2 facing = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;
 
