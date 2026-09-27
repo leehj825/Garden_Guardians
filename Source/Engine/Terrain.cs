@@ -91,6 +91,9 @@ public sealed class Terrain
     /// <summary>Brown dirt patch color, scattered deterministically across the lawn as a rare, sparse embellishment.</summary>
     private static readonly Color Dirt = new(120, 85, 55, 255);
 
+    /// <summary>How far a dirt patch cell blends from the grass toward <see cref="Dirt"/> (1 = bare dirt).</summary>
+    private const float DirtPatchStrength = 0.6f;
+
     /// <summary>
     /// The height function's total amplitude (sum of its three stacked
     /// sine/cosine terms' coefficients — see <see cref="World.GetHeightAt"/>),
@@ -161,27 +164,24 @@ public sealed class Terrain
                 int cz = (int)MathF.Floor(z / CellSize);
                 uint hash = CellHash(cx, cz);
 
-                Color color;
+                // Organic height-based tinting: a single Forest Green
+                // base, lightened toward a sunlit yellow-green on peaks
+                // and darkened toward a shadowed green in valleys — no
+                // checkerboard, just the cell's own average elevation.
+                float avgHeight = (p00.Y + p10.Y + p01.Y + p11.Y) / 4f;
+                float t = Math.Clamp(avgHeight / HeightAmplitude, -1f, 1f);
+                Color color = t >= 0f
+                    ? LerpColor(GrassBase, GrassPeak, t)
+                    : LerpColor(GrassBase, GrassValley, -t);
+
+                // A rare, sparse dirt patch (~1 cell in 40) — an occasional
+                // embellishment, not a repeating pattern — worn into the
+                // grass rather than painted over it, so it softens into the
+                // lawn and frosts over with it in winter.
                 if (hash % 40 == 0)
-                {
-                    // A rare, sparse dirt patch (~1 cell in 40) — an
-                    // occasional embellishment, not a repeating pattern.
-                    color = Dirt;
-                }
-                else
-                {
-                    // Organic height-based tinting: a single Forest Green
-                    // base, lightened toward a sunlit yellow-green on peaks
-                    // and darkened toward a shadowed green in valleys — no
-                    // checkerboard, just the cell's own average elevation.
-                    float avgHeight = (p00.Y + p10.Y + p01.Y + p11.Y) / 4f;
-                    float t = Math.Clamp(avgHeight / HeightAmplitude, -1f, 1f);
-                    color = t >= 0f
-                        ? LerpColor(GrassBase, GrassPeak, t)
-                        : LerpColor(GrassBase, GrassValley, -t);
-                    if (seasonAmount > 0f)
-                        color = LerpColor(color, seasonTint, seasonAmount);
-                }
+                    color = LerpColor(color, Dirt, DirtPatchStrength);
+                if (seasonAmount > 0f)
+                    color = LerpColor(color, seasonTint, seasonAmount);
 
                 // Two triangles, upward-facing winding (counter-clockwise
                 // when viewed from above/+Y).

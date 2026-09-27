@@ -31,7 +31,7 @@ public sealed partial class Bramblekin
                 // Keep running for a moment after losing sight of it.
                 _fleeTimer -= deltaTime;
                 SetState(BramblekinState.Fleeing);
-                FleeFrom(_lastThreatPosition, deltaTime, world);
+                FleeFrom(_lastThreatPosition, _lastThreatStopsAtHome, deltaTime, world);
                 return true;
             }
             return false;
@@ -46,6 +46,7 @@ public sealed partial class Bramblekin
             _fightDecision = false; // Nerve breaks.
 
         _lastThreatPosition = threat.Position;
+        _lastThreatStopsAtHome = threat is not Bramblekin;
         if (_fightDecision)
         {
             _fleeTimer = 0f;
@@ -53,10 +54,11 @@ public sealed partial class Bramblekin
             CombatTarget = threat;
             PursueAndStrike(threat, WalkSpeed * PursuitSpeedMultiplier, deltaTime, world);
         }
-        else if (IsSheltered)
+        else if (IsSheltered && _lastThreatStopsAtHome)
         {
             // Hiding at home: the Wolf Spider can't pounce and Hornets won't
-            // follow it in here, so it simply stays put.
+            // follow it in here, so it simply stays put. Walls don't stop
+            // another Bramblekin, though — from one of those it runs.
             _fleeTimer = FleeMinDuration;
             SetState(BramblekinState.Resting);
         }
@@ -64,7 +66,7 @@ public sealed partial class Bramblekin
         {
             SetState(BramblekinState.Fleeing);
             _fleeTimer = FleeMinDuration;
-            FleeFrom(threat.Position, deltaTime, world);
+            FleeFrom(threat.Position, _lastThreatStopsAtHome, deltaTime, world);
         }
         return true;
     }

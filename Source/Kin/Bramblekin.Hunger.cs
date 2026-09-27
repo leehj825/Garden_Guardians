@@ -8,7 +8,8 @@ public sealed partial class Bramblekin
     /// <summary>
     /// Critical need: eat what it's holding; else rob the neighbour it
     /// committed to (see <see cref="BeginRobbery"/>); else forage the nearest
-    /// visible Food; else eat from its home's store; else scavenge an
+    /// visible Food or eat from its home's store, whichever is closer (see
+    /// <see cref="PrefersLooseFood"/>); else scavenge an
     /// abandoned store; else hunt a visible Grub, or a Stag Beetle with its
     /// pack; else (starving and Aggressive) raid someone's store; else — a
     /// follower borrows its
@@ -44,21 +45,22 @@ public sealed partial class Bramblekin
         }
 
         // With a predator about, a stocked home is the safe place to eat.
-        if (IsThreatenedByPredator && StoreToEatFrom(world) is { } safeStore)
+        Shelter? store = StoreToEatFrom(world);
+        if (IsThreatenedByPredator && store is not null)
         {
-            GoHomeAndEat(safeStore, deltaTime, world);
+            GoHomeAndEat(store, deltaTime, world);
             return;
         }
 
-        if (ValidPerceivedFood(world) is { } food)
+        if (ValidPerceivedFood(world) is { } food && (store is null || PrefersLooseFood(food, store)))
         {
             ApproachFood(food, WalkSpeed * (IsStarving ? 1.25f : 1f), deltaTime, world, eatOnArrival: true);
             return;
         }
 
-        // Settling pays off: with nothing loose in sight, it goes home and
-        // eats from its own (or its group's) store.
-        if (StoreToEatFrom(world) is { } store)
+        // Settling pays off: it goes home and eats from its own (or its
+        // group's) store.
+        if (store is not null)
         {
             GoHomeAndEat(store, deltaTime, world);
             return;
@@ -113,6 +115,23 @@ public sealed partial class Bramblekin
         }
 
         Explore(deltaTime, world);
+    }
+
+    /// <summary>A loose piece of Food this close is always worth grabbing before the walk home.</summary>
+    private const float GrabRange = 3f;
+
+    /// <summary>
+    /// Loose Food or the store? Whichever is closer — loose Food saves the
+    /// store for leaner days — but once starving, the sure meal at home
+    /// beats chasing anything that isn't right at hand: others may get to
+    /// loose Food first.
+    /// </summary>
+    private bool PrefersLooseFood(FoodShard food, Shelter store)
+    {
+        float toFood = GroundMover.HorizontalDistanceSquared(Position, food.Position);
+        if (toFood <= GrabRange * GrabRange)
+            return true;
+        return !IsStarving && toFood < GroundMover.HorizontalDistanceSquared(Position, store.Position);
     }
 
     /// <summary>The Food this Bramblekin can currently see, if <paramref name="groupmate"/> could take it — how a Leader points food out to a hungry follower.</summary>

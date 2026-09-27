@@ -34,10 +34,10 @@ Bramblekin to see what makes it tick.
 Hunger rises → each Bramblekin forages loose Food within its own
 Intelligence-scaled senses, or eats from its home's store → threats (the
 Wolf Spider, Hornets, raiders, hostile Bramblekin) are fought or fled on a
-per-individual Aggression roll — or hidden from at home → fed and safe, a
-group member does the job its Leader gave it, and anyone else builds,
-stocks and rests in its home → the rest of the time Bramblekin wander and
-meet each other → every meeting is resolved from both sides' situation
+per-individual Aggression roll — or, if wildlife, hidden from at home →
+fed and safe, a group member does the job its Leader gave it, and anyone
+else builds, stocks and rests in its home → the rest of the time
+Bramblekin wander and meet each other → every meeting is resolved from both sides' situation
 and traits: a friendship, a new or bigger group, a shared meal, a
 struggling loner taken in, or a robbery and a lifelong enmity → Leaders
 decide group goals every few seconds; followers' loyalty rises and falls
@@ -171,9 +171,11 @@ overhead camera:
     0.  **A leadership duel,** once started, is settled first.
     1.  **Critical (Hunger):** eat what it's carrying; else keep robbing
         the neighbour it committed to; else, with a predator about, go
-        home to eat from the store; else walk to the nearest loose Food it
-        can see; else eat from its home's store (if the group's sharing
-        rule allows); else scavenge an abandoned store; else hunt a
+        home to eat from the store; else go for the nearest loose Food it
+        can see or eat from its home's store (or a village home's, if the
+        group's sharing rule allows), whichever is closer — though once
+        starving it takes the sure meal at home over any loose Food more
+        than 3m away; else scavenge an abandoned store; else hunt a
         visible Grub, or a Stag Beetle with its pack; else (starving and
         Aggression ≥ 0.55) raid someone's store, or stalk the nearest
         outsider carrying food; else a follower goes for Food its Leader
@@ -187,8 +189,9 @@ overhead camera:
         Aggression, +0.15 per groupmate within 6m, +0.3 if defending a
         groupmate or its home, −0.25 against the Wolf Spider; an idle
         Hornet at its nest is always avoided, never fought. Fighters flee
-        once at or below 40% Health. Fleers run home if it's close,
-        otherwise straight away; inside a home they simply hide.
+        once at or below 40% Health. Fleeing wildlife, it runs home if
+        it's close and hides inside; walls don't stop another Bramblekin,
+        so from one of those it runs straight away, even out of its home.
     3.  **Duty:** a group member loyal enough to take orders does the job
         its Leader gave it (see Leadership below).
     4.  **Settle:** a loner with no home, once it has looked around a

@@ -128,8 +128,13 @@ public sealed partial class Bramblekin
         target.TakeHit(StrikeDamage, this, world);
     }
 
-    /// <summary>Runs directly away from <paramref name="threatPosition"/>, turning along the map's edge rather than into it.</summary>
-    private void FleeFrom(Vector3 threatPosition, float deltaTime, World world)
+    /// <summary>
+    /// Runs directly away from <paramref name="threatPosition"/>, turning
+    /// along the map's edge rather than into it — or home, if it's close
+    /// and <paramref name="homeIsSafe"/> (it keeps out wildlife, but not
+    /// another Bramblekin).
+    /// </summary>
+    private void FleeFrom(Vector3 threatPosition, bool homeIsSafe, float deltaTime, World world)
     {
         var away = new Vector2(Position.X - threatPosition.X, Position.Z - threatPosition.Z);
         away = away.LengthSquared() > 1e-4f ? Vector2.Normalize(away) : _mover.Heading;
@@ -137,7 +142,7 @@ public sealed partial class Bramblekin
 
         // Home is the safest place there is: run there instead, unless that
         // means running past the threat.
-        if (Home is { IsBuilt: true } home)
+        if (homeIsSafe && Home is { IsBuilt: true } home)
         {
             var toHome = new Vector2(home.Position.X - Position.X, home.Position.Z - Position.Z);
             float homeDistance = toHome.Length();

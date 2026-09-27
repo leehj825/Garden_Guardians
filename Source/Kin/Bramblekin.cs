@@ -218,6 +218,9 @@ public sealed partial class Bramblekin : ICombatant
     private Vector3 _wanderTarget;
     private Vector3 _lastThreatPosition;
 
+    /// <summary>Whether the threat it last ran from is one that home keeps out (wildlife) — see <see cref="FleeFrom"/>.</summary>
+    private bool _lastThreatStopsAtHome;
+
     /// <summary>Where it last saw Food — the first place it looks when hungry and nothing's in sight.</summary>
     private Vector3? _foodMemory;
     private float _pauseTimer;
