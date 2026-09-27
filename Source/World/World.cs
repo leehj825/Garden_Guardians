@@ -351,6 +351,7 @@ public sealed partial class World
     public void Update(float deltaTime)
     {
         ElapsedSeconds += deltaTime;
+        AccumulateExposure(deltaTime);
         UpdateFoodClaimTimeouts(deltaTime);
         RebuildSpatialGrids();
         RebuildGroups();

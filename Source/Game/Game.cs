@@ -258,6 +258,19 @@ public static class Game
         Console.WriteLine(
             $"Food eaten {world.FoodEaten}, shared {world.FoodShared}, stolen {world.Thefts}; " +
             $"alliances {world.AlliancesFormed}; grubs hunted {world.GrubsKilled}, hornets swatted {world.HornetsKilled}, spiders slain {world.SpidersKilled}.");
+        PrintSurvivalTrend(world);
+    }
+
+    /// <summary>Headless summary: deaths per kin-hour lived in each social status — the survival trend of an individual by how it lives.</summary>
+    private static void PrintSurvivalTrend(World world)
+    {
+        Console.WriteLine("Survival trend (deaths per kin-hour lived in each status):");
+        foreach (SurvivalStatus status in Enum.GetValues<SurvivalStatus>())
+        {
+            double hours = world.KinHoursIn(status);
+            string rate = hours > 0 ? $"{world.DeathRatePerKinHour(status),5:0.0}/h" : "    -";
+            Console.WriteLine($"  {status,-12} {rate}   ({world.DeathsIn(status)} deaths over {hours:0.0} kin-hours)");
+        }
     }
 
     /// <summary>One line of headless-mode population stats — see <see cref="RunHeadless"/>.</summary>

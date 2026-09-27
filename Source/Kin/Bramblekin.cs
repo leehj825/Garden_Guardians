@@ -281,6 +281,15 @@ public sealed partial class Bramblekin : ICombatant
 
     public bool IsRobbing => _robTarget is not null;
 
+    /// <summary>True once it has left (or been thrown out of) a group — see <see cref="Status"/>.</summary>
+    public bool HasLeftGroup { get; private set; }
+
+    /// <summary>Where it stands socially right now, for survival statistics.</summary>
+    public SurvivalStatus Status =>
+        GroupId is not null ? SurvivalStatus.Member
+        : HasLeftGroup ? SurvivalStatus.Independent
+        : SurvivalStatus.Wanderer;
+
     /// <summary>Intelligence-scaled radius (m) for spotting food, threats and other Bramblekin.</summary>
     public float DetectionRadius => BaseDetectionRadius + DetectionRadiusPerIntelligence * Personality.Intelligence;
 
