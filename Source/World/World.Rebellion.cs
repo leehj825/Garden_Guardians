@@ -96,7 +96,7 @@ public sealed partial class World
             rebel.BeginDuel(leader);
             leader.BeginDuel(rebel);
             QueueFloatingText(rebel.Position, "Challenge!", new Color(230, 120, 30, 255));
-            Game.AddEventLog($"[CHALLENGE] #{rebel.ID} challenges #{leader.ID} for the leadership of group {group.ShortId}");
+            Game.AddEventLog($"[CHALLENGE] {rebel.Name} challenges {leader.Name} for the leadership of {group.Title}");
             return;
         }
 
@@ -120,6 +120,13 @@ public sealed partial class World
         if (faction.Count < 2 || !faction.Contains(instigator))
             return false;
 
+        // Partners who'd rather go along than stay do; the others split up with them.
+        foreach (Bramblekin member in faction.ToList())
+        {
+            if (member.Partner is { } partner && !faction.Contains(partner) && PartnerGoesAlong(group, member))
+                faction.Add(partner);
+        }
+
         var splinter = new KinGroup(Guid.NewGuid());
         _groups[splinter.Id] = splinter;
         foreach (Bramblekin member in faction)
@@ -128,31 +135,56 @@ public sealed partial class World
             splinter.Members.Add(member);
         }
         splinter.ElectLeader();
+        NameGroup(splinter);
 
         Splinters++;
         QueueFloatingText(instigator.Position, "Split off!", splinter.Color);
-        Game.AddEventLog($"[SPLIT] #{instigator.ID} led {faction.Count} unhappy members out of group {group.ShortId} into a new group {splinter.ShortId}, led by #{splinter.Leader!.ID}");
+        Game.AddEventLog($"[SPLIT] {instigator.Name} led {faction.Count} unhappy members out of {group.Title} into a new group, {splinter.Title}, led by {splinter.Leader!.Name}");
         return true;
     }
 
-    /// <summary>A rebel leaves to go it alone: no more shared home, store or defenders.</summary>
+    /// <summary>
+    /// A rebel leaves to go it alone: no more shared home, store or
+    /// defenders — unless its partner is unhappy enough to go too, in which
+    /// case they leave together as a household of two (see
+    /// <see cref="PartnerGoesAlong"/>).
+    /// </summary>
     private void Depart(KinGroup group, Bramblekin rebel)
     {
-        rebel.Desert();
         Departures++;
         QueueFloatingText(rebel.Position, "Left!", new Color(200, 200, 200, 255));
-        Game.AddEventLog($"[LEAVE] #{rebel.ID} walked out on group {group.ShortId} to go it alone");
+        if (PartnerGoesAlong(group, rebel))
+        {
+            Bramblekin partner = rebel.Partner!;
+            KinGroup household = LeaveAsCouple(rebel, partner);
+            Game.AddEventLog($"[LEAVE] {rebel.Name} walked out on {group.Title} with {partner.Name}; the two set up as {household.Title}");
+            return;
+        }
+
+        rebel.Desert();
+        Game.AddEventLog($"[LEAVE] {rebel.Name} walked out on {group.Title} to go it alone");
     }
 
     /// <summary>The Leader throws <paramref name="outcast"/> out of the group; the two are Enemies from now on.</summary>
     private void Exile(KinGroup group, Bramblekin outcast, string reason)
     {
-        outcast.Desert();
-        if (group.Leader is { } leader)
-            DeclareEnemies(leader, outcast);
+        Bramblekin? leader = group.Leader;
         Exiles++;
         QueueFloatingText(outcast.Position, "Exiled!", new Color(210, 50, 40, 255));
-        Game.AddEventLog($"[EXILE] #{group.Leader?.ID} threw #{outcast.ID} out of group {group.ShortId} {reason}");
+        string partnerNote = "";
+        if (PartnerGoesAlong(group, outcast))
+        {
+            Bramblekin partner = outcast.Partner!;
+            LeaveAsCouple(outcast, partner);
+            partnerNote = $"; {partner.Name} went with them";
+        }
+        else
+        {
+            outcast.Desert();
+        }
+        if (leader is not null)
+            DeclareEnemies(leader, outcast);
+        Game.AddEventLog($"[EXILE] {leader?.Name} threw {outcast.Name} out of {group.Title} {reason}{partnerNote}");
     }
 
     /// <summary>
@@ -178,7 +210,7 @@ public sealed partial class World
         {
             Bramblekin challenger = group.Leader == winner ? loser : winner;
             challenger.SetLoyalty(0.25f);
-            Game.AddEventLog($"[CHALLENGE] The duel for group {group.ShortId} was called off");
+            Game.AddEventLog($"[CHALLENGE] The duel for {group.Title} was called off");
             return;
         }
 
@@ -190,7 +222,7 @@ public sealed partial class World
             loser.SetLoyalty(0.35f);
             Coups++;
             QueueFloatingText(winner.Position, "New leader!", group.Color);
-            Game.AddEventLog($"[COUP] #{winner.ID} beat #{loser.ID} and now leads group {group.ShortId}");
+            Game.AddEventLog($"[COUP] {winner.Name} beat {loser.Name} and now leads {group.Title}");
             return;
         }
 
@@ -202,7 +234,7 @@ public sealed partial class World
         }
 
         loser.SetLoyalty(0.3f);
-        Game.AddEventLog($"[CHALLENGE] #{winner.ID} saw off #{loser.ID}'s challenge for group {group.ShortId}");
+        Game.AddEventLog($"[CHALLENGE] {winner.Name} saw off {loser.Name}'s challenge for {group.Title}");
     }
 
     private void NoteRejoin(Bramblekin kin)

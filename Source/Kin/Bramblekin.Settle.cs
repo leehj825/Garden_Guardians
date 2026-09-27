@@ -160,7 +160,7 @@ public sealed partial class Bramblekin
     /// <summary>Moves into a visible abandoned shelter, or marks out a new Tent site. Returns false (and waits a while before trying again) if neither works out.</summary>
     private bool TryFindHome(float deltaTime, World world)
     {
-        if (_age < SettleDelay)
+        if (_timeHere < SettleDelay)
             return false;
 
         _settleRetryTimer -= deltaTime;
@@ -171,7 +171,7 @@ public sealed partial class Bramblekin
         {
             world.ClaimShelter(vacant, this);
             Home = vacant;
-            Game.AddEventLog($"[SETTLE] #{ID} moved into an abandoned {vacant.Tier}");
+            Game.AddEventLog($"[SETTLE] {Name} moved into an abandoned {vacant.Tier}");
             return true;
         }
 

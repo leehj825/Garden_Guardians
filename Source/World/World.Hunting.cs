@@ -70,8 +70,8 @@ public sealed partial class World
         int hunters = Colony.Count(k => !k.IsDead && ReferenceEquals(k.CombatTarget, beetle));
         KinGroup? group = GroupOf(killer);
         Game.AddEventLog(hunters > 1 && group is not null
-            ? $"[HUNT] Group {group.ShortId} brought down a Stag Beetle ({hunters} hunters)"
-            : $"[HUNT] #{killer.ID} brought down a Stag Beetle{(hunters > 1 ? $" with {hunters - 1} others" : " alone!")}");
+            ? $"[HUNT] {group.CapitalTitle} brought down a Stag Beetle ({hunters} hunters)"
+            : $"[HUNT] {killer.Name} brought down a Stag Beetle{(hunters > 1 ? $" with {hunters - 1} others" : " alone!")}");
     }
 
     private void UpdateBeetleSpawn(float deltaTime)

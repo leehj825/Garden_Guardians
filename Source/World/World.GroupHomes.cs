@@ -123,7 +123,7 @@ public sealed partial class World
                     group.HomeSiteRetryTimer = GroupSiteRetryDelay;
                     continue;
                 }
-                Game.AddEventLog($"[SETTLE] Group {group.ShortId} is building a home");
+                Game.AddEventLog($"[SETTLE] {group.CapitalTitle} is building a home");
             }
 
             foreach (Shelter home in GroupHomes(group))
@@ -136,7 +136,7 @@ public sealed partial class World
             foreach (Bramblekin member in group.Members)
             {
                 if (!IsGroupHome(group, member.Home))
-                    MoveIn(member, RoomiestHome(group));
+                    MoveIn(member, PartnersHomeWithRoom(group, member) ?? RoomiestHome(group));
             }
             SpreadOutOneResident(group);
 
@@ -171,7 +171,7 @@ public sealed partial class World
         {
             tent.BeginUpgrade();
             tent.StageStartedAt = ElapsedSeconds;
-            Game.AddEventLog($"[SETTLE] Group {group.ShortId} ({members} strong) is upgrading a Tent into a House");
+            Game.AddEventLog($"[SETTLE] {group.CapitalTitle} ({members} strong) is upgrading a Tent into a House");
             return;
         }
 
@@ -183,9 +183,16 @@ public sealed partial class World
             group.Annexes.Add(annex);
             if (group.Annexes.Count == 1)
                 VillagesFounded++;
-            Game.AddEventLog($"[VILLAGE] Group {group.ShortId} ({members} strong) is building home #{group.Annexes.Count + 1}");
+            Game.AddEventLog($"[VILLAGE] {group.CapitalTitle} ({members} strong) is building a {(group.Annexes.Count == 1 ? "second" : "third")} home");
         }
     }
+
+    /// <summary>Where its partner lives, if that's one of the group's finished homes with room for one more.</summary>
+    private Shelter? PartnersHomeWithRoom(KinGroup group, Bramblekin member) =>
+        member.Partner is { IsDead: false, Home: { IsBuilt: true } home } && IsGroupHome(group, home) &&
+        group.Members.Count(m => m.Home == home) < home.ResidentCapacity
+            ? home
+            : null;
 
     /// <summary>The group's finished home with the most free room (its main home if none is finished).</summary>
     private Shelter RoomiestHome(KinGroup group)
@@ -221,7 +228,9 @@ public sealed partial class World
             if (roomy == crowded || group.Members.Count(m => m.Home == roomy) >= roomy.ResidentCapacity)
                 return;
 
-            if (group.Members.FirstOrDefault(m => m.Home == crowded && m != group.Leader && !m.IsYoung) is { } mover)
+            // A single moves out, rather than splitting up a couple.
+            if (group.Members.FirstOrDefault(m => m.Home == crowded && m != group.Leader && !m.IsYoung &&
+                                                  m.Partner?.Home != crowded) is { } mover)
                 mover.SetHome(roomy);
             return;
         }
@@ -262,8 +271,18 @@ public sealed partial class World
                 continue;
 
             List<Bramblekin> settlers = parent.Members
-                .Where(m => !m.IsDead && m.Home == house && m != parent.Leader && !m.IsDueling)
+                .Where(m => !m.IsDead && m.Home == house && m != parent.Leader && m.Partner != parent.Leader && !m.IsDueling)
                 .ToList();
+            // Couples stay together: a settler's partner living elsewhere in the village comes too.
+            foreach (Bramblekin settler in settlers.ToList())
+            {
+                if (settler.Partner is { IsDead: false } partner && partner.GroupId == parent.Id &&
+                    partner != parent.Leader && !partner.IsDueling && !settlers.Contains(partner))
+                {
+                    settlers.Add(partner);
+                    partner.SetHome(house);
+                }
+            }
             if (settlers.Count(m => !m.IsYoung) < MinBuddingResidents)
                 continue;
 
@@ -278,10 +297,11 @@ public sealed partial class World
                 daughter.Members.Add(settler);
             }
             daughter.ElectLeader();
+            NameGroup(daughter);
 
             Buddings++;
             QueueFloatingText(house.Position, "New group!", daughter.Color);
-            Game.AddEventLog($"[COLONY] Group {parent.ShortId} has grown too big: {settlers.Count} of them set up as group {daughter.ShortId} in their own House, led by #{daughter.Leader!.ID}");
+            Game.AddEventLog($"[COLONY] {parent.CapitalTitle} has grown too big: {settlers.Count} of them set up as {daughter.Title} in their own House, led by {daughter.Leader!.Name}");
         }
         _pendingBuddings.Clear();
     }
@@ -386,7 +406,7 @@ public sealed partial class World
         SetMutualRelationship(loner, member, RelationshipState.Friend);
         AlliancesFormed++;
         QueueFloatingText(loner.Position, "+Joined", group.Color);
-        Game.AddEventLog($"[JOIN] #{loner.ID} asked to join group {group.ShortId} for its home, and was taken in ({group.Members.Count} strong)");
+        Game.AddEventLog($"[JOIN] {loner.Name} asked to join {group.Title} for its home, and was taken in ({group.Members.Count} strong)");
         return true;
     }
 }

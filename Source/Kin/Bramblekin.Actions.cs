@@ -177,7 +177,7 @@ public sealed partial class Bramblekin
 
     /// <summary>Walks toward <paramref name="target"/>, steering round Pebbles. Returns true on arrival.</summary>
     private bool MoveTo(Vector3 target, float speed, float deltaTime, World world) =>
-        _mover.MoveTowards(target, speed, deltaTime, world, p => !world.IsBlocked(p, BodyRadius));
+        _mover.MoveTowards(target, speed * AgeSpeedFactor, deltaTime, world, p => !world.IsBlocked(p, BodyRadius));
 
     private void StartPause()
     {

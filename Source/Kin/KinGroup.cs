@@ -28,8 +28,17 @@ public sealed class KinGroup
     /// <summary>The group's colour: its members' head highlight, its Leader's banner, and the tethers between them.</summary>
     public Color Color { get; }
 
-    /// <summary>First few hex digits of <see cref="Id"/>, for the HUD and event log.</summary>
+    /// <summary>First few hex digits of <see cref="Id"/>.</summary>
     public string ShortId => Id.ToString("N")[..4];
+
+    /// <summary>The group's name — "Thornwood clan", after the family of the Leader it was founded under (see World.NameGroup). Null for a moment while it's being founded.</summary>
+    public string? Name { get; set; }
+
+    /// <summary>How the event log refers to it: "the Thornwood clan".</summary>
+    public string Title => Name is null ? $"group {ShortId}" : $"the {Name}";
+
+    /// <summary><see cref="Title"/> to start a sentence with: "The Thornwood clan".</summary>
+    public string CapitalTitle => char.ToUpperInvariant(Title[0]) + Title[1..];
 
     public List<Bramblekin> Members { get; } = new();
 

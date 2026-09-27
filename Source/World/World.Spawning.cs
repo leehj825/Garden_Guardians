@@ -122,11 +122,41 @@ public sealed partial class World
         if (living >= ArrivalPopulationLimit)
             return;
 
-        var kin = new Bramblekin(RandomEdgeSpot(Bramblekin.BodyRadius, Bramblekin.EdgeMargin + 0.5f), Rng);
+        Bramblekin kin = Newcomer(RandomEdgeSpot(Bramblekin.BodyRadius, Bramblekin.EdgeMargin + 0.5f));
         _pendingKinSpawns.Add(kin);
         Arrivals++;
         Personality p = kin.Personality;
-        Game.AddEventLog($"[ARRIVAL] #{kin.ID} wandered in (aggr {p.Aggression:0.00}, soc {p.Sociability:0.00}, int {p.Intelligence:0.00})");
+        Game.AddEventLog($"[ARRIVAL] {kin.Name} wandered in (aggr {p.Aggression:0.00}, soc {p.Sociability:0.00}, int {p.Intelligence:0.00})");
+    }
+
+    /// <summary>Family names already founded — every newcomer founds a new one.</summary>
+    private readonly HashSet<string> _familyNames = new();
+
+    /// <summary>A newcomer: a fresh Personality and a name, founding a family nobody has yet.</summary>
+    private Bramblekin Newcomer(Vector3 at)
+    {
+        var kin = new Bramblekin(at, Rng);
+        kin.Christen(Names.Given(Rng), NewFamilyName());
+        kin.SetArrivalAge(Rng);
+        return kin;
+    }
+
+    /// <summary>A family name nobody has founded yet (as long as there are any left).</summary>
+    public string NewFamilyName()
+    {
+        string name = Names.Family(Rng);
+        for (int attempt = 0; attempt < 50 && _familyNames.Contains(name); attempt++)
+            name = Names.Family(Rng);
+        _familyNames.Add(name);
+        return name;
+    }
+
+    /// <summary>Names a new group after the family of the Leader it was founded under — see <see cref="Names.Clan"/>.</summary>
+    private void NameGroup(KinGroup group)
+    {
+        if (group.Name is not null || group.Leader is not { } leader)
+            return;
+        group.Name = Names.Clan(leader.FamilyName, name => _groups.Values.Any(g => g != group && g.Name == name));
     }
 
     /// <summary>Dibs failsafe — see <see cref="FoodClaimTimeoutSeconds"/>.</summary>

@@ -217,16 +217,16 @@ public sealed partial class World
             QueueFloatingText(shelter.Position, "House built!", new Color(170, 120, 70, 255));
             KinGroup? group = shelter.GroupId is { } id && _groups.TryGetValue(id, out KinGroup? g) ? g : null;
             Game.AddEventLog(group is null
-                ? $"[SETTLE] #{builder.ID} finished a House"
-                : $"[SETTLE] Group {group.ShortId} finished a House");
+                ? $"[SETTLE] {builder.Name} finished a House"
+                : $"[SETTLE] {group.CapitalTitle} finished a House");
         }
         else
         {
             TentsBuilt++;
             QueueFloatingText(shelter.Position, "Tent built", new Color(200, 180, 120, 255));
             Game.AddEventLog(shelter.GroupId is null
-                ? $"[SETTLE] #{builder.ID} built a Tent"
-                : $"[SETTLE] #{builder.ID} finished its group's Tent");
+                ? $"[SETTLE] {builder.Name} built a Tent"
+                : $"[SETTLE] {builder.Name} finished its group's Tent");
         }
     }
 
@@ -369,7 +369,7 @@ public sealed partial class World
         foreach (Bramblekin victim in ResidentsOf(shelter))
             DeclareEnemies(raider, victim);
         QueueFloatingText(shelter.Position, "Raided!", new Color(210, 50, 40, 255));
-        Game.AddEventLog($"[RAID] #{raider.ID} raided {(shelter.GroupId is null ? $"#{shelter.Owner?.ID}'s" : "a group's")} {shelter.Tier} store");
+        Game.AddEventLog($"[RAID] {raider.Name} raided {(shelter.GroupId is null ? $"{shelter.Owner?.Name}'s" : "a group's")} {shelter.Tier} store");
         return food;
     }
 

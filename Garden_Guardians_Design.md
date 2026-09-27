@@ -2,7 +2,9 @@
 
 *Last updated: 2026-09-27 — the **Emergent Survival** pivot, now with
 **settling and society**, and a living population: **seasons**, **births**
-and **villages** that bud off daughter groups. The game is no longer a
+and **villages** that bud off daughter groups, **named** Bramblekin who
+pair up as **couples** and die of **old age**, and a **follow camera**.
+The game is no longer a
 macro-RTS faction simulator: there are no factions, no top-down economy
 and no faction wars. Every Bramblekin is an individual agent with its own
 Personality and needs.
@@ -42,10 +44,11 @@ and traits: a friendship, a new or bigger group, a shared meal, a
 struggling loner taken in, or a robbery and a lifelong enmity → Leaders
 decide group goals every few seconds; followers' loyalty rises and falls
 with how they're treated, and the disloyal leave, split off or stage a
-coup → thriving groups raise young and grow into villages, while the
-seasons swing the food supply from plenty to scarcity and back → new
-solitary wanderers drift in from the map's edge whenever the population
-runs low.
+coup → singles pair up as couples, and thriving groups raise their young
+and grow into villages, while the seasons swing the food supply from
+plenty to scarcity and back → the old grow grey and die, and their
+children carry the family name on → new solitary wanderers drift in
+from the map's edge whenever the population runs low.
 
 ## The Spectator Camera
 The player's entire "input" is camera control — a smooth, Google-Maps-style
@@ -81,12 +84,18 @@ overhead camera:
     (a "flip").
 
 ## Player Interaction (what's left of it)
-*   **Kin inspection:** tapping a Bramblekin selects it and shows its
-    live state in the top-right Kin Inspector — State, Health, Hunger,
-    its three Personality traits (and the detection radius its
-    Intelligence buys it), its sex, its group and role (Solitary/Leader/
-    Follower, and whether it's still young), its generation and mother
-    and father, its home
+*   **Kin inspection & the follow camera:** tapping a Bramblekin selects
+    it: the camera swoops in (to 18m) and follows it as it goes about its
+    life, its name floating above it (and its partner's, fainter). Pinch,
+    twist and tilt still work while following; a one-finger pan takes the
+    camera back and stops following, and the **Follow** button under the
+    Kin Inspector starts or stops it again. The **Map** button beside the
+    speed controls flies back out to the whole garden. The top-right Kin
+    Inspector shows its name, sex and role (Solitary/Leader/Follower,
+    young or elder), its age and generation, its mother and father, its
+    partner and how many children it has, State, Health, Hunger, its
+    three Personality traits (and the detection radius its Intelligence
+    buys it), its group, its home
     (tent or house, construction progress, store), its job and
     its group's current goal (and whether the Leader eats first), its
     Loyalty (followers) and Reputation, and how many Friends, Enemies and
@@ -106,16 +115,16 @@ overhead camera:
 
 ## Code Layout & Performance
 *   **Layout:** `Program.cs` is only the entry point. Everything else is
-    under `Source/`, one type per file: `Engine/` (camera, terrain, tap
-    input, spatial grid, movement), `World/` (the `World` partial class
-    split by concern — core, society, group homes & villages, leadership,
-    rebellion, seasons, births, shelters, hunting, interactions, spawning,
-    stats, rendering — plus Food, Twigs, Shelters and Garden Props), `Kin/`
-    (the `Bramblekin` partial class with one file per need — Hunger,
-    Safety, Duty, Settle, Social — plus Hunting, Loyalty, Lineage, Actions
-    and Drawing, and the
-    Personality, relationship, group and society types), `Wildlife/` and
-    `Game/`.
+    under `Source/`, one type per file: `Engine/` (touch and follow
+    cameras, terrain, tap input, spatial grid, movement), `World/` (the
+    `World` partial class split by concern — core, society, families,
+    group homes & villages, leadership, rebellion, seasons, births,
+    shelters, hunting, interactions, spawning, stats, rendering — plus
+    Food, Twigs, Shelters and Garden Props), `Kin/` (the `Bramblekin`
+    partial class with one file per need — Hunger, Safety, Duty, Settle,
+    Social — plus Hunting, Loyalty, Lineage, Family, Aging, Actions and
+    Drawing, and the Personality, names, sex, relationship, group and
+    society types), `Wildlife/` and `Game/`.
 *   **Squared-distance math everywhere:** targeting/aggro/encounter checks
     compare squared distances against a squared threshold.
 *   **Staggered perception:** each Bramblekin rescans its surroundings
@@ -383,15 +392,47 @@ overhead camera:
 *   **Wintering in:** in Winter, a Bramblekin with a home and nothing
     pressing to do huddles inside it — safe from Hornets and the Spider —
     and while sheltered its Hunger rises at half the usual rate.
-*   **Births:** a thriving group raises young — checked at each Leader
-    decision. It needs a House with at least 6 Food stored, 2 Food stored
-    per member across its homes (3 in Autumn, enough for the winter; no
-    births at all in Winter), a healthy, fed grown female and male to be
-    the mother and father, no more than a third of the group hungry, room to grow (see villages)
-    and 60s since its last birth. A birth costs 3 Food from the store.
+*   **Names:** every newcomer has a given name ("Pipwick", "Nella") and
+    founds a garden-flavoured family ("Thornwood", "Mossbrook"); a child
+    takes one of its parents' family names at even odds, so families
+    spread or die out with their descendants. A group is named for the
+    family of the Leader it was founded under — "the Thornwood clan"
+    (then "the Thornwood clan II" while the first is still around). The
+    event log uses names throughout.
 *   **Sex:** every Bramblekin is female or male at even odds, newcomers
-    and newborns alike. For now the only difference is that a birth takes
+    and newborns alike. For now the only difference is that a couple is
     one of each; the sexes forage, fight, build, lead and rebel alike.
+*   **Couples:** when two single, grown (not elder), unrelated (not
+    parent, child or sibling) Bramblekin of opposite sex who aren't
+    Enemies meet, they pair up with odds 0.2 + 0.5 × their average
+    Sociability. Groupmates simply become a couple (and move into the same
+    home if there's room); two loners set up together as a new group; a
+    loner joins its new partner's group if there's room. Members of two
+    different groups don't pair — neither would leave its own. Couples
+    live together: a newcomer to the group moves in with its partner if
+    there's room, and it's singles who move out of an overcrowded home.
+    If one leaves the group (walking out, being exiled, or splitting
+    off), its partner goes too if its own Loyalty is below 0.6 — the two
+    set up as a household of their own — otherwise the couple separates.
+    When a village buds, a settler's partner goes with it. A death leaves
+    its partner widowed, and it mourns 90s before it looks for another.
+*   **Births:** a thriving group raises young — checked at each Leader
+    decision. It takes a couple in the group, both fit to be parents
+    (grown but not elders, fed, at least 70% Health), living in one of
+    the group's finished homes — a Tent will do; the crowding then makes
+    the group upgrade it. The group needs at least 4 Food stored, and 1
+    per member across its homes (2 in Autumn, enough for the winter; no
+    births at all in Winter), no more than a third of the group hungry,
+    room to grow (see villages) and 60s since its last birth. A birth
+    costs 3 Food from the stores, the nursery's first.
+*   **Old age:** a year is 600s. Newcomers arrive grown, 0.3–1.5 years
+    old; each Bramblekin's natural lifespan is rolled between 4 and 6.5
+    years. From 3.5 years it's an **elder**: drawn grey, 20% slower,
+    hitting 30% less hard, past raising young and no longer courting —
+    but looked up to (+0.3 to its claim to lead, so elders often lead).
+    At the end of its lifespan it dies of old age ("…died of old age at
+    4.8 years, leaving 5 children"). Old age is now a common death: about
+    a third of all deaths over long runs.
 *   **The young:** a newborn inherits the average of its parents'
     Personalities, ±0.15 on each trait; its Generation is one more than
     its older parent's. For 90s it's young: drawn small and growing, it
@@ -419,11 +460,10 @@ overhead camera:
     against the old group. The parent village can then build again.
 *   **The population** is no longer held at a fixed number: it rises
     through Summer and Autumn and thins in Winter and early Spring, and
-    over hours settles wherever the garden's food and its pairings allow
-    — about 28–50 in 4-hour headless runs (averaging ~37), where the old
-    design sat at 30–40. Wandering
-    Arrivals only top it up when it falls below 30; a safety cap of 150
-    is never reached in practice.
+    over hours settles wherever the garden's food allows — about 30–50
+    in 4-hour headless runs, with births (150–210 per run) well ahead of
+    newcomers (60–120). Wandering Arrivals only top it up when it falls
+    below 30; a safety cap of 150 is never reached in practice.
 
 ## Food & Wildlife
 *   **Food:** wild Berries grow passively (one every 0.6s, up to 100 on

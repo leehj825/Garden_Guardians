@@ -140,6 +140,7 @@ public static class Game
         var world = new World(new Terrain(size: 100f), new Random(), InitialKinCount);
         var input = new WorldTapInput();
         var touchCamera = new TouchCameraController();
+        var followCamera = new FollowCamera(camera);
 
         // --- Main loop -------------------------------------------------------
         while (!Raylib.WindowShouldClose())
@@ -166,6 +167,9 @@ public static class Game
             var speedDownButton = new UiButton(new Rectangle(speedButtonMargin, speedButtonMargin, speedButtonWidth, speedButtonHeight));
             var speedUpButton = new UiButton(new Rectangle(speedButtonMargin + speedButtonWidth + speedButtonGap, speedButtonMargin, speedButtonWidth, speedButtonHeight));
             var speedLabelBounds = new Rectangle(speedButtonMargin + speedButtonWidth, speedButtonMargin, speedButtonGap, speedButtonHeight);
+            var mapButton = new UiButton(new Rectangle(speedButtonMargin * 2 + speedButtonWidth * 2 + speedButtonGap, speedButtonMargin,
+                (int)(190 * uiScale), speedButtonHeight));
+            UiButton? followButton = FollowButton(world);
 
             // 1) Input: the player has no lever on the world. The only tap
             //    left is inspecting a single Bramblekin (see WorldTapInput,
@@ -179,8 +183,13 @@ public static class Game
                 DecreaseTimeScale();
             else if (mousePressed && speedUpButton.Contains(mousePosition))
                 IncreaseTimeScale();
+            else if (mousePressed && mapButton.Contains(mousePosition))
+                followCamera.ShowWholeMap();
+            else if (mousePressed && followButton is not null && followButton.Contains(mousePosition))
+                followCamera.ToggleFollow(world);
             else
                 input.Update(camera, world);
+            followCamera.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture);
 
             // 2) Simulation: TimeScale runs World.Update() several times per
             //    rendered frame (see _timeScale's own doc comment) rather
@@ -199,11 +208,14 @@ public static class Game
 
             // 2D overlay (UI) is drawn after EndMode3D so it sits on top.
             DrawStatusBars(camera, world);
+            DrawNameTag(camera, world);
             DrawFloatingTexts(camera, world);
             speedDownButton.Draw("-", highlighted: false, disabled: _timeScale <= TimeScaleSteps[0]);
             DrawSpeedLabel(speedLabelBounds, uiScale);
             speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
+            mapButton.Draw("Map", highlighted: false);
             DrawKinPanel(world);
+            followButton?.Draw(followCamera.IsFollowing ? "Following" : "Follow", highlighted: followCamera.IsFollowing);
             int hudTop = DrawHud(world);
             DrawDebugConsole(top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
 
@@ -310,7 +322,8 @@ public static class Game
             string meat = hours > 0 ? $"{world.MeatHuntedPerKinHour(status),5:0.0}/h" : "    -";
             Console.WriteLine(
                 $"  {status,-12} deaths {rate}   meat hunted {meat}   ({world.DeathsIn(status)} deaths over {hours:0.0} kin-hours: " +
-                $"{world.DeathsIn(status, DeathCause.Starvation)} starved, {world.DeathsIn(status, DeathCause.Predator)} to predators, {world.DeathsIn(status, DeathCause.Kin)} to kin)");
+                $"{world.DeathsIn(status, DeathCause.Starvation)} starved, {world.DeathsIn(status, DeathCause.Predator)} to predators, " +
+                $"{world.DeathsIn(status, DeathCause.Kin)} to kin, {world.DeathsIn(status, DeathCause.OldAge)} of old age)");
         }
     }
 
@@ -328,7 +341,7 @@ public static class Game
         Console.WriteLine(
             $"[t={world.ElapsedSeconds,6:0}s Y{world.Year} {world.CurrentSeason,-6}] kin {living.Count,3} (solitary {solitary}, groups {world.Groups.Count}, largest {largestGroup}, villages {villages}) " +
             $"avg hunger {averageHunger,5:0.0}  food on map {world.LooseFoodCount,3}, stored {stored,3}  tents {tents} houses {houses}  " +
-            $"arrived {world.Arrivals} born {world.Births}  died: starved {world.DeathsByStarvation}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}");
+            $"arrived {world.Arrivals} born {world.Births}  died: starved {world.DeathsByStarvation}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}, old age {world.DeathsByOldAge}");
     }
 
     /// <summary>Headless summary: births, how far the generations have come, and whether the traits of the living have drifted from the 0.5 average a newcomer brings.</summary>
@@ -338,7 +351,11 @@ public static class Game
         int bornHere = living.Count(b => b.Generation > 0);
         Console.WriteLine(
             $"Lineage: {world.Births} births, generations up to {world.MaxGeneration}; of the {living.Count} alive, {bornHere} were born here " +
-            $"({living.Count(b => b.Sex == Sex.Female)} female, {living.Count(b => b.Sex == Sex.Male)} male).");
+            $"({living.Count(b => b.Sex == Sex.Female)} female, {living.Count(b => b.Sex == Sex.Male)} male, {living.Count(b => b.IsElder)} elders).");
+        Console.WriteLine(
+            $"Families: {world.CouplesFormed} couples formed, {world.LivingCouples} together now, {world.Separations} separated; " +
+            $"{world.DeathsByOldAge} died of old age" +
+            (living.Count > 0 ? $"; the oldest alive is {living.Max(b => b.AgeInYears):0.0} years." : "."));
         if (living.Count > 0)
         {
             Console.WriteLine(
@@ -473,14 +490,12 @@ public static class Game
     /// </summary>
     private static void DrawKinPanel(World world)
     {
-        int fontSize = ScaledFontSize(0.7f);
-        int lineHeight = fontSize + fontSize / 5;
-        const int topPadding = 20, margin = 30, inset = 12;
+        var (fontSize, lineHeight, topPadding, margin, inset) = KinPanelMetrics();
 
         Bramblekin? kin = world.SelectedKin;
         if (kin is null || kin.IsDead)
         {
-            const string hint = "Tap a Bramblekin to inspect it";
+            const string hint = "Tap a Bramblekin to follow it";
             int hintWidth = Raylib.MeasureText(hint, fontSize);
             int hintX = Raylib.GetScreenWidth() - hintWidth - margin;
             Raylib.DrawRectangle(hintX - inset, topPadding, hintWidth + inset * 2, fontSize + inset * 2, PanelFill);
@@ -491,24 +506,72 @@ public static class Game
         KinGroup? group = world.GroupOf(kin);
         Color fill = group is null ? PanelFill : BlendToward(PanelFill, group.Color, 0.35f);
         Color ink = group is null ? PanelInk : BlendToward(PanelInk, group.Color, 0.35f);
+        List<(string Text, Color Color)> lines = KinPanelLines(world, kin, ink);
 
+        // Sized to its widest line, so no stat ever runs off the panel.
+        int width = lines.Max(line => Raylib.MeasureText(line.Text, fontSize));
+        int height = KinPanelHeight(lines.Count);
+        int x = Raylib.GetScreenWidth() - width - margin;
+        Raylib.DrawRectangle(x - inset, topPadding, width + inset * 2, height, fill);
+        Raylib.DrawRectangleLines(x - inset, topPadding, width + inset * 2, height, ink);
+        for (int i = 0; i < lines.Count; i++)
+            Raylib.DrawText(lines[i].Text, x, topPadding + inset + lineHeight * i, fontSize, lines[i].Color);
+    }
+
+    /// <summary>The Kin Inspector's font size, line spacing and placement (top-right corner).</summary>
+    private static (int FontSize, int LineHeight, int TopPadding, int Margin, int Inset) KinPanelMetrics()
+    {
+        int fontSize = ScaledFontSize(0.7f);
+        return (fontSize, fontSize + fontSize / 5, 20, 30, 12);
+    }
+
+    /// <summary>The Kin Inspector's full height (padding included) for <paramref name="lineCount"/> lines.</summary>
+    private static int KinPanelHeight(int lineCount)
+    {
+        var (fontSize, lineHeight, _, _, inset) = KinPanelMetrics();
+        return lineHeight * lineCount - (lineHeight - fontSize) + inset * 2;
+    }
+
+    /// <summary>
+    /// The "Follow" toggle, just under the Kin Inspector, while a
+    /// Bramblekin is selected — see <see cref="FollowCamera"/>.
+    /// </summary>
+    private static UiButton? FollowButton(World world)
+    {
+        if (world.SelectedKin is not { IsDead: false } kin)
+            return null;
+
+        var (_, _, topPadding, margin, inset) = KinPanelMetrics();
+        int lineCount = KinPanelLines(world, kin, PanelInk).Count;
+        float height = 90 * UiScale;
+        float width = 330 * UiScale;
+        float x = Raylib.GetScreenWidth() - margin + inset - width;
+        float y = topPadding + KinPanelHeight(lineCount) + 10 * UiScale;
+        return new UiButton(new Rectangle(x, y, width, height));
+    }
+
+    /// <summary>What the Kin Inspector says about <paramref name="kin"/>, line by line.</summary>
+    private static List<(string Text, Color Color)> KinPanelLines(World world, Bramblekin kin, Color ink)
+    {
+        KinGroup? group = world.GroupOf(kin);
         string role = group is null ? "Solitary" : group.Leader == kin ? "Leader" : "Follower";
         int friends = kin.KnownKins.Values.Count(r => r == RelationshipState.Friend);
         int enemies = kin.KnownKins.Values.Count(r => r == RelationshipState.Enemy);
         int neutral = kin.KnownKins.Values.Count(r => r == RelationshipState.Neutral);
 
-        var lines = new List<(string Text, Color Color)>
+        return new List<(string Text, Color Color)>
         {
-            ($"Bramblekin #{kin.ID} ({kin.Sex.ToString().ToLowerInvariant()}, {role}{(kin.IsYoung ? ", young" : "")})", ink),
-            (kin.ParentIds is { } parents ? $"Generation {kin.Generation}, mother #{parents.Mother}, father #{parents.Father}" : "Generation 0 (wandered in)", ink),
-            ($"State: {kin.State}", ink),
-            ($"Health: {kin.Health} / {Bramblekin.MaxHealth}", ink),
+            ($"{kin.Name}  ({kin.Sex.ToString().ToLowerInvariant()}, {role}{(kin.IsYoung ? ", young" : kin.IsElder ? ", elder" : "")})", ink),
+            ($"Age {kin.DescribeAge()}, generation {kin.Generation}", ink),
+            (kin.ParentNames is { } parents ? $"Child of {parents.Mother} & {parents.Father}" : "Wandered in from the edge", ink),
+            (kin.DescribeFamily(), kin.Partner is not null ? new Color(190, 70, 120, 255) : ink),
+            ($"State: {kin.State}   Health: {kin.Health} / {Bramblekin.MaxHealth}", ink),
             ($"Hunger: {(int)kin.Hunger}%{(kin.IsStarving ? " STARVING" : kin.IsHungry ? " (hungry)" : "")}{(kin.HasFood ? "  +food" : "")}",
                 kin.IsStarving ? new Color(170, 60, 40, 255) : ink),
             ($"Aggression:   {kin.Personality.Aggression:0.00}", new Color(185, 60, 45, 255)),
             ($"Sociability:  {kin.Personality.Sociability:0.00}", new Color(60, 130, 70, 255)),
             ($"Intelligence: {kin.Personality.Intelligence:0.00} ({kin.DetectionRadius:0}m)", new Color(60, 100, 170, 255)),
-            (group is null ? "Group: none" : $"Group {group.ShortId}: {group.Members.Count} members", ink),
+            (group is null ? "Group: none" : $"Group: {group.Name ?? group.ShortId}, {group.Members.Count} members", ink),
             (DescribeHome(kin), ink),
             (group is null ? "Job: none" : $"Job: {kin.Job} (group goal: {group.Goal}{(group.Sharing == SharingRule.LeaderFirst ? ", leader eats first" : "")})", ink),
             (group is null || group.Leader == kin
@@ -517,15 +580,30 @@ public static class Game
                 kin.GroupId is not null && group?.Leader != kin && kin.Loyalty < Bramblekin.ObedienceThreshold ? new Color(170, 60, 40, 255) : ink),
             ($"Known: {friends} friend, {enemies} enemy, {neutral} neutral", ink),
         };
+    }
 
-        // Sized to its widest line, so no stat ever runs off the panel.
-        int width = lines.Max(line => Raylib.MeasureText(line.Text, fontSize));
-        int height = lineHeight * lines.Count - (lineHeight - fontSize);
-        int x = Raylib.GetScreenWidth() - width - margin;
-        Raylib.DrawRectangle(x - inset, topPadding, width + inset * 2, height + inset * 2, fill);
-        Raylib.DrawRectangleLines(x - inset, topPadding, width + inset * 2, height + inset * 2, ink);
-        for (int i = 0; i < lines.Count; i++)
-            Raylib.DrawText(lines[i].Text, x, topPadding + inset + lineHeight * i, fontSize, lines[i].Color);
+    /// <summary>The selected Bramblekin's name, floating above it (and its partner's, fainter, so a couple is easy to spot).</summary>
+    private static void DrawNameTag(Camera3D camera, World world)
+    {
+        if (world.SelectedKin is not { IsDead: false } kin)
+            return;
+
+        DrawTag(kin, ScaledFontSize(0.55f), 255);
+        if (kin.Partner is { IsDead: false } partner)
+            DrawTag(partner, ScaledFontSize(0.45f), 170);
+
+        void DrawTag(Bramblekin who, int fontSize, byte alpha)
+        {
+            Vector3 anchor = who.Position + new Vector3(0, Bramblekin.BodyHeight + 0.6f, 0);
+            if (!IsPointOnScreen(camera, anchor))
+                return;
+            Vector2 screen = Raylib.GetWorldToScreen(anchor, camera);
+            string text = who.GivenName;
+            int width = Raylib.MeasureText(text, fontSize);
+            int x = (int)(screen.X - width / 2f), y = (int)(screen.Y - fontSize);
+            Raylib.DrawRectangle(x - 6, y - 3, width + 12, fontSize + 6, PanelFill with { A = (byte)(PanelFill.A * alpha / 255) });
+            Raylib.DrawText(text, x, y, fontSize, PanelInk with { A = alpha });
+        }
     }
 
     /// <summary>Blends <paramref name="baseColor"/> toward <paramref name="tint"/> by <paramref name="amount"/> (0 = unchanged, 1 = fully tint), keeping <paramref name="baseColor"/>'s own alpha.</summary>
@@ -556,8 +634,8 @@ public static class Game
             $"Bramblekin {living}: {solitary} solitary, {world.Groups.Count} groups (largest {largestGroup})",
             $"Foraging {Count(BramblekinState.Foraging) + Count(BramblekinState.Hunting)}   Eating {Count(BramblekinState.Eating)}   " +
             $"Fleeing {Count(BramblekinState.Fleeing)}   Fighting {Count(BramblekinState.Fighting)}   Robbing {Count(BramblekinState.Attacking)}",
-            $"Arrived {world.Arrivals}   Starved {world.DeathsByStarvation}   Killed by predators {world.DeathsByPredator}, by kin {world.DeathsByKin}   Thefts {world.Thefts}",
-            $"Born {world.Births} (gen {world.MaxGeneration})   Politics: {world.Departures} left, {world.Splinters} splits, {world.Coups} coups, {world.Exiles} exiles   Raids {world.StoreRaids}",
+            $"Arrived {world.Arrivals}   Died: starved {world.DeathsByStarvation}, old age {world.DeathsByOldAge}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}   Thefts {world.Thefts}",
+            $"Born {world.Births} (gen {world.MaxGeneration})   Couples {world.LivingCouples}   Politics: {world.Departures} left, {world.Splinters} splits, {world.Coups} coups, {world.Exiles} exiles   Raids {world.StoreRaids}",
         };
 
         // UI Text Scaling: a background bar goes underneath, sized off

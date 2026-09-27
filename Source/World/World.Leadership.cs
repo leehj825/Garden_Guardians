@@ -136,8 +136,8 @@ public sealed partial class World
         {
             group.Sharing = sharing;
             Game.AddEventLog(sharing == SharingRule.LeaderFirst
-                ? $"[LEADER] #{leader.ID} claims first share of group {group.ShortId}'s store"
-                : $"[LEADER] #{leader.ID} shares group {group.ShortId}'s store equally");
+                ? $"[LEADER] {leader.Name} claims first share of {group.Title}'s store"
+                : $"[LEADER] {leader.Name} shares {group.Title}'s store equally");
         }
 
         if (goal != group.Goal)
@@ -145,10 +145,10 @@ public sealed partial class World
             group.Goal = goal;
             Game.AddEventLog(goal switch
             {
-                GroupGoal.Defend => $"[LEADER] #{leader.ID} rallies group {group.ShortId} to defend home",
-                GroupGoal.Hunt => $"[LEADER] #{leader.ID} sends group {group.ShortId} after a Stag Beetle",
-                GroupGoal.Settle => $"[LEADER] #{leader.ID} puts group {group.ShortId} to building",
-                _ => $"[LEADER] #{leader.ID} has group {group.ShortId} stock the stores",
+                GroupGoal.Defend => $"[LEADER] {leader.Name} rallies {group.Title} to defend home",
+                GroupGoal.Hunt => $"[LEADER] {leader.Name} sends {group.Title} after a Stag Beetle",
+                GroupGoal.Settle => $"[LEADER] {leader.Name} puts {group.Title} to building",
+                _ => $"[LEADER] {leader.Name} has {group.Title} stock the stores",
             });
         }
 

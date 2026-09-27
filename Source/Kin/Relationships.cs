@@ -19,4 +19,5 @@ public enum DeathCause
     Starvation,
     Predator,
     Kin,
+    OldAge,
 }

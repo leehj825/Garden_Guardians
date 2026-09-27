@@ -240,7 +240,7 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>Where it last saw a loose twig — where it looks first when it needs building material.</summary>
     private Vector3? _twigMemory;
 
-    /// <summary>Seconds alive — a newcomer looks around for a while before it settles.</summary>
+    /// <summary>Its age in seconds — see <see cref="Age"/> (a newcomer arrives already grown).</summary>
     private float _age;
 
     private float _restTimer;
@@ -265,6 +265,7 @@ public sealed partial class Bramblekin : ICombatant
         _rng = rng;
         Personality = personality ?? Personality.Roll(rng);
         Sex = rng.Next(2) == 0 ? Sex.Female : Sex.Male;
+        RollLifespan(rng);
         Hunger = (float)rng.NextDouble() * StartingHungerMax;
         _mover = new GroundMover(position, BodyRadius, EdgeMargin, rng);
         _perceptionTimer = (float)rng.NextDouble() * PerceptionInterval;
@@ -352,7 +353,7 @@ public sealed partial class Bramblekin : ICombatant
     public bool IsVibrating => !IsDead && State is BramblekinState.Foraging or BramblekinState.Eating or BramblekinState.Hunting
         or BramblekinState.Attacking or BramblekinState.Raiding;
 
-    private int StrikeDamage => BaseStrikeDamage + (int)MathF.Round(StrikeDamagePerAggression * Personality.Aggression);
+    private int StrikeDamage => (int)MathF.Round((BaseStrikeDamage + StrikeDamagePerAggression * Personality.Aggression) * (IsElder ? ElderStrikeFactor : 1f));
 
     // --- Relationships & groups ----------------------------------------------------------
 
@@ -518,7 +519,9 @@ public sealed partial class Bramblekin : ICombatant
 
         _mover.Idle();
         _strikeCooldown = MathF.Max(0f, _strikeCooldown - deltaTime);
-        _age += deltaTime;
+        if (UpdateAging(deltaTime, world))
+            return;
+        UpdateFamily(deltaTime);
         if (Home is { IsCollapsed: true })
             Home = null;
 

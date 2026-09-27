@@ -6,7 +6,8 @@
 
 ## Progress Snapshot
 The game is an **Emergent Survival** simulation (Phase 7) that has grown
-a **society** (Phase 8) and a **living population** (Phase 9). There are no factions or top-down economy: the
+a **society** (Phase 8), a **living population** (Phase 9) and **lives
+& lineages** (Phase 10). There are no factions or top-down economy: the
 map is the procedural terrain and loose entities — wild Food, Twigs, a
 Wolf Spider, Hornet swarms, Grubs, Stag Beetles, Garden Props — and the
 Bramblekin. Every Bramblekin is an individual agent with a random
@@ -18,8 +19,10 @@ who picks the group's goal, hands out jobs and decides who eats first.
 Followers' loyalty rises and falls with how they're treated; the disloyal
 walk out, split off, or challenge the Leader, and Leaders exile
 troublemakers. The year turns through four seasons of plenty and
-scarcity; thriving groups raise young who inherit their parents' traits,
-grow into villages of up to three homes, and bud off daughter groups.
+scarcity; named Bramblekin pair up as couples, thriving groups raise
+young who inherit their parents' traits and family names, grow into
+villages of up to three homes, and bud off daughter groups; the old grow
+grey and die. A follow camera keeps any one of them in view.
 Code lives under `Source/` (one type per file; see the
 Design doc's Code Layout). The player is a spectator with a
 Google-Maps-style camera whose only action is tapping a Bramblekin to
@@ -387,6 +390,38 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     A first cut that only limited births by housing let groups breed
     until winter starved them. Members then died at 1.6 per kin-hour, so
     births now need stored food per head, and none happen in Winter.
+
+## Phase 10: Lives & Lineages
+*   ✅ **Follow camera:** tapping a Bramblekin swoops the camera in and
+    follows it, with its name (and its partner's) floating above it;
+    pinch/twist/tilt still work, a pan stops following, a **Follow**
+    button under the Kin Inspector toggles it, and a **Map** button flies
+    back out to the whole garden.
+*   ✅ **Names:** given names and garden-flavoured family names; newcomers
+    found families, children take a parent's family name, groups are
+    named for their founding Leader's family ("the Thornwood clan"), and
+    the event log reads as a story instead of a list of #IDs.
+*   ✅ **Couples:** single, grown, unrelated kin of opposite sex pair up
+    on meeting (odds rising with Sociability), live together, raise the
+    young (births now need a fit couple rather than any fit female and
+    male), leave together when one walks out or is exiled — unless the
+    other is loyal enough to stay, which splits them up — and are widowed
+    by death.
+*   ✅ **Old age:** lifespans of 4–6.5 years (a year is 600s), newcomers
+    arriving 0.3–1.5 years old, a grey, slower, weaker but respected elder
+    stage from 3.5 years, and death of old age as its own cause in the
+    log, HUD and survival stats.
+*   ✅ **Fixes found in a 9-year review:** hungry kin chased loose food
+    past a full store until they starved (now they pick the nearer, and
+    the sure meal at home once starving); kin at home sat unresisting
+    while other kin killed them (home now only hides them from wildlife);
+    dirt patches now take the season's tint.
+*   *Result* (3 seeds × 4 hours): stable, no exceptions; population
+    30–50; 150–210 births per run against 60–120 newcomers, so the world
+    sustains itself; ~110 couples per run; generations up to 11–14; old
+    age about a third of all deaths. Births now had to be tuned back to 1
+    Food stored per member (2 in autumn) — with old age thinning the
+    population, food per head was the main thing holding births back.
 
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd

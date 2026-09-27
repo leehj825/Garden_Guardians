@@ -12,7 +12,7 @@ public sealed partial class Bramblekin
     /// while fleeing), topped with a head in its group's colour (off-white
     /// while solitary). A Leader carries its group's banner; anything
     /// fighting, robbing or hunting holds a thorn out front; carried Food
-    /// rides on its head.
+    /// rides on its head. Elders go grey.
     /// </summary>
     public void Draw(World world)
     {
@@ -20,6 +20,8 @@ public sealed partial class Bramblekin
         Color color = State == BramblekinState.Fleeing
             ? PanicColor
             : LerpColor(CalmColor, AggressiveColor, Personality.Aggression);
+        if (IsElder)
+            color = LerpColor(color, ElderColor, ElderGreying);
 
         // A small, dark, semi-transparent drop shadow at this unit's own X/Z
         // on the ground, drawn before the body itself — a flat disc laid on

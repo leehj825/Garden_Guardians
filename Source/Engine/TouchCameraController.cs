@@ -63,6 +63,15 @@ public sealed class TouchCameraController
     private Vector2 _lastTouchPos;
     private bool _isOneFingerGesture;
 
+    /// <summary>Pixels the current one-finger gesture has travelled — see <see cref="DraggedThisGesture"/>.</summary>
+    private float _gesturePanPixels;
+
+    /// <summary>A one-finger drag this far (px) is a pan rather than a tap — the same threshold <see cref="WorldTapInput"/> uses.</summary>
+    private const float PanThresholdPixels = 12f;
+
+    /// <summary>True once the current one-finger press has dragged far enough to count as a pan (it stops the <see cref="FollowCamera"/>).</summary>
+    public bool DraggedThisGesture => _isOneFingerGesture && _gesturePanPixels > PanThresholdPixels;
+
     private float _lastTouchAngle;
     private float _lastPinchDistance;
     private float _lastTwoFingerMidpointY;
@@ -137,7 +146,14 @@ public sealed class TouchCameraController
 
         Vector2 currentPos = touchCount == 1 ? Raylib.GetTouchPosition(0) : Raylib.GetMousePosition();
         if (_isOneFingerGesture)
+        {
+            _gesturePanPixels += Vector2.Distance(currentPos, _lastTouchPos);
             Pan(ref camera, currentPos - _lastTouchPos);
+        }
+        else
+        {
+            _gesturePanPixels = 0f;
+        }
 
         _lastTouchPos = currentPos;
         _isOneFingerGesture = true;

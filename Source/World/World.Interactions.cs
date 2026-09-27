@@ -81,6 +81,7 @@ public sealed partial class World
             return; // Already dead this frame; don't double-count it.
 
         RecordDeath(kin, cause); // Before MarkDead, while its status is still its own.
+        NoteBereavement(kin);
         kin.MarkDead();
         _pendingKinRemovals.Add(kin);
 
@@ -91,9 +92,14 @@ public sealed partial class World
                 DeathsByStarvation++;
                 how = "starved to death";
                 break;
+            case DeathCause.OldAge:
+                DeathsByOldAge++;
+                how = $"died of old age at {kin.AgeInYears:0.0} years" +
+                      (kin.Children > 0 ? $", leaving {kin.Children} {(kin.Children == 1 ? "child" : "children")}" : "");
+                break;
             case DeathCause.Kin:
                 DeathsByKin++;
-                how = killer is Bramblekin attacker ? $"was killed by #{attacker.ID}" : "was killed by another Bramblekin";
+                how = killer is Bramblekin attacker ? $"was killed by {attacker.Name}" : "was killed by another Bramblekin";
                 break;
             default:
                 DeathsByPredator++;
@@ -105,7 +111,7 @@ public sealed partial class World
                 };
                 break;
         }
-        Game.AddEventLog($"[DEATH] #{kin.ID} {how}");
+        Game.AddEventLog($"[DEATH] {kin.Name} {how}");
     }
 
     /// <summary>
@@ -133,8 +139,8 @@ public sealed partial class World
 
         KinGroup? group = GroupOf(attacker);
         Game.AddEventLog(group is null
-            ? $"[HUNT] #{attacker.ID} slew the Wolf Spider alone!"
-            : $"[HUNT] Group {group.ShortId} brought down the Wolf Spider (final blow by #{attacker.ID})");
+            ? $"[HUNT] {attacker.Name} slew the Wolf Spider alone!"
+            : $"[HUNT] {group.CapitalTitle} brought down the Wolf Spider (final blow by {attacker.Name})");
     }
 
     /// <summary>A Hornet swatted out of the air. Removal from <see cref="Hornets"/> is deferred to the end of the frame.</summary>

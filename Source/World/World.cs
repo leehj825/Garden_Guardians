@@ -244,7 +244,8 @@ public sealed partial class World
     public int DeathsByStarvation { get; private set; }
     public int DeathsByPredator { get; private set; }
     public int DeathsByKin { get; private set; }
-    public int Casualties => DeathsByStarvation + DeathsByPredator + DeathsByKin;
+    public int DeathsByOldAge { get; private set; }
+    public int Casualties => DeathsByStarvation + DeathsByPredator + DeathsByKin + DeathsByOldAge;
     public int FoodEaten { get; private set; }
     public int FoodShared { get; private set; }
     public int Thefts { get; private set; }
@@ -275,7 +276,7 @@ public sealed partial class World
         // rolled Personality (see the Bramblekin constructor) — groups only
         // ever form later, out of encounters.
         for (int i = 0; i < initialKinCount; i++)
-            Colony.Add(new Bramblekin(RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin), rng));
+            Colony.Add(Newcomer(RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin)));
 
         SpawnSpider();
         RebuildSpatialGrids(); // So LooseFoodCount is right before the first Update.

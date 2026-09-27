@@ -41,7 +41,8 @@ public sealed partial class Bramblekin
     private float LoyaltyBaseline => 0.45f + 0.3f * Personality.Sociability;
 
     /// <summary>Its claim to lead a group: Intelligence, plus a little for each point of <see cref="Reputation"/>.</summary>
-    public float LeadershipScore => Personality.Intelligence + ReputationLeadershipWeight * Reputation;
+    public float LeadershipScore =>
+        Personality.Intelligence + ReputationLeadershipWeight * Reputation + (IsElder ? ElderLeadershipBonus : 0f);
 
     /// <summary>The groupmate it's fighting a leadership duel with, if any.</summary>
     public Bramblekin? DuelOpponent => _duelOpponent;

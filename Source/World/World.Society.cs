@@ -47,8 +47,9 @@ public sealed partial class World
 
                 Bramblekin? previousLeader = group.Leader;
                 group.ElectLeader();
+                NameGroup(group);
                 if (previousLeader is not null && previousLeader != group.Leader)
-                    Game.AddEventLog($"[GROUP] #{group.Leader!.ID} now leads group {group.ShortId}");
+                    Game.AddEventLog($"[GROUP] {group.Leader!.Name} now leads {group.Title}");
                 continue;
             }
 
@@ -63,7 +64,7 @@ public sealed partial class World
                     home.Owner = survivor;
                     survivor.SetHome(home);
                 }
-                Game.AddEventLog($"[GROUP] Group {group.ShortId} is gone; #{survivor.ID} is alone again");
+                Game.AddEventLog($"[GROUP] {group.CapitalTitle} is gone; {survivor.Name} is alone again");
             }
             _groupRemovalBuffer.Add(group.Id);
         }
@@ -113,17 +114,19 @@ public sealed partial class World
     /// <summary>
     /// The social resolution when two Bramblekin cross paths, in priority
     /// order:
-    ///   1. Groupmates never fight — a fed one shares its food with a hungry one.
+    ///   1. Groupmates never fight — a fed one shares its food with a hungry
+    ///      one — and may become a couple (see <see cref="TryCourt"/>).
     ///   2. Hostility: a starving, highly Aggressive one may turn on the
     ///      other to steal its food (see <see cref="TryStartRobbery"/>);
     ///      both remember each other as Enemies from then on.
     ///   3. Enemies simply pass each other by.
     ///   4. Friends may share food.
-    ///   5. Alliance: if both are threatened by a predator right now, or
+    ///   5. Courtship: two singles may become a couple (see <see cref="TryCourt"/>).
+    ///   6. Alliance: if both are threatened by a predator right now, or
     ///      both are highly Sociable, they band together under one GroupId.
     ///      Failing that, a struggling loner may ask to join the other's
     ///      settled group (see <see cref="TryJoinSettledGroup"/>).
-    ///   6. Otherwise they just become acquainted: Friends with odds equal
+    ///   7. Otherwise they just become acquainted: Friends with odds equal
     ///      to the product of their Sociability, Neutral otherwise.
     /// Returns true if group membership changed.
     /// </summary>
@@ -140,6 +143,7 @@ public sealed partial class World
         if (a.GroupId is { } groupId && groupId == b.GroupId)
         {
             TryShareFood(a, b, sameGroup: true);
+            TryCourt(a, b);
             return false;
         }
 
@@ -152,6 +156,9 @@ public sealed partial class World
 
         if (relationship == RelationshipState.Friend)
             TryShareFood(a, b, sameGroup: false);
+
+        if (TryCourt(a, b))
+            return true;
 
         bool bothThreatened = a.IsThreatenedByPredator && b.IsThreatenedByPredator;
         bool bothSociable = a.Personality.Sociability >= AllianceSociabilityThreshold &&
@@ -195,7 +202,7 @@ public sealed partial class World
         DeclareEnemies(attacker, victim);
         attacker.BeginRobbery(victim);
         QueueFloatingText(attacker.Position, "Attack!", HostileTextColor);
-        Game.AddEventLog($"[HOSTILITY] Starving #{attacker.ID} turned on #{victim.ID} for its food");
+        Game.AddEventLog($"[HOSTILITY] Starving {attacker.Name} turned on {victim.Name} for its food");
         return true;
     }
 
@@ -288,12 +295,13 @@ public sealed partial class World
 
         if (!group.HasSittingLeader)
             group.ElectLeader();
+        NameGroup(group);
         SetMutualRelationship(a, b, RelationshipState.Friend);
         AlliancesFormed++;
         QueueFloatingText(a.Position, "+Ally", group.Color);
         Game.AddEventLog(
-            $"[ALLIANCE] #{a.ID} and #{b.ID} banded together ({(bothThreatened ? "both hunted" : "kindred spirits")}) - " +
-            $"group {group.ShortId} is {group.Members.Count} strong, led by #{group.Leader!.ID}");
+            $"[ALLIANCE] {a.Name} and {b.Name} banded together ({(bothThreatened ? "both hunted" : "kindred spirits")}) - " +
+            $"{group.Title} is {group.Members.Count} strong, led by {group.Leader!.Name}");
         return true;
     }
 
