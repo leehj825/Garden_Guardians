@@ -142,6 +142,7 @@ public sealed partial class World
         }
         splinter.ElectLeader();
         NameGroup(splinter);
+        splinter.SettleTarget = FindOpenGround(instigator.Position); // Well away from the group they left.
         AddGrievance(group.Id, splinter.Id, SplinterGrievance);
 
         Splinters++;

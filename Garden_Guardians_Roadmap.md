@@ -453,6 +453,16 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     peaceful with a few lasting alliances; some fall into cycles of war
     with dozens of kin deaths. Stable over 24 years with 34–69 kin.
 
+## Phase 12: The Wider Garden
+*   ✅ **Rarer wars:** a grievance of 10 (not 6) before a Leader can
+    declare war — 28 wars in 12 × 13-year runs instead of 47.
+*   ✅ **Villages spread out:** budding settlers, splinters and departing
+    couples found new villages on open ground 15–55m away (far from other
+    homes, near berry patches), a budding party taking a dowry of food.
+    *Result* (12 seeds × 13 years): kin-on-kin killings 551 → 159, wars
+    28 → 1, starvation 639 → 494, average population 53 → 64, and twice
+    as much food aid between allies.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:
@@ -466,10 +476,6 @@ matter most:
     now have similar death rates; groups win on food and on numbers, and
     lose some of that edge to risky hunts, defence and politics. Worth
     tuning if groups should be the clearly safer choice.
-*   ⬜ **Spreading out.** Villages still cluster where they began
-    (daughter groups bud off right next door), which is what makes
-    neighbouring feuds so close-quartered; nothing yet pushes new villages
-    out toward open ground.
 *   ⬜ **Aid in person.** Allied food aid moves between stores
     abstractly; a carrier walking it over would make it visible (and
     raidable).

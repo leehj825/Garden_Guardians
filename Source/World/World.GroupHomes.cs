@@ -117,7 +117,11 @@ public sealed partial class World
                 if (group.HomeSiteRetryTimer > 0f || group.Leader is not { } leader)
                     continue;
 
-                group.Home = TryCreateShelterSite(leader.FoodMemory ?? leader.Position, owner: null, groupId: group.Id);
+                // Pioneers make for the open ground they picked; anyone else settles where its Leader last found food.
+                group.Home = group.SettleTarget is { } target
+                    ? TryCreateShelterSite(target, owner: null, groupId: group.Id, searchRadius: PioneerSiteRadius)
+                    : TryCreateShelterSite(leader.FoodMemory ?? leader.Position, owner: null, groupId: group.Id);
+                group.SettleTarget = null;
                 if (group.Home is null)
                 {
                     group.HomeSiteRetryTimer = GroupSiteRetryDelay;
@@ -132,6 +136,10 @@ public sealed partial class World
                 home.Owner = null;
                 home.AbandonedSeconds = 0f;
             }
+
+            // A budded group's dowry goes into its store as soon as it has one.
+            while (group.Dowry > 0 && group.Home is { IsBuilt: true } newHome && newHome.TryDeposit())
+                group.Dowry--;
 
             foreach (Bramblekin member in group.Members)
             {
@@ -286,24 +294,29 @@ public sealed partial class World
             if (settlers.Count(m => !m.IsYoung) < MinBuddingResidents)
                 continue;
 
+            // The settlers leave the House to the old village and head out, with
+            // a share of its stores, to found a village of their own on open ground.
             var daughter = new KinGroup(Guid.NewGuid());
             _groups[daughter.Id] = daughter;
-            parent.Annexes.Remove(house);
-            daughter.Home = house;
-            house.GroupId = daughter.Id;
             foreach (Bramblekin settler in settlers)
             {
                 settler.BudOff(daughter.Id);
+                settler.SetHome(null);
                 daughter.Members.Add(settler);
             }
             daughter.ElectLeader();
             NameGroup(daughter);
-            HandOverBushes(parent, daughter, house, parent.Home);
+            daughter.SettleTarget = FindOpenGround(house.Position);
+            int dowry = Math.Min(MaxDowry, StoredFood(parent) / 3);
+            TakeFromStores(parent, dowry, preferred: house);
+            daughter.Dowry = dowry;
             SetStance(parent, daughter, GroupStance.Allied); // Kin villages stand together.
 
             Buddings++;
             QueueFloatingText(house.Position, "New group!", daughter.Color);
-            Game.AddEventLog($"[COLONY] {parent.CapitalTitle} has grown too big: {settlers.Count} of them set up as {daughter.Title} in their own House, led by {daughter.Leader!.Name} - allies of their old village");
+            float distance = daughter.SettleTarget is { } target ? GroundMover.HorizontalDistance(house.Position, target) : 0f;
+            Game.AddEventLog($"[COLONY] {parent.CapitalTitle} has grown too big: {settlers.Count} of them set out, led by {daughter.Leader!.Name}, " +
+                             $"to found {daughter.Title} {distance:0}m away{(dowry > 0 ? $", taking {dowry} food" : "")} - allies of their old village");
         }
         _pendingBuddings.Clear();
     }
@@ -333,6 +346,60 @@ public sealed partial class World
         }
         smaller.Home = null;
         smaller.Annexes.Clear();
+    }
+
+    // --- Spreading out -------------------------------------------------------------------
+
+    /// <summary>Pioneers look for a spot at least this far (m) from every other home…</summary>
+    private const float PioneerSpacing = 25f;
+
+    /// <summary>…but no further than this from where they set out.</summary>
+    private const float PioneerMaxTrek = 55f;
+
+    /// <summary>They mark out their site within this many meters of the spot they picked.</summary>
+    private const float PioneerSiteRadius = 10f;
+
+    /// <summary>A budding village gives its settlers up to this much of its stores.</summary>
+    private const int MaxDowry = 6;
+
+    /// <summary>
+    /// Spreading out: a spot for a new village — the most open ground
+    /// (furthest from every home, up to <see cref="PioneerSpacing"/> and
+    /// beyond) within <see cref="PioneerMaxTrek"/> of <paramref name="from"/>,
+    /// with a bonus for Berry Patches nearby. Null if the map is too crowded
+    /// to find anywhere clear, in which case they settle wherever they find food.
+    /// </summary>
+    private Vector3? FindOpenGround(Vector3 from)
+    {
+        Vector3? best = null;
+        float bestScore = float.MinValue;
+        for (int attempt = 0; attempt < 48; attempt++)
+        {
+            float angle = (float)(Rng.NextDouble() * MathF.Tau);
+            float distance = 15f + (float)Rng.NextDouble() * (PioneerMaxTrek - 15f);
+            Vector3 candidate = from + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * distance;
+            if (!Terrain.Contains(candidate, 8f) || IsBlocked(candidate, Shelter.HouseRadius + 0.3f))
+                continue;
+
+            float nearestHome = PioneerMaxTrek;
+            foreach (Shelter shelter in Shelters)
+            {
+                if (!shelter.IsAbandoned && !shelter.IsCollapsed)
+                    nearestHome = MathF.Min(nearestHome, GroundMover.HorizontalDistance(shelter.Position, candidate));
+            }
+            if (nearestHome < PioneerSpacing * 0.6f)
+                continue;
+
+            float nearestPatch = _berryPatches.Count == 0 ? 30f
+                : _berryPatches.Min(patch => GroundMover.HorizontalDistance(patch, candidate));
+            float score = MathF.Min(nearestHome, PioneerSpacing * 1.4f) - 0.5f * MathF.Min(nearestPatch, 30f) - 0.1f * distance;
+            if (score > bestScore)
+            {
+                best = candidate;
+                bestScore = score;
+            }
+        }
+        return best;
     }
 
     /// <summary>The best home any member of <paramref name="group"/> already has, if any.</summary>

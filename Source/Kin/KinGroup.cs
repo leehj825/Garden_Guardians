@@ -55,6 +55,12 @@ public sealed class KinGroup
         Home is { NeedsTwigs: true, IsCollapsed: false } home ? home
         : Annexes.FirstOrDefault(a => a is { NeedsTwigs: true, IsCollapsed: false });
 
+    /// <summary>Where a newly founded group means to settle — open ground away from other villages (see World.FindOpenGround). Null once it has a home, or if it has nowhere in mind.</summary>
+    public Vector3? SettleTarget { get; set; }
+
+    /// <summary>Food a budded group took from its parent village, set aside for its new store once it's built.</summary>
+    public int Dowry { get; set; }
+
     /// <summary>Counts down after a failed attempt to find a site for a group home.</summary>
     public float HomeSiteRetryTimer { get; set; }
 

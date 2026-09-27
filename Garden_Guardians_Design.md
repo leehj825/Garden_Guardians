@@ -473,9 +473,20 @@ overhead camera:
 *   **Budding:** a village with at least 10 members (plus up to 6 more
     under a Sociable Leader, who holds a bigger village together) lets
     the residents of one of its other Houses — at least 3 grown ones, not
-    the Leader — set up as a daughter group of their own, keeping that
-    House and electing a Leader of their own. No quarrel: nobody holds it
-    against the old group. The parent village can then build again.
+    the Leader, with their partners and young — set out as a daughter
+    group of their own, electing a Leader of their own. No quarrel: the
+    two start out allied. The House stays with the old village, which can
+    grow into it again.
+*   **Spreading out:** the settlers take a share of the old village's
+    stores as a dowry (a third, up to 6) and head for **open ground**:
+    the spot, 15–55m away, that's furthest from every other home (at
+    least 25m if it can be found), with a bonus for Berry Patches nearby.
+    There they mark out a site and build from scratch; the dowry goes
+    into their store once it's finished. A splinter group and a couple
+    who walk out together look for open ground the same way, well away
+    from the group they left. Before this, daughter villages budded off
+    right next door and neighbours fought at close quarters; spreading
+    out cut kin-on-kin killings by about 70% and made wars rare.
 *   **The population** is no longer held at a fixed number: it rises
     through Summer and Autumn and thins in Winter and early Spring, and
     over hours settles wherever the garden's food allows — with farming,
