@@ -681,7 +681,7 @@ public static class Game
         // per-faction) status once it exists — a map-wide event, so it
         // belongs in this global bar rather than the per-faction Ledger.
         string elderSpiderStatus = world.ElderSpiderActive
-            ? $"   [ELDER SPIDER] {world.ElderSpider!.Health}/{global::ElderSpider.MaxHealth} HP — [TRUCE] all wars frozen"
+            ? $"   [ELDER SPIDER] {world.ElderSpider!.Health}/{GardenGuardians.ElderSpider.MaxHealth} HP — [TRUCE] all wars frozen"
             : "";
         string factions = $"Sprouted: {world.Births}   Active Factions: {world.Villages.Count}{elderSpiderStatus}";
 
@@ -2464,11 +2464,12 @@ public sealed class World
     private void SpawnAnthill()
     {
         // Anthill.Radius here means the type's constant, not the World's own
-        // Anthill property of the same name — global:: forces that reading
-        // (a bare "Anthill.Radius" would otherwise try, and fail, to read a
-        // static member off the property's instance).
-        Vector3 spot = RandomWildernessSpot(global::Anthill.Radius + 1f, edgeMargin: 2f);
-        Anthill = new global::Anthill(Grounded(spot));
+        // Anthill property of the same name — the GardenGuardians.<Type>
+        // qualifier forces that reading (a bare "Anthill.Radius" would
+        // otherwise try, and fail, to read a static member off the
+        // property's instance).
+        Vector3 spot = RandomWildernessSpot(GardenGuardians.Anthill.Radius + 1f, edgeMargin: 2f);
+        Anthill = new GardenGuardians.Anthill(Grounded(spot));
     }
 
     /// <summary>Part 4, Oversized Garden Props: how many static decorations to scatter across the map.</summary>
@@ -4107,7 +4108,7 @@ public sealed class World
         if (living >= MaxAntsOnMap)
             return;
 
-        Vector3 spot = Anthill.Position + new Vector3((float)(Rng.NextDouble() * 2.0 - 1.0), 0f, (float)(Rng.NextDouble() * 2.0 - 1.0)) * global::Anthill.Radius;
+        Vector3 spot = Anthill.Position + new Vector3((float)(Rng.NextDouble() * 2.0 - 1.0), 0f, (float)(Rng.NextDouble() * 2.0 - 1.0)) * GardenGuardians.Anthill.Radius;
         _pendingAntSpawns.Add(new Ant(Grounded(spot), Rng));
     }
 
@@ -4143,8 +4144,8 @@ public sealed class World
             return;
 
         _elderSpiderHasSpawned = true;
-        Vector3 spot = RandomWildernessSpot(global::ElderSpider.BodyRadius + 1f, edgeMargin: 2f);
-        ElderSpider = new global::ElderSpider(Grounded(spot), Rng);
+        Vector3 spot = RandomWildernessSpot(GardenGuardians.ElderSpider.BodyRadius + 1f, edgeMargin: 2f);
+        ElderSpider = new GardenGuardians.ElderSpider(Grounded(spot), Rng);
 
         string spawnMessage = "[ELDER SPIDER] The Elder Spider has awoken! Every faction's wars are frozen — all drafted Militia converge on it.";
         Raylib.TraceLog(TraceLogLevel.Warning, spawnMessage);
