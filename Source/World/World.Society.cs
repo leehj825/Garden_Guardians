@@ -68,7 +68,7 @@ public sealed partial class World
                     survivor.SetHome(home);
                 }
                 Game.AddEventLog($"[GROUP] {group.CapitalTitle} is gone; {survivor.Name} is alone again");
-                Chronicle($"{group.CapitalTitle} came to an end; {survivor.Name} was the last of it", group);
+                Headline("A clan ends", $"{group.CapitalTitle} came to an end; {survivor.Name} was the last of it", survivor.Position, false, group);
             }
             _groupRemovalBuffer.Add(group.Id);
         }
@@ -93,7 +93,7 @@ public sealed partial class World
             if (a.IsDead)
                 continue;
 
-            _colonyGrid.QueryNearby(a.Position, _encounterBuffer);
+            _colonyGrid.QueryRadius(a.Position, EncounterRadius, _encounterBuffer);
             for (int j = 0; j < _encounterBuffer.Count; j++)
             {
                 Bramblekin b = _encounterBuffer[j];

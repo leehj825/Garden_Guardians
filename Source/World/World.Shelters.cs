@@ -396,16 +396,15 @@ public sealed partial class World
                 continue;
             if (abandonedOnly && !shelter.IsAbandoned)
                 continue;
+            float distanceSquared = GroundMover.HorizontalDistanceSquared(kin.Position, shelter.Position);
+            if (distanceSquared > bestDistanceSquared)
+                continue;
             // Nobody raids a home its own parent, child or sibling lives in.
-            if (!shelter.IsAbandoned && ResidentsOf(shelter).Any(resident => resident.IsCloseKinOf(kin)))
+            if (!shelter.IsAbandoned && HasCloseKinLivingIn(shelter, kin))
                 continue;
 
-            float distanceSquared = GroundMover.HorizontalDistanceSquared(kin.Position, shelter.Position);
-            if (distanceSquared <= bestDistanceSquared)
-            {
-                best = shelter;
-                bestDistanceSquared = distanceSquared;
-            }
+            best = shelter;
+            bestDistanceSquared = distanceSquared;
         }
         return best;
     }
@@ -421,6 +420,17 @@ public sealed partial class World
     public int StoreMeals { get; private set; }
 
     /// <summary>Everyone who calls <paramref name="shelter"/> home.</summary>
+    /// <summary>True if a parent, child or sibling of <paramref name="kin"/> lives in <paramref name="shelter"/>.</summary>
+    private bool HasCloseKinLivingIn(Shelter shelter, Bramblekin kin)
+    {
+        foreach (Bramblekin resident in Colony)
+        {
+            if (!resident.IsDead && resident.Home == shelter && resident.IsCloseKinOf(kin))
+                return true;
+        }
+        return false;
+    }
+
     public IEnumerable<Bramblekin> ResidentsOf(Shelter shelter)
     {
         foreach (Bramblekin kin in Colony)

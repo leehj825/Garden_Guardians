@@ -40,6 +40,7 @@ public sealed class SaveGame
     public List<TributeSave> Tributes { get; set; } = new();
     public List<ChronicleEntry> Chronicle { get; set; } = new();
     public List<HistorySample> History { get; set; } = new();
+    public List<LifeRecord> Lives { get; set; } = new();
 }
 
 public sealed class PropSave
@@ -106,6 +107,8 @@ public sealed class KinSave
     public V3? FoodMemory { get; set; }
     public bool CarryingFood { get; set; }
     public ErrandSave? Errand { get; set; }
+    public float LeaderSeconds { get; set; }
+    public int SpiderKills { get; set; }
 }
 
 public sealed class ErrandSave
@@ -138,6 +141,8 @@ public sealed class GroupSave
     public float Martial { get; set; }
     public float Hunting { get; set; }
     public float Farming { get; set; }
+    public Tradition Leading { get; set; }
+    public int SpidersSlain { get; set; }
     public List<PlaceSave> Dangers { get; set; } = new();
     public List<PlaceSave> FoodSpots { get; set; } = new();
 }

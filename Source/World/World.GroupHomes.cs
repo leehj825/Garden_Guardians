@@ -43,21 +43,20 @@ public sealed partial class World
     /// <summary>Daughter groups budded off a village.</summary>
     public int Buddings { get; private set; }
 
-    /// <summary>Every home <paramref name="group"/> has: its main home, then any others in its village.</summary>
-    public IEnumerable<Shelter> GroupHomes(KinGroup group)
-    {
-        if (group.Home is { IsCollapsed: false } home)
-            yield return home;
-        foreach (Shelter annex in group.Annexes)
-        {
-            if (!annex.IsCollapsed)
-                yield return annex;
-        }
-    }
+    /// <summary>Every home <paramref name="group"/> has: its main home, then any others in its village (see <see cref="VillageHomes"/>).</summary>
+    public VillageHomes GroupHomes(KinGroup group) => new(group);
 
     /// <summary>How many the group's finished homes house between them (Tent 2, House 6).</summary>
-    public int HousingCapacity(KinGroup group) =>
-        GroupHomes(group).Where(h => h.IsBuilt).Sum(h => h.ResidentCapacity);
+    public int HousingCapacity(KinGroup group)
+    {
+        int capacity = 0;
+        foreach (Shelter home in GroupHomes(group))
+        {
+            if (home.IsBuilt)
+                capacity += home.ResidentCapacity;
+        }
+        return capacity;
+    }
 
     /// <summary>How big <paramref name="group"/> may grow by taking others in: its housing, but never below <see cref="MaxGroupSize"/> or above <see cref="MaxVillageSize"/>.</summary>
     public int GroupSizeLimit(KinGroup group) => Math.Clamp(HousingCapacity(group), MaxGroupSize, MaxVillageSize);
@@ -67,7 +66,13 @@ public sealed partial class World
         Math.Clamp(HousingCapacity(group) + BirthCrowdingAllowance, MaxGroupSize, MaxVillageSize);
 
     /// <summary>Food stored across all the group's homes.</summary>
-    public int StoredFood(KinGroup group) => GroupHomes(group).Sum(h => h.StoredFood);
+    public int StoredFood(KinGroup group)
+    {
+        int stored = 0;
+        foreach (Shelter home in GroupHomes(group))
+            stored += home.StoredFood;
+        return stored;
+    }
 
     /// <summary>Food stored across all the group's finished homes, as a fraction of what they can hold (0 with none).</summary>
     public float StoreFill(KinGroup group)
@@ -320,7 +325,7 @@ public sealed partial class World
             float distance = daughter.SettleTarget is { } target ? GroundMover.HorizontalDistance(house.Position, target) : 0f;
             Game.AddEventLog($"[COLONY] {parent.CapitalTitle} has grown too big: {settlers.Count} of them set out, led by {daughter.Leader!.Name}, " +
                              $"to found {daughter.Title} {distance:0}m away{(dowry > 0 ? $", taking {dowry} food" : "")} - allies of their old village");
-            Chronicle($"{settlers.Count} settlers left {parent.Title} to found {daughter.Title}, {distance:0}m away", parent, daughter);
+            Headline("A new village", $"{settlers.Count} settlers left {parent.Title} to found {daughter.Title}, {distance:0}m away", PlaceOf(parent), false, parent, daughter);
         }
         _pendingBuddings.Clear();
     }
@@ -482,5 +487,72 @@ public sealed partial class World
         QueueFloatingText(loner.Position, "+Joined", group.Color);
         Game.AddEventLog($"[JOIN] {loner.Name} asked to join {group.Title} for its home, and was taken in ({group.Members.Count} strong)");
         return true;
+    }
+}
+
+/// <summary>
+/// A group's homes — its main home, then the rest of its village, skipping
+/// any that have collapsed — walked without allocating (the World asks
+/// for them many times a step). Still an <see cref="IEnumerable{T}"/> for
+/// LINQ, which does allocate.
+/// </summary>
+public readonly struct VillageHomes : IEnumerable<Shelter>
+{
+    private readonly KinGroup _group;
+
+    public VillageHomes(KinGroup group) => _group = group;
+
+    public Enumerator GetEnumerator() => new(_group);
+
+    IEnumerator<Shelter> IEnumerable<Shelter>.GetEnumerator() => GetEnumerator();
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+    public struct Enumerator : IEnumerator<Shelter>
+    {
+        private readonly KinGroup _group;
+
+        /// <summary>-1 before the main home, then the index into its Annexes.</summary>
+        private int _next;
+
+        public Enumerator(KinGroup group)
+        {
+            _group = group;
+            _next = -1;
+            Current = null!;
+        }
+
+        public Shelter Current { get; private set; }
+
+        object System.Collections.IEnumerator.Current => Current;
+
+        public bool MoveNext()
+        {
+            if (_next == -1)
+            {
+                _next = 0;
+                if (_group.Home is { IsCollapsed: false } home)
+                {
+                    Current = home;
+                    return true;
+                }
+            }
+            while (_next < _group.Annexes.Count)
+            {
+                Shelter annex = _group.Annexes[_next++];
+                if (!annex.IsCollapsed)
+                {
+                    Current = annex;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public void Reset() => _next = -1;
+
+        public void Dispose()
+        {
+        }
     }
 }

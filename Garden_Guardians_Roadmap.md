@@ -492,6 +492,29 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     a run; a harsh winter costs 13% of the garden on average (7% for a
     fair one), and the worst 38%.
 
+## Phase 13: Watching the Garden
+*   ✅ **Fast-forward plays the same game:** the garden always advances in
+    fixed 1/60s steps, whatever the speed. At a phone's 20x (0.046s
+    steps) the old loop starved half as many again (69 vs 47 a run, 12
+    seeds × 13 years); ablations put the difference in how Bramblekin and
+    creatures act, not in the world's bookkeeping. A device that can't
+    keep up says so ("running 9x"). 50x added.
+*   ✅ **A tidier chronicle:** a clan's tradition name sticks (it used to
+    flip up to 26 times in a run, now at most twice); spider hunts are
+    recorded only as milestones.
+*   ✅ **Stats tab:** the garden's totals and the selected clan at a
+    glance, with a food-and-bushes chart.
+*   ✅ **Clans on the map:** name tags over villages, clan-coloured
+    territory, and a clan card on tapping a home.
+*   ✅ **Big-moment banners:** wars, conquests, famines, new villages and
+    more; tap to fly there; urgent ones slow a fast-forwarded game to 1x.
+*   ✅ **Heroes and dynasties:** a record of every life ever lived, the
+    hall of fame, and family trees reaching back to grandparents and
+    forward to every descendant.
+*   ✅ **Speed:** narrower spatial queries, an array-backed grid, and no
+    allocation on the hot paths — about a quarter less CPU and a tenth of
+    the garbage, with results identical step for step.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:

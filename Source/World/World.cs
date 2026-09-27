@@ -228,7 +228,7 @@ public sealed partial class World
     /// <summary>Every group with at least two living members, keyed by <see cref="Bramblekin.GroupId"/>.</summary>
     public IReadOnlyCollection<KinGroup> Groups => _groups.Values;
 
-    /// <summary>The Bramblekin shown in the Kin Inspector panel, if any — see <see cref="TrySelectKinAt"/>.</summary>
+    /// <summary>The Bramblekin shown in the Kin Inspector panel, if any — see <see cref="TrySelectAt"/>.</summary>
     public Bramblekin? SelectedKin { get; private set; }
 
     public IReadOnlyList<Obstacle> Obstacles => _obstacles;
@@ -277,6 +277,8 @@ public sealed partial class World
         // ever form later, out of encounters.
         for (int i = 0; i < initialKinCount; i++)
             Colony.Add(Newcomer(RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin)));
+        foreach (Bramblekin kin in Colony)
+            RegisterLife(kin);
 
         SpawnSpider();
         RebuildSpatialGrids(); // So LooseFoodCount is right before the first Update.
@@ -373,6 +375,7 @@ public sealed partial class World
         UpdateTributes();
         UpdateGroupHomes(deltaTime);
         UpdateGroupDecisions(deltaTime);
+        UpdateReigns(deltaTime);
         CountShelterOccupants();
 
         // Wildlife moves before the colony reacts to it this frame. Reverse
@@ -460,6 +463,8 @@ public sealed partial class World
 
         if (_pendingKinSpawns.Count > 0)
         {
+            foreach (Bramblekin kin in _pendingKinSpawns)
+                RegisterLife(kin);
             Colony.AddRange(_pendingKinSpawns);
             _pendingKinSpawns.Clear();
         }
@@ -592,12 +597,12 @@ public sealed partial class World
         return best;
     }
 
-    /// <summary>The nearest living Bramblekin within <paramref name="radius"/> (at most <see cref="SpatialGrid{T}.ChunkSize"/>) of <paramref name="from"/>, if any.</summary>
+    /// <summary>The nearest living Bramblekin within <paramref name="radius"/> of <paramref name="from"/>, if any.</summary>
     public Bramblekin? NearestLivingKinWithin(Vector3 from, float radius)
     {
         Bramblekin? best = null;
         float bestDistanceSquared = radius * radius;
-        List<Bramblekin> nearby = QueryNearbyColony(from);
+        List<Bramblekin> nearby = QueryNearbyColony(from, radius);
         for (int i = 0; i < nearby.Count; i++)
         {
             Bramblekin kin = nearby[i];
@@ -615,16 +620,18 @@ public sealed partial class World
     }
 
     /// <summary>
-    /// The Spatial Grid: every living Bramblekin registered within 10m
-    /// chunks of <paramref name="position"/> (its own chunk plus the 8
-    /// neighbors) — used by the Wolf Spider's prey search, a Hornet's aggro
-    /// check and a Grub's skittishness. The returned list is a reused
-    /// scratch buffer: safe to iterate immediately, but don't hold onto it
-    /// past the call that reads it.
+    /// The Spatial Grid: every Bramblekin registered in the chunks
+    /// overlapping <paramref name="radius"/> of <paramref name="position"/>
+    /// (a superset — distance-check the results) — used by the Wolf
+    /// Spider's prey search, a Hornet's aggro check, a Stag Beetle's
+    /// retaliation and a Grub's skittishness. Ask for no more than the
+    /// radius needed: a smaller window is the same answer, found faster.
+    /// The returned list is a reused scratch buffer: safe to iterate
+    /// immediately, but don't hold onto it past the call that reads it.
     /// </summary>
-    public List<Bramblekin> QueryNearbyColony(Vector3 position)
+    public List<Bramblekin> QueryNearbyColony(Vector3 position, float radius)
     {
-        _colonyGrid.QueryNearby(position, _colonyQueryBuffer);
+        _colonyGrid.QueryRadius(position, radius, _colonyQueryBuffer);
         return _colonyQueryBuffer;
     }
 
@@ -675,8 +682,45 @@ public sealed partial class World
         return candidate;
     }
 
-    /// <summary>Kin Inspector: selects the living Bramblekin nearest <paramref name="groundPoint"/> within <see cref="KinSelectionRadius"/>, or clears the selection on a tap at empty ground.</summary>
-    public void TrySelectKinAt(Vector3 groundPoint)
+    /// <summary>
+    /// A tap on the map: a tap right on a home (with nobody standing on the
+    /// spot) selects its clan — or, for a loner's tent, its owner; otherwise
+    /// it selects the living Bramblekin nearest <paramref name="groundPoint"/>
+    /// within <see cref="KinSelectionRadius"/>, or clears the selection on a
+    /// tap at empty ground.
+    /// </summary>
+    public void TrySelectAt(Vector3 groundPoint)
+    {
+        Bramblekin? kin = NearestKinTo(groundPoint);
+        Shelter? home = Shelters
+            .Where(s => !s.IsCollapsed && GroundMover.HorizontalDistance(groundPoint, s.Position) <= s.Radius + 0.3f)
+            .MinBy(s => GroundMover.HorizontalDistanceSquared(groundPoint, s.Position));
+        bool onKin = kin is not null && GroundMover.HorizontalDistance(groundPoint, kin.Position) <= DirectTapRadius;
+        if (home is not null && !onKin)
+        {
+            if (home.GroupId is { } clan && _groups.ContainsKey(clan))
+            {
+                SelectedKin = null;
+                _selectedClanId = clan;
+                return;
+            }
+            if (home.Owner is { IsDead: false } owner)
+                kin = owner;
+        }
+        SelectedKin = kin;
+        _selectedClanId = null;
+    }
+
+    /// <summary>A Bramblekin this close to a tap was tapped on directly, even if it's standing at a home's door.</summary>
+    private const float DirectTapRadius = 0.6f;
+
+    private Guid? _selectedClanId;
+
+    /// <summary>The clan picked by tapping one of its homes (see <see cref="TrySelectAt"/>), while it lasts.</summary>
+    public KinGroup? SelectedClan => _selectedClanId is { } id && _groups.TryGetValue(id, out KinGroup? clan) ? clan : null;
+
+    /// <summary>The living Bramblekin nearest <paramref name="groundPoint"/> within <see cref="KinSelectionRadius"/>, if any.</summary>
+    private Bramblekin? NearestKinTo(Vector3 groundPoint)
     {
         Bramblekin? best = null;
         float bestDistanceSquared = KinSelectionRadius * KinSelectionRadius;
@@ -692,6 +736,6 @@ public sealed partial class World
                 bestDistanceSquared = distanceSquared;
             }
         }
-        SelectedKin = best;
+        return best;
     }
 }

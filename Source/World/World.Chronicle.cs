@@ -6,6 +6,9 @@ namespace GardenGuardians;
 /// <summary>One line of the garden's history — see World.Chronicle.</summary>
 public sealed record ChronicleEntry(float Time, int Year, Season Season, Guid[] Clans, string Text);
 
+/// <summary>A headline: a chronicle entry big enough for a banner (see Game.Banners); <see cref="Urgent"/> ones also slow a fast-forwarded game down to watch.</summary>
+public readonly record struct Moment(string Title, string Text, Vector3? Where, bool Urgent);
+
 /// <summary>A snapshot of the garden, taken every <see cref="World.HistoryInterval"/> seconds for the history chart.</summary>
 public readonly record struct HistorySample(float Time, int Population, int Groups, int FarmingGroups, int Bushes, int Alliances, int Wars, int Stored);
 
@@ -38,6 +41,32 @@ public sealed partial class World
         if (ChronicleEntries.Count > ChronicleCapacity)
             ChronicleEntries.RemoveAt(0);
     }
+
+    /// <summary>Headlines not yet shown (the oldest go first past <see cref="MomentCapacity"/>) — see <see cref="TakeMoments"/>.</summary>
+    private readonly List<Moment> _moments = new();
+
+    private const int MomentCapacity = 8;
+
+    /// <summary>A big moment: into the chronicle, and up on a banner headed <paramref name="title"/> — at <paramref name="where"/>, if it happened somewhere in particular.</summary>
+    public void Headline(string title, string text, Vector3? where, bool urgent, params KinGroup?[] clans)
+    {
+        Chronicle(text, clans);
+        _moments.Add(new Moment(title, text, where, urgent));
+        if (_moments.Count > MomentCapacity)
+            _moments.RemoveAt(0);
+    }
+
+    /// <summary>The headlines since last asked (for the banners), oldest first.</summary>
+    public List<Moment> TakeMoments()
+    {
+        List<Moment> moments = _moments.ToList();
+        _moments.Clear();
+        return moments;
+    }
+
+    /// <summary>Where a clan lives (its main home), or where its Leader is, for a headline.</summary>
+    private static Vector3? PlaceOf(KinGroup? clan) =>
+        clan?.Home is { IsCollapsed: false } home ? home.Position : clan?.Leader is { IsDead: false } leader ? leader.Position : null;
 
     /// <summary>Entries filed under <paramref name="clan"/>, oldest first.</summary>
     public IEnumerable<ChronicleEntry> ChronicleOf(Guid clan) => ChronicleEntries.Where(e => e.Clans.Contains(clan));

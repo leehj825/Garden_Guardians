@@ -29,6 +29,12 @@ public sealed class FollowCamera
     private bool _zoomingIn;
     private bool _flyingToOverview;
 
+    /// <summary>Somewhere the camera is flying to (see <see cref="FlyTo"/>), if anywhere.</summary>
+    private Vector3? _flyTarget;
+
+    /// <summary>How close (m) <see cref="FlyTo"/> brings the camera.</summary>
+    private const float FlyToDistance = 28f;
+
     /// <param name="overview">The whole-garden camera pose the "Map" button flies back to.</param>
     public FollowCamera(Camera3D overview)
     {
@@ -52,7 +58,17 @@ public sealed class FollowCamera
     {
         IsFollowing = false;
         _zoomingIn = false;
+        _flyTarget = null;
         _flyingToOverview = true;
+    }
+
+    /// <summary>Stops following and flies over to look at <paramref name="where"/> (a banner's big moment).</summary>
+    public void FlyTo(Vector3 where)
+    {
+        IsFollowing = false;
+        _zoomingIn = false;
+        _flyingToOverview = false;
+        _flyTarget = where;
     }
 
     /// <summary>
@@ -70,7 +86,10 @@ public sealed class FollowCamera
             IsFollowing = selected is not null;
             _zoomingIn = IsFollowing;
             if (IsFollowing)
+            {
                 _flyingToOverview = false;
+                _flyTarget = null;
+            }
         }
 
         if (selected is null)
@@ -80,6 +99,20 @@ public sealed class FollowCamera
             IsFollowing = false;
             _zoomingIn = false;
             _flyingToOverview = false;
+            _flyTarget = null;
+        }
+
+        if (_flyTarget is { } destination)
+        {
+            // Glide the focus over, and in (or out) to a village-sized view, keeping the viewing angle.
+            float t = Ease(FlyStiffness, deltaTime);
+            Vector3 offset = camera.Position - camera.Target;
+            float distance = MathF.Max(offset.Length(), 1e-3f);
+            camera.Target = Vector3.Lerp(camera.Target, destination, t);
+            camera.Position = camera.Target + offset / distance * (distance + (FlyToDistance - distance) * t);
+            if (Vector3.DistanceSquared(camera.Target, destination) < 0.05f && MathF.Abs(distance - FlyToDistance) < 0.5f)
+                _flyTarget = null;
+            return;
         }
 
         if (_flyingToOverview)

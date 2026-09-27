@@ -53,8 +53,16 @@ public sealed partial class World
     public static bool KnowsFarming(KinGroup group) => group.Members.Any(m => !m.IsDead && m.KnowsFarming);
 
     /// <summary>How many bushes <paramref name="group"/> may keep: <see cref="BushesPerHouse"/> per House, <see cref="BushesPerTent"/> per Tent.</summary>
-    public int BushAllowance(KinGroup group) =>
-        GroupHomes(group).Where(h => h.IsBuilt).Sum(h => h.Tier == ShelterTier.House ? BushesPerHouse : BushesPerTent);
+    public int BushAllowance(KinGroup group)
+    {
+        int allowance = 0;
+        foreach (Shelter home in GroupHomes(group))
+        {
+            if (home.IsBuilt)
+                allowance += home.Tier == ShelterTier.House ? BushesPerHouse : BushesPerTent;
+        }
+        return allowance;
+    }
 
     public int BushesOf(KinGroup group) => Bushes.Count(b => b.GroupId == group.Id);
 
@@ -90,7 +98,7 @@ public sealed partial class World
         FarmingDiscoveries++;
         QueueFloatingText(thinker.Position, "Idea: farming!", FarmTextColor);
         Game.AddEventLog($"[FARMING] {thinker.Name} of {group.Title} worked out how to grow berry bushes from seed");
-        Chronicle($"{thinker.Name} of {group.Title} worked out how to grow berry bushes from seed", group);
+        Headline("Farming", $"{thinker.Name} of {group.Title} worked out how to grow berry bushes from seed", thinker.Position, false, group);
     }
 
     /// <summary>A free spot for a new bush near <paramref name="home"/>: open ground, clear of shelters and other bushes. Null if none turns up.</summary>

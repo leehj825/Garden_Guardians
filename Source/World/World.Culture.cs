@@ -21,7 +21,6 @@ public sealed partial class World
     private void UpdateCulture(KinGroup group)
     {
         ClanCulture culture = group.Culture;
-        Tradition before = culture.Leading;
 
         bool atWar = _relations.Any(r => r.Value.Stance == GroupStance.AtWar && (r.Key.Item1 == group.Id || r.Key.Item2 == group.Id));
         if (atWar || group.Goal is GroupGoal.Raid or GroupGoal.Defend)
@@ -36,7 +35,7 @@ public sealed partial class World
         culture.Hunting = Math.Clamp(culture.Hunting * TraditionFade, 0f, 1f);
         culture.Farming = Math.Clamp(culture.Farming * TraditionFade, 0f, 1f);
 
-        if (culture.Leading != before && culture.Label is { } label)
+        if (culture.UpdateLeading() && culture.Label is { } label)
         {
             Game.AddEventLog($"[CULTURE] {group.CapitalTitle} has become a {label} clan");
             Chronicle($"{group.CapitalTitle} became known as a {label} clan", group);

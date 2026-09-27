@@ -23,28 +23,47 @@ public sealed class SpatialGrid<T>
 {
     public const float ChunkSize = 10f;
 
-    private readonly Dictionary<(int X, int Z), List<T>> _cells = new();
+    /// <summary>Chunks -<see cref="Half"/> to <see cref="Half"/>-1 on each axis (±60m — the whole garden and some) live in a flat array; anything further out in a dictionary.</summary>
+    private const int Half = 6;
+    private const int Span = Half * 2;
+
+    private readonly List<T>?[] _chunks = new List<T>?[Span * Span];
+    private readonly Dictionary<(int X, int Z), List<T>> _outside = new();
 
     private static (int X, int Z) ChunkOf(Vector3 position) =>
         ((int)MathF.Floor(position.X / ChunkSize), (int)MathF.Floor(position.Z / ChunkSize));
 
+    /// <summary>The list for chunk (<paramref name="x"/>, <paramref name="z"/>) — created if <paramref name="create"/>, else null if it's never been used.</summary>
+    private List<T>? Chunk(int x, int z, bool create)
+    {
+        List<T>? list;
+        if (x >= -Half && x < Half && z >= -Half && z < Half)
+        {
+            int index = (x + Half) * Span + z + Half;
+            list = _chunks[index];
+            if (list is null && create)
+                _chunks[index] = list = new List<T>();
+            return list;
+        }
+        if (!_outside.TryGetValue((x, z), out list) && create)
+            _outside[(x, z)] = list = new List<T>();
+        return list;
+    }
+
     /// <summary>Empties every chunk, ready for this frame's <see cref="Register"/> calls.</summary>
     public void Clear()
     {
-        foreach (var list in _cells.Values)
+        foreach (List<T>? list in _chunks)
+            list?.Clear();
+        foreach (List<T> list in _outside.Values)
             list.Clear();
     }
 
     /// <summary>Registers <paramref name="item"/> under the chunk containing <paramref name="position"/>.</summary>
     public void Register(T item, Vector3 position)
     {
-        var key = ChunkOf(position);
-        if (!_cells.TryGetValue(key, out List<T>? list))
-        {
-            list = new List<T>();
-            _cells[key] = list;
-        }
-        list.Add(item);
+        var (x, z) = ChunkOf(position);
+        Chunk(x, z, create: true)!.Add(item);
     }
 
     /// <summary>
@@ -75,7 +94,7 @@ public sealed class SpatialGrid<T>
         {
             for (int z = minZ; z <= maxZ; z++)
             {
-                if (_cells.TryGetValue((x, z), out List<T>? list))
+                if (Chunk(x, z, create: false) is { } list)
                     results.AddRange(list);
             }
         }

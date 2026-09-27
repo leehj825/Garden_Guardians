@@ -44,6 +44,8 @@ public sealed partial class Bramblekin
         Dangers = _dangers.Places.Select(p => new PlaceSave(p.Where, p.When)).ToList(),
         FoodMemory = _foodMemory is { } memory ? memory : null,
         CarryingFood = _carried is not null,
+        LeaderSeconds = LeaderSeconds,
+        SpiderKills = SpiderKills,
         Errand = _errand is { } errand
             ? new ErrandSave
             {
@@ -78,6 +80,8 @@ public sealed partial class Bramblekin
             KnowsFarming = save.KnowsFarming,
             _joinedAt = save.JoinedAt,
             _foodMemory = save.FoodMemory is { } memory ? memory : null,
+            LeaderSeconds = save.LeaderSeconds,
+            SpiderKills = save.SpiderKills,
         };
         _nextId = Math.Max(_nextId, save.Id + 1);
         kin.Christen(save.GivenName, save.FamilyName);

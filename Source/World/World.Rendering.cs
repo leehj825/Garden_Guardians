@@ -32,11 +32,11 @@ public sealed partial class World
     public const float RenderRadius = 60.0f;
 
     /// <summary>True if <paramref name="worldPosition"/> is within <see cref="RenderRadius"/> (2D, X/Z) of the camera's target.</summary>
-    private static bool IsWithinRenderRadius(Vector3 worldPosition, Camera3D camera)
+    private static bool IsWithinRenderRadius(Vector3 worldPosition, Camera3D camera, float reach = 0f)
     {
         float dx = worldPosition.X - camera.Target.X;
         float dz = worldPosition.Z - camera.Target.Z;
-        return dx * dx + dz * dz <= RenderRadius * RenderRadius;
+        return dx * dx + dz * dz <= (RenderRadius + reach) * (RenderRadius + reach);
     }
 
     private bool IsVisible(Vector3 worldPosition, Camera3D camera) =>
@@ -46,6 +46,7 @@ public sealed partial class World
     {
         var (seasonTint, seasonAmount) = SeasonTint;
         Terrain.Draw(camera.Target, RenderRadius, seasonTint, seasonAmount);
+        DrawTerritories(camera);
         for (int i = _splats.Count - 1; i >= 0; i--)
         {
             var (position, timeLeft) = _splats[i];
@@ -151,6 +152,64 @@ public sealed partial class World
             DrawTerrainRing(selected.Position, 0.5f, new Color(255, 230, 60, 255));
             DrawTerrainRing(selected.Position, selected.DetectionRadius, new Color(255, 255, 255, 140));
         }
+    }
+
+    // --- Territory ---------------------------------------------------------------------------
+
+    /// <summary>A village's territory reaches this far past its outermost home…</summary>
+    private const float TerritoryMargin = 4f;
+
+    /// <summary>…and at least this far from its main home.</summary>
+    private const float MinTerritoryRadius = 6f;
+
+    /// <summary>
+    /// Every village's ground, faintly washed in its clan's colour with a
+    /// stronger rim — so who lives where reads at a glance. Drawn without
+    /// writing depth, so it never hides the berries and twigs lying on it.
+    /// </summary>
+    private void DrawTerritories(Camera3D camera)
+    {
+        Rlgl.DrawRenderBatchActive();
+        Rlgl.DisableDepthMask();
+        Rlgl.DisableBackfaceCulling();
+        foreach (KinGroup group in _groups.Values)
+        {
+            if (group.Home is not { IsCollapsed: false } home)
+                continue;
+            float radius = MinTerritoryRadius;
+            foreach (Shelter shelter in GroupHomes(group))
+                radius = MathF.Max(radius, GroundMover.HorizontalDistance(home.Position, shelter.Position) + TerritoryMargin);
+            if (!IsWithinRenderRadius(home.Position, camera, radius))
+                continue;
+            DrawTerrainBand(home.Position, 0f, radius - 0.5f, group.Color with { A = 26 });
+            DrawTerrainBand(home.Position, radius - 0.5f, radius, group.Color with { A = 110 });
+        }
+        Rlgl.DrawRenderBatchActive();
+        Rlgl.EnableBackfaceCulling();
+        Rlgl.EnableDepthMask();
+    }
+
+    /// <summary>The ring between <paramref name="inner"/> and <paramref name="outer"/> around <paramref name="center"/>, filled, following the terrain's height.</summary>
+    private static void DrawTerrainBand(Vector3 center, float inner, float outer, Color color)
+    {
+        const int segments = 40;
+        int rings = Math.Max(1, (int)MathF.Ceiling((outer - inner) / 3f)); // Short steps across, so the fill hugs the hills.
+        for (int r = 0; r < rings; r++)
+        {
+            float r0 = inner + (outer - inner) * r / rings;
+            float r1 = inner + (outer - inner) * (r + 1) / rings;
+            for (int i = 0; i < segments; i++)
+            {
+                float a0 = i * MathF.Tau / segments, a1 = (i + 1) * MathF.Tau / segments;
+                Vector3 p00 = Around(r0, a0), p01 = Around(r0, a1), p10 = Around(r1, a0), p11 = Around(r1, a1);
+                Raylib.DrawTriangle3D(p00, p11, p10, color);
+                if (r0 > 0f)
+                    Raylib.DrawTriangle3D(p00, p01, p11, color);
+            }
+        }
+
+        Vector3 Around(float radius, float angle) =>
+            Grounded(center + new Vector3(MathF.Cos(angle) * radius, 0f, MathF.Sin(angle) * radius), 0.06f);
     }
 
     /// <summary>A circle of <paramref name="radius"/> around <paramref name="center"/>, drawn as line segments that follow the terrain's height.</summary>

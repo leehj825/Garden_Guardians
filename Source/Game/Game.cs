@@ -21,23 +21,39 @@ public static partial class Game
     private const int InitialKinCount = 20;
 
     /// <summary>
-    /// Largest time step the game simulates in one frame. A hitch (window
-    /// dragged, app resumed) would otherwise teleport walkers past obstacles.
+    /// Longest frame the game catches up on. A hitch (window dragged, app
+    /// resumed) is simply lost time rather than a burst of catching up.
     /// </summary>
     private const float MaxDeltaTime = 1f / 20f;
 
+    /// <summary>
+    /// The simulation always advances in steps of exactly this — the same
+    /// step the headless tuning runs use — at every speed, on every device:
+    /// bigger steps played a noticeably different game (at 0.046s a step,
+    /// ~50% more starvation), so fast-forward takes more steps instead.
+    /// </summary>
+    private const float SimulationStep = 1f / 60f;
+
+    /// <summary>Real time a frame may spend simulating; past it, the game runs slower than the chosen speed rather than dropping frames…</summary>
+    private const double SimulationBudgetSeconds = 0.028;
+
+    /// <summary>…or at 10x and up, where more speed is worth a few frames a second.</summary>
+    private const double FastSimulationBudgetSeconds = 0.045;
+
+    /// <summary>Simulated time owed (the chosen speed × real time) but not yet stepped.</summary>
+    private static float _simulationBacklog;
+
+    /// <summary>The speed the simulation is actually managing (smoothed) — below the chosen one on a slow device.</summary>
+    private static float _achievedSpeed = 1f;
+
     /// <summary>Debug Time Scale: the speeds the corner +/- buttons step through, clamped at either end.</summary>
-    private static readonly float[] TimeScaleSteps = { 1f, 2f, 5f, 10f, 20f };
+    private static readonly float[] TimeScaleSteps = { 1f, 2f, 5f, 10f, 20f, 50f };
 
     /// <summary>
-    /// Debug Time Scale. Rather than feeding World.Update() an oversized
-    /// deltaTime at high multiples (which would let walkers skip past
-    /// obstacles in a single giant step), the main loop below instead calls
-    /// World.Update() this many
-    /// times per rendered frame, each with its own normal, clamped
-    /// deltaTime — every timer, cooldown and movement speed inside it ends
-    /// up advancing exactly TimeScale times faster in wall-clock terms,
-    /// without ever destabilizing the physics.
+    /// Debug Time Scale: how many seconds of garden time pass per real
+    /// second. The main loop covers them in fixed <see cref="SimulationStep"/>s
+    /// (see <see cref="StepSimulation"/>), so a faster speed is more steps per
+    /// frame, never bigger ones.
     /// </summary>
     private static float _timeScale = 1f;
 
@@ -99,6 +115,34 @@ public static partial class Game
         _debugLogs.Add(message);
         while (_debugLogs.Count > DebugLogCapacity)
             _debugLogs.RemoveAt(0);
+    }
+
+    /// <summary>
+    /// Advances the garden by <paramref name="realDeltaTime"/> × the chosen
+    /// speed, in fixed <see cref="SimulationStep"/>s — committing each
+    /// step's births and deaths as the headless runs do — until it's caught
+    /// up or its real-time budget is spent (<see cref="SimulationBudgetSeconds"/>,
+    /// <see cref="FastSimulationBudgetSeconds"/>); a
+    /// device that can't keep up drops the rest, running slower instead.
+    /// </summary>
+    private static void StepSimulation(World world, float realDeltaTime)
+    {
+        _simulationBacklog += realDeltaTime * _timeScale;
+        double budget = _timeScale >= 10f ? FastSimulationBudgetSeconds : SimulationBudgetSeconds;
+        long start = System.Diagnostics.Stopwatch.GetTimestamp();
+        float simulated = 0f;
+        while (_simulationBacklog >= SimulationStep)
+        {
+            world.Update(SimulationStep);
+            world.CommitPendingChanges();
+            _simulationBacklog -= SimulationStep;
+            simulated += SimulationStep;
+            if (System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalSeconds > budget)
+                break;
+        }
+        _simulationBacklog = MathF.Min(_simulationBacklog, SimulationStep);
+        if (realDeltaTime > 0f)
+            _achievedSpeed += (simulated / realDeltaTime - _achievedSpeed) * 0.05f;
     }
 
     public static void Run(GamePlatform platform)
@@ -189,7 +233,11 @@ public static partial class Game
             //    ground tap.
             bool mousePressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
             Vector2 mousePosition = Raylib.GetMousePosition();
-            if (mousePressed && speedDownButton.Contains(mousePosition))
+            if (mousePressed && TapBanner(mousePosition, followCamera))
+            {
+                // Flew to the banner's big moment.
+            }
+            else if (mousePressed && speedDownButton.Contains(mousePosition))
                 DecreaseTimeScale();
             else if (mousePressed && speedUpButton.Contains(mousePosition))
                 IncreaseTimeScale();
@@ -200,6 +248,7 @@ public static partial class Game
                 if (ConfirmNewGarden())
                 {
                     world = StartNewGarden(savePath);
+                    ClearBanners();
                     camera = overview;
                     followCamera = new FollowCamera(overview);
                     autosaveTimer = AutosaveInterval;
@@ -217,12 +266,9 @@ public static partial class Game
                 input.Update(camera, world);
             followCamera.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture);
 
-            // 2) Simulation: TimeScale runs World.Update() several times per
-            //    rendered frame (see _timeScale's own doc comment) rather
-            //    than scaling deltaTime itself.
-            int simulationSteps = Math.Max(1, (int)MathF.Round(_timeScale));
-            for (int step = 0; step < simulationSteps; step++)
-                world.Update(rawDeltaTime);
+            // 2) Simulation, in fixed steps (see StepSimulation).
+            StepSimulation(world, rawDeltaTime);
+            UpdateBanners(world, Raylib.GetFrameTime());
 
             // 3) Rendering.
             Raylib.BeginDrawing();
@@ -233,6 +279,7 @@ public static partial class Game
             Raylib.EndMode3D();
 
             // 2D overlay (UI) is drawn after EndMode3D so it sits on top.
+            DrawClanLabels(camera, world);
             DrawStatusBars(camera, world);
             DrawNameTag(camera, world);
             DrawFloatingTexts(camera, world);
@@ -242,9 +289,11 @@ public static partial class Game
             mapButton.Draw("Map", highlighted: false);
             historyButton.Draw("History", highlighted: _showChronicle);
             newGardenButton?.Draw(_newGardenConfirm > 0f ? "Sure?" : "New", highlighted: _newGardenConfirm > 0f);
-            DrawKinPanel(world);
+            if (!_showChronicle)
+                DrawKinPanel(world); // The History screen covers it (its header names the selected clan).
             followButton?.Draw(followCamera.IsFollowing ? "Following" : "Follow", highlighted: followCamera.IsFollowing);
             int hudTop = DrawHud(world);
+            DrawBanner(hudTop);
             if (_showChronicle)
                 DrawChronicle(world, top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
             else
@@ -560,7 +609,7 @@ public static partial class Game
 
     /// <summary>
     /// Kin Inspector: the selected Bramblekin's (tap one — see
-    /// <see cref="World.TrySelectKinAt"/>) vitals, Personality, group role
+    /// <see cref="World.TrySelectAt"/>) vitals, Personality, group role
     /// and relationships, top right. Replaces the old per-faction ledger;
     /// with nothing selected it's just a one-line hint.
     /// </summary>
@@ -569,9 +618,14 @@ public static partial class Game
         var (fontSize, lineHeight, topPadding, margin, inset) = KinPanelMetrics();
 
         Bramblekin? kin = world.SelectedKin;
+        if ((kin is null || kin.IsDead) && world.SelectedClan is { } clan)
+        {
+            DrawClanCard(world, clan);
+            return;
+        }
         if (kin is null || kin.IsDead)
         {
-            const string hint = "Tap a Bramblekin to follow it";
+            const string hint = "Tap a Bramblekin or a home";
             int hintWidth = Raylib.MeasureText(hint, fontSize);
             int hintX = Raylib.GetScreenWidth() - hintWidth - margin;
             Raylib.DrawRectangle(hintX - inset, topPadding, hintWidth + inset * 2, fontSize + inset * 2, PanelFill);
@@ -592,6 +646,54 @@ public static partial class Game
         Raylib.DrawRectangleLines(x - inset, topPadding, width + inset * 2, height, ink);
         for (int i = 0; i < lines.Count; i++)
             Raylib.DrawText(lines[i].Text, x, topPadding + inset + lineHeight * i, fontSize, lines[i].Color);
+    }
+
+    /// <summary>The clan card, in the Kin Inspector's place, for a clan picked by tapping one of its homes.</summary>
+    private static void DrawClanCard(World world, KinGroup clan)
+    {
+        var (fontSize, lineHeight, topPadding, margin, inset) = KinPanelMetrics();
+        Color fill = BlendToward(PanelFill, clan.Color, 0.35f);
+        Color ink = BlendToward(PanelInk, clan.Color, 0.35f);
+        var lines = new List<string> { ClanHeading(clan) };
+        lines.AddRange(ClanLines(world, clan));
+        lines.Add("History shows its story");
+
+        int width = lines.Max(line => Raylib.MeasureText(line, fontSize));
+        int height = KinPanelHeight(lines.Count);
+        int x = Raylib.GetScreenWidth() - width - margin;
+        Raylib.DrawRectangle(x - inset, topPadding, width + inset * 2, height, fill);
+        Raylib.DrawRectangleLines(x - inset, topPadding, width + inset * 2, height, ink);
+        for (int i = 0; i < lines.Count; i++)
+            Raylib.DrawText(lines[i], x, topPadding + inset + lineHeight * i, fontSize, i == lines.Count - 1 ? ink with { A = 160 } : ink);
+    }
+
+    /// <summary>
+    /// Every village's clan name (and head count) floating over its main
+    /// home, on a tag edged in the clan's colour — so the clans named in
+    /// the chronicle can be found on the map.
+    /// </summary>
+    private static void DrawClanLabels(Camera3D camera, World world)
+    {
+        int fontSize = ScaledFontSize(0.42f);
+        KinGroup? highlighted = world.SelectedKin is { IsDead: false } kin ? world.GroupOf(kin) : world.SelectedClan;
+        foreach (KinGroup group in world.Groups)
+        {
+            if (group.Name is null || group.Home is not { IsCollapsed: false } home)
+                continue;
+            Vector3 anchor = home.Position + new Vector3(0f, 2.4f, 0f);
+            if (!IsPointOnScreen(camera, anchor))
+                continue;
+            Vector2 screen = Raylib.GetWorldToScreen(anchor, camera);
+            string text = $"{group.Name} ({group.Members.Count})";
+            int width = Raylib.MeasureText(text, fontSize);
+            int x = (int)(screen.X - width / 2f), y = (int)(screen.Y - fontSize);
+            byte alpha = group == highlighted ? (byte)240 : (byte)190;
+            Raylib.DrawRectangle(x - 6, y - 3, width + 12, fontSize + 6, PanelFill with { A = alpha });
+            Raylib.DrawRectangle(x - 6, y + fontSize + 1, width + 12, 3, group.Color);
+            if (group == highlighted)
+                Raylib.DrawRectangleLines(x - 7, y - 4, width + 14, fontSize + 9, group.Color);
+            Raylib.DrawText(text, x, y, fontSize, PanelInk);
+        }
     }
 
     /// <summary>The Kin Inspector's font size, line spacing and placement (top-right corner).</summary>
@@ -726,7 +828,7 @@ public static partial class Game
         // screen at any size (the font scales with UiScale).
         string[] lines =
         {
-            $"Year {world.Year} {world.CurrentSeason}{(world.WeatherLabel is { } weather ? $" - {weather}" : "")} (food x{world.FoodAbundance:0.0})   Speed {_timeScale}x   FPS {Raylib.GetFPS()}   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
+            $"Year {world.Year} {world.CurrentSeason}{(world.WeatherLabel is { } weather ? $" - {weather}" : "")} (food x{world.FoodAbundance:0.0})   Speed {_timeScale}x{(_achievedSpeed < _timeScale * 0.85f ? $" (running {_achievedSpeed:0}x)" : "")}   FPS {Raylib.GetFPS()}   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
             $"Homes: {world.Shelters.Count(s => s.IsBuilt && s.Tier == ShelterTier.Tent)} tents, {world.Shelters.Count(s => s.Tier == ShelterTier.House)} houses, " +
             $"{world.Shelters.Count(s => !s.IsBuilt)} being built   Food stored {world.Shelters.Sum(s => s.StoredFood)}   " +
             $"Villages {world.Groups.Count(g => g.Annexes.Count > 0)} (budded {world.Buddings})   Bushes {world.Bushes.Count}",

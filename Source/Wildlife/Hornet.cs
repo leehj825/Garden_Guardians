@@ -122,7 +122,7 @@ public sealed class Hornet : ICombatant
 
         // Safety net: the Bramblekin we're chasing may have died, or
         // simply out-run the leash, since last frame.
-        if (_chaseTarget is { } stale && (stale.IsDead || stale.IsSheltered || !world.Colony.Contains(stale) ||
+        if (_chaseTarget is { } stale && (stale.IsDead || stale.IsSheltered ||
             GroundMover.HorizontalDistanceSquared(Position, stale.Position) > ChaseLeashRadius * ChaseLeashRadius))
         {
             _chaseTarget = null;
@@ -151,7 +151,7 @@ public sealed class Hornet : ICombatant
                 return;
             }
 
-            _mover.MoveTowards(target.Position, ChaseSpeed, deltaTime, world, p => world.Terrain.Contains(p, EdgeMargin));
+            _mover.MoveTowards(target.Position, ChaseSpeed, deltaTime, world, static (w, p) => w.Terrain.Contains(p, EdgeMargin));
             return;
         }
 
@@ -169,7 +169,7 @@ public sealed class Hornet : ICombatant
             return;
         }
 
-        if (_mover.MoveTowards(_target, WanderSpeed, deltaTime, world, p => world.Terrain.Contains(p, EdgeMargin)))
+        if (_mover.MoveTowards(_target, WanderSpeed, deltaTime, world, static (w, p) => w.Terrain.Contains(p, EdgeMargin)))
             _pauseTimer = WanderPauseDuration;
     }
 
@@ -178,7 +178,7 @@ public sealed class Hornet : ICombatant
         Bramblekin? nearest = null;
         float bestDistanceSquared = radius * radius;
         // The Spatial Grid: only the Colony chunks around this Hornet.
-        List<Bramblekin> nearby = world.QueryNearbyColony(Position);
+        List<Bramblekin> nearby = world.QueryNearbyColony(Position, radius);
         for (int i = nearby.Count - 1; i >= 0; i--)
         {
             Bramblekin bramblekin = nearby[i];

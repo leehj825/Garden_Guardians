@@ -205,7 +205,7 @@ public sealed partial class World
                         WarsDeclared++;
                         QueueFloatingText(leader.Position, "War!", HostileTextColor);
                         Game.AddEventLog($"[WAR] {leader.Name} led {group.Title} to war against {other.Title}");
-                        Chronicle($"{leader.Name} led {group.Title} to war against {other.Title}", group, other);
+                        Headline("War", $"{leader.Name} led {group.Title} to war against {other.Title}", PlaceOf(group), true, group, other);
                     }
                     else if (neighbours && grievance < AllianceMaxGrievance && TryAlly(group, leader, other))
                     {
@@ -252,7 +252,7 @@ public sealed partial class World
         SetStance(group, other, GroupStance.Allied);
         SetMutualRelationship(leader, otherLeader, RelationshipState.Friend);
         Game.AddEventLog($"[ALLIES] {leader.Name} of {group.Title} and {otherLeader.Name} of {other.Title} made an alliance");
-        Chronicle($"{group.CapitalTitle} and {other.Title} became allies", group, other);
+        Headline("Alliance", $"{group.CapitalTitle} and {other.Title} became allies", PlaceOf(group), false, group, other);
         return true;
     }
 

@@ -103,12 +103,12 @@ public sealed partial class World
             case Weather.Drought:
                 Droughts++;
                 Game.AddEventLog($"[WEATHER] Year {Year}: a drought has set in - berries will be scarce this {season.ToString().ToLowerInvariant()}");
-                Chronicle($"A drought in the {season.ToString().ToLowerInvariant()}");
+                Headline("Drought", $"A drought in the {season.ToString().ToLowerInvariant()} - berries will be scarce", null, false);
                 break;
             case Weather.HarshWinter:
                 HarshWinters++;
                 Game.AddEventLog($"[WEATHER] Year {Year}: a harsh winter - bitter cold, and hardly any food");
-                Chronicle("A harsh winter");
+                Headline("Harsh winter", "A harsh winter - bitter cold, and hardly any food", null, false);
                 break;
             case Weather.Bountiful:
                 BountifulSeasons++;

@@ -104,7 +104,7 @@ public sealed partial class World
         if (winner is null || loser is null)
         {
             Game.AddEventLog($"[PEACE] {leader.Name} made peace between {group.Title} and {other.Title}");
-            Chronicle($"{group.CapitalTitle} and {other.Title} made peace", group, other);
+            Headline("Peace", $"{group.CapitalTitle} and {other.Title} made peace", PlaceOf(group), false, group, other);
             return;
         }
 
@@ -118,7 +118,7 @@ public sealed partial class World
         _tributes.Add(new Tribute { Payer = loser.Id, Receiver = winner.Id, SeasonsLeft = TributeSeasons, NextDue = ElapsedSeconds });
         TributesAgreed++;
         Game.AddEventLog($"[PEACE] {loser.CapitalTitle} lost the war with {winner.Title}, and must pay {TributeAmount} food a season in tribute for a year");
-        Chronicle($"{loser.CapitalTitle} lost the war with {winner.Title} and paid tribute for a year", winner, loser);
+        Headline("Tribute", $"{loser.CapitalTitle} lost the war with {winner.Title}, and must pay tribute for a year", PlaceOf(loser), false, winner, loser);
     }
 
     /// <summary>A beaten group's survivors are taken into the winner's: nearby homes become part of its village, the rest are left behind.</summary>
@@ -146,7 +146,7 @@ public sealed partial class World
             Conquests++;
             QueueFloatingText(victor.Position, "Conquest!", HostileTextColor);
             Game.AddEventLog($"[CONQUEST] {winner.CapitalTitle} won the war and took in the {taken} survivors of {loser.Title}");
-            Chronicle($"{winner.CapitalTitle} conquered {loser.Title} and took in its {taken} survivors", winner, loser);
+            Headline("Conquest", $"{winner.CapitalTitle} conquered {loser.Title} and took in its {taken} survivors", PlaceOf(winner), true, winner, loser);
         }
         _pendingConquests.Clear();
     }

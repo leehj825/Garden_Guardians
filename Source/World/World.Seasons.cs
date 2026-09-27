@@ -63,6 +63,7 @@ public sealed partial class World
             return;
 
         _announcedSeason = season;
+        _starvedThisSeason = 0;
         RollWeather(season);
         Game.AddEventLog(season switch
         {

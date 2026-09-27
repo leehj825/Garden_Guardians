@@ -61,6 +61,9 @@ public sealed class KinGroup
     /// <summary>Food a budded group took from its parent village, set aside for its new store once it's built.</summary>
     public int Dowry { get; set; }
 
+    /// <summary>Wolf Spiders this group has brought down (the chronicle marks its first, then every fifth).</summary>
+    public int SpidersSlain { get; set; }
+
     /// <summary>The clan's traditions — see <see cref="ClanCulture"/>.</summary>
     public ClanCulture Culture { get; } = new();
 

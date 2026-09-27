@@ -98,7 +98,7 @@ public sealed class Grub : ICombatant
             Vector3 fleeTarget = Position + new Vector3(away.X, 0f, away.Y) * 2f;
             if (!world.Terrain.Contains(fleeTarget, EdgeMargin))
                 fleeTarget = Position + new Vector3(-away.Y, 0f, away.X) * 2f;
-            _mover.MoveTowards(fleeTarget, SkitterSpeed, deltaTime, world, p => world.Terrain.Contains(p, EdgeMargin));
+            _mover.MoveTowards(fleeTarget, SkitterSpeed, deltaTime, world, static (w, p) => w.Terrain.Contains(p, EdgeMargin));
             return;
         }
 
@@ -115,7 +115,7 @@ public sealed class Grub : ICombatant
                 return;
             }
 
-            _mover.MoveTowards(food.Position, CrawlSpeed, deltaTime, world, p => !world.IsBlocked(p, BodyRadius));
+            _mover.MoveTowards(food.Position, CrawlSpeed, deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius));
             return;
         }
 
@@ -128,7 +128,7 @@ public sealed class Grub : ICombatant
             return;
         }
 
-        if (_mover.MoveTowards(_wanderTarget, CrawlSpeed * 0.6f, deltaTime, world, p => !world.IsBlocked(p, BodyRadius)))
+        if (_mover.MoveTowards(_wanderTarget, CrawlSpeed * 0.6f, deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius)))
             _pauseTimer = WanderPauseDuration * (0.5f + (float)_rng.NextDouble());
     }
 

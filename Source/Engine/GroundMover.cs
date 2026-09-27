@@ -104,10 +104,12 @@ public sealed class GroundMover
     /// <summary>
     /// Moves toward <paramref name="target"/> at <paramref name="speed"/>,
     /// steering around obstacles, then pushes the body back out of anything
-    /// it still overlaps. <paramref name="isSafeSpot"/> vets detour points.
+    /// it still overlaps. <paramref name="isSafeSpot"/> vets detour points
+    /// (it's handed the World, so callers can pass a lambda that captures
+    /// nothing — no allocation on every step).
     /// Returns true on arrival.
     /// </summary>
-    public bool MoveTowards(Vector3 target, float speed, float deltaTime, World world, Func<Vector3, bool> isSafeSpot)
+    public bool MoveTowards(Vector3 target, float speed, float deltaTime, World world, Func<World, Vector3, bool> isSafeSpot)
     {
         IReadOnlyList<Obstacle> obstacles = world.Obstacles;
         float step = speed * deltaTime;
@@ -184,8 +186,9 @@ public sealed class GroundMover
         float nearestAlong = float.MaxValue;
         bool found = false;
 
-        foreach (var obstacle in obstacles)
+        for (int i = 0; i < obstacles.Count; i++)
         {
+            Obstacle obstacle = obstacles[i];
             // Never avoid the thing we're walking to.
             if (Vector2.DistanceSquared(obstacle.Center, goal2) < 0.01f)
                 continue;
@@ -224,8 +227,9 @@ public sealed class GroundMover
     private void PushOutOfObstacles(IReadOnlyList<Obstacle> obstacles)
     {
         var position = new Vector2(Position.X, Position.Z);
-        foreach (var obstacle in obstacles)
+        for (int i = 0; i < obstacles.Count; i++)
         {
+            Obstacle obstacle = obstacles[i];
             Vector2 offset = position - obstacle.Center;
             float minDistance = obstacle.Radius + BodyRadius;
             float distanceSquared = offset.LengthSquared();
@@ -253,7 +257,7 @@ public sealed class GroundMover
     /// rocks with a gap narrower than our body). If we covered too little
     /// ground since the last check, head for a sideways waypoint for a bit.
     /// </summary>
-    private void CheckIfStuck(Vector3 target, float step, float deltaTime, World world, Func<Vector3, bool> isSafeSpot)
+    private void CheckIfStuck(Vector3 target, float step, float deltaTime, World world, Func<World, Vector3, bool> isSafeSpot)
     {
         _progressTimer += deltaTime;
         if (_progressTimer < StuckCheckInterval)
@@ -271,7 +275,7 @@ public sealed class GroundMover
     }
 
     /// <summary>A free point ~1.5 m to the left or right of the line toward the target.</summary>
-    private Vector3? PickDetour(Vector3 target, World world, Func<Vector3, bool> isSafeSpot)
+    private Vector3? PickDetour(Vector3 target, World world, Func<World, Vector3, bool> isSafeSpot)
     {
         var forward = new Vector2(target.X - Position.X, target.Z - Position.Z);
         forward = forward.LengthSquared() > 1e-6f ? Vector2.Normalize(forward) : Vector2.UnitX;
@@ -282,7 +286,7 @@ public sealed class GroundMover
         {
             Vector2 offset = left * side * 1.5f - forward * 0.5f;
             var candidate = new Vector3(Position.X + offset.X, Terrain.GroundHeight, Position.Z + offset.Y);
-            if (world.Terrain.Contains(candidate, _edgeMargin) && isSafeSpot(candidate))
+            if (world.Terrain.Contains(candidate, _edgeMargin) && isSafeSpot(world, candidate))
                 return candidate;
         }
         return null;

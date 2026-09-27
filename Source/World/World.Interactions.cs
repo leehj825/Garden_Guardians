@@ -83,6 +83,12 @@ public sealed partial class World
 
     // --- Deaths -----------------------------------------------------------------------
 
+    /// <summary>This many starving to death in one season is a famine (a headline — see <see cref="Headline"/>).</summary>
+    private const int FamineDeaths = 4;
+
+    /// <summary>Starvation deaths so far this season.</summary>
+    private int _starvedThisSeason;
+
     /// <summary>
     /// A Bramblekin dies: it drops any carried food and is marked dead
     /// immediately (so nothing keeps targeting it), but its removal from
@@ -109,6 +115,11 @@ public sealed partial class World
             case DeathCause.Starvation:
                 DeathsByStarvation++;
                 how = "starved to death";
+                if (++_starvedThisSeason == FamineDeaths)
+                {
+                    Headline("Famine", $"Famine: {FamineDeaths} Bramblekin have starved this {CurrentSeason.ToString().ToLowerInvariant()}",
+                        kin.Position, true, GroupOf(kin));
+                }
                 break;
             case DeathCause.OldAge:
                 DeathsByOldAge++;
@@ -134,6 +145,7 @@ public sealed partial class World
                 };
                 break;
         }
+        CloseLife(kin, how);
         Game.AddEventLog($"[DEATH] {kin.Name} {how}");
         if (GroupOf(kin) is { } clan && clan.Leader == kin)
             Chronicle($"Leader {kin.Name} {how}", clan);
@@ -160,6 +172,7 @@ public sealed partial class World
         ScatterFoodAround(spider.Position, SpiderCarcassFood, 0.6f, FoodShardKind.Meat);
         CreditMeat(attacker, SpiderCarcassFood);
         attacker.AddReputation(1f);
+        attacker.NoteSpiderKill();
         Spider = null;
         SpiderRespawnTimer = SpiderRespawnDelay;
         SpidersKilled++;
@@ -169,8 +182,19 @@ public sealed partial class World
             ? $"[HUNT] {attacker.Name} slew the Wolf Spider alone!"
             : $"[HUNT] {group.CapitalTitle} brought down the Wolf Spider (final blow by {attacker.Name})");
         if (group is not null)
-            Chronicle($"{attacker.Name} dealt the final blow as {group.Title} brought down the Wolf Spider", group);
+        {
+            // Only the milestones make the chronicle: a clan's first spider, then every fifth.
+            int slain = ++group.SpidersSlain;
+            if (slain == 1 || slain % 5 == 0)
+            {
+                Chronicle($"{group.CapitalTitle} brought down its {(slain == 1 ? "first" : Ordinal(slain))} Wolf Spider (final blow by {attacker.Name})", group);
+            }
+        }
     }
+
+    /// <summary>"5th", "21st", "12th"…</summary>
+    private static string Ordinal(int n) =>
+        n + ((n % 100) is 11 or 12 or 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
 
     /// <summary>A Hornet swatted out of the air. Removal from <see cref="Hornets"/> is deferred to the end of the frame.</summary>
     public void KillHornet(Hornet hornet)

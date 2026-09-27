@@ -40,7 +40,8 @@ public sealed partial class World
                 HomeSiteRetryTimer = g.HomeSiteRetryTimer, Goal = g.Goal == GroupGoal.Raid ? GroupGoal.Stockpile : g.Goal, Sharing = g.Sharing,
                 BirthCooldown = g.BirthCooldown, DecisionTimer = g.DecisionTimer, SettleTarget = g.SettleTarget is { } target ? target : null,
                 Dowry = g.Dowry, NextRaidAt = g.NextRaidAt,
-                Martial = g.Culture.Martial, Hunting = g.Culture.Hunting, Farming = g.Culture.Farming,
+                Martial = g.Culture.Martial, Hunting = g.Culture.Hunting, Farming = g.Culture.Farming, Leading = g.Culture.Leading,
+                SpidersSlain = g.SpidersSlain,
                 Dangers = g.Dangers.Places.Select(p => new PlaceSave(p.Where, p.When)).ToList(),
                 FoodSpots = g.FoodSpots.Places.Select(p => new PlaceSave(p.Where, p.When)).ToList(),
             }).ToList(),
@@ -60,6 +61,7 @@ public sealed partial class World
             Tributes = _tributes.Select(t => new TributeSave { Payer = t.Payer, Receiver = t.Receiver, SeasonsLeft = t.SeasonsLeft, NextDue = t.NextDue }).ToList(),
             Chronicle = ChronicleEntries.ToList(),
             History = History.ToList(),
+            Lives = _lives.Values.ToList(),
         };
 
         foreach (PropertyInfo property in SavedProperties)
@@ -170,6 +172,10 @@ public sealed partial class World
             group.Culture.Martial = g.Martial;
             group.Culture.Hunting = g.Hunting;
             group.Culture.Farming = g.Farming;
+            group.Culture.Leading = g.Leading;
+            if (g.Leading == Tradition.None)
+                group.Culture.UpdateLeading(); // An older save, from before the name was kept.
+            group.SpidersSlain = g.SpidersSlain;
             group.Dangers.Load(g.Dangers.Select(p => ((Vector3)p.Where, p.When)));
             group.FoodSpots.Load(g.FoodSpots.Select(p => ((Vector3)p.Where, p.When)));
             if (g.Leader is { } leaderId && kin.TryGetValue(leaderId, out Bramblekin? leader))
@@ -194,6 +200,10 @@ public sealed partial class World
             _tributes.Add(new Tribute { Payer = t.Payer, Receiver = t.Receiver, SeasonsLeft = t.SeasonsLeft, NextDue = t.NextDue });
         ChronicleEntries.AddRange(save.Chronicle);
         History.AddRange(save.History);
+        foreach (LifeRecord life in save.Lives)
+            _lives[life.Id] = life;
+        foreach (Bramblekin living in Colony)
+            RegisterLife(living); // An older save, from before lives were kept.
 
         // Counters, timers and statistics last, so nothing above overwrites them.
         foreach (PropertyInfo property in SavedProperties)

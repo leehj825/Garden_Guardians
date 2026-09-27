@@ -116,6 +116,19 @@ overhead camera:
     The year line names the weather (drought, harsh winter, bountiful,
     storm), and the Kin Inspector shows its clan's tradition and
     neighbours, and any errand it's on.
+*   **Clans on the map:** every village's name and head count floats over
+    its main home, and its ground is washed faintly in the clan's colour
+    with a stronger rim (reaching 4m past its outermost home). Tapping a
+    home — rather than a Bramblekin standing at its door — picks its clan:
+    a clan card takes the Kin Inspector's place (tradition, members,
+    Leader, founding, homes, stores, bushes, neighbours), and the History
+    screen then shows that clan. A loner's tent picks its owner.
+*   **Speed:** 1x, 2x, 5x, 10x, 20x and 50x. However fast, the garden
+    always advances in the same fixed 1/60s steps as the headless tuning
+    runs — bigger steps played a different game (about half as much
+    starvation again at a phone's 0.046s steps) — so fast-forward is more
+    steps per frame, never bigger ones. A device that can't keep up runs
+    as fast as it can, and the HUD says so ("Speed 20x (running 9x)").
     The event console on the left narrates the seasons, alliances,
     settlements, villages, births, hunts, leader decisions, rebellions
     and deaths.
@@ -127,15 +140,23 @@ overhead camera:
     `World` partial class split by concern — core, society, families,
     neighbours, errands, war outcomes, farming, group homes & villages,
     leadership, rebellion, culture, seasons, weather, births, chronicle,
-    save, shelters, hunting, interactions, spawning, stats, rendering —
+    lives, save, shelters, hunting, interactions, spawning, stats,
+    rendering —
     plus Food, Twigs, Shelters and Garden Props), `Kin/` (the `Bramblekin`
     partial class with one file per need — Hunger, Safety, Duty, Settle,
     Social — plus Hunting, Farming, Loyalty, Lineage, Family, Aging,
-    Errands, Memory, Save, Actions and Drawing, and the Personality, names,
+    Errands, Memory, Fame, Save, Actions and Drawing, and the Personality, names,
     sex, relationship, group, errand, place-memory, clan-culture and
     society types), `Wildlife/`, `Save/` (the save file's data types and
     the JSON save system) and `Game/` (the main loop, HUD, History screen
-    and saving).
+    with its Stats and Heroes tabs, banners, and saving).
+*   **Per-step budget:** the simulation runs 60 steps per simulated
+    second, so at 20x a phone needs 1,200 a second. Spatial queries ask
+    only for the radius they need (an encounter check used to scan a
+    30×30m window for a 1.2m radius), the grid is a flat array, and the
+    hot paths — movement, a group's homes, store searches — allocate
+    nothing: together about a quarter less CPU and a tenth of the
+    garbage, with results identical to the step.
 *   **Squared-distance math everywhere:** targeting/aggro/encounter checks
     compare squared distances against a squared threshold.
 *   **Staggered perception:** each Bramblekin rescans its surroundings
@@ -626,7 +647,9 @@ overhead camera:
     runs 0–1 and fades if neglected (a half-life of about two years).
     Once one reaches 0.4 and leads, the clan is *known* for it — "a
     warlike clan" — and the chronicle notes it; the Kin Inspector and the
-    History screen show it.
+    History screen show it. The name sticks: a clan keeps it until that
+    tradition fades below 0.3 or another overtakes it by 0.1, so two
+    close traditions don't flip its name back and forth.
 *   **Traditions outlast Leaders:** they sway any Leader's choices — a
     warlike clan raids more, goes to war up to three times as readily,
     makes peace more reluctantly and is shunned as an ally; a hunting
@@ -640,15 +663,43 @@ overhead camera:
 *   **The chronicle** is the story of the garden's clans: foundings and
     endings, new Leaders and how old ones died, wars and how they ended,
     alliances, conquests and tribute, farming learned and taught, new
-    villages and daughter groups, famous Spider hunts, great elders, the
-    traditions clans became known for, and the worst weather. Each entry
-    is dated (year and season) and filed under the clans it concerns.
-*   **The History screen** (the **History** button beside Map) shows a
-    chart of the population and the number of groups over the whole run
-    (sampled every 30s) and the chronicle, newest first; drag or scroll
-    to read back. With a Bramblekin selected it shows that clan's story
-    instead: its name and tradition, members and Leader, and its own
-    entries. Headless runs print the chronicle at the end.
+    villages and daughter groups, famines, great elders, the traditions
+    clans became known for, and the worst weather. A clan's Wolf Spider
+    hunts make it only as milestones — its first, then every fifth. Each
+    entry is dated (year and season) and filed under the clans it
+    concerns.
+*   **The History screen** (the **History** button beside Map) has three
+    tabs, each showing the selected Bramblekin's clan (or a clan picked by
+    tapping one of its homes), else the whole garden; drag or scroll to
+    read back:
+    *   **Story** — a chart of the population and the number of groups
+        over the whole run (sampled every 30s) and the chronicle, newest
+        first.
+    *   **Stats** — a chart of food stored and berry bushes, the clan at a
+        glance (members, Leader, founding, homes, stores, bushes, spiders
+        slain, traditions, neighbours), and the garden's totals since it
+        began: population, deaths by cause, food, homes, clans and
+        politics, neighbours (alliances, wars, conquests, tribute, aid,
+        trade), farming, hunting and weather.
+    *   **Heroes** — the hall of fame, living or dead: the longest reign,
+        most children, most descendants, the oldest, the top Wolf Spider
+        slayer, the biggest family alive and the oldest clan standing —
+        and the selected Bramblekin's family tree: parents and
+        grandparents (with the year each died), partner, children,
+        grandchildren and all its descendants.
+    Headless runs print the chronicle at the end.
+*   **Every life is kept:** the World keeps a short record of every
+    Bramblekin that has ever lived — name, parents, generation, when it
+    arrived and died, how it died, its clan, children, reign and spider
+    kills — so family trees and the hall of fame reach back through the
+    generations.
+*   **Big moments** — a war, a conquest, a peace or tribute, a famine
+    (4 starving to death in one season), a new village, a clan splitting
+    or ending, a coup, an alliance, farming worked out, a drought or a
+    harsh winter — go up on a **banner** just above the HUD for a few
+    seconds (the urgent ones longer). Tap it to fly the camera there. An
+    urgent one (war, conquest, famine) also drops a fast-forwarded game
+    back to 1x so it can be watched — at most once every 90 seconds.
 
 ## Save & Load
 *   **The garden carries on:** the game autosaves every 30s of real time
@@ -659,9 +710,9 @@ overhead camera:
     knows and remembers, its errand), every group (Leader, homes, goal,
     traditions, memories), the relations and tributes between groups,
     the weather, the chronicle and history, and every counter and
-    statistic. What a Bramblekin was doing that very second (and where
-    the Hornets and the Spider were) isn't kept; each picks up again
-    within moments.
+    statistic, and the record of every life. What a Bramblekin was doing
+    that very second (and where the Hornets and the Spider were) isn't
+    kept; each picks up again within moments.
 *   **New garden:** the **New** button (shown while the History screen is
     open) starts over — tap it, then tap **Sure?** within 3s.
 *   The save is JSON (`garden.json` in the app's local data folder),
