@@ -14,7 +14,7 @@ public enum Weather
     /// <summary>Summer or autumn only: berries (and bushes) grow at half the pace.</summary>
     Drought,
 
-    /// <summary>Winter only: even less food, and bitter cold for anyone caught outdoors.</summary>
+    /// <summary>Winter only: even less food (0.7×), and bitter cold for anyone caught outdoors.</summary>
     HarshWinter,
 }
 
@@ -27,7 +27,7 @@ public sealed partial class World
     private const double DroughtChance = 0.15;
 
     /// <summary>Odds a winter is a harsh one.</summary>
-    private const double HarshWinterChance = 0.3;
+    private const double HarshWinterChance = 0.2;
 
     /// <summary>Outside winter and droughts, a storm blows up with this chance each second…</summary>
     private const float StormChancePerSecond = 1f / 400f;
@@ -42,7 +42,7 @@ public sealed partial class World
     private const int StormExtraTwigs = 25;
 
     /// <summary>In a harsh winter, anyone outdoors gets hungry this much faster.</summary>
-    public const float HarshWinterCold = 1.25f;
+    public const float HarshWinterCold = 1.15f;
 
     private float _stormTwigTimer;
 
@@ -63,7 +63,7 @@ public sealed partial class World
     {
         Weather.Bountiful => 1.5f,
         Weather.Drought => 0.5f,
-        Weather.HarshWinter => 0.5f,
+        Weather.HarshWinter => 0.7f,
         _ => 1f,
     };
 

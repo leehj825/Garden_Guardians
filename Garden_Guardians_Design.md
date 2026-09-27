@@ -594,8 +594,8 @@ overhead camera:
 
 ## Weather
 *   **Good and bad years:** each season rolls its weather. A Winter is
-    **harsh** 30% of the time: food at half even the usual winter pace,
-    and anyone caught outdoors gets hungry 25% faster. A Summer or Autumn
+    **harsh** 20% of the time: food at 0.7× even the usual winter pace,
+    and anyone caught outdoors gets hungry 15% faster. A Summer or Autumn
     brings a **drought** 15% of the time: berries and bushes grow at half
     pace, and the lawn turns parched gold. Any season but Winter may be
     **bountiful** (15%): food at 1.5×. The HUD's year line names the
