@@ -113,6 +113,13 @@ public sealed partial class World
         float hunt = group.HuntTarget is not null ? 0.8f + 2f * p.Aggression + (1f - storeFill) : 0f;
         float stockpile = home is { IsBuilt: true } ? 1f + 2f * (1f - storeFill) + 0.5f * (1f - p.Aggression) : 0f;
 
+        // Seasons: a far-sighted Leader stocks up through autumn for the
+        // winter ahead; in winter's lean months, big game is worth more.
+        if (CurrentSeason == Season.Autumn && stockpile > 0f)
+            stockpile += 1.5f * p.Intelligence * (1f - storeFill);
+        if (CurrentSeason == Season.Winter && hunt > 0f)
+            hunt += 1f;
+
         GroupGoal goal = GroupGoal.Stockpile;
         float best = stockpile;
         if (settle > best) { goal = GroupGoal.Settle; best = settle; }

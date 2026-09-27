@@ -72,10 +72,10 @@ public sealed partial class World
     /// <summary>Berries already on the ground when the world is created, so the first arrivals have something to find.</summary>
     private const int InitialBerries = 45;
 
-    /// <summary>Passive Foraging: seconds between wild Berry spawns.</summary>
+    /// <summary>Passive Foraging: seconds between wild Berry spawns in a normal season — divided by the season's abundance (see <see cref="AbundanceOf"/>).</summary>
     public const float BerrySpawnInterval = 0.6f;
 
-    /// <summary>Wild Berries stop spawning once this many are on the ground.</summary>
+    /// <summary>Wild Berries stop spawning once this many are on the ground in a normal season — scaled by the season's abundance.</summary>
     public const int MaxBerries = 100;
 
     /// <summary>
@@ -353,6 +353,7 @@ public sealed partial class World
     public void Update(float deltaTime)
     {
         ElapsedSeconds += deltaTime;
+        UpdateSeason();
         AccumulateExposure(deltaTime);
         UpdateFoodClaimTimeouts(deltaTime);
         RebuildSpatialGrids();

@@ -7,13 +7,13 @@ public sealed partial class World
 {
     // --- Spawners -----------------------------------------------------------------------
 
-    /// <summary>Passive Foraging: a wild Berry every <see cref="BerrySpawnInterval"/> seconds, up to <see cref="MaxBerries"/>.</summary>
+    /// <summary>Passive Foraging: a wild Berry every <see cref="BerrySpawnInterval"/> seconds, up to <see cref="MaxBerries"/> — both scaled by the season (see <see cref="FoodAbundance"/>).</summary>
     private void UpdateBerrySpawn(float deltaTime)
     {
         _berrySpawnTimer -= deltaTime;
         if (_berrySpawnTimer > 0f)
             return;
-        _berrySpawnTimer = BerrySpawnInterval;
+        _berrySpawnTimer = BerrySpawnInterval / FoodAbundance;
 
         int berries = 0;
         foreach (FoodShard food in FoodShards)
@@ -22,7 +22,7 @@ public sealed partial class World
                 berries++;
         }
         berries += _pendingFoodSpawns.Count(f => f.Kind == FoodShardKind.Berry);
-        if (berries >= MaxBerries)
+        if (berries >= MaxBerries * FoodAbundance)
             return;
 
         _pendingFoodSpawns.Add((RandomBerrySpot(), FoodShardKind.Berry));

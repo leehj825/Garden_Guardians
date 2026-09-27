@@ -191,7 +191,7 @@ public static class Game
 
             // 3) Rendering.
             Raylib.BeginDrawing();
-            Raylib.ClearBackground(new Color(135, 190, 235, 255)); // Sky blue.
+            Raylib.ClearBackground(world.SkyColor);
 
             Raylib.BeginMode3D(camera);
             world.Draw(camera);
@@ -321,7 +321,7 @@ public static class Game
         int houses = world.Shelters.Count(s => s.Tier == ShelterTier.House);
         int stored = world.Shelters.Sum(s => s.StoredFood);
         Console.WriteLine(
-            $"[t={world.ElapsedSeconds,6:0}s] kin {living.Count,3} (solitary {solitary}, groups {world.Groups.Count}, largest {largestGroup}) " +
+            $"[t={world.ElapsedSeconds,6:0}s Y{world.Year} {world.CurrentSeason,-6}] kin {living.Count,3} (solitary {solitary}, groups {world.Groups.Count}, largest {largestGroup}) " +
             $"avg hunger {averageHunger,5:0.0}  food on map {world.LooseFoodCount,3}, stored {stored,3}  tents {tents} houses {houses}  " +
             $"arrived {world.Arrivals}  died: starved {world.DeathsByStarvation}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}");
     }
@@ -527,7 +527,7 @@ public static class Game
         // screen at any size (the font scales with UiScale).
         string[] lines =
         {
-            $"Speed {_timeScale}x   FPS {Raylib.GetFPS()}   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
+            $"Year {world.Year} {world.CurrentSeason} (food x{world.FoodAbundance:0.0})   Speed {_timeScale}x   FPS {Raylib.GetFPS()}   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
             $"Homes: {world.Shelters.Count(s => s.IsBuilt && s.Tier == ShelterTier.Tent)} tents, {world.Shelters.Count(s => s.Tier == ShelterTier.House)} houses, " +
             $"{world.Shelters.Count(s => !s.IsBuilt)} being built   Food stored {world.Shelters.Sum(s => s.StoredFood)}",
             $"Bramblekin {living}: {solitary} solitary, {world.Groups.Count} groups (largest {largestGroup})",

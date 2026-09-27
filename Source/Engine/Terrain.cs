@@ -131,8 +131,11 @@ public sealed class Terrain
     /// any cell whose center is beyond <paramref name="renderRadius"/> of
     /// <paramref name="cameraTarget"/> (Part 2's mandatory distance cull —
     /// terrain is by far the most expensive thing drawn every frame).
+    /// Grass is blended toward <paramref name="seasonTint"/> by
+    /// <paramref name="seasonAmount"/> — the season's colour cast (see
+    /// World.SeasonTint).
     /// </summary>
-    public void Draw(Vector3 cameraTarget, float renderRadius)
+    public void Draw(Vector3 cameraTarget, float renderRadius, Color seasonTint, float seasonAmount)
     {
         float half = Size / 2f;
         float renderRadiusSq = renderRadius * renderRadius;
@@ -176,6 +179,8 @@ public sealed class Terrain
                     color = t >= 0f
                         ? LerpColor(GrassBase, GrassPeak, t)
                         : LerpColor(GrassBase, GrassValley, -t);
+                    if (seasonAmount > 0f)
+                        color = LerpColor(color, seasonTint, seasonAmount);
                 }
 
                 // Two triangles, upward-facing winding (counter-clockwise

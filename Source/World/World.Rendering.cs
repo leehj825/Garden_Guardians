@@ -44,7 +44,8 @@ public sealed partial class World
 
     public void Draw(Camera3D camera)
     {
-        Terrain.Draw(camera.Target, RenderRadius);
+        var (seasonTint, seasonAmount) = SeasonTint;
+        Terrain.Draw(camera.Target, RenderRadius, seasonTint, seasonAmount);
         for (int i = _splats.Count - 1; i >= 0; i--)
         {
             var (position, timeLeft) = _splats[i];
