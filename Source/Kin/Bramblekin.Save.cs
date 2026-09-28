@@ -32,6 +32,10 @@ public sealed partial class Bramblekin
         FatherId = ParentIds?.Father,
         MotherName = ParentNames?.Mother,
         FatherName = ParentNames?.Father,
+        GuardianA = GuardianIds?.A,
+        GuardianB = GuardianIds?.B,
+        GuardianAName = GuardianNames?.A,
+        GuardianBName = GuardianNames?.B,
         Children = Children,
         GroupId = GroupId,
         Home = Home is { IsCollapsed: false } home ? home.ID : null,
@@ -104,6 +108,10 @@ public sealed partial class Bramblekin
             kin.ParentIds = (mother, father);
         if (save.MotherName is { } motherName && save.FatherName is { } fatherName)
             kin.ParentNames = (motherName, fatherName);
+        if (save.GuardianA is { } guardianA && save.GuardianB is { } guardianB)
+            kin.GuardianIds = (guardianA, guardianB);
+        if (save.GuardianAName is { } guardianAName && save.GuardianBName is { } guardianBName)
+            kin.GuardianNames = (guardianAName, guardianBName);
         foreach (Guid former in save.FormerGroups)
             kin._formerGroups.Add(former);
         foreach (var (id, relationship) in save.KnownKins)

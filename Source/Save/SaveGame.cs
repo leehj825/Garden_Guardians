@@ -113,6 +113,10 @@ public sealed class KinSave
     public int? FatherId { get; set; }
     public string? MotherName { get; set; }
     public string? FatherName { get; set; }
+    public int? GuardianA { get; set; }
+    public int? GuardianB { get; set; }
+    public string? GuardianAName { get; set; }
+    public string? GuardianBName { get; set; }
     public int Children { get; set; }
     public Guid? GroupId { get; set; }
     public int? Home { get; set; }

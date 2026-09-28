@@ -81,6 +81,7 @@ public sealed partial class World
             ConsiderNeighbours(group, leader);
             DecideGroupGoal(group, leader);
             ReviewLoyalty(group, leader);
+            AdoptOrphans(group);
             TryBirth(group);
         }
         ProcessRebellions();

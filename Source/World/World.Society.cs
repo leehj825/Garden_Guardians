@@ -167,6 +167,8 @@ public sealed partial class World
         {
             if (a.GroupId is { } youngGroup && youngGroup == b.GroupId)
                 TryShareFood(a, b, sameGroup: true);
+            else if (!a.IsYoung || !b.IsYoung)
+                return TryTakeInOrphan(a.IsYoung ? a : b, a.IsYoung ? b : a); // A lone young one is taken in.
             return false;
         }
 
