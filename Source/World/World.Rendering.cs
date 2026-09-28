@@ -24,28 +24,17 @@ public sealed partial class World
     }
 
     /// <summary>
-    /// Frustum/Distance Culling: nothing culled from drawing here is ever
-    /// gated in Update — every entity keeps simulating regardless of what
-    /// the camera can see. Radius (m), measured in 2D (X/Z) from
-    /// <see cref="Camera3D.Target"/>, beyond which things simply aren't drawn.
+    /// Frustum Culling: anything whose ground point projects off screen
+    /// (see <see cref="IsOnScreen"/>) isn't drawn. There's no draw distance:
+    /// zoomed out, the whole garden shows. Nothing culled here is ever gated
+    /// in Update — every entity keeps simulating whatever the camera sees.
     /// </summary>
-    public const float RenderRadius = 60.0f;
-
-    /// <summary>True if <paramref name="worldPosition"/> is within <see cref="RenderRadius"/> (2D, X/Z) of the camera's target.</summary>
-    private static bool IsWithinRenderRadius(Vector3 worldPosition, Camera3D camera, float reach = 0f)
-    {
-        float dx = worldPosition.X - camera.Target.X;
-        float dz = worldPosition.Z - camera.Target.Z;
-        return dx * dx + dz * dz <= (RenderRadius + reach) * (RenderRadius + reach);
-    }
-
-    private bool IsVisible(Vector3 worldPosition, Camera3D camera) =>
-        IsWithinRenderRadius(worldPosition, camera) && IsOnScreen(worldPosition, camera);
+    private static bool IsVisible(Vector3 worldPosition, Camera3D camera) => IsOnScreen(worldPosition, camera);
 
     public void Draw(Camera3D camera)
     {
         var (seasonTint, seasonAmount) = SeasonTint;
-        Terrain.Draw(camera.Target, RenderRadius, seasonTint, seasonAmount);
+        Terrain.Draw(seasonTint, seasonAmount);
         DrawTerritories(camera);
         DrawOak();
         for (int i = _splats.Count - 1; i >= 0; i--)
@@ -132,7 +121,7 @@ public sealed partial class World
             var tether = new Color(group.Color.R, group.Color.G, group.Color.B, (byte)120);
             foreach (Bramblekin member in group.Members)
             {
-                if (member == leader || member.IsDead || !IsWithinRenderRadius(member.Position, camera))
+                if (member == leader || member.IsDead)
                     continue;
                 Raylib.DrawLine3D(member.Position + new Vector3(0, Bramblekin.BodyHeight, 0), leaderHead, tether);
             }
@@ -184,8 +173,6 @@ public sealed partial class World
             float radius = MinTerritoryRadius;
             foreach (Shelter shelter in GroupHomes(group))
                 radius = MathF.Max(radius, GroundMover.HorizontalDistance(home.Position, shelter.Position) + TerritoryMargin);
-            if (!IsWithinRenderRadius(home.Position, camera, radius))
-                continue;
             DrawTerrainBand(home.Position, 0f, radius - 0.5f, group.Color with { A = 26 });
             DrawTerrainBand(home.Position, radius - 0.5f, radius, group.Color with { A = 110 });
         }

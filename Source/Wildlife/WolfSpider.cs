@@ -86,7 +86,7 @@ public sealed class WolfSpider : ICombatant
     private const float BiteRange = 1.5f;
 
     /// <summary>Bite damage dealt to the nearest fighting Bramblekin in range.</summary>
-    private const int BiteDamage = 10;
+    public const int BiteDamage = 10;
 
     /// <summary>Cooldown (s) between Bites.</summary>
     private const float BiteCooldownDuration = 1.5f;
@@ -322,7 +322,8 @@ public sealed class WolfSpider : ICombatant
         _mover.Heading = _pounceDirection;
 
         // Anything it touches mid-pounce is caught — except a Bramblekin
-        // that's Fighting: it's braced for the spider, so it doesn't block
+        // that's Fighting it, or backing away from the fight on guard (see
+        // Bramblekin.IsBraced): it's braced for the spider, so it doesn't block
         // or interrupt the pounce, and the Strike/Bite exchange handles that
         // fight instead. Reverse for-loop: World.Kill only queues the
         // removal, so Colony never actually changes size during this walk,
@@ -331,7 +332,7 @@ public sealed class WolfSpider : ICombatant
         for (int i = world.Colony.Count - 1; i >= 0; i--)
         {
             Bramblekin bramblekin = world.Colony[i];
-            if (bramblekin.IsDead || bramblekin.State == BramblekinState.Fighting || bramblekin.IsSheltered)
+            if (bramblekin.IsDead || bramblekin.IsBraced || bramblekin.IsSheltered)
                 continue;
 
             if (GroundMover.HorizontalDistance(Position, bramblekin.Position) >= BodyRadius + Bramblekin.BodyRadius)

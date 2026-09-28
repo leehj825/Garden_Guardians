@@ -173,6 +173,35 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>Its nerve breaks at this fraction of its Health: lower for the brave, higher for the cautious (<see cref="FightBreakHealthFraction"/> for the middling).</summary>
     private float NerveBreaksAt => FightBreakHealthFraction * (1.4f - 0.8f * Personality.Courage);
 
+    /// <summary>
+    /// True once its nerve breaks against <paramref name="foe"/>: at or
+    /// below <see cref="NerveBreaksAt"/> of its Health — or, however brave,
+    /// once one more of the foe's blows could kill it. Courage holds a
+    /// fighter in longer, never into a blow it can't survive.
+    /// </summary>
+    private bool NerveBroken(ICombatant? foe) =>
+        Health <= MaxHealth * NerveBreaksAt || (foe is not null && Health <= HardestBlow(foe));
+
+    /// <summary>The most one blow from <paramref name="foe"/> takes off.</summary>
+    private static int HardestBlow(ICombatant foe) => foe switch
+    {
+        WolfSpider => WolfSpider.BiteDamage,
+        StagBeetle => StagBeetle.BiteDamage,
+        Hornet => Hornet.BiteDamage,
+        Ant => Ant.BiteDamage,
+        Bramblekin kin => kin.StrikeDamage,
+        _ => 0,
+    };
+
+    /// <summary>A fighter whose nerve breaks backs away still braced — the Wolf Spider can't pounce on it — for this long, times (0.5 + Courage).</summary>
+    private const float GuardedRetreatSeconds = 2f;
+
+    /// <summary>Seconds left of a guarded retreat (see <see cref="GuardedRetreatSeconds"/>).</summary>
+    private float _guardedRetreat;
+
+    /// <summary>Braced for the Wolf Spider — fighting it, or backing away from a fight on guard — so its pounce can't catch it.</summary>
+    public bool IsBraced => State == BramblekinState.Fighting || _guardedRetreat > 0f;
+
     /// <summary>Keeps running for at least this long after losing sight of whatever it fled from.</summary>
     private const float FleeMinDuration = 2.5f;
 

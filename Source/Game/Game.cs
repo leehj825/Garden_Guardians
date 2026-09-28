@@ -439,7 +439,7 @@ public static partial class Game
             $"{world.Floods} floods ({world.HomesFlooded} homes flooded, {world.FoodWashedAway} food washed away).");
         Console.WriteLine(
             $"Ants: {(world.Anthill is { } hill ? $"a hill with {hill.Stock} food" : "none yet")}; {world.AntThefts} food stolen from stores, {world.AntsKilled} ants swatted. " +
-            $"The oak dropped {world.AcornsFallen} acorns.");
+            $"The oak dropped {world.AcornsFallen} acorns. Ways found round the pond: {WaterMap.RoutesFound}.");
         Console.WriteLine(
             $"Crafts: {world.CraftsDiscovered} worked out, {world.CraftsTaught} taught; at the end {world.Groups.Count(g => World.Knows(g, Craft.Granary))} clans have granaries, " +
             $"{world.Groups.Count(g => World.Knows(g, Craft.Spears))} spears, {world.Groups.Count(g => World.Knows(g, Craft.Palisade))} palisades. " +

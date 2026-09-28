@@ -57,7 +57,7 @@ public sealed class Hornet : ICombatant
     private const float BiteRange = 0.35f;
 
     /// <summary>Low Attack Damage: a small fraction of a Bramblekin's own <see cref="Bramblekin.MaxHealth"/> (30) per bite — several bites to actually kill, not the Wolf Spider's one-touch Pounce.</summary>
-    private const int BiteDamage = 3;
+    public const int BiteDamage = 3;
 
     private const float BiteCooldownDuration = 1f;
 
@@ -97,7 +97,7 @@ public sealed class Hornet : ICombatant
     {
         _rng = rng;
         _anchor = anchor;
-        _mover = new GroundMover(position, BodyRadius, EdgeMargin, rng, wades: false);
+        _mover = new GroundMover(position, BodyRadius, EdgeMargin, rng, walks: false);
         _target = position;
         _pauseTimer = (float)rng.NextDouble() * WanderPauseDuration;
     }

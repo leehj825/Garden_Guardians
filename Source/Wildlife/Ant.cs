@@ -19,7 +19,7 @@ public sealed class Ant : ICombatant
     private const float Speed = 1.5f;
 
     /// <summary>It bites back at whoever hit it, this hard…</summary>
-    private const int BiteDamage = 2;
+    public const int BiteDamage = 2;
 
     /// <summary>…this often, while it's within reach.</summary>
     private const float BiteInterval = 1.2f;

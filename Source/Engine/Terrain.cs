@@ -128,32 +128,39 @@ public sealed class Terrain
     }
 
     /// <summary>
-    /// Part 3 + Part 2: draws the 100x100m lawn as a grid of 2x2m cells from
+    /// Part 3: draws the whole 100x100m lawn as a grid of 2x2m cells from
     /// -50 to 50 on X/Z, using <see cref="World.GetHeightAt"/> for each
-    /// corner's elevation so the lawn reads as rolling hills, and skipping
-    /// any cell whose center is beyond <paramref name="renderRadius"/> of
-    /// <paramref name="cameraTarget"/> (Part 2's mandatory distance cull —
-    /// terrain is by far the most expensive thing drawn every frame).
-    /// Grass is blended toward <paramref name="seasonTint"/> by
-    /// <paramref name="seasonAmount"/> — the season's colour cast (see
-    /// World.SeasonTint).
+    /// corner's elevation so the lawn reads as rolling hills. The ground
+    /// never changes, so each cell's corners and grass colour are worked out
+    /// once (see <see cref="BuildCells"/>); every frame only blends them
+    /// toward <paramref name="seasonTint"/> by <paramref name="seasonAmount"/>
+    /// — the season's colour cast (see World.SeasonTint).
     /// </summary>
-    public void Draw(Vector3 cameraTarget, float renderRadius, Color seasonTint, float seasonAmount)
+    public void Draw(Color seasonTint, float seasonAmount)
+    {
+        _cells ??= BuildCells();
+        foreach (var (p00, p10, p01, p11, grass) in _cells)
+        {
+            Color color = seasonAmount > 0f ? LerpColor(grass, seasonTint, seasonAmount) : grass;
+
+            // Two triangles, upward-facing winding (counter-clockwise
+            // when viewed from above/+Y).
+            Raylib.DrawTriangle3D(p00, p01, p11, color);
+            Raylib.DrawTriangle3D(p00, p11, p10, color);
+        }
+    }
+
+    private (Vector3 P00, Vector3 P10, Vector3 P01, Vector3 P11, Color Grass)[]? _cells;
+
+    /// <summary>Every lawn cell's four corners on the hills, and its grass colour before the season's cast.</summary>
+    private (Vector3, Vector3, Vector3, Vector3, Color)[] BuildCells()
     {
         float half = Size / 2f;
-        float renderRadiusSq = renderRadius * renderRadius;
-
+        var cells = new List<(Vector3, Vector3, Vector3, Vector3, Color)>();
         for (float x = -half; x < half; x += CellSize)
         {
             for (float z = -half; z < half; z += CellSize)
             {
-                float centerX = x + CellSize / 2f;
-                float centerZ = z + CellSize / 2f;
-                float dx = centerX - cameraTarget.X;
-                float dz = centerZ - cameraTarget.Z;
-                if (dx * dx + dz * dz > renderRadiusSq)
-                    continue; // Part 2: distance-culled — never drawn, never costs a frame.
-
                 float x0 = x, x1 = x + CellSize, z0 = z, z1 = z + CellSize;
                 var p00 = new Vector3(x0, World.GetHeightAt(x0, z0), z0);
                 var p10 = new Vector3(x1, World.GetHeightAt(x1, z0), z0);
@@ -180,14 +187,9 @@ public sealed class Terrain
                 // lawn and frosts over with it in winter.
                 if (hash % 40 == 0)
                     color = LerpColor(color, Dirt, DirtPatchStrength);
-                if (seasonAmount > 0f)
-                    color = LerpColor(color, seasonTint, seasonAmount);
-
-                // Two triangles, upward-facing winding (counter-clockwise
-                // when viewed from above/+Y).
-                Raylib.DrawTriangle3D(p00, p01, p11, color);
-                Raylib.DrawTriangle3D(p00, p11, p10, color);
+                cells.Add((p00, p10, p01, p11, color));
             }
         }
+        return cells.ToArray();
     }
 }

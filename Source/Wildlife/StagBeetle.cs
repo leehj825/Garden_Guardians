@@ -31,7 +31,7 @@ public sealed class StagBeetle : ICombatant
     private const float RetaliationRadius = 3f;
 
     private const float BiteRange = BodyRadius + Bramblekin.BodyRadius + 0.35f;
-    private const int BiteDamage = 7;
+    public const int BiteDamage = 7;
     private const float BiteCooldownDuration = 1.5f;
 
     private static readonly Color ShellColor = new(70, 45, 30, 255);

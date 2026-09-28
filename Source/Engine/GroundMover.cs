@@ -5,9 +5,10 @@ namespace GardenGuardians;
 
 /// <summary>
 /// Walks a round body across the terrain: steers around obstacles, pushes
-/// itself back out of anything it overlaps, stays on the terrain, and takes a
-/// short sideways detour if it stops making progress. Used by both the
-/// Bramblekin and the Wolf Spider.
+/// itself back out of anything it overlaps, stays on the terrain, never sets
+/// foot in the pond (finding a way round it — see <see cref="WaterMap"/>),
+/// and takes a short sideways detour if it stops making progress. Used by
+/// the Bramblekin and every creature that walks.
 /// </summary>
 public sealed class GroundMover
 {
@@ -66,26 +67,36 @@ public sealed class GroundMover
     /// <summary>True if the body moved this frame (for walk animations).</summary>
     public bool IsMoving { get; private set; }
 
-    /// <param name="wades">Walkers wade through the pond at <see cref="WadeSpeedFactor"/> of their pace; fliers (false) don't.</param>
-    public GroundMover(Vector3 position, float bodyRadius, float edgeMargin, Random rng, bool wades = true)
+    /// <param name="walks">Walkers (true) keep out of the pond and find their way round it; fliers (false) go straight over.</param>
+    public GroundMover(Vector3 position, float bodyRadius, float edgeMargin, Random rng, bool walks = true)
     {
         Position = position;
         BodyRadius = bodyRadius;
         _edgeMargin = edgeMargin;
         _rng = rng;
-        _wades = wades;
+        _walks = walks;
         ResetProgress();
     }
 
-    /// <summary>Wading through the pond goes at this fraction of the usual pace.</summary>
-    public const float WadeSpeedFactor = 0.5f;
+    private readonly bool _walks;
 
-    private readonly bool _wades;
+    // Walking round the water: the waypoints of the way round (null when the
+    // straight way is clear), the next one, and the target they lead to.
+    private List<Vector2>? _route;
+    private int _routeIndex;
+    private Vector2 _routeGoal = new(float.NaN, float.NaN);
+
+    /// <summary>A target that moves this far (m) since the way to it was worked out gets a fresh look.</summary>
+    private const float RouteGoalDrift = 1f;
+
+    /// <summary>A waypoint this close (m) counts as reached.</summary>
+    private const float WaypointReach = 0.6f;
 
     /// <summary>Forget any detour and restart stuck detection (call on every change of plan).</summary>
     public void ResetProgress()
     {
         _detour = null;
+        _routeGoal = new Vector2(float.NaN, float.NaN);
         _progressTimer = 0f;
         _progressAnchor = Position;
     }
@@ -103,9 +114,11 @@ public sealed class GroundMover
     /// </summary>
     public void Nudge(Vector3 offset, World world)
     {
+        Vector3 before = Position;
         Position += offset;
         PushOutOfObstacles(world.Obstacles);
         ClampToTerrain(world.Terrain);
+        KeepOutOfWater(before);
     }
 
     /// <summary>
@@ -119,11 +132,13 @@ public sealed class GroundMover
     public bool MoveTowards(Vector3 target, float speed, float deltaTime, World world, Func<World, Vector3, bool> isSafeSpot)
     {
         IReadOnlyList<Obstacle> obstacles = world.Obstacles;
-        float step = speed * deltaTime * (_wades && World.IsWater(Position) ? WadeSpeedFactor : 1f);
+        float step = speed * deltaTime;
         CheckIfStuck(target, step, deltaTime, world, isSafeSpot);
 
-        // Head for the detour waypoint first, if we're working our way round something.
-        Vector3 goal = _detour ?? target;
+        // Head for the detour waypoint first, if we're working our way round
+        // something — else for the next waypoint round the water, if any.
+        bool onRoute = false;
+        Vector3 goal = _detour ?? (_walks ? RouteTowards(target, out onRoute) : target);
         var position = new Vector2(Position.X, Position.Z);
         var toGoal = new Vector2(goal.X, goal.Z) - position;
         float distance = toGoal.Length();
@@ -168,6 +183,7 @@ public sealed class GroundMover
         Position = new Vector3(position.X, Terrain.GroundHeight, position.Y);
         PushOutOfObstacles(obstacles);
         ClampToTerrain(world.Terrain);
+        KeepOutOfWater(before);
         IsMoving = Vector3.DistanceSquared(before, Position) > 1e-8f;
 
         if (arrived && _detour is not null)
@@ -175,7 +191,60 @@ public sealed class GroundMover
             _detour = null; // Detour done; resume toward the real target next frame.
             return false;
         }
+        if (arrived && onRoute)
+        {
+            _routeIndex++; // On to the next waypoint round the water.
+            return false;
+        }
         return arrived;
+    }
+
+    /// <summary>
+    /// Where to head for on the way to <paramref name="target"/>: the target
+    /// itself if the straight way is clear of the water, else the next
+    /// waypoint of a way round it (<paramref name="onRoute"/> true while
+    /// there are more waypoints after it). The way is worked out again only
+    /// when the target moves (see <see cref="RouteGoalDrift"/>).
+    /// </summary>
+    private Vector3 RouteTowards(Vector3 target, out bool onRoute)
+    {
+        onRoute = false;
+        var here = new Vector2(Position.X, Position.Z);
+        var goal = new Vector2(target.X, target.Z);
+        if (!(Vector2.DistanceSquared(goal, _routeGoal) <= RouteGoalDrift * RouteGoalDrift)) // (NaN-safe: a fresh mover always looks.)
+        {
+            _routeGoal = goal;
+            _routeIndex = 0;
+            _route = WaterMap.IsClearWay(here, goal) ? null : WaterMap.FindRoute(here, goal);
+        }
+        if (_route is null)
+            return target;
+
+        // Already close to a waypoint (pushed past it by the crowd)? On to the next.
+        while (_routeIndex < _route.Count - 1 && Vector2.DistanceSquared(here, _route[_routeIndex]) <= WaypointReach * WaypointReach)
+            _routeIndex++;
+        if (_routeIndex >= _route.Count)
+        {
+            _route = null; // Round the water: straight on from here.
+            return target;
+        }
+
+        Vector2 waypoint = _route[_routeIndex];
+        onRoute = _routeIndex < _route.Count - 1;
+        return new Vector3(waypoint.X, Terrain.GroundHeight, waypoint.Y);
+    }
+
+    /// <summary>A walker never steps from dry ground into the pond: it slides along the shore if it can, else stays put.</summary>
+    private void KeepOutOfWater(Vector3 before)
+    {
+        if (!_walks || !WaterMap.IsWet(Position.X, Position.Z) || WaterMap.IsWet(before.X, before.Z))
+            return;
+        if (!WaterMap.IsWet(Position.X, before.Z))
+            Position = new Vector3(Position.X, Terrain.GroundHeight, before.Z);
+        else if (!WaterMap.IsWet(before.X, Position.Z))
+            Position = new Vector3(before.X, Terrain.GroundHeight, Position.Z);
+        else
+            Position = before;
     }
 
     /// <summary>
@@ -293,7 +362,8 @@ public sealed class GroundMover
         {
             Vector2 offset = left * side * 1.5f - forward * 0.5f;
             var candidate = new Vector3(Position.X + offset.X, Terrain.GroundHeight, Position.Z + offset.Y);
-            if (world.Terrain.Contains(candidate, _edgeMargin) && isSafeSpot(world, candidate))
+            if (world.Terrain.Contains(candidate, _edgeMargin) && isSafeSpot(world, candidate) &&
+                !(_walks && WaterMap.IsWet(candidate.X, candidate.Z)))
                 return candidate;
         }
         return null;

@@ -89,7 +89,7 @@ public sealed partial class Bramblekin
     {
         if (_robTarget is not { IsDead: false } victim || !victim.HasFood || HasFood)
             return false;
-        if (Health <= MaxHealth * NerveBreaksAt)
+        if (NerveBroken(victim))
             return false;
         if (GroupId is not null && victim.GroupId == GroupId)
             return false;
