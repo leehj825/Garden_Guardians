@@ -80,7 +80,7 @@ public sealed class Hornet : ICombatant
     private Bramblekin? _chaseTarget;
 
     /// <summary>Terrain-aware, same treatment as Bramblekin — Y is snapped to World.GetHeightAt every read.</summary>
-    public Vector3 Position => World.Grounded(_mover.Position);
+    public Vector3 Position => _mover.GroundedPosition;
 
     /// <summary>True once swatted by a Bramblekin. Removal from World.Hornets is deferred to the end of the frame.</summary>
     public bool IsDead { get; private set; }

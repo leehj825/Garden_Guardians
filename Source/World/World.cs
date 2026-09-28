@@ -435,6 +435,7 @@ public sealed partial class World
             Beetles[i].Update(deltaTime, this);
 
         UpdatePondLife(deltaTime);
+        IndexRipeCrops();
 
         // Reverse for-loop: a Bramblekin's own Update() can kill another
         // (combat, robbery) — World.Kill only queues the removal, but

@@ -355,7 +355,7 @@ public sealed partial class Bramblekin : ICombatant
     public IReadOnlyDictionary<int, RelationshipState> KnownKins => _knownKins;
 
     /// <summary>Terrain-aware: Y is snapped to World.GetHeightAt every read.</summary>
-    public Vector3 Position => World.Grounded(_mover.Position);
+    public Vector3 Position => _mover.GroundedPosition;
 
     public BramblekinState State { get; private set; }
 

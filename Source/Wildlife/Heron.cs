@@ -97,7 +97,7 @@ public sealed class Heron : ICombatant
         get
         {
             if (_phase == Phase.Stalking)
-                return World.Grounded(_mover.Position);
+                return _mover.GroundedPosition;
             float t = Math.Clamp(_flightTime / FlightSeconds, 0f, 1f);
             float along = _phase == Phase.Arriving ? 1f - (1f - t) * (1f - t) : t * t;
             return _phase == Phase.Arriving ? Vector3.Lerp(_sky, _ground, along) : Vector3.Lerp(_ground, _sky, along);

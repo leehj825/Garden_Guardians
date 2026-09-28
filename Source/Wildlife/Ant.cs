@@ -48,7 +48,7 @@ public sealed class Ant : ICombatant
         _wanderTarget = position;
     }
 
-    public Vector3 Position => World.Grounded(_mover.Position);
+    public Vector3 Position => _mover.GroundedPosition;
     public bool IsDead { get; private set; }
     public int Health { get; private set; } = MaxHealth;
     public float CollisionRadius => BodyRadius;

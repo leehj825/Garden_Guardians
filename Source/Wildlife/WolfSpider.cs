@@ -118,7 +118,7 @@ public sealed class WolfSpider : ICombatant
     private float _biteCooldown;
 
     /// <summary>Terrain-aware, same treatment as Bramblekin — Y is snapped to World.GetHeightAt every read.</summary>
-    public Vector3 Position => World.Grounded(_mover.Position);
+    public Vector3 Position => _mover.GroundedPosition;
 
     public SpiderState State { get; private set; } = SpiderState.Prowling;
 

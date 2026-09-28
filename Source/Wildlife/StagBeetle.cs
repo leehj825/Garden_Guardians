@@ -53,7 +53,7 @@ public sealed class StagBeetle : ICombatant
     }
 
     /// <summary>Terrain-aware — Y is snapped to World.GetHeightAt every read.</summary>
-    public Vector3 Position => World.Grounded(_mover.Position);
+    public Vector3 Position => _mover.GroundedPosition;
 
     public bool IsDead { get; private set; }
 

@@ -57,7 +57,7 @@ public sealed class Grub : ICombatant
     }
 
     /// <summary>Terrain-aware, same treatment as Hornet/Bramblekin — Y is snapped to World.GetHeightAt every read.</summary>
-    public Vector3 Position => World.Grounded(_mover.Position);
+    public Vector3 Position => _mover.GroundedPosition;
 
     /// <summary>True once killed by a Bramblekin. Removal from World.Grubs is deferred to the end of the frame.</summary>
     public bool IsDead { get; private set; }

@@ -48,6 +48,11 @@
 
     <!-- MainActivity passes a C# function pointer to native code. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- Optimize even the Debug APKs CI builds for testing: unoptimized, the
+         garden simulates about 2.7x slower (42x vs 115x real time on a
+         desktop), and fast-forward on a phone can't keep up. -->
+    <Optimize>true</Optimize>
   </PropertyGroup>
 
   <!-- Android entry point (MainActivity) is only compiled for Android. -->

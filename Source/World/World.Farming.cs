@@ -62,7 +62,15 @@ public sealed partial class World
     public int FarmingTaught { get; private set; }
 
     /// <summary>A group knows farming if any of its members does.</summary>
-    public static bool KnowsFarming(KinGroup group) => group.Members.Any(m => !m.IsDead && m.KnowsFarming);
+    public static bool KnowsFarming(KinGroup group)
+    {
+        foreach (Bramblekin member in group.Members)
+        {
+            if (!member.IsDead && member.KnowsFarming)
+                return true;
+        }
+        return false;
+    }
 
     /// <summary>How many crops <paramref name="group"/> may keep: <see cref="CropsPerHouse"/> per House, <see cref="CropsPerTent"/> per Tent.</summary>
     public int CropAllowance(KinGroup group)
@@ -76,9 +84,28 @@ public sealed partial class World
         return allowance;
     }
 
-    public int CropsOf(KinGroup group) => Crops.Count(c => c.GroupId == group.Id);
+    // Plain loops, not LINQ: every Farmer asks these every step.
+    public int CropsOf(KinGroup group)
+    {
+        int count = 0;
+        foreach (Crop crop in Crops)
+        {
+            if (crop.GroupId == group.Id)
+                count++;
+        }
+        return count;
+    }
 
-    public int CropsOf(KinGroup group, CropKind kind) => Crops.Count(c => c.GroupId == group.Id && c.Kind == kind);
+    public int CropsOf(KinGroup group, CropKind kind)
+    {
+        int count = 0;
+        foreach (Crop crop in Crops)
+        {
+            if (crop.GroupId == group.Id && crop.Kind == kind)
+                count++;
+        }
+        return count;
+    }
 
     /// <summary>True while <paramref name="group"/> has room for another crop and a piece of food to spare as seed — and it isn't winter.</summary>
     public bool WantsToPlant(KinGroup group) =>
@@ -203,12 +230,39 @@ public sealed partial class World
     /// <summary>True if a <paramref name="kind"/> crop at <paramref name="spot"/> would be watered: cress always is; anything else within <see cref="WateredReach"/> of the pond, or beside a dug well.</summary>
     private bool IsWatered(Vector3 spot, CropKind kind) => kind == CropKind.Cress || IsWaterWithin(spot, WateredReach) || IsWellNear(spot);
 
+    /// <summary>Each clan's crops with something ripe, in <see cref="Crops"/> order — see <see cref="IndexRipeCrops"/>.</summary>
+    private readonly Dictionary<Guid, List<Crop>> _ripeCrops = new();
+
+    /// <summary>
+    /// Works out each clan's ripe crops once a step, just before the
+    /// Bramblekin move — rather than every farmer, gatherer and hungry
+    /// member scanning every crop in the garden, several times a step. Crops
+    /// only ripen, change hands or appear ripe outside that part of the
+    /// step, so this is exactly the scan it replaces (a crop picked bare
+    /// meanwhile is skipped below).
+    /// </summary>
+    private void IndexRipeCrops()
+    {
+        foreach (List<Crop> ripe in _ripeCrops.Values)
+            ripe.Clear();
+        foreach (Crop crop in Crops)
+        {
+            if (crop.GroupId is not { } id || crop.Fruit <= 0)
+                continue;
+            if (!_ripeCrops.TryGetValue(id, out List<Crop>? ripe))
+                _ripeCrops[id] = ripe = new List<Crop>();
+            ripe.Add(crop);
+        }
+    }
+
     /// <summary>The nearest crop of <paramref name="group"/>'s with something ripe, within <paramref name="range"/> of <paramref name="kin"/>.</summary>
     public Crop? NearestRipeCrop(Bramblekin kin, KinGroup group, float range)
     {
         Crop? best = null;
         float bestDistanceSquared = range * range;
-        foreach (Crop crop in Crops)
+        if (!_ripeCrops.TryGetValue(group.Id, out List<Crop>? ripe))
+            return null;
+        foreach (Crop crop in ripe)
         {
             if (crop.GroupId != group.Id || crop.Fruit <= 0)
                 continue;
