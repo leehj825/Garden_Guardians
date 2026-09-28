@@ -493,7 +493,9 @@ public static partial class Game
         {
             Console.WriteLine(
                 $"  Traits of the living (a newcomer averages 0.50): aggression {living.Average(b => b.Personality.Aggression):0.00}, " +
-                $"sociability {living.Average(b => b.Personality.Sociability):0.00}, intelligence {living.Average(b => b.Personality.Intelligence):0.00}");
+                $"sociability {living.Average(b => b.Personality.Sociability):0.00}, intelligence {living.Average(b => b.Personality.Intelligence):0.00}, " +
+                $"rebellion {living.Average(b => b.Personality.Rebelliousness):0.00}, persuasion {living.Average(b => b.Personality.Persuasiveness):0.00}, " +
+                $"courage {living.Average(b => b.Personality.Courage):0.00}, diligence {living.Average(b => b.Personality.Diligence):0.00}");
         }
     }
 
@@ -646,14 +648,14 @@ public static partial class Game
         Color ink = group is null ? PanelInk : BlendToward(PanelInk, group.Color, 0.35f);
         List<(string Text, Color Color)> lines = KinPanelLines(world, kin, ink);
 
-        // Sized to its widest line, so no stat ever runs off the panel.
-        int width = lines.Max(line => Raylib.MeasureText(line.Text, fontSize));
+        // Sized to its widest line — but never over the buttons along the top (a longer line is cut short).
+        int width = Math.Min(lines.Max(line => Raylib.MeasureText(line.Text, fontSize)), KinPanelMaxWidth(margin, inset));
         int height = KinPanelHeight(lines.Count);
         int x = Raylib.GetScreenWidth() - width - margin;
         Raylib.DrawRectangle(x - inset, topPadding, width + inset * 2, height, fill);
         Raylib.DrawRectangleLines(x - inset, topPadding, width + inset * 2, height, ink);
         for (int i = 0; i < lines.Count; i++)
-            Raylib.DrawText(lines[i].Text, x, topPadding + inset + lineHeight * i, fontSize, lines[i].Color);
+            Raylib.DrawText(Fit(lines[i].Text, fontSize, width), x, topPadding + inset + lineHeight * i, fontSize, lines[i].Color);
     }
 
     /// <summary>The clan card, in the Kin Inspector's place, for a clan picked by tapping one of its homes.</summary>
@@ -666,13 +668,13 @@ public static partial class Game
         lines.AddRange(ClanLines(world, clan));
         lines.Add("History shows its story");
 
-        int width = lines.Max(line => Raylib.MeasureText(line, fontSize));
+        int width = Math.Min(lines.Max(line => Raylib.MeasureText(line, fontSize)), KinPanelMaxWidth(margin, inset));
         int height = KinPanelHeight(lines.Count);
         int x = Raylib.GetScreenWidth() - width - margin;
         Raylib.DrawRectangle(x - inset, topPadding, width + inset * 2, height, fill);
         Raylib.DrawRectangleLines(x - inset, topPadding, width + inset * 2, height, ink);
         for (int i = 0; i < lines.Count; i++)
-            Raylib.DrawText(lines[i], x, topPadding + inset + lineHeight * i, fontSize, i == lines.Count - 1 ? ink with { A = 160 } : ink);
+            Raylib.DrawText(Fit(lines[i], fontSize, width), x, topPadding + inset + lineHeight * i, fontSize, i == lines.Count - 1 ? ink with { A = 160 } : ink);
     }
 
     /// <summary>
@@ -703,6 +705,13 @@ public static partial class Game
             Raylib.DrawText(text, x, y, fontSize, PanelInk);
         }
     }
+
+    /// <summary>The right edge (at the reference screen width) of the buttons along the top — speed, Map and History.</summary>
+    private const float TopButtonsRight = 1020f;
+
+    /// <summary>The widest the Kin Inspector (or clan card) may be without covering the buttons along the top.</summary>
+    private static int KinPanelMaxWidth(int margin, int inset) =>
+        Math.Max(200, Raylib.GetScreenWidth() - margin - inset * 2 - (int)(TopButtonsRight * UiScale) - 12);
 
     /// <summary>The Kin Inspector's font size, line spacing and placement (top-right corner).</summary>
     private static (int FontSize, int LineHeight, int TopPadding, int Margin, int Inset) KinPanelMetrics()
@@ -754,9 +763,10 @@ public static partial class Game
             ($"State: {kin.State}   Health: {kin.Health} / {Bramblekin.MaxHealth}", ink),
             ($"Hunger: {(int)kin.Hunger}%{(kin.IsStarving ? " STARVING" : kin.IsHungry ? " (hungry)" : "")}{(kin.HasFood ? "  +food" : "")}{(kin.IsSick ? "  SICK" : "")}",
                 kin.IsStarving || kin.IsSick ? new Color(170, 60, 40, 255) : ink),
-            ($"Aggression:   {kin.Personality.Aggression:0.00}", new Color(185, 60, 45, 255)),
-            ($"Sociability:  {kin.Personality.Sociability:0.00}", new Color(60, 130, 70, 255)),
-            ($"Intelligence: {kin.Personality.Intelligence:0.00} ({kin.DetectionRadius:0}m)", new Color(60, 100, 170, 255)),
+            ($"Nature: {kin.Personality.Describe()}", ink),
+            ($"Aggression {kin.Personality.Aggression:0.00}   Sociability {kin.Personality.Sociability:0.00}", new Color(185, 60, 45, 255)),
+            ($"Intelligence {kin.Personality.Intelligence:0.00} ({kin.DetectionRadius:0}m)   Courage {kin.Personality.Courage:0.00}", new Color(60, 100, 170, 255)),
+            ($"Rebellion {kin.Personality.Rebelliousness:0.00}  Persuasion {kin.Personality.Persuasiveness:0.00}  Diligence {kin.Personality.Diligence:0.00}", new Color(60, 130, 70, 255)),
             (group is null ? "Group: none" : $"Group: {group.Name ?? group.ShortId}, {group.Members.Count} members" +
                 (DescribeClan(world, group) is { } about ? $" ({about})" : ""), ink),
             (DescribeHome(kin), ink),

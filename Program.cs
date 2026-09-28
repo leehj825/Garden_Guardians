@@ -9,7 +9,8 @@
 //      loose things live on it: wild Berries (Food), fallen Twigs, Hornet
 //      swarms, a Wolf Spider, Grubs, Stag Beetles, and the Bramblekin.
 //    * Every Bramblekin is an individual agent with its own randomly rolled
-//      Personality (Aggression, Sociability, Intelligence) and a strict
+//      Personality (Aggression, Sociability, Intelligence, Rebelliousness,
+//      Persuasiveness, Courage, Diligence) and a strict
 //      hierarchy of needs: Hunger, then Safety, then its group Duty, then
 //      Settling (its home), then Social.
 //    * Groups are emergent, not assigned: two Bramblekin that cross paths

@@ -40,9 +40,13 @@ public sealed partial class Bramblekin
     /// <summary>The loyalty it settles back toward when nothing in particular is happening — higher the more Sociable it is.</summary>
     private float LoyaltyBaseline => 0.45f + 0.3f * Personality.Sociability;
 
-    /// <summary>Its claim to lead a group: Intelligence, plus a little for each point of <see cref="Reputation"/>.</summary>
+    /// <summary>How much a persuasive (or passive) nature adds to (or takes from) its claim to lead.</summary>
+    private const float PersuasionLeadershipWeight = 0.6f;
+
+    /// <summary>Its claim to lead a group: Intelligence and persuasiveness, plus a little for each point of <see cref="Reputation"/>.</summary>
     public float LeadershipScore =>
-        Personality.Intelligence + ReputationLeadershipWeight * Reputation + (IsElder ? ElderLeadershipBonus : 0f);
+        Personality.Intelligence + PersuasionLeadershipWeight * (Personality.Persuasiveness - 0.5f) +
+        ReputationLeadershipWeight * Reputation + (IsElder ? ElderLeadershipBonus : 0f);
 
     /// <summary>The groupmate it's fighting a leadership duel with, if any.</summary>
     public Bramblekin? DuelOpponent => _duelOpponent;
@@ -53,7 +57,7 @@ public sealed partial class Bramblekin
     /// Takes orders only while this is true: a Leader, a loner, and any
     /// follower loyal enough (<see cref="ObedienceThreshold"/>).
     /// </summary>
-    private bool IsObedient => GroupId is null || Loyalty >= ObedienceThreshold;
+    private bool IsObedient => GroupId is null || Loyalty >= ObedienceThreshold + 0.15f * (Personality.Rebelliousness - 0.5f);
 
     public void AddReputation(float amount) => Reputation = Math.Min(MaxReputation, Reputation + amount);
 
@@ -72,7 +76,7 @@ public sealed partial class Bramblekin
     /// devotion nor a grudge lasts forever. Meals from the store, a home with
     /// food in it, having been defended and friendship with the Leader win
     /// it; hunger (worse when starving), being turned away from the store, a
-    /// Leader who eats first, dangerous orders (felt less by the Aggressive)
+    /// Leader who eats first, dangerous orders (felt less by the brave)
     /// and injury lose it. Since a badly run group's members share most of
     /// those grievances, they tend to grow unhappy together — though in a
     /// <paramref name="sharedHardship"/> (a winter famine with the stores
@@ -111,7 +115,14 @@ public sealed partial class Bramblekin
             delta -= 0.04f * (1f - 0.5f * Personality.Aggression);
         if ((Job == KinJob.Hunter && group.Goal == GroupGoal.Hunt) || (Job == KinJob.Guard && group.Goal == GroupGoal.Defend) ||
             (Job == KinJob.Raider && group.Goal == GroupGoal.Raid))
-            delta -= 0.03f * (1f - Personality.Aggression);
+            delta -= 0.03f * (1f - Personality.Courage);
+
+        // A persuasive Leader keeps its followers with it (a passive one lets them drift)…
+        if (group.Leader is { } persuader)
+            delta += 0.02f * (persuader.Personality.Persuasiveness - 0.5f);
+        // …and a rebellious follower's goodwill drains fast and returns slowly (an obedient one's, the other way round).
+        float rebel = Personality.Rebelliousness;
+        delta *= delta < 0f ? 0.6f + 0.8f * rebel : 1.4f - 0.8f * rebel;
 
         SetLoyalty(Loyalty + delta);
         ResetLoyaltyFlags();

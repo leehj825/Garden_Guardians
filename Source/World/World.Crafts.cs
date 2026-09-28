@@ -112,7 +112,8 @@ public sealed partial class World
     private void TryTeachCraft(KinGroup teacher, KinGroup ally)
     {
         Craft missing = CraftsOf(teacher) & ~CraftsOf(ally);
-        if (missing == Craft.None || Rng.NextDouble() >= TeachFarmingChance)
+        float persuasion = teacher.Leader is { } leader ? 0.6f + 0.8f * leader.Personality.Persuasiveness : 1f;
+        if (missing == Craft.None || Rng.NextDouble() >= TeachFarmingChance * persuasion)
             return;
         Craft craft = (missing & Craft.Farming) != 0 ? Craft.Farming : LaterCrafts.First(c => (missing & c) != 0);
         foreach (Bramblekin member in ally.Members)

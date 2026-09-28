@@ -15,6 +15,10 @@ public sealed partial class Bramblekin
         Aggression = Personality.Aggression,
         Sociability = Personality.Sociability,
         Intelligence = Personality.Intelligence,
+        Rebelliousness = Personality.Rebelliousness,
+        Persuasiveness = Personality.Persuasiveness,
+        Courage = Personality.Courage,
+        Diligence = Personality.Diligence,
         Position = Position,
         Health = Health,
         Hunger = Hunger,
@@ -61,7 +65,11 @@ public sealed partial class Bramblekin
     /// <summary>Save/Load: a Bramblekin as it was saved (its home, partner and errand are linked up afterwards — see <see cref="LinkSave"/>).</summary>
     public static Bramblekin FromSave(KinSave save, Random rng)
     {
-        var kin = new Bramblekin(save.Position, rng, new Personality(save.Aggression, save.Sociability, save.Intelligence))
+        // A save from before the newer traits: they're rolled afresh.
+        float Trait(float? saved) => saved ?? (float)rng.NextDouble();
+        var personality = new Personality(save.Aggression, save.Sociability, save.Intelligence,
+            Trait(save.Rebelliousness), Trait(save.Persuasiveness), Trait(save.Courage), Trait(save.Diligence));
+        var kin = new Bramblekin(save.Position, rng, personality)
         {
             ID = save.Id,
             Sex = save.Sex,

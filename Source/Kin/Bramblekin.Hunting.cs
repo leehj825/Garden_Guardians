@@ -25,7 +25,7 @@ public sealed partial class Bramblekin
     /// </summary>
     private bool TryPackHunt(float deltaTime, World world, bool hungry)
     {
-        if (IsYoung || _perceivedBeetle is not { IsDead: false } beetle || Health <= MaxHealth * FightBreakHealthFraction)
+        if (IsYoung || _perceivedBeetle is not { IsDead: false } beetle || Health <= MaxHealth * NerveBreaksAt)
             return false;
 
         bool packNearby = false;

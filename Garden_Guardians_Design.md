@@ -185,23 +185,58 @@ overhead camera:
     however late each Bramblekin arrived.
 
 ## Individuals: Personality & the Needs Hierarchy
-*   **Personality (DNA):** every newcomer rolls three traits, each
+*   **Personality (DNA):** every newcomer rolls seven traits, each
     uniformly random in 0..1, the moment it arrives; one born here
-    inherits the average of its parents' (see Growth below). Fixed for
-    life:
-    *   **Aggression** — the odds of fighting rather than fleeing a
-        threat, of turning on a neighbour or raiding a store when
-        starving, of challenging a Leader; how hard it hits (5–11 per
-        strike); and, as a Leader, how much it prizes hunting and whether
-        it eats first. Its body is tinted redder the more Aggressive it is.
-    *   **Sociability** — the urge to meet strangers (vs. walking away
-        from anyone who crowds it, below 0.35), the odds a meeting ends
-        in friendship, whether two meeting Bramblekin band together (both
-        ≥ 0.6), how readily a struggling loner asks to join a group, how
-        loyal it naturally is, and — as a Leader — whether it shares the
-        store fairly and takes in newcomers.
+    inherits the average of its parents' (see Growth below), and its
+    clan's traditions pull it part of the way toward what the clan
+    prizes (see Clan Culture). Fixed for life. The four newer traits are
+    all centred on 0.5 — a middling Bramblekin behaves just as before —
+    and each has something to see it do:
+    *   **Aggression** — the odds of turning on another Bramblekin (to
+        rob it when starving, in a feud, in a war) and — with Courage —
+        of fighting rather than fleeing; how hard it hits (5–11 per
+        strike); and, as a Leader, its appetite for war and whether it
+        eats first. Its body is tinted redder the more Aggressive it is.
+    *   **Sociability** (extrovert ↔ introvert) — the urge to meet
+        strangers (vs. walking away from anyone who crowds it, below
+        0.35), the odds a meeting ends in friendship, whether two meeting
+        Bramblekin band together (both ≥ 0.6), how readily a struggling
+        loner asks to join a group, how loyal it naturally is, and — as a
+        Leader — whether it shares the store fairly and takes in
+        newcomers.
     *   **Intelligence** — detection radius from 5m to 20m, how soon a
-        newcomer settles (10–50s), and its claim to lead.
+        newcomer settles (10–50s), its claim to lead, planning ahead, and
+        working out crafts.
+    *   **Rebelliousness** (rebellious ↔ obedient) — a rebellious
+        follower's loyalty drains up to 1.4× as fast and recovers at
+        0.6× the pace (an obedient one's, the other way round); it stops
+        obeying sooner (the obedience line moves ±0.075); it's up to 1.6×
+        as likely to rebel once disloyal, readier to challenge the Leader,
+        and less willing to sit out the winter before walking out.
+    *   **Persuasiveness** (persuasive ↔ passive) — adds up to ±0.3 to its
+        claim to lead; as a Leader it keeps its followers' loyalty up (or
+        lets it slide), talks neighbours into alliances, peace and
+        learning a craft (odds 0.6–1.4×); a persuasive member talks
+        struggling loners into joining; a persuasive rebel draws the
+        wavering after it into a split (members up to 0.125 more loyal
+        follow), or can lead one without being sociable.
+    *   **Courage** (brave ↔ cautious) — standing up to predators and big
+        game is 70% nerve and 30% temper (against another Bramblekin, the
+        reverse); the brave hold their nerve down to 0.16 of their Health,
+        the cautious break at 0.56; a place of danger is shunned for 150s
+        by the bravest, 450s by the most cautious; Leaders make the brave
+        their Hunters and Guards, and the brave (with the fierce) drive
+        off enemies near home in a war. Dangerous orders cost the brave
+        less loyalty.
+    *   **Diligence** (diligent ↔ idle) — at work (gathering, building,
+        stocking, farming, carrying for its group) it goes at 0.85–1.15×
+        pace, and it dawdles and rests between things 0.6–1.4× as long.
+*   **In words:** the Kin Inspector sums a Bramblekin up ("Nature:
+    brave, persuasive, rebellious" — every trait 0.2 or more from the
+    middle) above all seven values; the chronicle calls a rebel or a
+    usurper by its most striking trait ("The rebellious Pip Thornwood led
+    four unhappy members out…"). The headless lineage report tracks the
+    living's average of every trait, so the garden's evolution shows.
 *   **Hunger:** rises 1 point per second from 0 to 100. At 60 a
     Bramblekin is *hungry*; at 80 *starving*; at 100 it loses 1 HP a
     second until it eats or dies. One piece of Food removes 40 Hunger and
@@ -702,6 +737,11 @@ overhead camera:
     History screen show it. The name sticks: a clan keeps it until that
     tradition fades below 0.3 or another overtakes it by 0.1, so two
     close traditions don't flip its name back and forth.
+*   **Raised in the tradition:** a child is pulled part of the way toward
+    0.8 on the traits its clan prizes — Aggression and Courage in a
+    warlike clan, Courage, Aggression and Sociability in a hunting one,
+    Intelligence and Diligence in a farming one — so a favoured trait
+    settles there over the generations rather than piling up at 1.
 *   **Traditions outlast Leaders:** they sway any Leader's choices — a
     warlike clan raids more, goes to war up to three times as readily,
     makes peace more reluctantly and is shunned as an ally; a hunting

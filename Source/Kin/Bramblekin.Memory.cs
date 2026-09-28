@@ -29,8 +29,11 @@ public sealed partial class Bramblekin
 
     /// <summary>True if it (or its group) remembers danger near <paramref name="point"/>.</summary>
     private bool IsDangerous(Vector3 point, World world) =>
-        _dangers.IsNear(point, DangerRadius, world.ElapsedSeconds, DangerMemorySeconds) ||
-        (world.GroupOf(this) is { } group && group.Dangers.IsNear(point, DangerRadius, world.ElapsedSeconds, DangerMemorySeconds));
+        _dangers.IsNear(point, DangerRadius, world.ElapsedSeconds, DangerMemory) ||
+        (world.GroupOf(this) is { } group && group.Dangers.IsNear(point, DangerRadius, world.ElapsedSeconds, DangerMemory));
+
+    /// <summary>How long it gives a place of danger a wide berth: longer for the cautious, shorter for the brave.</summary>
+    private float DangerMemory => DangerMemorySeconds * (1.5f - Personality.Courage);
 
     /// <summary>
     /// Food it could go for: remembered danger puts it off anything nearby

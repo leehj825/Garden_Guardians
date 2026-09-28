@@ -164,6 +164,15 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>At or below this fraction of <see cref="MaxHealth"/>, a fighter's nerve breaks and it flees instead — high enough that a fighter at the threshold can still survive one more Wolf Spider bite.</summary>
     private const float FightBreakHealthFraction = 0.4f;
 
+    /// <summary>At work — gathering, building, stocking, farming, carrying for its group — the diligent go briskly and the idle slowly.</summary>
+    private float WorkPace => State is BramblekinState.Collecting or BramblekinState.Building or BramblekinState.Stockpiling or
+        BramblekinState.Farming or BramblekinState.Traveling
+        ? 0.85f + 0.3f * Personality.Diligence
+        : 1f;
+
+    /// <summary>Its nerve breaks at this fraction of its Health: lower for the brave, higher for the cautious (<see cref="FightBreakHealthFraction"/> for the middling).</summary>
+    private float NerveBreaksAt => FightBreakHealthFraction * (1.4f - 0.8f * Personality.Courage);
+
     /// <summary>Keeps running for at least this long after losing sight of whatever it fled from.</summary>
     private const float FleeMinDuration = 2.5f;
 
@@ -695,7 +704,7 @@ public sealed partial class Bramblekin : ICombatant
                 continue;
 
             // War: a bold resident drives off a member of an enemy group that comes right up to home.
-            if (Home is { } home && Personality.Aggression >= WarIntruderAggression && world.AreAtWar(GroupId, other.GroupId) &&
+            if (Home is { } home && (Personality.Aggression + Personality.Courage) / 2f >= WarIntruderAggression && world.AreAtWar(GroupId, other.GroupId) &&
                 GroundMover.HorizontalDistanceSquared(other.Position, home.Position) <= WarIntruderRadius * WarIntruderRadius)
             {
                 Consider(other, allyDefense: true);

@@ -234,7 +234,7 @@ public sealed partial class World
             case GroupGoal.Defend:
                 foreach (Bramblekin member in members)
                 {
-                    if (member.Personality.Aggression >= 0.3f && member.Health > Bramblekin.MaxHealth / 2)
+                    if ((member.Personality.Aggression + member.Personality.Courage) / 2f >= 0.3f && member.Health > Bramblekin.MaxHealth / 2)
                         member.AssignJob(KinJob.Guard);
                 }
                 break;
@@ -247,7 +247,7 @@ public sealed partial class World
                 break;
 
             case GroupGoal.Hunt:
-                foreach (Bramblekin member in members.OrderByDescending(m => m.Personality.Aggression).Take(Math.Max(2, (members.Count + 1) / 2)))
+                foreach (Bramblekin member in members.OrderByDescending(m => m.Personality.Courage + 0.5f * m.Personality.Aggression).Take(Math.Max(2, (members.Count + 1) / 2)))
                     member.AssignJob(KinJob.Hunter);
                 break;
 
@@ -260,7 +260,7 @@ public sealed partial class World
 
             default:
                 if (members.Count >= 4 && group.Home is { IsBuilt: true })
-                    members.MaxBy(m => m.Personality.Aggression)!.AssignJob(KinJob.Guard);
+                    members.MaxBy(m => m.Personality.Courage + 0.5f * m.Personality.Aggression)!.AssignJob(KinJob.Guard);
                 break;
         }
 

@@ -10,7 +10,7 @@ public sealed partial class Bramblekin
     /// once per new threat — Aggression, plus courage from nearby
     /// groupmates, plus a big bonus when defending one, minus fear of the
     /// Wolf Spider. A fighter whose Health drops below
-    /// <see cref="FightBreakHealthFraction"/> breaks and flees. Returns false
+    /// <see cref="NerveBreaksAt"/> breaks and flees. Returns false
     /// when there's nothing to fear.
     /// </summary>
     private bool UpdateSafety(float deltaTime, World world)
@@ -48,7 +48,7 @@ public sealed partial class Bramblekin
             _respondingTo = threat;
             _fightDecision = RollFightOrFlight(threat, world);
         }
-        if (_fightDecision && Health <= MaxHealth * FightBreakHealthFraction)
+        if (_fightDecision && Health <= MaxHealth * NerveBreaksAt)
             _fightDecision = false; // Nerve breaks.
 
         _lastThreatPosition = threat.Position;
@@ -81,7 +81,7 @@ public sealed partial class Bramblekin
     private bool RollFightOrFlight(ICombatant threat, World world)
     {
         // The young never fight — they run (home, if it's close).
-        if (IsYoung || Health <= MaxHealth * FightBreakHealthFraction)
+        if (IsYoung || Health <= MaxHealth * NerveBreaksAt)
             return false;
 
         // Nobody picks a fight with a Hornet nest: an idle swarm is just
@@ -89,7 +89,10 @@ public sealed partial class Bramblekin
         if (threat is Hornet { IsChasing: false })
             return false;
 
-        float chance = Personality.Aggression;
+        // Standing up to another Bramblekin is mostly a matter of temper; to a predator, of nerve.
+        float chance = threat is Bramblekin
+            ? 0.7f * Personality.Aggression + 0.3f * Personality.Courage
+            : 0.3f * Personality.Aggression + 0.7f * Personality.Courage;
         if (world.GroupOf(this) is { } group)
         {
             foreach (Bramblekin member in group.Members)

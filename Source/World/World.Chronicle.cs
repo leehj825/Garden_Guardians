@@ -64,6 +64,9 @@ public sealed partial class World
         return moments;
     }
 
+    /// <summary>"The rebellious " (or "The brave ", …) — a Bramblekin's most striking trait, to open a chronicle line with; empty if none stands out.</summary>
+    private static string Epithet(Bramblekin kin) => kin.Personality.Epithet() is { } word ? $"The {word} " : "";
+
     /// <summary>Where a clan lives (its main home), or where its Leader is, for a headline.</summary>
     private static Vector3? PlaceOf(KinGroup? clan) =>
         clan?.Home is { IsCollapsed: false } home ? home.Position : clan?.Leader is { IsDead: false } leader ? leader.Position : null;

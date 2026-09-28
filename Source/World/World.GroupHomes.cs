@@ -474,7 +474,8 @@ public sealed partial class World
         bool struggling = loner.IsHungry || loner.Health < Bramblekin.MaxHealth * 0.6f || loner.Home is not { IsBuilt: true };
         if (!struggling || group.Members.Count >= GroupSizeLimit(group) || HasEnemyIn(loner, group) || loner.HasLeft(group.Id))
             return false;
-        if (Rng.NextDouble() >= 0.3 + 0.5 * loner.Personality.Sociability)
+        // A persuasive member can talk a wavering loner into joining.
+        if (Rng.NextDouble() >= 0.3 + 0.5 * loner.Personality.Sociability + 0.3 * (member.Personality.Persuasiveness - 0.5))
             return false;
         if (group.Members.Count >= 3 && group.Leader is { } leader && Rng.NextDouble() >= 0.3 + 0.7 * leader.Personality.Sociability)
             return false;

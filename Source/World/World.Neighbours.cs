@@ -193,7 +193,8 @@ public sealed partial class World
                     bool weary = ElapsedSeconds - relation!.Since > WarWeariness;
                     bool beaten = IsBeaten(group, other);
                     if ((grievance < PeaceGrievance || weary || beaten) &&
-                        Rng.NextDouble() < (PeaceChance + PeaceChancePerCalm * (1f - p.Aggression)) * (1f - 0.5f * group.Culture.Martial) + (beaten ? SurrenderChance : 0f))
+                        Rng.NextDouble() < (PeaceChance + PeaceChancePerCalm * (1f - p.Aggression)) * (1f - 0.5f * group.Culture.Martial) *
+                        (0.6f + 0.8f * p.Persuasiveness) + (beaten ? SurrenderChance : 0f))
                         EndWar(group, other, leader);
                     break;
 
@@ -240,8 +241,10 @@ public sealed partial class World
         if (AllyCount(group) >= MaxAllies || AllyCount(other) >= MaxAllies)
             return false;
 
+        // A persuasive Leader talks neighbours round; a passive one lets the chance go by.
         float chance = AllianceChance * (leader.Personality.Sociability + otherLeader.Personality.Sociability) / 2f *
-                       (1f - 0.6f * MathF.Max(group.Culture.Martial, other.Culture.Martial));
+                       (1f - 0.6f * MathF.Max(group.Culture.Martial, other.Culture.Martial)) *
+                       (0.6f + 0.8f * leader.Personality.Persuasiveness);
         bool close = leader.IsCloseKinOf(otherLeader) || leader.FamilyName == otherLeader.FamilyName ||
                      leader.RelationshipTo(otherLeader) == RelationshipState.Friend;
         if (close)

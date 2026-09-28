@@ -534,6 +534,19 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     57.5 vs 65.5 before (within the run-to-run spread), starvation 48 vs
     59, predators 26 vs 30, kin killings 31 vs 25, old age unchanged.
 
+## Phase 15: Richer Natures
+*   ✅ **Four new traits:** rebellious ↔ obedient, persuasive ↔ passive,
+    brave ↔ cautious, diligent ↔ idle — inherited, drawn by clan
+    culture, saved (rolled afresh for a garden saved before them), shown
+    in words in the Kin Inspector and the chronicle, and each wired to
+    behaviour: loyalty and rebellion; leadership, splits, alliances,
+    peace, recruiting and teaching; fight-or-flight, nerve, danger memory
+    and who hunts and guards; the pace of work and rest.
+*   ✅ **Clan culture no longer maxes traits out:** a clan's pull on its
+    children's traits now draws them toward 0.8 rather than adding a
+    fixed push each generation (farming clans' Intelligence used to
+    climb to ~0.96).
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:

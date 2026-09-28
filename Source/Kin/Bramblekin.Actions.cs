@@ -89,7 +89,7 @@ public sealed partial class Bramblekin
     {
         if (_robTarget is not { IsDead: false } victim || !victim.HasFood || HasFood)
             return false;
-        if (Health <= MaxHealth * FightBreakHealthFraction)
+        if (Health <= MaxHealth * NerveBreaksAt)
             return false;
         if (GroupId is not null && victim.GroupId == GroupId)
             return false;
@@ -181,12 +181,12 @@ public sealed partial class Bramblekin
 
     /// <summary>Walks toward <paramref name="target"/>, steering round Pebbles. Returns true on arrival.</summary>
     private bool MoveTo(Vector3 target, float speed, float deltaTime, World world) =>
-        _mover.MoveTowards(target, speed * AgeSpeedFactor * (IsSick ? SickSpeedFactor : 1f), deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius));
+        _mover.MoveTowards(target, speed * AgeSpeedFactor * (IsSick ? SickSpeedFactor : 1f) * WorkPace, deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius));
 
     private void StartPause()
     {
         SetState(BramblekinState.Idle);
-        _pauseTimer = PauseDuration * (0.5f + (float)_rng.NextDouble());
+        _pauseTimer = PauseDuration * (0.5f + (float)_rng.NextDouble()) * (1.4f - 0.8f * Personality.Diligence); // The idle dawdle.
     }
 
     private void SetState(BramblekinState state)

@@ -85,9 +85,26 @@ public sealed class ClanCulture
         Leading = parent.Leading;
     }
 
-    /// <summary>A child raised in the clan leans its way: bolder in a warlike or hunting clan, sharper in a farming one.</summary>
-    public Personality Nudge(Personality child) => new(
-        child.Aggression + 0.12f * Martial + 0.06f * Hunting,
-        child.Sociability + 0.06f * Hunting,
-        child.Intelligence + 0.12f * Farming);
+    /// <summary>The value a clan's tradition draws its children's traits toward — never all the way to the limit, so a clan keeps its variety over the generations.</summary>
+    private const float Ideal = 0.8f;
+
+    /// <summary>
+    /// A child raised in the clan leans its way: fiercer and braver in a
+    /// warlike clan, braver and more sociable in a hunting one, sharper and
+    /// harder-working in a farming one. Each is a pull part of the way
+    /// toward <see cref="Ideal"/>, not a fixed push, so a trait favoured
+    /// generation after generation settles there instead of piling up at 1.
+    /// </summary>
+    public Personality Nudge(Personality child)
+    {
+        static float Toward(float value, float pull) => value + Math.Clamp(pull, 0f, 0.5f) * (Ideal - value);
+        return new Personality(
+            Toward(child.Aggression, 0.4f * Martial + 0.2f * Hunting),
+            Toward(child.Sociability, 0.2f * Hunting),
+            Toward(child.Intelligence, 0.4f * Farming),
+            child.Rebelliousness,
+            child.Persuasiveness,
+            Toward(child.Courage, 0.27f * Martial + 0.33f * Hunting),
+            Toward(child.Diligence, 0.33f * Farming));
+    }
 }
