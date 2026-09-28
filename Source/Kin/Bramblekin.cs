@@ -246,7 +246,6 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>Gives up on reaching a stranger after this many seconds.</summary>
     private const float SocializeTimeout = 15f;
 
-    private static readonly Color CalmColor = new(196, 160, 110, 255);       // Bark brown.
     private static readonly Color AggressiveColor = new(150, 60, 45, 255);   // Thorny red-brown, blended in by Aggression.
     private static readonly Color PanicColor = new(225, 85, 60, 255);        // Alarm red.
     private static readonly Color SolitaryHeadColor = new(235, 235, 225, 255);

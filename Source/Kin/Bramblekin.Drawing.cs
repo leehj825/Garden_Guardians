@@ -8,20 +8,24 @@ public sealed partial class Bramblekin
     // --- Drawing ---------------------------------------------------------------------------
 
     /// <summary>
-    /// A bark-brown body tinted redder the more Aggressive it is (alarm red
-    /// while fleeing), topped with a head in its group's colour (off-white
-    /// while solitary). A Leader carries its group's banner; anything
-    /// fighting, robbing or hunting holds a thorn out front; carried Food
-    /// rides on its head. Elders go grey.
+    /// The rig's own painted texture, tinted redder the more Aggressive it
+    /// is (alarm red while fleeing) and grey for an Elder — all blended from
+    /// White rather than from a flat body colour, since <see cref="Raylib.DrawModelEx"/>
+    /// multiplies this tint into the texture: tinting from anything darker
+    /// than White (as the old, untextured cylinder body needed to) muddies
+    /// the texture's own colours instead of just shading them. Topped with a
+    /// head marker in its group's colour (off-white while solitary). A
+    /// Leader carries its group's banner; anything fighting, robbing or
+    /// hunting holds a thorn out front; carried Food rides on its head.
     /// </summary>
     public void Draw(World world)
     {
         KinGroup? group = world.GroupOf(this);
         Color color = State == BramblekinState.Fleeing
-            ? PanicColor
-            : LerpColor(CalmColor, AggressiveColor, Personality.Aggression);
+            ? LerpColor(Color.White, PanicColor, 0.6f)
+            : LerpColor(Color.White, AggressiveColor, Personality.Aggression * 0.5f);
         if (IsElder)
-            color = LerpColor(color, ElderColor, ElderGreying);
+            color = LerpColor(color, ElderColor, ElderGreying * 0.5f);
 
         // A small, dark, semi-transparent drop shadow at this unit's own X/Z
         // on the ground, drawn before the body itself — a flat disc laid on
