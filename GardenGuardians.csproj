@@ -14,10 +14,24 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>GardenGuardians</RootNamespace>
+    <!-- BramblekinModel manages its own native bone-matrix buffers per instance (see its doc comment). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' != 'net8.0-android'">
     <PackageReference Include="Raylib-cs" Version="8.1.0" />
+    <!-- Desktop reads these straight off disk (relative to the working
+         directory), so they just need to land next to the built exe. -->
+    <None Include="Assets/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Android's raylib backend reads asset-relative paths (like
+       "Assets/Models/Bramblekin/Walking.glb") straight out of the APK via
+       its own AAssetManager hookup, the same way it already does for
+       everything else raylib loads on that platform — so these just need to
+       be packaged as assets, not extracted or opened by hand. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-android'">
+    <AndroidAsset Include="Assets/**" />
   </ItemGroup>
 
   <!-- On Android, take only the managed bindings. The package's native

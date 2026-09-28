@@ -30,10 +30,15 @@ public sealed partial class Bramblekin
         var shadowCenter = new Vector3(Position.X, Position.Y + 0.02f, Position.Z);
         Raylib.DrawCircle3D(shadowCenter, BodyRadius * 1.3f, new Vector3(1, 0, 0), 90f, new Color(0, 0, 0, 90));
 
-        // Cached-Model body: a cylinder tilted to the terrain's own surface
-        // normal. GenMeshCylinder's mesh runs from local y=0 (base) to
-        // y=BodyHeight (top), so it pivots flush on the ground at Position.
-        EnsureBodyModel();
+        // The skinned rig, tilted to the terrain's own surface normal and
+        // posed to whatever clip its current State plays (see
+        // BramblekinModel.ClipFor). Its own local origin already sits at its
+        // feet (baked in when it was rigged), so — like the cylinder it
+        // replaced — it pivots flush on the ground at Position.
+        EnsureAnimModel();
+        BramblekinClip clip = BramblekinModel.ClipFor(State);
+        BramblekinModel.Play(ref _animModel, clip, clip == BramblekinClip.Idle ? 0f : _animTime);
+
         Vector3 normal = World.GetNormalAt(Position.X, Position.Z);
         Vector3 axis = Vector3.Cross(Vector3.UnitY, normal);
         float angleDegrees = 0f;
@@ -41,8 +46,8 @@ public sealed partial class Bramblekin
             angleDegrees = MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.UnitY, normal), -1f, 1f)) * (180f / MathF.PI);
         else
             axis = Vector3.UnitY; // Flat ground: any axis is fine at a 0-degree rotation.
-        float scale = BodyScale;
-        Raylib.DrawModelEx(_bodyModel, Position, axis, angleDegrees, new Vector3(scale), color);
+        float scale = BodyScale * (BodyHeight / BramblekinModel.RawHeightUnits);
+        Raylib.DrawModelEx(_animModel, Position, axis, angleDegrees, new Vector3(scale), color);
 
         var top = Position + new Vector3(0, (BodyHeight - BodyRadius) * scale, 0);
         Detail.Sphere(top + new Vector3(0, BodyRadius * 0.5f, 0), BodyRadius * 0.35f, group?.Color ?? SolitaryHeadColor);

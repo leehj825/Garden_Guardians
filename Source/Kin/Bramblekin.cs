@@ -60,35 +60,29 @@ public sealed partial class Bramblekin : ICombatant
     public const int MaxHealth = 30;
 
     /// <summary>
-    /// Cached Body Model: a single cylinder <see cref="Model"/> reused by
-    /// every Bramblekin's <see cref="Draw"/> call via
-    /// <see cref="Raylib.DrawModelEx"/>, instead of each unit calling
-    /// <see cref="Raylib.DrawCylinder"/>/<see cref="Raylib.DrawCapsule"/>
-    /// every frame — those immediate-mode calls regenerate their vertex
-    /// geometry on the CPU on every single call, which is the real cost at
-    /// hundreds of units; a cached <see cref="Model"/>'s mesh is built once
-    /// and only re-uploaded to the GPU as a transform, not rebuilt. Lazily
-    /// built on first use (not eagerly in a static initializer) so it can
-    /// never run before <see cref="Raylib.InitWindow"/> has created a GPU
-    /// context — building/uploading a Mesh before that would crash.
+    /// This Bramblekin's own pose of the shared rig — see
+    /// <see cref="BramblekinModel.CreatePoseInstance"/>: the mesh and
+    /// texture are shared with every other Bramblekin, but the bone matrices
+    /// are its own, so it can be mid-stride at a different frame than the
+    /// one next to it. Built lazily on first draw (see <see cref="Draw"/>)
+    /// so it never runs before <see cref="Raylib.InitWindow"/> has created a
+    /// GPU context, and released in <see cref="MarkDead"/> since it owns
+    /// unmanaged memory the garbage collector won't reclaim on its own.
     /// </summary>
-    private static Model _bodyModel;
+    private Model _animModel;
 
-    private static bool _bodyModelReady;
+    private bool _animModelReady;
 
-    /// <summary>
-    /// Builds <see cref="_bodyModel"/> the first time any Bramblekin draws.
-    /// A plain cylinder — this raylib-cs build has no GenMeshCapsule — sized
-    /// to <see cref="BodyRadius"/>/<see cref="BodyHeight"/>.
-    /// </summary>
-    private static void EnsureBodyModel()
+    /// <summary>Seconds into whichever clip <see cref="BramblekinModel.ClipFor"/> currently picks — see <see cref="Draw"/>.</summary>
+    private float _animTime;
+
+    private void EnsureAnimModel()
     {
-        if (_bodyModelReady)
+        if (_animModelReady)
             return;
 
-        Mesh mesh = Raylib.GenMeshCylinder(BodyRadius, BodyHeight, 8);
-        _bodyModel = Raylib.LoadModelFromMesh(mesh);
-        _bodyModelReady = true;
+        _animModel = BramblekinModel.CreatePoseInstance();
+        _animModelReady = true;
     }
 
     // --- Metabolism ----------------------------------------------------------------
@@ -581,6 +575,12 @@ public sealed partial class Bramblekin : ICombatant
         _companion = null;
         CombatTarget = null;
         IsDead = true;
+
+        if (_animModelReady)
+        {
+            BramblekinModel.DestroyPoseInstance(ref _animModel);
+            _animModelReady = false;
+        }
     }
 
     /// <summary>Whoever hit this Bramblekin within the last <see cref="RecentAttackWindow"/> seconds, if it's still alive.</summary>
@@ -596,6 +596,7 @@ public sealed partial class Bramblekin : ICombatant
 
         _mover.Idle();
         _strikeCooldown = MathF.Max(0f, _strikeCooldown - deltaTime);
+        _animTime += deltaTime;
         if (UpdateAging(deltaTime, world))
             return;
         UpdateFamily(deltaTime);
