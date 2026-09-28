@@ -197,7 +197,7 @@ public sealed partial class World
                 if (i == segments)
                     next -= new Vector3(0f, thickness * 0.8f, 0f); // Diving in.
                 Raylib.DrawCylinderEx(previous, next, previousThickness, thickness, 10, i % 2 == 0 ? RootShadeColor : BarkColor);
-                Raylib.DrawSphere(next, thickness * 0.98f, BarkColor);
+                Detail.Sphere(next, thickness * 0.98f, BarkColor);
                 previous = next;
                 previousThickness = thickness;
             }

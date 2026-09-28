@@ -52,6 +52,8 @@ public sealed partial class World
     {
         Chronicle(text, clans);
         _moments.Add(new Moment(title, text, where, urgent));
+        if (where is { } spot)
+            Spotlight(text, urgent ? 10f : 8f, spot);
         if (_moments.Count > MomentCapacity)
             _moments.RemoveAt(0);
     }

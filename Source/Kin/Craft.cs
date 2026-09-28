@@ -46,4 +46,19 @@ public enum Craft
 
     /// <summary>Slings of twisted grass that loose pebbles: a Hornet, a frog on the bank or the Heron can be hit from a few paces off (see Bramblekin.Slings).</summary>
     Slings = 2048,
+
+    /// <summary>A hearth out front of each House, kept burning with twigs: food eaten there is cooked (more filling, more healing), and folk wintering in beside it stay warmer (see World.Hearths).</summary>
+    Hearth = 4096,
+
+    /// <summary>Baited grass snares set near each House that catch Grubs without a hunt; a Gatherer sets a sprung one again (see World.Snares).</summary>
+    Snares = 8192,
+
+    /// <summary>Herb-lore: a Healer tends the clan's sick (shortening the illness) and wounded (see Bramblekin.Healing).</summary>
+    Herbalism = 16384,
+
+    /// <summary>Herding aphids in a pen by the main home for their honeydew — steady food that keeps (see World.Herding).</summary>
+    Herding = 32768,
+
+    /// <summary>Smoking out the bees with a brand from the hearth before taking their honey: they seldom rouse (see World.Beehive).</summary>
+    Smoking = 65536,
 }

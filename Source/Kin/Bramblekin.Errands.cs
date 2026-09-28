@@ -163,6 +163,6 @@ public sealed partial class Bramblekin
         if (SackLoad <= 0)
             return;
         Vector3 back = Position + new Vector3(-facing.X * 0.2f, BodyHeight * 0.75f * BodyScale, -facing.Y * 0.2f);
-        Raylib.DrawSphere(back, 0.1f + 0.02f * MathF.Min(SackLoad, 4), SackColor);
+        Detail.Sphere(back, 0.1f + 0.02f * MathF.Min(SackLoad, 4), SackColor);
     }
 }

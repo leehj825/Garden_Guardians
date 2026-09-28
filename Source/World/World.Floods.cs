@@ -166,11 +166,38 @@ public sealed partial class World
         }
     }
 
+    private static readonly Color CreekColor = new(80, 140, 205, 220);
+
+    /// <summary>The creek: a ribbon of water down its course, following the ground, and a round pool where it comes to rest.</summary>
+    private static void DrawCreek()
+    {
+        Vector2[] course = WaterMap.Creek;
+        for (int i = 0; i + 1 < course.Length; i++)
+        {
+            Vector2 a = course[i], b = course[i + 1];
+            Vector2 along = Vector2.Normalize(b - a);
+            Vector2 across = new Vector2(-along.Y, along.X) * (WaterMap.CreekWidth / 2f);
+            Vector3 Lift(Vector2 p) => Grounded(new Vector3(p.X, 0f, p.Y), 0.05f);
+            Vector3 a1 = Lift(a + across), a2 = Lift(a - across), b1 = Lift(b + across), b2 = Lift(b - across);
+            Raylib.DrawTriangle3D(a1, b2, b1, CreekColor);
+            Raylib.DrawTriangle3D(a1, a2, b2, CreekColor);
+            Raylib.DrawTriangle3D(a1, b1, b2, CreekColor);
+            Raylib.DrawTriangle3D(a1, b2, a2, CreekColor);
+        }
+        Vector2 pool = WaterMap.CreekPool;
+        Raylib.DrawCylinder(Grounded(new Vector3(pool.X, 0f, pool.Y), 0.03f), WaterMap.CreekPoolRadius, WaterMap.CreekPoolRadius, 0.03f, 20, CreekColor);
+        Vector2 spring = course[0];
+        Raylib.DrawSphereEx(Grounded(new Vector3(spring.X, 0f, spring.Y), 0.05f), 0.35f, 5, 8, new Color(130, 130, 136, 255)); // The spring's stone.
+    }
+
     /// <summary>Size (m) of the squares the water surface is drawn in.</summary>
     private const float WaterCell = 0.5f;
 
     /// <summary>The squares of the garden the water covers at <see cref="_waterCellsLevel"/> — worked out again only when the level moves.</summary>
     private readonly List<Vector2> _waterCells = new();
+
+    // A render cache, not garden state: saving it would tell a loaded garden its (unsaved, empty) squares were already worked out.
+    [NotSaved]
     private float _waterCellsLevel = float.NaN;
 
     /// <summary>

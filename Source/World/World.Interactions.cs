@@ -149,6 +149,7 @@ public sealed partial class World
                 {
                     AddGrievance(kin.GroupId, slayer.GroupId, KillingGrievance);
                     AddWarScore(slayer.GroupId, kin.GroupId, KillWarScore);
+                    slayer.AddInfamy(KillingInfamy);
                 }
                 how = killer is Bramblekin attacker ? $"was killed by {attacker.Name}" : "was killed by another Bramblekin";
                 break;
@@ -159,6 +160,8 @@ public sealed partial class World
                     WolfSpider => "was caught by the Wolf Spider",
                     Hornet => "was stung to death by hornets",
                     GardenGuardians.Heron => "was speared by the heron at the water's edge",
+                    GardenGuardians.Owl => "was taken by the owl in the night",
+                    BeeSwarm => "was stung to death by bees",
                     Ant => "was bitten to death by ants",
                     _ => "was killed by a predator",
                 };
@@ -226,8 +229,8 @@ public sealed partial class World
         HornetsKilled++;
     }
 
-    /// <summary>A hunted Grub: drops a bit of Food, plus some of whatever it had eaten. Removal from <see cref="Grubs"/> is deferred to the end of the frame.</summary>
-    public void KillGrub(Grub grub, Bramblekin killer)
+    /// <summary>A hunted (or snared) Grub: drops a bit of Food, plus some of whatever it had eaten. Removal from <see cref="Grubs"/> is deferred to the end of the frame.</summary>
+    public void KillGrub(Grub grub, Bramblekin? killer)
     {
         if (grub.IsDead)
             return;

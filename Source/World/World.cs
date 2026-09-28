@@ -416,6 +416,9 @@ public sealed partial class World
         UpdateRelations(deltaTime);
         UpdateTributes();
         UpdateGroupHomes(deltaTime);
+        UpdateHearths(deltaTime);
+        UpdateSnares();
+        UpdateNight(deltaTime);
         UpdateGroupDecisions(deltaTime);
         UpdateReigns(deltaTime);
         CountShelterOccupants();
@@ -433,6 +436,7 @@ public sealed partial class World
             Beetles[i].Update(deltaTime, this);
 
         UpdatePondLife(deltaTime);
+        IndexRipeCrops();
 
         // Reverse for-loop: a Bramblekin's own Update() can kill another
         // (combat, robbery) — World.Kill only queues the removal, but
@@ -447,6 +451,7 @@ public sealed partial class World
 
         UpdateShelters(deltaTime);
         UpdateFarming(deltaTime);
+        UpdatePens(deltaTime);
         UpdateBerrySpawn(deltaTime);
         UpdateWildFood(deltaTime);
         UpdateTwigSpawn(deltaTime);
@@ -460,6 +465,7 @@ public sealed partial class World
         UpdateBeetleSpawn(deltaTime);
         UpdateAnts(deltaTime);
         UpdateOak(deltaTime);
+        UpdateBeehive(deltaTime);
         UpdateArrivals(deltaTime);
         UpdateFoodDespawn(deltaTime);
         UpdateEncounterCleanup(deltaTime);
@@ -589,8 +595,8 @@ public sealed partial class World
     /// <summary>True if a round body of <paramref name="clearance"/> radius at <paramref name="point"/> would overlap an obstacle, or the pond.</summary>
     public bool IsBlocked(Vector3 point, float clearance)
     {
-        if (IsWaterNear(point, clearance))
-            return true; // Nothing is built, planted or set down in the pond.
+        if (IsWaterNear(point, clearance) || WaterMap.IsNearCreek(point.X, point.Z, clearance))
+            return true; // Nothing is built, planted or set down in the pond — or the creek.
         var p = new Vector2(point.X, point.Z);
         foreach (var obstacle in _obstacles)
         {

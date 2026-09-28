@@ -57,6 +57,8 @@ public sealed partial class World
         {
             if (member == leader || member.IsDead || member.IsDueling || member.IsYoung || member.IsNewMember)
                 continue;
+            if (group.Plot is { } plot && (plot.Instigator == member || plot.Conspirators.Contains(member)))
+                continue; // A plotter keeps its head down — it's for the Leader to find it out (see World.Plots).
 
             if (member.Loyalty < Bramblekin.RebelThreshold && Rng.NextDouble() < RebelChancePerDecision * (0.4 + 1.2 * member.Personality.Rebelliousness))
                 _pendingRebellions.Add((group, member, false));
@@ -106,9 +108,12 @@ public sealed partial class World
         if (CurrentSeason == Season.Winter && Rng.NextDouble() < rebel.Personality.Intelligence * (1.3f - 0.6f * rebel.Personality.Rebelliousness))
             return;
 
-        // A sociable — or persuasive — rebel talks the other unhappy members into going with it.
-        if (rebel.Personality.Sociability + 0.5f * (rebel.Personality.Persuasiveness - 0.5f) >= SplinterSociability && TrySplinter(group, rebel))
+        // A sociable — or persuasive — rebel quietly gathers the other unhappy members before leading them out (see World.Plots).
+        if (rebel.Personality.Sociability + 0.5f * (rebel.Personality.Persuasiveness - 0.5f) >= SplinterSociability)
+        {
+            HatchPlot(group, rebel);
             return;
+        }
 
         Depart(group, rebel);
     }
@@ -117,13 +122,14 @@ public sealed partial class World
     private static float ChallengeStrength(Bramblekin kin) =>
         kin.LeadershipScore + 0.5f * kin.Personality.Aggression + 0.3f * kin.Health / Bramblekin.MaxHealth;
 
-    /// <summary>The instigator leaves with every other unhappy follower, as a new (homeless) group. False if nobody else wants to go.</summary>
-    private bool TrySplinter(KinGroup group, Bramblekin instigator)
+    /// <summary>The instigator leaves with its fellow plotters (or, with none named, every other unhappy follower), as a new (homeless) group. False if nobody else wants to go.</summary>
+    private bool TrySplinter(KinGroup group, Bramblekin instigator, IReadOnlyCollection<Bramblekin>? plotters = null)
     {
         // A persuasive instigator sways the wavering too; a passive one only the fed-up.
         float swayed = SplinterLoyaltyThreshold + 0.25f * (instigator.Personality.Persuasiveness - 0.5f);
         List<Bramblekin> faction = group.Members
-            .Where(m => m != group.Leader && !m.IsDead && !m.IsDueling && !m.IsYoung && (m == instigator || m.Loyalty < swayed))
+            .Where(m => m != group.Leader && !m.IsDead && !m.IsDueling && !m.IsYoung &&
+                        (m == instigator || (plotters is null ? m.Loyalty < swayed : plotters.Contains(m))))
             .Take(MaxGroupSize)
             .ToList();
         if (faction.Count < 2 || !faction.Contains(instigator))
@@ -232,6 +238,7 @@ public sealed partial class World
         if (group.Leader == loser)
         {
             group.SetLeader(winner);
+            group.Heir = null; // A usurper names its own.
             winner.SetLoyalty(1f);
             loser.SetLoyalty(0.35f);
             Coups++;

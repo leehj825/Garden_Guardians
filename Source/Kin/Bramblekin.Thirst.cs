@@ -83,7 +83,7 @@ public sealed partial class Bramblekin
         if (world.IsStorming && !IsSheltered)
             Thirst = MathF.Max(0f, Thirst - RainDrinkPerSecond * deltaTime);
         else
-            Thirst = MathF.Min(MaxThirst, Thirst + ThirstPerSecond * SeasonThirst(world.CurrentSeason) * (IsSick ? SickHungerFactor : 1f) * deltaTime);
+            Thirst = MathF.Min(MaxThirst, Thirst + ThirstPerSecond * SeasonThirst(world.CurrentSeason) * (IsSick ? SickHungerFactor : 1f) * (IsAsleep ? SleepMetabolism : 1f) * deltaTime);
 
         if (Thirst < MaxThirst)
         {
@@ -103,6 +103,8 @@ public sealed partial class Bramblekin
     {
         FoodShardKind.Cress => 15f,
         FoodShardKind.Fish => 5f,
+        FoodShardKind.Honeydew => 4f,
+        FoodShardKind.Honey => 2f,
         FoodShardKind.Berry or FoodShardKind.Mushroom => 3f,
         _ => 0f,
     };
@@ -205,7 +207,7 @@ public sealed partial class Bramblekin
     {
         _drinkTimer = 0f;
         _drinkGeneration = WaterMap.Generation;
-        _waterSpot = World.NearestShoreSpot(Position, 200f);
+        _waterSpot = World.NearestShoreSpot(Position, 200f, creek: true);
         float nearest = _waterSpot is { } shore ? GroundMover.HorizontalDistance(Position, shore) : float.MaxValue;
 
         _drinkWell = world.NearestUsableWell(this, nearest);

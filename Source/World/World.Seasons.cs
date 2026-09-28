@@ -107,7 +107,7 @@ public sealed partial class World
             int current = (int)CurrentSeason;
             float blend = Math.Clamp((SeasonProgress - 0.8f) / 0.2f, 0f, 1f);
             Color sky = Blend(SeasonSkies[current], SeasonSkies[(current + 1) % 4], blend);
-            return IsStorming ? Blend(sky, StormSky, 0.75f) : sky;
+            return NightTinted(IsStorming ? Blend(sky, StormSky, 0.75f) : sky);
         }
     }
 

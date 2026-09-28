@@ -94,8 +94,9 @@ public sealed class SpatialGrid<T>
         {
             for (int z = minZ; z <= maxZ; z++)
             {
+                // As a span: no interface casts through shared generic code, thousands of times a step.
                 if (Chunk(x, z, create: false) is { } list)
-                    results.AddRange(list);
+                    results.AddRange(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list));
             }
         }
     }

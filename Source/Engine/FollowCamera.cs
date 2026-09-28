@@ -53,6 +53,18 @@ public sealed class FollowCamera
         _flyingToOverview = false;
     }
 
+    /// <summary>True while it's following someone or flying somewhere — the camera is taken.</summary>
+    public bool IsBusy => IsFollowing || _flyTarget is not null || _flyingToOverview;
+
+    /// <summary>Lets go of the camera: stops following and flying (for the Director — see <see cref="Director"/>).</summary>
+    public void Release()
+    {
+        IsFollowing = false;
+        _zoomingIn = false;
+        _flyingToOverview = false;
+        _flyTarget = null;
+    }
+
     /// <summary>Stops following and flies back out to the whole-garden view.</summary>
     public void ShowWholeMap()
     {

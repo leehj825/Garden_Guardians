@@ -2,7 +2,7 @@
 
 **Status key:** ✅ Done · 🟡 In progress (partly done) · ⬜ Not started · ❌ Removed/superseded
 
-*Last updated: 2026-09-27*
+*Last updated: 2026-09-28*
 
 ## Progress Snapshot
 The game is an **Emergent Survival** simulation (Phase 7) that has grown
@@ -695,20 +695,196 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     cleared nests near home; and until the Heron took a moment to get
     airborne, nobody could bring it down.
 
+## Phase 22: Reputation Between Individuals, and a Balance Check
+*   ✅ **Infamy:** a Bramblekin that robs someone starving, deals another
+    Bramblekin its killing blow, or carries off a piece of an enemy's
+    store on a war raid earns Infamy (fading slowly on its own, like a
+    grievance). At 1.2 or more it's **notorious**: word travels ahead of
+    it, so even a stranger who's never met it is warier — with odds 0.7
+    it shies away from banding together with a notorious Bramblekin,
+    taking one in as a struggling loner, or warming into a first
+    friendship, exactly as if it had heard the stories. It never stands
+    in the way of two strangers banding together to survive a predator
+    right now — that's a matter of life or death, not reputation. Unlike
+    Reputation (standing earned *within* a Bramblekin's own group, toward
+    its claim to lead), Infamy is what the wider garden thinks of it. The
+    Kin Inspector shows it once it's earned any ("Infamy: 0.6", or
+    "Notorious!" past the threshold).
+*   ✅ **Group vs. homestead balance, re-measured:** the Phase 8-era
+    finding that groups and homesteaders die at similar rates no longer
+    holds — the wells, cisterns, defensive bonuses, food-sharing and
+    crafts added in later phases have shifted it. No code change was
+    needed; this closes out that backlog item with the current numbers.
+    *Result* (10 seeds × 7800s, survival trend): Members die at 1.79 per
+    kin-hour against 2.32 for Homesteaders — groups are already about a
+    quarter safer, consistently across 9 of 10 seeds — while Independents
+    (3.42/h) and Wanderers (3.28/h) confirm settling and grouping still
+    pay off in that order. Final population averaged 39.1 across the
+    seeds, in the normal range; no crashes. The Infamy change above ran
+    across the same seeds with no sign of destabilizing alliance-forming
+    or population.
+
+## Phase 23: Fixes from Play on a Phone
+*   ✅ **The pond vanished after a saved garden was loaded:** the save
+    writes every numeric World field by reflection, which swept up two
+    render caches (the water level the pond's squares were worked out
+    for, and the drought mud's). A loaded garden restored the markers but
+    not the squares, so the pond was never drawn again — the water was
+    there, kin walked round it and drank from it, but it was invisible
+    from the second session on (only a New garden showed it). Render
+    caches are now marked `[NotSaved]` and the save skips them, which also
+    mends gardens already saved.
+*   ✅ **The Wolf Spider got stuck at the map's edge:** walkers turn back
+    once 48m from the centre, but destinations were picked up to 49m out,
+    so about one prowl target in 25 could never be reached — the spider
+    paced on the spot at the limit for good (45 minutes in one place in a
+    13-year run). Goals past the limit are now clamped to it, for every
+    walker.
+
+*   ✅ **The speed kept dropping to 1x:** urgent headlines (a famine — 4
+    starved in a season, most winters — a drought drying the pond, a war)
+    reset a fast-forwarded game to 1x so they could be watched, at most
+    every 90s; at 50x that was every game-year or so, and read as the
+    setting resetting itself. Banners no longer touch the speed; urgent
+    ones still stay up longer, in red.
+
+## Phase 24: Hearth and Home, Kin and Clan
+*   ✅ **Hearths:** a craft (a House, worked out in autumn or winter): a
+    fire out front of each House, kept fed with twigs; food from its
+    store is cooked (a little more filling and healing), and wintering
+    beside it keeps folk warmer.
+*   ✅ **Snares:** a craft (a House): baited snares round each House catch
+    Grubs without a hunt; Gatherers set sprung ones again.
+*   ✅ **Adoption:** an orphaned child is taken in by a couple in its clan
+    (a grown sibling first), who are close kin from then on; a lone young
+    one is taken in by a settled clan it meets.
+*   ✅ **Courtship gifts:** a fed suitor with food in hand offers it — a
+    friend at least, and better odds of a partner (more from the
+    persuasive).
+*   ✅ **Skill mastery:** hunting, farming, building, fishing and healing
+    grow with practice (and rust slowly); skill makes work faster and
+    blows harder, Leaders give jobs to whoever's best, children start with
+    a quarter of their handier parent's skill, and masters make the
+    chronicle.
+*   ✅ **Healers:** herb-lore (farming, a House, and someone sick): a
+    Healer tends the sick and wounded near home.
+*   ✅ **Named succession:** an elder, sick or badly hurt Leader names an
+    heir, leaning toward its kin — dynasties — who takes over smoothly; a
+    Leader lost with none leaves a scramble that costs everyone loyalty.
+*   ✅ **The council:** a Leader's three most respected members temper its
+    goals, sharing rule, and war and peace (about 16% of the way).
+*   ✅ **Quiet plotting:** a would-be splinter plots first, recruiting the
+    unhappy over several decisions, and may be found out — exiled by a
+    harsh Leader, talked round by a mild one.
+*   ✅ **Burrows:** a loner on a hillside may dig in — cheap, warm in
+    winter, its store hidden from raiders and ants, but only room for two
+    and no way to build it up.
+*   ✅ **The creek:** a spring in the driest corner feeds a brook running
+    ~28m downhill into a pool; it never dries, blocks no one, and counts
+    as water for drinking, cress, settling and watered crops. About a
+    third of all trips for water end there.
+*   **Tuning:** with every new food in, the population ran two-thirds
+    higher and kin killings nearly tripled from the crowding, so cooked
+    meals were cut from +12 to +5 of a meal's 40 (+2 health, was +3),
+    wintering by a hearth to 0.42 of the usual hunger (was 0.35), and a
+    skilled farmer's bonus piece to at most 20% of pickings (was 35%).
+*   **Benchmark (12 seeds × 7800s against the Phase 22 build on the same
+    seeds, no crashes):** population 50.8 time-averaged vs 40.7; births
+    198 vs 149 a run; starvation 45.0 vs 46.2; deaths to predators 33.8 vs
+    34.6; kin killed by kin 25.7 vs 19.8; old age 56.6 vs 44.0 — more live
+    out their years; sickness 18.0 vs 18.0. Members die at 1.61 per
+    kin-hour vs 1.79, Homesteaders at 2.06 vs 2.31. Before tuning:
+    population 56.6, kin killings 34.2.
+
+## Phase 25: Fast-Forward You Can Watch
+At 50x a phone (debug APK) managed only 8–11x with 70 kin. Three causes,
+three fixes:
+*   ✅ **Android builds are optimized even in Debug:** the branch APKs CI
+    builds are Debug, and an unoptimized build runs the simulation 2.7x
+    slower (42x vs 115x real time on the same busy garden, desktop).
+*   ✅ **Simulation profiling (perf):** a cached grounded position per
+    walker, a per-group index of ripe crops, cached group lookups, the
+    threats near a home gathered once per decision round instead of per
+    group, and plain loops in the hot crop queries. The busy garden runs
+    ~140–150x real time on desktop, up from ~106x, with byte-identical
+    results on fixed seeds.
+*   ✅ **Level of detail in drawing:** raylib builds every sphere's
+    vertices on the CPU each frame (16×16 segments by default). Spheres
+    now take segments by their size on screen (`Detail`), and a home only
+    a few pixels across skips its cap scales, footing stones, thorn tips
+    and hearth pebbles. Drawing the whole busy garden fell from 52–66ms a
+    frame to ~18ms (software GL); close up, everything looks as before.
+
+## Phase 26: Day and Night
+*   ✅ **Day and night:** a 75s day (two to a season) with dusk, night
+    and dawn; nights are longer in winter. The sky deepens, the garden
+    darkens, and hearths, windows, fireflies and the Owl's eyes shine.
+*   ✅ **Sleep:** kin sleep at home (or in the open without one), at half
+    the hunger and thirst, and barely notice anything asleep.
+*   ✅ **The night watch:** settled clans post a watch who raises the
+    alarm and wakes everyone; raids are likelier after dark.
+*   ✅ **The Owl:** a night hunter from the oak that drops on kin in the
+    open — sleepers first — but never near a lit hearth; it can be fought
+    on the ground and driven off or brought down.
+*   **Benchmark (12 seeds × 7800s against Phase 25):** population 43.0
+    time-averaged vs 50.8; births 147 vs 198 a run (a quarter less daylight
+    to gather in); starvation 28.8 vs 45.0; kin killed by kin 8.0 vs 25.7 —
+    far fewer robberies with everyone abed; predators 33.2 vs 33.8; old
+    age 53.2 vs 56.6. The Owl comes out ~40 nights a run and strikes ~37
+    times, killing 1–3; it's driven off ~20 times.
+
+## Phase 27: The Director
+*   ✅ **An automatic camera ("Auto"):** cuts between whatever is most
+    worth watching — duels, fights, raids, the spider pouncing, the owl
+    striking, headlines, births, beetle hunts, else the liveliest village
+    — for a few seconds each, captioned; any pan or tap hands the camera
+    back. Watching only: the simulation is untouched (results identical
+    on fixed seeds).
+
+## Phase 28: Aphid Herding
+*   ✅ **Herding** (a craft): a pen of aphids by the main home gives
+    honeydew — steady, slow-to-spoil food — and the herd breeds up
+    outside winter. Ants carry aphids off, the Wolf Spider picks them
+    off, and war raiders rustle them.
+*   **Tuning:** first cut, a full pen gave a drop every 10s and the
+    population ran to 58.6; honeydew now comes every 150s per aphid
+    (was 60), breeding every 240s (was 150), five to a pen (was six), and
+    two in five ants go for pens first.
+*   **Benchmark (12 seeds × 7800s against Phase 26):** population 52.9
+    vs 43.0 — herding gives back what shorter working days took; births
+    196 vs 147; starvation 34.4 vs 28.8; predators 30.7 vs 33.2; kin
+    killed by kin 23.8 vs 8.0 (back to the crowded Phase 25 level);
+    old age 61.2 vs 53.2. Clans fence ~20 pens a run and collect ~600
+    drops of honeydew; ants take ~12 aphids, the spider ~1.
+
+## Phase 29: The Beehive in the Oak
+*   ✅ **Honey:** a hive on the oak fills with combs spring to autumn; bold
+    kin climb for them, and Leaders in reach send their boldest. A comb
+    is the richest food (fills 20 more, stores as two, never spoils) and
+    the best courtship gift (twice the sway).
+*   ✅ **Bees:** more than half the time the bees rouse and chase the taker,
+    stinging, until it gets indoors or swats them.
+*   ✅ **Smoking** (a craft, after a hearth and a first comb): the bees
+    seldom rouse.
+*   **Tuning:** at first only idle kin went, and a run saw ~8 combs; now
+    Leaders send their boldest (15% a decision), and a run sees ~85, with
+    ~30 swarms roused and ~70 stings.
+*   **Benchmark (24 seeds × 7800s against Phase 28 on the same seeds):**
+    population 59.9 vs 56.4 time-averaged (the difference is within the
+    spread between seeds); starvation 37.7 vs 31.4; predators 34.2 vs
+    31.8; kin killed by kin 22.9 vs 24.6; old age 67.8 vs 63.5.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:
-*   ⬜ **Reputation between groups.** Groups remember grievances and
-    places, but not individuals: a notorious raider is no more feared by
-    the next village than anyone else.
-*   ⬜ **Group vs. homestead balance.** Settling alone and living in a group
-    now have similar death rates; groups win on food and on numbers, and
-    lose some of that edge to risky hunts, defence and politics. Worth
-    tuning if groups should be the clearly safer choice.
 *   ⬜ **Real pathfinding round rocks and homes.** Walkers find their way
     round the pond on a grid (Phase 17), but still steer round rocks,
     homes and the oak with a short sideways detour when stuck. Fine at
     current density.
+*   ⬜ **A bigger garden.** The terrain takes its size as a parameter, but
+    a dozen places (water and route grids, the obstacle grid, flood
+    heights, the edge limit, drawing, the camera) assume ±50m, and spawn
+    amounts would need to scale with area.
 *   ⬜ **Tuning.** Every rate and threshold is a constant at the top of its
     class (`World`, `Bramblekin`, `Shelter`, the wildlife); the headless
     survival trend is the tool for revisiting them.

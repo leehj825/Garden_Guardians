@@ -32,12 +32,17 @@ public sealed partial class Bramblekin
         FatherId = ParentIds?.Father,
         MotherName = ParentNames?.Mother,
         FatherName = ParentNames?.Father,
+        GuardianA = GuardianIds?.A,
+        GuardianB = GuardianIds?.B,
+        GuardianAName = GuardianNames?.A,
+        GuardianBName = GuardianNames?.B,
         Children = Children,
         GroupId = GroupId,
         Home = Home is { IsCollapsed: false } home ? home.ID : null,
         Job = Job,
         Loyalty = Loyalty,
         Reputation = Reputation,
+        Infamy = Infamy,
         HasLeftGroup = HasLeftGroup,
         FormerGroups = _formerGroups.ToList(),
         KnownKins = new Dictionary<int, RelationshipState>(_knownKins),
@@ -54,6 +59,7 @@ public sealed partial class Bramblekin
         SpiderKills = SpiderKills,
         Sickness = SicknessState.Sickness,
         Immunity = SicknessState.Immunity,
+        Skills = SkillsForSave,
         Errand = _errand is { } errand
             ? new ErrandSave
             {
@@ -87,6 +93,7 @@ public sealed partial class Bramblekin
             Job = save.Job,
             Loyalty = save.Loyalty,
             Reputation = save.Reputation,
+            Infamy = save.Infamy,
             HasLeftGroup = save.HasLeftGroup,
             IsWidowed = save.Widowed,
             _mourningTimer = save.Mourning,
@@ -102,12 +109,17 @@ public sealed partial class Bramblekin
             kin.ParentIds = (mother, father);
         if (save.MotherName is { } motherName && save.FatherName is { } fatherName)
             kin.ParentNames = (motherName, fatherName);
+        if (save.GuardianA is { } guardianA && save.GuardianB is { } guardianB)
+            kin.GuardianIds = (guardianA, guardianB);
+        if (save.GuardianAName is { } guardianAName && save.GuardianBName is { } guardianBName)
+            kin.GuardianNames = (guardianAName, guardianBName);
         foreach (Guid former in save.FormerGroups)
             kin._formerGroups.Add(former);
         foreach (var (id, relationship) in save.KnownKins)
             kin._knownKins[id] = relationship;
         kin._dangers.Load(save.Dangers.Select(p => ((Vector3)p.Where, p.When)));
         kin.RestoreSickness(save.Sickness, save.Immunity);
+        kin.RestoreSkills(save.Skills);
         return kin;
     }
 

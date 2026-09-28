@@ -29,6 +29,15 @@ public sealed class KinGroup
     public Color Color { get; }
 
     /// <summary>First few hex digits of <see cref="Id"/>.</summary>
+    /// <summary>Who keeps watch by home tonight (see World.UpdateNight); null by day.</summary>
+    public Bramblekin? NightWatch { get; set; }
+
+    /// <summary>Until when (game seconds) the clan is awake after an alarm.</summary>
+    public float AlarmUntil { get; set; }
+
+    /// <summary>Combs of honey its members have taken from the hive (see World.Beehive).</summary>
+    public int HoneyTaken { get; set; }
+
     public string ShortId => Id.ToString("N")[..4];
 
     /// <summary>The group's name — "Thornwood clan", after the family of the Leader it was founded under (see World.NameGroup). Null for a moment while it's being founded.</summary>
@@ -43,6 +52,21 @@ public sealed class KinGroup
     public List<Bramblekin> Members { get; } = new();
 
     public Bramblekin? Leader { get; private set; }
+
+    /// <summary>Taken off the World's books (dissolved, merged or conquered) — see World.Disband.</summary>
+    public bool IsDisbanded { get; set; }
+
+    /// <summary>The member an ageing or ailing Leader has named to follow it, if any (see World.Succession).</summary>
+    public Bramblekin? Heir { get; set; }
+
+    /// <summary>The temper its decisions are made in this time round: the Leader's, tempered by its council (see World.Council).</summary>
+    public Personality Counsel { get; set; } = new(0.5f, 0.5f, 0.5f);
+
+    /// <summary>The Leader its council last talked out of eating first — so each is counted once.</summary>
+    public Bramblekin? OverruledOnSharing { get; set; }
+
+    /// <summary>A splinter being plotted in the group, if any (see World.Plots). Not saved: a loaded garden's plots start afresh.</summary>
+    public Plot? Plot { get; set; }
 
     /// <summary>The group's shared home (and store), once it has one — see <see cref="World.UpdateGroupHomes"/>.</summary>
     public Shelter? Home { get; set; }

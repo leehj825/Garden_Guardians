@@ -30,7 +30,7 @@ public sealed partial class World
     /// <summary>True if the pond lies within <paramref name="reach"/> of <paramref name="point"/> (looking out in twelve directions, near and far).</summary>
     public static bool IsWaterWithin(Vector3 point, float reach)
     {
-        if (IsWater(point))
+        if (IsWater(point) || WaterMap.DistanceToCreek(point.X, point.Z) <= reach)
             return true;
         for (int i = 0; i < 12; i++)
         {
@@ -42,27 +42,35 @@ public sealed partial class World
         return false;
     }
 
-    /// <summary>The shore spot nearest <paramref name="from"/>, if one lies within <paramref name="reach"/> — on the water's edge now, or (<paramref name="usual"/>) at the pond's usual level.</summary>
-    public static Vector3? NearestShoreSpot(Vector3 from, float reach, bool usual = false)
+    /// <summary>The shore spot nearest <paramref name="from"/>, if one lies within <paramref name="reach"/> — on the water's edge now, or (<paramref name="usual"/>) at the pond's usual level; with <paramref name="creek"/>, the creek's banks count too.</summary>
+    public static Vector3? NearestShoreSpot(Vector3 from, float reach, bool usual = false, bool creek = false)
     {
         Vector3? best = null;
         float bestDistance = reach * reach;
-        foreach (Vector3 spot in usual ? WaterMap.UsualShore : WaterMap.Shore)
+        void Consider(Vector3[] spots)
         {
-            float distance = GroundMover.HorizontalDistanceSquared(from, spot);
-            if (distance <= bestDistance)
+            foreach (Vector3 spot in spots)
             {
-                best = spot;
-                bestDistance = distance;
+                float distance = GroundMover.HorizontalDistanceSquared(from, spot);
+                if (distance <= bestDistance)
+                {
+                    best = spot;
+                    bestDistance = distance;
+                }
             }
         }
+        Consider(usual ? WaterMap.UsualShore : WaterMap.Shore);
+        if (creek)
+            Consider(WaterMap.CreekBanks);
         return best;
     }
 
     /// <summary>A random shore spot within <paramref name="reach"/> of <paramref name="from"/>, if there's any — on the water's edge now, or (<paramref name="usual"/>) at the pond's usual level.</summary>
-    public Vector3? RandomShoreSpot(Vector3 from, float reach, bool usual = false)
+    public Vector3? RandomShoreSpot(Vector3 from, float reach, bool usual = false, bool creek = false)
     {
         Vector3[] shore = usual ? WaterMap.UsualShore : WaterMap.Shore;
+        if (creek)
+            shore = shore.Concat(WaterMap.CreekBanks).ToArray();
         int count = 0;
         foreach (Vector3 spot in shore)
         {

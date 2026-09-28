@@ -47,7 +47,11 @@ public sealed partial class Bramblekin
     {
         SetState(BramblekinState.Eating);
         _eatTimer = EatDuration;
+        _mealCooked = false;
     }
+
+    /// <summary>The meal under way was taken from a store with a lit hearth: it's cooked (see <see cref="Craft.Hearth"/>).</summary>
+    private bool _mealCooked;
 
     private void FinishEating(World world)
     {
@@ -55,10 +59,14 @@ public sealed partial class Bramblekin
         {
             world.ConsumeFood(food);
             _carried = null;
-            Hunger = MathF.Max(0f, Hunger - FoodNourishment);
+            Hunger = MathF.Max(0f, Hunger - FoodNourishment - (_mealCooked ? World.CookedNourishmentBonus : 0f) -
+                                   (food.Kind == FoodShardKind.Honey ? World.HoneyNourishmentBonus : 0f));
             QuenchWith(food.Kind);
-            Heal(FoodHealing);
+            Heal(FoodHealing + (_mealCooked ? World.CookedHealingBonus : 0));
+            if (_mealCooked)
+                world.NoteCookedMeal();
         }
+        _mealCooked = false;
         _robTarget = null;
         StartPause();
     }
@@ -134,6 +142,8 @@ public sealed partial class Bramblekin
             world.StealFood(this, victim);
         if (State == BramblekinState.Fighting && _threatIsAllyDefense)
             world.NoteDefended(this, target);
+        if (target is not Bramblekin)
+            Train(Skill.Hunting, world, target is StagBeetle or WolfSpider or Heron ? 2f : 1f);
         target.TakeHit(target is Bramblekin ? StrikeDamage : HuntingDamage, this, world);
     }
 
@@ -205,7 +215,7 @@ public sealed partial class Bramblekin
             ReleaseTwigClaim();
         if (State == BramblekinState.Socializing)
             _companion = null;
-        if (state == BramblekinState.Resting)
+        if (state is BramblekinState.Resting or BramblekinState.Sleeping)
             _restTimer = 0f;
 
         State = state;

@@ -57,7 +57,7 @@ public sealed class Grub : ICombatant
     }
 
     /// <summary>Terrain-aware, same treatment as Hornet/Bramblekin — Y is snapped to World.GetHeightAt every read.</summary>
-    public Vector3 Position => World.Grounded(_mover.Position);
+    public Vector3 Position => _mover.GroundedPosition;
 
     /// <summary>True once killed by a Bramblekin. Removal from World.Grubs is deferred to the end of the frame.</summary>
     public bool IsDead { get; private set; }
@@ -119,6 +119,18 @@ public sealed class Grub : ICombatant
             return;
         }
 
+        // The bait in a set snare smells like food too — and that's the end of it.
+        if (world.Snares.Count > 0 && world.NearestSetSnare(Position, SmellRadius) is { } snare)
+        {
+            if (GroundMover.HorizontalDistance(Position, snare.Position) <= Snare.CatchRadius)
+            {
+                world.SpringSnare(snare, this);
+                return;
+            }
+            _mover.MoveTowards(snare.Position, CrawlSpeed, deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius));
+            return;
+        }
+
         // Nothing to smell: a slow random wander.
         if (_pauseTimer > 0f)
         {
@@ -143,6 +155,6 @@ public sealed class Grub : ICombatant
 
         Vector2 heading = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;
         Vector3 snout = Position + new Vector3(heading.X, radius * 0.6f, heading.Y) * radius;
-        Raylib.DrawSphere(snout, radius * 0.4f, SnoutColor);
+        Detail.Sphere(snout, radius * 0.4f, SnoutColor);
     }
 }

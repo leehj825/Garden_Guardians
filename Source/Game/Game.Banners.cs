@@ -11,9 +11,6 @@ public static partial class Game
     /// <summary>…or an urgent one (war, conquest, famine).</summary>
     private const float UrgentBannerSeconds = 8f;
 
-    /// <summary>An urgent headline slows a fast-forwarded game to 1x — at most once in this many real seconds.</summary>
-    private const float AutoSlowCooldown = 90f;
-
     /// <summary>At most this many banners wait their turn (the oldest routine ones are dropped).</summary>
     private const int BannerQueueCapacity = 4;
 
@@ -24,17 +21,15 @@ public static partial class Game
     private static readonly List<Moment> _bannerQueue = new();
     private static Moment? _banner;
     private static float _bannerTimeLeft;
-    private static bool _bannerSlowedGame;
-    private static float _autoSlowCooldown;
 
     /// <summary>Where the banner was last drawn (for taps).</summary>
     private static Rectangle _bannerBounds;
 
     /// <summary>
     /// Big-moment banners: picks up the World's headlines, shows them one
-    /// at a time just above the HUD, and — for an urgent one, when the game
-    /// is fast-forwarded — drops the speed to 1x so it can be watched. Held
-    /// while the History screen is open.
+    /// at a time just above the HUD (an urgent one longer, and never dropped
+    /// for a routine one). It never touches the speed: that's the player's
+    /// alone. Held while the History screen is open.
     /// </summary>
     private static void UpdateBanners(World world, float realDeltaTime)
     {
@@ -47,7 +42,6 @@ public static partial class Game
                 _bannerQueue.RemoveAt(routine >= 0 ? routine : 0);
             }
         }
-        _autoSlowCooldown = MathF.Max(0f, _autoSlowCooldown - realDeltaTime);
         if (_showChronicle)
             return;
 
@@ -65,13 +59,6 @@ public static partial class Game
         _bannerQueue.RemoveAt(0);
         _banner = next;
         _bannerTimeLeft = next.Urgent ? UrgentBannerSeconds : BannerSeconds;
-        _bannerSlowedGame = false;
-        if (next.Urgent && _timeScale > 1f && _autoSlowCooldown <= 0f)
-        {
-            _timeScale = 1f;
-            _bannerSlowedGame = true;
-            _autoSlowCooldown = AutoSlowCooldown;
-        }
     }
 
     /// <summary>A tap on the banner: fly the camera to where it happened. Returns true if the tap was the banner's.</summary>
@@ -102,7 +89,7 @@ public static partial class Game
         int textSize = ScaledFontSize(0.55f);
         int pad = (int)(16 * UiScale) + 4;
         int maxWidth = (int)(Raylib.GetScreenWidth() * 0.62f);
-        string hint = (banner.Where is null ? "" : "Tap to see") + (_bannerSlowedGame ? (banner.Where is null ? "" : " - ") + "slowed to 1x" : "");
+        string hint = banner.Where is null ? "" : "Tap to see";
         string text = Fit(banner.Text, textSize, maxWidth);
         int width = Math.Max(Raylib.MeasureText(banner.Title, titleSize),
             Math.Max(Raylib.MeasureText(text, textSize), Raylib.MeasureText(hint, textSize))) + pad * 2;

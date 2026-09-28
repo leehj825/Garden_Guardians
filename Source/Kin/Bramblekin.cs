@@ -101,6 +101,9 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>Huddled inside its home in winter (see <see cref="IsSheltered"/>), Hunger rises at this fraction of the usual rate.</summary>
     public const float WinterShelterMetabolism = 0.5f;
 
+    /// <summary>A burrow's earthen walls keep in more warmth: wintering in one, Hunger rises at this fraction.</summary>
+    public const float BurrowWinterMetabolism = 0.4f;
+
     /// <summary>At or above this, Hunger is Critical and overrides every other need.</summary>
     public const float HungryThreshold = 60f;
 
@@ -168,8 +171,8 @@ public sealed partial class Bramblekin : ICombatant
 
     /// <summary>At work — gathering, building, stocking, farming, carrying for its group — the diligent go briskly and the idle slowly.</summary>
     private float WorkPace => State is BramblekinState.Collecting or BramblekinState.Building or BramblekinState.Stockpiling or
-        BramblekinState.Farming or BramblekinState.Traveling or BramblekinState.Fishing
-        ? 0.85f + 0.3f * Personality.Diligence
+        BramblekinState.Farming or BramblekinState.Traveling or BramblekinState.Fishing or BramblekinState.Healing
+        ? (0.85f + 0.3f * Personality.Diligence) * SkillPace
         : 1f;
 
     /// <summary>Its nerve breaks at this fraction of its Health: lower for the brave, higher for the cautious (<see cref="FightBreakHealthFraction"/> for the middling).</summary>
@@ -348,11 +351,14 @@ public sealed partial class Bramblekin : ICombatant
 
     /// <summary>True while it's holding a twig for building.</summary>
     public bool HasTwig => _carriedTwig is not null;
+
+    /// <summary>Its group as World.GroupOf last found it — a lookup cache, not state (never saved).</summary>
+    internal KinGroup? CachedGroup { get; set; }
     /// <summary>Every Bramblekin it has met (by <see cref="ID"/>) and how it regards them.</summary>
     public IReadOnlyDictionary<int, RelationshipState> KnownKins => _knownKins;
 
     /// <summary>Terrain-aware: Y is snapped to World.GetHeightAt every read.</summary>
-    public Vector3 Position => World.Grounded(_mover.Position);
+    public Vector3 Position => _mover.GroundedPosition;
 
     public BramblekinState State { get; private set; }
 
@@ -403,8 +409,8 @@ public sealed partial class Bramblekin : ICombatant
 
     private int StrikeDamage => (int)MathF.Round((BaseStrikeDamage + StrikeDamagePerAggression * Personality.Aggression) * (IsElder ? ElderStrikeFactor : 1f));
 
-    /// <summary>A blow against a creature: half as hard again with <see cref="Craft.Spears"/>.</summary>
-    private int HuntingDamage => Knows(Craft.Spears) ? StrikeDamage * 3 / 2 : StrikeDamage;
+    /// <summary>A blow against a creature: half as hard again with <see cref="Craft.Spears"/>, and up to half as hard again for a master hunter.</summary>
+    private int HuntingDamage => (int)MathF.Round((Knows(Craft.Spears) ? StrikeDamage * 1.5f : StrikeDamage) * (1f + 0.5f * SkillAt(Skill.Hunting)));
 
     // --- Relationships & groups ----------------------------------------------------------
 
@@ -587,15 +593,20 @@ public sealed partial class Bramblekin : ICombatant
         if (UpdateAging(deltaTime, world))
             return;
         UpdateFamily(deltaTime);
+        RustSkills(deltaTime);
         if (Home is { IsCollapsed: true })
             Home = null;
 
         // Metabolism: Hunger always rises (slower huddled at home in winter); at the very top it starts costing Health.
-        float metabolism = world.CurrentSeason == Season.Winter && IsSheltered ? WinterShelterMetabolism : 1f;
+        float metabolism = world.CurrentSeason == Season.Winter && IsSheltered
+            ? Home!.IsHearthLit ? World.HearthWinterMetabolism : Home.IsBurrow ? BurrowWinterMetabolism : WinterShelterMetabolism
+            : 1f;
         if (!IsSheltered)
             metabolism *= world.ColdFactor; // A harsh winter bites anyone caught outdoors.
         if (IsSick)
             metabolism *= SickHungerFactor;
+        if (IsAsleep)
+            metabolism *= SleepMetabolism;
         Hunger = MathF.Min(MaxHunger, Hunger + HungerPerSecond * metabolism * deltaTime);
         if (Hunger >= MaxHunger)
         {
@@ -655,6 +666,14 @@ public sealed partial class Bramblekin : ICombatant
         if (UpdateWaterCarry(deltaTime, world))
             return;
 
+        // 2c') A honey foray under way is seen through.
+        if (UpdateHoneyForay(deltaTime, world))
+            return;
+
+        // 2d) Night: bed — for all but the watch, raiders and anyone on an errand.
+        if (UpdateNight(deltaTime, world))
+            return;
+
         // 3) Duty: the job its group's Leader gave it.
         if (UpdateDuty(deltaTime, world))
             return;
@@ -701,8 +720,15 @@ public sealed partial class Bramblekin : ICombatant
         {
             _perceivedThreat = attacker;
             _threatIsAllyDefense = false;
+            if (IsAsleep && world.GroupOf(this) is { } woken)
+                world.RaiseAlarm(woken, Position); // Attacked in its sleep: its cry wakes the clan.
             return;
         }
+
+        // Asleep, only something right on top of it wakes it — and a raider creeping in, not even that.
+        bool sleeping = IsAsleep && !world.IsAlarmed(world.GroupOf(this));
+        if (sleeping)
+            radius = MathF.Min(radius, SleepSenseRadius);
 
         ICombatant? best = null;
         bool bestIsAllyDefense = false;
@@ -730,6 +756,12 @@ public sealed partial class Bramblekin : ICombatant
         if (world.Heron is { IsLanded: true } heron &&
             GroundMover.HorizontalDistance(Position, heron.Position) <= (heron.IsStill ? Heron.StillSightRadius : Heron.ThreatRadius))
             Consider(heron, allyDefense: false);
+        // Bees roused from the hive.
+        if (world.Swarms.Count > 0 && world.NearestSwarm(Position, 4f) is { } swarm)
+            Consider(swarm, allyDefense: false);
+        // The Owl, down on the ground over its catch.
+        if (world.Owl is { IsLanded: true } owl && GroundMover.HorizontalDistance(Position, owl.Position) <= Owl.ThreatRadius)
+            Consider(owl, allyDefense: true);
 
         List<Bramblekin> nearby = world.QueryColonyWithin(Position, radius);
         for (int i = 0; i < nearby.Count; i++)
@@ -745,7 +777,7 @@ public sealed partial class Bramblekin : ICombatant
             }
 
             // Fight to protect: a raider heading for its home (or any of its group's, or its allies').
-            if (other.RaidTarget is { } raided &&
+            if (!sleeping && other.RaidTarget is { } raided &&
                 (raided == Home || (GroupId is not null && (raided.GroupId == GroupId || world.AreAllied(raided.GroupId, GroupId)))))
             {
                 Consider(other, allyDefense: true);
@@ -779,5 +811,9 @@ public sealed partial class Bramblekin : ICombatant
 
         _perceivedThreat = best;
         _threatIsAllyDefense = bestIsAllyDefense;
+
+        // The night watch cries out at anything it sees coming.
+        if (best is not null && world.IsNight && world.GroupOf(this) is { } clan && clan.NightWatch == this)
+            world.RaiseAlarm(clan, Position);
     }
 }

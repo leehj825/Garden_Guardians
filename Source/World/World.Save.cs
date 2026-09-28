@@ -31,11 +31,13 @@ public sealed partial class World
                 Stored = s.StoredFood, Owner = s.Owner is { IsDead: false } owner ? owner.ID : null, GroupId = s.GroupId,
                 AbandonedSeconds = s.AbandonedSeconds, StageStartedAt = s.StageStartedAt,
                 Granary = s.HasGranary, Stakes = s.StakesSet, Stones = s.StonesLaid, Cistern = s.HasCistern, Water = s.Water,
+                Hearth = s.HasHearth, HearthFuel = s.HearthFuel,
             }).ToList(),
             Kin = Colony.Where(k => !k.IsDead).Select(k => k.ToSave()).ToList(),
             Groups = _groups.Values.Select(g => new GroupSave
             {
                 Id = g.Id, Name = g.Name, Leader = g.Leader is { IsDead: false } leader ? leader.ID : null,
+                Heir = g.Heir is { IsDead: false } heir ? heir.ID : null,
                 Home = g.Home is { IsCollapsed: false } home ? home.ID : null,
                 Annexes = g.Annexes.Where(a => !a.IsCollapsed).Select(a => a.ID).ToList(),
                 HomeSiteRetryTimer = g.HomeSiteRetryTimer, Goal = g.Goal == GroupGoal.Raid ? GroupGoal.Stockpile : g.Goal, Sharing = g.Sharing,
@@ -53,6 +55,8 @@ public sealed partial class World
             Food = FoodShards.Where(f => f is { IsActive: true, IsCarried: false })
                 .Select(f => new LooseSave { Position = f.Position, Kind = f.Kind, DespawnTimer = f.DespawnTimer }).ToList(),
             Wells = Wells.Select(w => new WellSave { Position = w.Position, GroupId = w.GroupId, StonesNeeded = w.StonesNeeded, StonesLaid = w.StonesLaid }).ToList(),
+            Snares = Snares.Select(s => new SnareSave { Position = s.Position, GroupId = s.GroupId, IsSet = s.IsSet }).ToList(),
+            Pens = Pens.Select(p => new PenSave { Position = p.Position, GroupId = p.GroupId, Aphids = p.Aphids, HoneydewTimer = p.HoneydewTimer, BreedTimer = p.BreedTimer }).ToList(),
             Materials = Materials.Where(m => m is { IsActive: true, IsCarried: false })
                 .Select(m => new MaterialSave { Position = m.Position, Kind = m.Kind, DespawnTimer = m.DespawnTimer }).ToList(),
             Twigs = Twigs.Where(t => t is { IsActive: true, IsCarried: false })
@@ -141,7 +145,7 @@ public sealed partial class World
             {
                 GroupId = s.GroupId, AbandonedSeconds = s.AbandonedSeconds, StageStartedAt = s.StageStartedAt,
                 HasGranary = s.Granary, StakesSet = s.Palisade ? Shelter.PalisadeStakeCost : s.Stakes, StonesLaid = s.Stones,
-                HasCistern = s.Cistern, Water = s.Water,
+                HasCistern = s.Cistern, Water = s.Water, HasHearth = s.Hearth, HearthFuel = s.HearthFuel,
             };
             shelter.Restore(s.Id, s.Tier, s.Built, s.Upgrading, s.Twigs, s.Stored);
             Shelters.Add(shelter);
@@ -149,6 +153,10 @@ public sealed partial class World
         }
         foreach (WellSave w in save.Wells)
             Wells.Add(new Well(w.Position, w.GroupId, w.StonesNeeded) { StonesLaid = w.StonesLaid });
+        foreach (SnareSave s in save.Snares)
+            Snares.Add(new Snare(s.Position, s.GroupId, s.IsSet));
+        foreach (PenSave p in save.Pens ?? new List<PenSave>())
+            Pens.Add(new AphidPen(p.Position, p.GroupId, p.Aphids) { HoneydewTimer = p.HoneydewTimer, BreedTimer = p.BreedTimer });
 
         var kin = new Dictionary<int, Bramblekin>();
         foreach (KinSave k in save.Kin)
@@ -205,6 +213,8 @@ public sealed partial class World
             group.FoodSpots.Load(g.FoodSpots.Select(p => ((Vector3)p.Where, p.When)));
             if (g.Leader is { } leaderId && kin.TryGetValue(leaderId, out Bramblekin? leader))
                 group.SetLeader(leader);
+            if (g.Heir is { } heirId && kin.TryGetValue(heirId, out Bramblekin? heir))
+                group.Heir = heir;
             _groups[group.Id] = group;
         }
 
@@ -266,10 +276,10 @@ public sealed partial class World
         typeof(World).GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
             .Where(p => p.CanRead && p.SetMethod is not null && p.GetIndexParameters().Length == 0 && IsSavedNumber(p.PropertyType));
 
-    /// <summary>World fields worth saving: every number, flag or enum (timers, running totals) and array of numbers (statistics) — but not a property's own backing field.</summary>
+    /// <summary>World fields worth saving: every number, flag or enum (timers, running totals) and array of numbers (statistics) — but not a property's own backing field, nor anything marked [NotSaved] (render caches).</summary>
     private static IEnumerable<FieldInfo> SavedFields =>
         typeof(World).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            .Where(f => !f.Name.Contains("k__BackingField") &&
+            .Where(f => !f.Name.Contains("k__BackingField") && f.GetCustomAttribute<NotSavedAttribute>() is null &&
                         (IsSavedNumber(f.FieldType) || (f.FieldType.IsArray && IsSavedNumber(f.FieldType.GetElementType()!))));
 
     private static bool IsSavedNumber(Type type) =>
@@ -311,3 +321,7 @@ public sealed partial class World
         }
     }
 }
+
+/// <summary>A World field the save leaves out, though it's a number (see World.SavedFields): a render cache, not garden state.</summary>
+[AttributeUsage(AttributeTargets.Field)]
+public sealed class NotSavedAttribute : Attribute;

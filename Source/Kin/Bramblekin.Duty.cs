@@ -33,6 +33,8 @@ public sealed partial class Bramblekin
 
         if (Job != KinJob.Builder && (_carriedMaterial is not null || _materialTarget is not null))
             PutDownMaterial(); // Moved off building: leaves the stone (or branch) where it is.
+        if (Job != KinJob.Builder)
+            _hearthToFeed = null;
         if (GroupId is null || IsYoung || !IsObedient || world.GroupOf(this) is not { } group)
             return false;
 
@@ -44,6 +46,7 @@ public sealed partial class Bramblekin
             KinJob.Gatherer => DoGatherDuty(deltaTime, world),
             KinJob.Farmer => DoFarmDuty(group, deltaTime, world),
             KinJob.Raider => DoRaidDuty(group, deltaTime, world),
+            KinJob.Healer => DoHealerDuty(group, deltaTime, world),
             _ => false,
         };
     }
@@ -159,14 +162,22 @@ public sealed partial class Bramblekin
     private bool IsOnWarRaid(World world) =>
         Job == KinJob.Raider && IsObedient && world.GroupOf(this) is { Goal: GroupGoal.Raid, WarTarget: not null };
 
-    /// <summary>Builder: fetches twigs for whichever group home is under construction; else stones and branches for footings and palisades (see <see cref="TryFetchMaterial"/>); with nothing to build, gathers.</summary>
+    /// <summary>Builder: fetches twigs for whichever group home is under construction; else a twig for a hearth burning low (see <see cref="Craft.Hearth"/>); else stones and branches for footings and palisades (see <see cref="TryFetchMaterial"/>); with nothing to build, gathers.</summary>
     private bool DoBuilderDuty(KinGroup group, float deltaTime, World world)
     {
         if (BuildSite is { } site)
         {
+            _hearthToFeed = null;
             DoBuildWork(site, deltaTime, world);
             return true;
         }
+        if (_carriedMaterial is null && (_hearthToFeed is { NeedsFuel: true, IsCollapsed: false } ? _hearthToFeed : world.HearthToFeed(group, Position)) is { } hearth)
+        {
+            _hearthToFeed = hearth;
+            DoBuildWork(hearth, deltaTime, world);
+            return true;
+        }
+        _hearthToFeed = null;
         return TryFetchMaterial(group, deltaTime, world) || DoGatherDuty(deltaTime, world);
     }
 
@@ -194,6 +205,31 @@ public sealed partial class Bramblekin
             ApproachFood(food, WalkSpeed, deltaTime, world, eatOnArrival: false);
             return true;
         }
+
+        if (world.Snares.Count > 0 && world.GroupOf(this) is { } clan && world.SprungSnareNear(clan, home.Position, GatherRange) is { } snare)
+        {
+            ResetSnare(snare, deltaTime, world);
+            return true;
+        }
         return TryFishing(home, deltaTime, world);
+    }
+
+    private float _snareTimer;
+
+    /// <summary>Walks to a sprung snare and sets it again (see <see cref="Snare.ResetSeconds"/>).</summary>
+    private void ResetSnare(Snare snare, float deltaTime, World world)
+    {
+        SetState(BramblekinState.Farming);
+        if (GroundMover.HorizontalDistance(Position, snare.Position) > 0.5f)
+        {
+            _snareTimer = 0f;
+            MoveTo(snare.Position, WalkSpeed, deltaTime, world);
+            return;
+        }
+        _snareTimer += deltaTime * WorkPace;
+        if (_snareTimer < Snare.ResetSeconds)
+            return;
+        _snareTimer = 0f;
+        world.ResetSnare(snare);
     }
 }

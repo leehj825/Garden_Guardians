@@ -88,4 +88,14 @@ public enum BramblekinState
 
     /// <summary>Critical: going for a drink, at the pond or its home's cistern (see Bramblekin.Thirst).</summary>
     Drinking,
+
+    Healing,
+
+    // --- Night ---
+
+    /// <summary>Asleep for the night — at home if it has one (see Bramblekin.Night).</summary>
+    Sleeping,
+
+    /// <summary>Off to the hive in the oak for a comb of honey (see Bramblekin.Honey).</summary>
+    GatheringHoney,
 }

@@ -188,6 +188,15 @@ public sealed partial class World
             return;
         }
 
+        // A burrow can't be built up: a group that outgrows its one digs no further, but puts up a Tent beside it.
+        if (members > capacity && GroupHomes(group).All(h => h.IsBurrow) && group.Annexes.Count < MaxAnnexes &&
+            TryCreateShelterSite(main.Position, owner: null, groupId: group.Id, searchRadius: AnnexSiteRadius) is { } tentSite)
+        {
+            group.Annexes.Add(tentSite);
+            Game.AddEventLog($"[SETTLE] {group.CapitalTitle} ({members} strong) has outgrown its burrow, and is putting up a Tent beside it");
+            return;
+        }
+
         if (members >= capacity && group.Annexes.Count < MaxAnnexes && main.Tier == ShelterTier.House &&
             GroupHomes(group).All(h => h.IsBuilt && h.Tier == ShelterTier.House) &&
             StoreFill(group) >= ExpansionStoreFill &&
@@ -430,7 +439,7 @@ public sealed partial class World
             if (member.Home is not { IsCollapsed: false } candidate)
                 continue;
 
-            int score = (candidate.Tier == ShelterTier.House ? 1000 : 0) + (candidate.IsBuilt ? 100 : 0) + candidate.StoredFood;
+            int score = (candidate.Tier == ShelterTier.House ? 1000 : candidate.IsBurrow ? -50 : 0) + (candidate.IsBuilt ? 100 : 0) + candidate.StoredFood;
             if (score > bestScore)
             {
                 best = candidate;

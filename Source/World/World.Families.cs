@@ -49,8 +49,12 @@ public sealed partial class World
             return false;
 
         float sociability = (a.Personality.Sociability + b.Personality.Sociability) / 2f;
-        if (Rng.NextDouble() >= CourtshipBaseChance + CourtshipSociabilityChance * sociability)
+        float odds = CourtshipBaseChance + CourtshipSociabilityChance * sociability;
+        bool gifted = TryCourtshipGift(a, b, ref odds);
+        if (Rng.NextDouble() >= odds)
             return false;
+        if (gifted)
+            GiftsWon++;
 
         string how;
         bool groupsChanged = false;
@@ -109,6 +113,40 @@ public sealed partial class World
         return groupsChanged;
     }
 
+    /// <summary>A courtship gift adds this much to the odds, times (0.5 + the giver's Persuasiveness).</summary>
+    private const float CourtshipGiftChance = 0.25f;
+
+    /// <summary>Food given as courtship gifts.</summary>
+    public int CourtshipGifts { get; private set; }
+
+    /// <summary>Courtships a gift helped win.</summary>
+    public int GiftsWon { get; private set; }
+
+    /// <summary>
+    /// Courting with a gift: a fed suitor with food in hand offers it to an
+    /// empty-handed one. The gift is given whatever comes of it (the two
+    /// part as Friends at least), and sways the odds — more so from a
+    /// persuasive giver.
+    /// </summary>
+    private bool TryCourtshipGift(Bramblekin a, Bramblekin b, ref float odds)
+    {
+        (Bramblekin? giver, Bramblekin? taker) =
+            a.HasFood && !a.IsHungry && !b.HasFood ? (a, b)
+            : b.HasFood && !b.IsHungry && !a.HasFood ? (b, a)
+            : (null, null);
+        if (giver is null || taker is null || giver.SurrenderFood() is not { } food)
+            return false;
+
+        taker.ReceiveFood(food);
+        CourtshipGifts++;
+        odds += CourtshipGiftChance * (0.5f + giver.Personality.Persuasiveness) * (food.Kind == FoodShardKind.Honey ? 2f : 1f);
+        if (food.Kind == FoodShardKind.Honey)
+            NoteHoneyGift(); // The sweetest gift there is.
+        SetMutualRelationship(giver, taker, RelationshipState.Friend);
+        QueueFloatingText(taker.Position, "Gift", CoupleTextColor);
+        return true;
+    }
+
     /// <summary>A couple in the same group shares a home: one moves into the other's if there's room.</summary>
     private void MoveInTogether(KinGroup group, Bramblekin a, Bramblekin b)
     {
@@ -163,6 +201,80 @@ public sealed partial class World
         NameGroup(household);
         household.SettleTarget = FindOpenGround(kin.Position);
         return household;
+    }
+
+    /// <summary>Orphans taken in by a couple.</summary>
+    public int Adoptions { get; private set; }
+
+    /// <summary>Lone orphans taken in by a settled clan they met.</summary>
+    public int OrphansTakenIn { get; private set; }
+
+    private bool IsAlive(int id)
+    {
+        foreach (Bramblekin kin in Colony)
+        {
+            if (kin.ID == id)
+                return !kin.IsDead;
+        }
+        return false;
+    }
+
+    /// <summary>A single child (see <see cref="Bramblekin.IsChild"/>) whose parents are both dead and who has no guardians yet.</summary>
+    private bool IsOrphan(Bramblekin kin) =>
+        kin.IsChild && kin.Partner is null && kin.GuardianIds is null &&
+        kin.ParentIds is { } parents && !IsAlive(parents.Mother) && !IsAlive(parents.Father);
+
+    /// <summary>
+    /// At each Leader decision: an orphaned child in <paramref name="group"/>
+    /// is taken in by a couple there — a grown brother or sister first,
+    /// else the most Sociable — who count it as their own from then on
+    /// (close kin: never robbed, courted or struck down by them) and take it
+    /// into their home.
+    /// </summary>
+    private void AdoptOrphans(KinGroup group)
+    {
+        foreach (Bramblekin child in group.Members)
+        {
+            if (child.IsDead || !IsOrphan(child))
+                continue;
+
+            Bramblekin? guardian = group.Members
+                .Where(m => !m.IsDead && !m.IsChild && m.Partner is { IsDead: false } p && p.GroupId == group.Id && !p.IsChild)
+                .OrderByDescending(m => m.IsCloseKinOf(child) || m.Partner!.IsCloseKinOf(child))
+                .ThenByDescending(m => m.Personality.Sociability + m.Partner!.Personality.Sociability)
+                .FirstOrDefault();
+            if (guardian is null)
+                continue;
+
+            Bramblekin other = guardian.Partner!;
+            child.Adopt(guardian, other);
+            if (guardian.Home is { IsBuilt: true } home && IsGroupHome(group, home))
+                child.SetHome(home);
+            Adoptions++;
+            QueueFloatingText(child.Position, "Adopted", CoupleTextColor);
+            Game.AddEventLog($"[FAMILY] Orphaned {child.Name} was taken in by {guardian.Name} and {other.Name}");
+        }
+    }
+
+    /// <summary>
+    /// A young orphan with no clan left meets a member of a settled clan
+    /// with room: the clan takes it in (and one of its couples will adopt
+    /// it at the next Leader decision). Returns true if it joined.
+    /// </summary>
+    private bool TryTakeInOrphan(Bramblekin young, Bramblekin member)
+    {
+        if (!young.IsYoung || young.GroupId is not null || GroupOf(member) is not { Home.IsBuilt: true } group)
+            return false;
+        if (group.Members.Count >= BirthLimit(group))
+            return false;
+
+        young.JoinGroup(group.Id);
+        group.Members.Add(young);
+        OrphansTakenIn++;
+        SetMutualRelationship(young, member, RelationshipState.Friend);
+        QueueFloatingText(young.Position, "Taken in", group.Color);
+        Game.AddEventLog($"[FAMILY] {member.Name} found young {young.Name} alone, and {group.Title} took it in");
+        return true;
     }
 
     /// <summary>A death leaves its partner widowed.</summary>

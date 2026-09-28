@@ -57,7 +57,38 @@ public sealed class GroundMover
     private Vector3? _detour;
 
     /// <summary>Feet position on the ground (y = GroundHeight).</summary>
-    public Vector3 Position { get; set; }
+    public Vector3 Position
+    {
+        get => _position;
+        set
+        {
+            _position = value;
+            _groundedStale = true;
+        }
+    }
+
+    private Vector3 _position;
+    private Vector3 _grounded;
+    private bool _groundedStale = true;
+
+    /// <summary>
+    /// <see cref="Position"/> set on the terrain (see <see cref="World.Grounded(Vector3)"/>),
+    /// worked out once each time it moves rather than on every read — every
+    /// distance check reads a creature's position, and the terrain's height
+    /// is three trig calls.
+    /// </summary>
+    public Vector3 GroundedPosition
+    {
+        get
+        {
+            if (_groundedStale)
+            {
+                _grounded = World.Grounded(_position);
+                _groundedStale = false;
+            }
+            return _grounded;
+        }
+    }
 
     /// <summary>Unit (x, z) direction of the last step taken; used for drawing facing.</summary>
     public Vector2 Heading { get; set; } = Vector2.UnitX;
@@ -142,6 +173,11 @@ public sealed class GroundMover
         // something — else for the next waypoint round the water, if any.
         bool onRoute = false;
         Vector3 goal = _detour ?? (_walks ? RouteTowards(target, out onRoute) : target);
+        // A goal past MapBoundaryLimit can never be reached — the bounds rule
+        // below turns the walker back before it gets there, and it would pace
+        // back and forth at the limit forever (a prowling spider stuck at the
+        // map's edge). Head for the nearest point inside the limit instead.
+        goal = new Vector3(Math.Clamp(goal.X, -MapBoundaryLimit, MapBoundaryLimit), goal.Y, Math.Clamp(goal.Z, -MapBoundaryLimit, MapBoundaryLimit));
         var position = new Vector2(Position.X, Position.Z);
         var toGoal = new Vector2(goal.X, goal.Z) - position;
         float distance = toGoal.Length();

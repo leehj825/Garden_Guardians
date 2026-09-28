@@ -12,7 +12,7 @@ public sealed partial class World
     private static readonly Craft[] LaterCrafts =
     {
         Craft.Granary, Craft.Spears, Craft.Palisade, Craft.Grain, Craft.Mushrooms, Craft.Cress, Craft.Fishing, Craft.Stonework, Craft.Cisterns,
-        Craft.Wells, Craft.Slings,
+        Craft.Wells, Craft.Slings, Craft.Hearth, Craft.Snares, Craft.Herbalism, Craft.Herding, Craft.Smoking,
     };
 
     /// <summary>A clan whose main home is further than this (m) from the water works out cisterns — necessity being the mother of invention.</summary>
@@ -67,6 +67,7 @@ public sealed partial class World
         {
             home.HasGranary = (known & Craft.Granary) != 0;
             home.HasCistern = (known & Craft.Cisterns) != 0;
+            home.HasHearth = (known & Craft.Hearth) != 0;
         }
 
         Craft[] ready = LaterCrafts.Where(c => (known & c) == 0 && ReadyFor(group, c)).ToArray();
@@ -97,7 +98,11 @@ public sealed partial class World
     /// mushrooms, farming and a House; cress beds, farming and a home near
     /// the pond; fishing, just a home near the pond; stonework, a House;
     /// cisterns, a House far from the water; wells, stonework and a House
-    /// far from the water; slings, spears.
+    /// far from the water; slings, spears; a hearth, a House and the cold
+    /// of autumn or winter to set them thinking about fire; snares, a House; herb-lore, farming,
+    /// a House and someone sick to try it on; herding, farming, a House and
+    /// the aphids of spring or summer thick on the stems; smoking the bees,
+    /// a hearth and a comb of honey taken already (and the stings to go with it).
     /// </summary>
     private bool ReadyFor(KinGroup group, Craft craft)
     {
@@ -122,6 +127,11 @@ public sealed partial class World
             Craft.Wells => hasHouse && Knows(group, Craft.Stonework) && group.Home is { } home &&
                            WaterMap.UsualDistanceToWater(home.Position.X, home.Position.Z) > WellNeedReach,
             Craft.Slings => Knows(group, Craft.Spears),
+            Craft.Hearth => hasHouse && CurrentSeason is Season.Autumn or Season.Winter,
+            Craft.Snares => hasHouse,
+            Craft.Herbalism => hasHouse && farms && group.Members.Any(m => !m.IsDead && m.IsSick),
+            Craft.Herding => hasHouse && farms && CurrentSeason is Season.Spring or Season.Summer,
+            Craft.Smoking => Knows(group, Craft.Hearth) && group.HoneyTaken > 0,
             _ => false,
         };
     }
@@ -140,6 +150,11 @@ public sealed partial class World
         Craft.Cisterns => "catch the rain in an acorn-cup cistern",
         Craft.Wells => "dig a well",
         Craft.Slings => "make slings and loose pebbles",
+        Craft.Hearth => "keep a fire burning in a hearth",
+        Craft.Snares => "set baited snares for grubs",
+        Craft.Herbalism => "tend the sick with herbs",
+        Craft.Herding => "herd aphids for their honeydew",
+        Craft.Smoking => "smoke out the bees before taking their honey",
         _ => craft.ToString().ToLowerInvariant(),
     };
 

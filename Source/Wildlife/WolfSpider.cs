@@ -118,7 +118,7 @@ public sealed class WolfSpider : ICombatant
     private float _biteCooldown;
 
     /// <summary>Terrain-aware, same treatment as Bramblekin — Y is snapped to World.GetHeightAt every read.</summary>
-    public Vector3 Position => World.Grounded(_mover.Position);
+    public Vector3 Position => _mover.GroundedPosition;
 
     public SpiderState State { get; private set; } = SpiderState.Prowling;
 
@@ -523,14 +523,14 @@ public sealed class WolfSpider : ICombatant
         Rlgl.PushMatrix();
         Rlgl.Translatef(-0.28f, 0.34f, 0);
         Rlgl.Scalef(1.25f, 0.62f, 1f);
-        Raylib.DrawSphere(Vector3.Zero, 0.36f, BodyColor);
+        Detail.Sphere(Vector3.Zero, 0.36f, BodyColor, Position);
         Rlgl.PopMatrix();
 
         // Head (cephalothorax).
         Rlgl.PushMatrix();
         Rlgl.Translatef(0.2f, 0.3f, 0);
         Rlgl.Scalef(1.1f, 0.7f, 1f);
-        Raylib.DrawSphere(Vector3.Zero, 0.24f, BodyColor);
+        Detail.Sphere(Vector3.Zero, 0.24f, BodyColor, Position);
         Rlgl.PopMatrix();
 
         // Eyes.
@@ -541,8 +541,8 @@ public sealed class WolfSpider : ICombatant
             SpiderState.Tumbled => new Color(175, 190, 220, 220),
             _ => new Color(120, 110, 100, 255),
         };
-        Raylib.DrawSphere(new Vector3(0.43f, 0.38f, -0.08f), 0.045f, eyeColor);
-        Raylib.DrawSphere(new Vector3(0.43f, 0.38f, 0.08f), 0.045f, eyeColor);
+        Detail.Sphere(new Vector3(0.43f, 0.38f, -0.08f), 0.045f, eyeColor, Position);
+        Detail.Sphere(new Vector3(0.43f, 0.38f, 0.08f), 0.045f, eyeColor, Position);
 
         // Legs: four per side, fanning from front to back.
         float[] attachX = { 0.28f, 0.2f, 0.1f, 0.0f };

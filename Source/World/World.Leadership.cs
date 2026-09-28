@@ -56,8 +56,24 @@ public sealed partial class World
     }
 
     /// <summary>Every group's Leader decides again every <see cref="LeaderDecisionInterval"/> seconds — at once, if a threat turns up near home.</summary>
+    /// <summary>
+    /// The only Bramblekin that can be a threat to anyone's home (see
+    /// <see cref="ThreatNearHome"/>): those raiding a store or fighting
+    /// another Bramblekin, in Colony order. Gathered once a step, rather
+    /// than every clan checking every Bramblekin — nothing in the Leaders'
+    /// decisions changes who is raiding or fighting whom.
+    /// </summary>
+    private readonly List<Bramblekin> _possibleThreats = new();
+
     private void UpdateGroupDecisions(float deltaTime)
     {
+        _possibleThreats.Clear();
+        foreach (Bramblekin kin in Colony)
+        {
+            if (!kin.IsDead && (kin.RaidTarget is not null || kin.CombatTarget is Bramblekin))
+                _possibleThreats.Add(kin);
+        }
+
         foreach (KinGroup group in _groups.Values)
         {
             if (!group.HasSittingLeader || group.Leader is not { } leader)
@@ -75,14 +91,22 @@ public sealed partial class World
             group.DecisionTimer = LeaderDecisionInterval;
             UpdateFarmingKnowledge(group);
             UpdateCrafts(group);
+            PlaceSnares(group);
+            TendHerd(group);
+            SendForHoney(group);
             UpdateWells(group);
             UpdateCulture(group);
+            group.Counsel = Counsel(group, leader);
             ConsiderNeighbours(group, leader);
             DecideGroupGoal(group, leader);
             ReviewLoyalty(group, leader);
+            AdvancePlot(group, leader);
+            ConsiderHeir(group, leader);
+            AdoptOrphans(group);
             TryBirth(group);
         }
         ProcessRebellions();
+        ProcessPlots();
         ProcessConquests();
     }
 
@@ -110,7 +134,7 @@ public sealed partial class World
     /// </summary>
     private void DecideGroupGoal(KinGroup group, Bramblekin leader)
     {
-        Personality p = leader.Personality;
+        Personality p = group.Counsel;
         Shelter? home = group.Home;
         Vector3 center = home?.Position ?? leader.Position;
         float storeFill = StoreFill(group);
@@ -151,6 +175,10 @@ public sealed partial class World
             hunt += 1.5f * culture.Hunting;
         if (raid > 0f)
             raid += 2f * culture.Martial;
+        // Night: the enemy is asleep, and a raid is likelier to get in unseen —
+        // so a shrewd Leader waits for dark before sending one.
+        if (raid > 0f && !raiding)
+            raid += IsNight ? 1f : -1.5f * p.Intelligence;
         if (stockpile > 0f)
             stockpile += 0.5f * culture.Farming;
 
@@ -169,11 +197,20 @@ public sealed partial class World
         group.WarTarget = goal == GroupGoal.Raid ? warTarget : null;
         if (newRaid)
         {
+            if (IsNight)
+                NoteNightRaid();
             group.RaidEndsAt = ElapsedSeconds + RaidDuration;
             group.NextRaidAt = ElapsedSeconds + RaidInterval;
         }
 
         SharingRule sharing = p.Sociability < 0.4f && p.Aggression >= 0.5f ? SharingRule.LeaderFirst : SharingRule.Equal;
+        Personality own = leader.Personality;
+        if (sharing == SharingRule.Equal && own.Sociability < 0.4f && own.Aggression >= 0.5f && group.OverruledOnSharing != leader)
+        {
+            group.OverruledOnSharing = leader; // Told once per Leader.
+            SharingOverruled++;
+            Game.AddEventLog($"[COUNCIL] {group.CapitalTitle}'s council talked {leader.Name} out of eating first");
+        }
         if (sharing != group.Sharing)
         {
             group.Sharing = sharing;
@@ -243,12 +280,13 @@ public sealed partial class World
             case GroupGoal.Settle:
                 // Everyone builds a first home; an upgrade or a new home takes the most Intelligent half.
                 int builders = group.Home is { IsBuilt: false } ? members.Count : Math.Max(1, (members.Count + 1) / 2);
-                foreach (Bramblekin member in members.OrderByDescending(m => m.Personality.Intelligence).Take(builders))
+                foreach (Bramblekin member in members.OrderByDescending(m => m.Personality.Intelligence + m.SkillAt(Skill.Building)).Take(builders))
                     member.AssignJob(KinJob.Builder);
                 break;
 
             case GroupGoal.Hunt:
-                foreach (Bramblekin member in members.OrderByDescending(m => m.Personality.Courage + 0.5f * m.Personality.Aggression).Take(Math.Max(2, (members.Count + 1) / 2)))
+                foreach (Bramblekin member in members.OrderByDescending(m => m.Personality.Courage + 0.5f * m.Personality.Aggression + m.SkillAt(Skill.Hunting))
+                             .Take(Math.Max(2, (members.Count + 1) / 2)))
                     member.AssignJob(KinJob.Hunter);
                 break;
 
@@ -270,16 +308,26 @@ public sealed partial class World
         {
             int perFarmer = Math.Max(2, FarmersPerMembers - (int)MathF.Round(2f * group.Culture.Farming)); // A farming clan farms more.
             int farmers = Math.Max(1, members.Count / perFarmer);
-            foreach (Bramblekin member in members.Where(m => m.Job == KinJob.Gatherer).OrderByDescending(m => m.Personality.Intelligence).Take(farmers))
+            foreach (Bramblekin member in members.Where(m => m.Job == KinJob.Gatherer).OrderByDescending(m => m.Personality.Intelligence + m.SkillAt(Skill.Farming)).Take(farmers))
                 member.AssignJob(KinJob.Farmer);
         }
+
+        // A clan with herb-lore keeps someone kind and clever tending its sick and wounded.
+        if (group.Goal != GroupGoal.Raid && World.Knows(group, Craft.Herbalism) && members.Count >= 2 && members.Any(m => m.NeedsCare))
+            members.Where(m => m.Job == KinJob.Gatherer && !m.NeedsCare)
+                .MaxBy(m => m.Personality.Intelligence + m.Personality.Sociability + m.SkillAt(Skill.Healing))?.AssignJob(KinJob.Healer);
 
         // A clan with a well, a footing or a palisade to finish keeps its most diligent Gatherer fetching stones and branches
         // (a well — water — even in a clan of two).
         if (group.Goal is not (GroupGoal.Defend or GroupGoal.Raid) && group.Home is { IsBuilt: true } home &&
             (members.Count >= 3 || (members.Count >= 2 && WellBeingDug(group) is not null)) &&
             (MaterialTarget(group, MaterialKind.Stone, home.Position) ?? MaterialTarget(group, MaterialKind.Branch, home.Position)) is not null)
-            members.Where(m => m.Job == KinJob.Gatherer).MaxBy(m => m.Personality.Diligence)?.AssignJob(KinJob.Builder);
+            members.Where(m => m.Job == KinJob.Gatherer).MaxBy(m => m.Personality.Diligence + m.SkillAt(Skill.Building))?.AssignJob(KinJob.Builder);
+
+        // A hearth burning low: someone keeps the fire fed.
+        if (group.Goal is not (GroupGoal.Defend or GroupGoal.Raid) && members.Count >= 2 && !members.Any(m => m.Job == KinJob.Builder) &&
+            AnyHearthNeedsFuel(group))
+            members.Where(m => m.Job == KinJob.Gatherer).MaxBy(m => m.Personality.Diligence + m.SkillAt(Skill.Building))?.AssignJob(KinJob.Builder);
     }
 
     /// <summary>A farming group makes one Farmer for every this many grown members (at least one).</summary>
@@ -311,7 +359,7 @@ public sealed partial class World
             if (!hornet.IsDead && hornet.IsChasing)
                 Consider(hornet);
         }
-        foreach (Bramblekin kin in Colony)
+        foreach (Bramblekin kin in _possibleThreats)
         {
             if (kin.IsDead || kin.GroupId == group.Id)
                 continue;

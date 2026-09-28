@@ -11,6 +11,9 @@ public enum ShelterTier
 
     /// <summary>A walled house with a roof — a group's upgrade of its Tent: room for a whole group and a big store.</summary>
     House,
+
+    /// <summary>Dug into a hillside by a loner: cheap, warm in winter, its store hidden from raiders and ants — but only room for two, and it can't be built up (see <see cref="Shelter.MakeBurrow"/>).</summary>
+    Burrow,
 }
 
 /// <summary>
@@ -32,6 +35,11 @@ public sealed class Shelter
     private static int _nextId;
 
     public const int TentTwigCost = 3;
+
+    /// <summary>A burrow only needs a couple of twigs to shore up its doorway — the digging is the work.</summary>
+    public const int BurrowTwigCost = 2;
+
+    public const float BurrowRadius = 0.65f;
     public const int HouseUpgradeTwigCost = 6;
     public const int TentStoreCapacity = 4;
     public const int HouseStoreCapacity = 12;
@@ -64,6 +72,11 @@ public sealed class Shelter
     private static readonly Color StickColor = new(115, 80, 45, 255);
     private static readonly Color StoredFoodColor = new(210, 40, 45, 255);
     private static readonly Color AbandonedTint = new(150, 150, 150, 255);
+    private static readonly Color EarthColor = new(118, 88, 58, 255);
+    private static readonly Color TurfColor = new(92, 140, 60, 255);
+    private static readonly Color FlameColor = new(235, 120, 30, 255);
+    private static readonly Color EmberColor = new(255, 215, 90, 255);
+    private static readonly Color AshColor = new(95, 90, 88, 255);
 
     public Shelter(Vector3 groundPoint)
     {
@@ -98,7 +111,16 @@ public sealed class Shelter
     public int TwigsDelivered { get; private set; }
 
     /// <summary>Twigs the current stage needs in total — 0 once there's nothing left to build.</summary>
-    public int TwigsNeeded => !IsBuilt ? TentTwigCost : IsUpgrading ? HouseUpgradeTwigCost : 0;
+    public int TwigsNeeded => !IsBuilt ? (IsBurrow ? BurrowTwigCost : TentTwigCost) : IsUpgrading ? HouseUpgradeTwigCost : 0;
+
+    public bool IsBurrow => Tier == ShelterTier.Burrow;
+
+    /// <summary>Marks a fresh site out as a burrow rather than a Tent.</summary>
+    public void MakeBurrow()
+    {
+        if (!IsBuilt)
+            Tier = ShelterTier.Burrow;
+    }
 
     /// <summary>True while a construction stage is under way and still short of twigs.</summary>
     public bool NeedsTwigs => TwigsDelivered < TwigsNeeded;
@@ -125,6 +147,41 @@ public sealed class Shelter
     private bool _hasCistern;
 
     public int CisternCapacity => HasCistern ? CisternSips : 0;
+
+    /// <summary>Its clan knows <see cref="Craft.Hearth"/>: a ring of stones out front of the House where a fire burns while it's fed twigs.</summary>
+    public bool HasHearth
+    {
+        get => _hasHearth && Tier == ShelterTier.House;
+        set => _hasHearth = value;
+    }
+
+    private bool _hasHearth;
+
+    /// <summary>One twig keeps a hearth burning this long (s)…</summary>
+    public const float HearthSecondsPerTwig = 120f;
+
+    /// <summary>…and it holds at most this many twigs' worth at once.</summary>
+    public const int HearthTwigCapacity = 3;
+
+    /// <summary>Seconds of burning left in its hearth.</summary>
+    public float HearthFuel { get; set; }
+
+    /// <summary>A fire is burning in its hearth (and someone still lives here to tend it).</summary>
+    public bool IsHearthLit => HasHearth && HearthFuel > 0f && !IsAbandoned;
+
+    /// <summary>True while its hearth has room for another twig — its folk keep it topped up.</summary>
+    public bool NeedsFuel => HasHearth && IsBuilt && !IsAbandoned && HearthFuel <= HearthSecondsPerTwig * (HearthTwigCapacity - 1);
+
+    /// <summary>A twig on the fire.</summary>
+    public void AddFuel() => HearthFuel = MathF.Min(HearthSecondsPerTwig * HearthTwigCapacity, HearthFuel + HearthSecondsPerTwig);
+
+    /// <summary>Where the hearth sits: out front, off to the side away from the cistern.</summary>
+    /// <summary>Where a lived-in House's window is (lit at night — see World.DrawNightLights); null for anything else.</summary>
+    public Vector3? WindowPosition => IsBuilt && !IsBurrow && !IsAbandoned && Tier == ShelterTier.House
+        ? Position + new Vector3(0f, 0.02f, 0f) + new Vector3(Radius * 0.6f + 0.03f, Radius * 1.25f * 1.12f, Radius * 0.55f + 0.03f)
+        : null;
+
+    public Vector3 HearthPosition => Position + new Vector3(Radius * 0.2f, 0f, -(Radius + 0.5f));
 
     /// <summary>Sips of water in its cistern.</summary>
     public int Water { get; set; }
@@ -180,7 +237,7 @@ public sealed class Shelter
 
     public bool StoreIsFull => StoredFood >= StoreCapacity;
 
-    public float Radius => Tier == ShelterTier.House ? HouseRadius : TentRadius;
+    public float Radius => Tier switch { ShelterTier.House => HouseRadius, ShelterTier.Burrow => BurrowRadius, _ => TentRadius };
 
     /// <summary>The one Bramblekin it belongs to, for a personal home.</summary>
     public Bramblekin? Owner { get; set; }
@@ -268,6 +325,12 @@ public sealed class Shelter
         return spilled;
     }
 
+    /// <summary>A home looking at least this many pixels across (see <see cref="Detail"/>) is drawn in full: cap scales, footing stones, thorn tips, hearth pebbles.</summary>
+    private const float FineDetailPixels = 25f;
+
+    /// <summary>Whether the home being drawn right now is close enough for its fine detail.</summary>
+    private static bool _fineDetail = true;
+
     /// <summary>
     /// A construction site shows the twigs laid so far; a Tent is an acorn
     /// cap propped on twig legs; a House is a whole hollowed acorn under its
@@ -279,6 +342,13 @@ public sealed class Shelter
     {
         Vector3 basePosition = Position + new Vector3(0f, 0.02f, 0f);
         Color Tint(Color c) => IsAbandoned ? Blend(c, AbandonedTint, 0.6f) : c;
+        _fineDetail = Detail.Pixels(Position, Radius) >= FineDetailPixels;
+
+        if (IsBurrow)
+        {
+            DrawBurrow(basePosition, groupColor, Tint);
+            return;
+        }
 
         if (!IsBuilt)
         {
@@ -339,7 +409,7 @@ public sealed class Shelter
         {
             // A hazelnut on the far side from the door, its pale base to the ground.
             Vector3 hazel = basePosition + new Vector3(-radius - 0.3f, 0.32f, 0.3f);
-            Raylib.DrawSphere(hazel, 0.33f, Tint(HazelColor));
+            Detail.Sphere(hazel, 0.33f, Tint(HazelColor));
             DrawEllipsoid(hazel + new Vector3(0f, -0.2f, 0f), 0.27f, 0.12f, Tint(HazelBaseColor));
             Raylib.DrawCylinderEx(hazel + new Vector3(0f, 0.3f, 0f), hazel + new Vector3(0.04f, 0.42f, 0f), 0.04f, 0.02f, 4, Tint(StickColor));
         }
@@ -353,10 +423,44 @@ public sealed class Shelter
                 Raylib.DrawCylinder(cup + new Vector3(0f, 0.05f + 0.25f * Water / CisternSips, 0f), 0.2f + 0.08f * Water / CisternSips, 0.2f + 0.08f * Water / CisternSips, 0.02f, 10, CisternWaterColor);
         }
 
+        if (HasHearth)
+        {
+            // A ring of pebbles; lit, a little fire of orange and yellow tongues that shrinks as the fuel burns down.
+            Vector3 hearth = World.Grounded(HearthPosition) + new Vector3(0f, 0.03f, 0f);
+            if (_fineDetail)
+            {
+                for (int i = 0; i < 7; i++)
+                {
+                    float angle = i * MathF.Tau / 7f;
+                    Raylib.DrawSphereEx(hearth + new Vector3(MathF.Cos(angle) * 0.24f, 0.03f, MathF.Sin(angle) * 0.24f), 0.07f, 4, 6, Tint(FootingColor));
+                }
+            }
+            else
+            {
+                Raylib.DrawCylinder(hearth, 0.3f, 0.3f, 0.06f, 7, Tint(FootingColor));
+            }
+            if (IsHearthLit)
+            {
+                float flame = 0.18f + 0.22f * HearthFuel / (HearthSecondsPerTwig * HearthTwigCapacity);
+                Raylib.DrawCylinder(hearth, 0.15f, 0f, flame, 6, FlameColor);
+                Raylib.DrawCylinder(hearth + new Vector3(0f, 0.02f, 0f), 0.08f, 0f, flame * 0.7f, 6, EmberColor);
+            }
+            else
+            {
+                Raylib.DrawCylinder(hearth, 0.14f, 0.14f, 0.02f, 6, AshColor);
+            }
+        }
+
         if (StonesLaid > 0 && Tier == ShelterTier.House)
         {
             // The stone footing: grey stones set round the foot of the nut, filling in as they're laid.
             int stones = 16 * Math.Min(StonesLaid, FootingStoneCost) / FootingStoneCost;
+            if (!_fineDetail && stones > 0)
+            {
+                // Seen from afar, the stones are just a grey band round the foot.
+                Raylib.DrawCylinder(basePosition, radius * 0.95f + 0.12f, radius * 0.95f + 0.1f, 0.18f, 10, Tint(FootingColor));
+                stones = 0;
+            }
             for (int i = 0; i < stones; i++)
             {
                 float angle = i * MathF.Tau / 16f + 0.2f;
@@ -377,7 +481,8 @@ public sealed class Shelter
                 Vector3 foot = World.Grounded(Position + outward * ring);
                 Vector3 bend = foot + new Vector3(0f, 0.28f, 0f) + outward * 0.05f;
                 Raylib.DrawCylinderEx(foot, bend, 0.09f, 0.05f, 5, Tint(ThornColor));
-                Raylib.DrawCylinderEx(bend, bend + new Vector3(0f, 0.14f, 0f) + outward * 0.16f, 0.05f, 0f, 5, Tint(ThornColor));
+                if (_fineDetail)
+                    Raylib.DrawCylinderEx(bend, bend + new Vector3(0f, 0.14f, 0f) + outward * 0.16f, 0.05f, 0f, 5, Tint(ThornColor));
             }
         }
 
@@ -387,8 +492,36 @@ public sealed class Shelter
         {
             float angle = i * 0.8f;
             Vector3 berry = basePosition + new Vector3(radius + 0.2f + 0.12f * MathF.Cos(angle), 0.08f + 0.1f * (i / 4), 0.12f * MathF.Sin(angle));
-            Raylib.DrawSphere(berry, 0.08f, StoredFoodColor);
+            Detail.Sphere(berry, 0.08f, StoredFoodColor);
         }
+    }
+
+    /// <summary>A burrow: a low mound of earth capped with turf and a dark round doorway, shored with twigs; while it's being dug, a raw heap beside an open hole.</summary>
+    private void DrawBurrow(Vector3 basePosition, Color? groupColor, Func<Color, Color> tint)
+    {
+        float radius = BurrowRadius;
+        var door = basePosition + new Vector3(radius * 0.9f, 0.18f, 0f);
+        if (!IsBuilt)
+        {
+            DrawEllipsoid(basePosition + new Vector3(-radius * 0.4f, 0.05f, 0.3f), radius * 0.6f, 0.25f, tint(EarthColor));
+            Raylib.DrawCylinder(basePosition + new Vector3(radius * 0.3f, 0.01f, 0f), 0.28f, 0.28f, 0.02f, 12, DoorColor);
+            DrawSticks(basePosition, radius, TwigsDelivered, BurrowTwigCost);
+            return;
+        }
+        DrawEllipsoid(basePosition + new Vector3(0f, 0.05f, 0f), radius * 1.3f, 0.5f, tint(EarthColor));
+        DrawEllipsoid(basePosition + new Vector3(-0.08f, 0.3f, 0f), radius * 1.05f, 0.28f, tint(TurfColor));
+        Raylib.DrawCylinderEx(door, door + new Vector3(0.08f, 0f, 0f), 0.2f, 0.2f, 12, DoorColor);
+        for (int side = -1; side <= 1; side += 2)
+            Raylib.DrawCylinderEx(door + new Vector3(0.05f, -0.18f, side * 0.22f), door + new Vector3(0.05f, 0.2f, side * 0.1f), 0.03f, 0.025f, 5, tint(StickColor));
+        if (groupColor is { } color)
+        {
+            Vector3 pole = basePosition + new Vector3(-0.1f, 0.5f, 0f);
+            Raylib.DrawLine3D(pole, pole + new Vector3(0f, 0.4f, 0f), StickColor);
+            Raylib.DrawCube(pole + new Vector3(0.12f, 0.32f, 0f), 0.22f, 0.15f, 0.02f, color);
+        }
+        int shown = Math.Min(StoredFood, 4);
+        for (int i = 0; i < shown; i++)
+            Detail.Sphere(door + new Vector3(0.25f, -0.1f, (i - 1.5f) * 0.1f), 0.07f, StoredFoodColor);
     }
 
     /// <summary>An acorn cap: a low scaly dome with a stalk, sitting on <paramref name="rim"/>. Returns the height of its top.</summary>
@@ -397,8 +530,8 @@ public sealed class Shelter
         float height = radius * 0.5f;
         Vector3 center = rim + new Vector3(0f, height * 0.15f, 0f);
         DrawEllipsoid(center, radius, height, tint(CapColor));
-        // The scales: rings of small, low-poly bumps round the dome, staggered like a woven cup.
-        for (int ring = 0; ring < 3; ring++)
+        // The scales: rings of small, low-poly bumps round the dome, staggered like a woven cup — too small to see from afar.
+        for (int ring = 0; ring < (_fineDetail ? 3 : 0); ring++)
         {
             float lift = (0.08f + ring * 0.3f) * height;
             float across = radius * MathF.Sqrt(MathF.Max(0f, 1f - (lift / height) * (lift / height))) * 1.005f;
@@ -420,7 +553,10 @@ public sealed class Shelter
         Rlgl.PushMatrix();
         Rlgl.Translatef(center.X, center.Y, center.Z);
         Rlgl.Scalef(radius, height, radius);
-        Raylib.DrawSphereEx(Vector3.Zero, 1f, 8, 12, color);
+        if (_fineDetail)
+            Raylib.DrawSphereEx(Vector3.Zero, 1f, 8, 12, color);
+        else
+            Raylib.DrawSphereEx(Vector3.Zero, 1f, 5, 8, color);
         Rlgl.PopMatrix();
     }
 

@@ -48,7 +48,10 @@ public sealed partial class Bramblekin
 
     /// <summary>True while it's the one who should be fetching twigs for its home's current construction stage.</summary>
     private bool NeedsTwig => _carriedTwig is null &&
-        ((BuildSite is not null && BuildsForHome) || _errand is { Kind: ErrandKind.Labour, Returning: false });
+        ((BuildSite is not null && BuildsForHome) || _errand is { Kind: ErrandKind.Labour, Returning: false } || _hearthToFeed is not null);
+
+    /// <summary>The group hearth it's fetching a twig for, as a Builder with nothing to build (see <see cref="Craft.Hearth"/>).</summary>
+    private Shelter? _hearthToFeed;
 
     /// <summary>What its group is building right now, as the group last told it — see <see cref="SetBuildSite"/>.</summary>
     private Shelter? _groupBuildSite;
@@ -192,8 +195,18 @@ public sealed partial class Bramblekin
             if (GroundMover.HorizontalDistanceSquared(Position, site.Position) <= reach * reach)
             {
                 _carriedTwig = null;
-                world.DeliverTwig(this, site, twig);
-                NoteTwigDelivered(site);
+                Train(Skill.Building, world);
+                if (site == _hearthToFeed && !site.NeedsTwigs)
+                {
+                    world.FuelHearth(site, twig);
+                    _hearthToFeed = null;
+                    StartPause();
+                }
+                else
+                {
+                    world.DeliverTwig(this, site, twig);
+                    NoteTwigDelivered(site);
+                }
             }
             else
             {
@@ -260,13 +273,7 @@ public sealed partial class Bramblekin
         }
 
         SetState(BramblekinState.Resting);
-        _restTimer += deltaTime;
-        float healInterval = home.Tier == ShelterTier.House ? RestHealInterval / 1.5f : RestHealInterval;
-        if (_restTimer >= healInterval)
-        {
-            _restTimer -= healInterval;
-            Heal(1);
-        }
+        HealWhileResting(home, deltaTime);
     }
 
     /// <summary>
@@ -325,6 +332,7 @@ public sealed partial class Bramblekin
                 _carried = food;
                 world.NoteAteFromStore(this, home);
                 StartEating();
+                _mealCooked = home.IsHearthLit;
             }
             return;
         }

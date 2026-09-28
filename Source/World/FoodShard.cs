@@ -26,6 +26,12 @@ public enum FoodShardKind
 
     /// <summary>A minnow or tadpole caught from the shore (see <see cref="Craft.Fishing"/>). Silver.</summary>
     Fish,
+
+    /// <summary>A drop of honeydew from a clan's aphids (see <see cref="Craft.Herding"/>): sweet, and slow to spoil. Amber.</summary>
+    Honeydew,
+
+    /// <summary>A comb of honey from the hive in the oak (see World.Beehive): the richest food there is, and it never spoils.</summary>
+    Honey,
 }
 
 /// <summary>
@@ -86,7 +92,12 @@ public sealed class FoodShard
         IsCarried = false;
         ClaimedBy = null;
         ClaimTimer = 0f;
-        DespawnTimer = DespawnLifespan;
+        DespawnTimer = kind switch
+        {
+            FoodShardKind.Honeydew => DespawnLifespan * 4f,
+            FoodShardKind.Honey => DespawnLifespan * 20f,
+            _ => DespawnLifespan,
+        };
         IsActive = true;
     }
 
@@ -105,7 +116,7 @@ public sealed class FoodShard
         {
             case FoodShardKind.Acorn:
                 // A little acorn: a tan nut under a darker cap.
-                Raylib.DrawSphere(groundPoint + new Vector3(0, Radius, 0), Radius, new Color(176, 116, 52, 255));
+                Detail.Sphere(groundPoint + new Vector3(0, Radius, 0), Radius, new Color(176, 116, 52, 255));
                 Raylib.DrawCylinder(groundPoint + new Vector3(0, Radius * 1.3f, 0), Radius * 0.6f, Radius * 1.05f, Radius * 0.6f, 8, new Color(112, 90, 60, 255));
                 return;
             case FoodShardKind.Seed:
@@ -113,7 +124,7 @@ public sealed class FoodShard
                 for (int i = 0; i < 3; i++)
                 {
                     float angle = i * MathF.Tau / 3f;
-                    Raylib.DrawSphere(groundPoint + new Vector3(MathF.Cos(angle) * 0.08f, 0.07f, MathF.Sin(angle) * 0.08f), 0.075f, new Color(225, 190, 95, 255));
+                    Detail.Sphere(groundPoint + new Vector3(MathF.Cos(angle) * 0.08f, 0.07f, MathF.Sin(angle) * 0.08f), 0.075f, new Color(225, 190, 95, 255));
                 }
                 return;
             case FoodShardKind.Mushroom:
@@ -123,18 +134,28 @@ public sealed class FoodShard
                 return;
             case FoodShardKind.Cress:
                 // A sprig of round green leaves.
-                Raylib.DrawSphere(groundPoint + new Vector3(0, 0.1f, 0), 0.11f, new Color(90, 185, 70, 255));
-                Raylib.DrawSphere(groundPoint + new Vector3(0.09f, 0.08f, 0.04f), 0.08f, new Color(120, 205, 85, 255));
-                Raylib.DrawSphere(groundPoint + new Vector3(-0.08f, 0.08f, -0.05f), 0.08f, new Color(120, 205, 85, 255));
+                Detail.Sphere(groundPoint + new Vector3(0, 0.1f, 0), 0.11f, new Color(90, 185, 70, 255));
+                Detail.Sphere(groundPoint + new Vector3(0.09f, 0.08f, 0.04f), 0.08f, new Color(120, 205, 85, 255));
+                Detail.Sphere(groundPoint + new Vector3(-0.08f, 0.08f, -0.05f), 0.08f, new Color(120, 205, 85, 255));
                 return;
             case FoodShardKind.Fish:
                 // A little silver fish: a body and a tail.
-                Raylib.DrawSphere(groundPoint + new Vector3(0.05f, 0.08f, 0), 0.08f, new Color(180, 195, 205, 255));
-                Raylib.DrawSphere(groundPoint + new Vector3(-0.06f, 0.07f, 0), 0.06f, new Color(160, 175, 190, 255));
+                Detail.Sphere(groundPoint + new Vector3(0.05f, 0.08f, 0), 0.08f, new Color(180, 195, 205, 255));
+                Detail.Sphere(groundPoint + new Vector3(-0.06f, 0.07f, 0), 0.06f, new Color(160, 175, 190, 255));
                 Raylib.DrawCylinderEx(groundPoint + new Vector3(-0.1f, 0.07f, 0), groundPoint + new Vector3(-0.22f, 0.07f, 0), 0.02f, 0.07f, 4, new Color(140, 155, 170, 255));
+                return;
+            case FoodShardKind.Honey:
+                // A golden comb: a little hexagonal slab.
+                Raylib.DrawCylinder(groundPoint + new Vector3(0, 0.02f, 0), 0.16f, 0.16f, 0.1f, 6, new Color(230, 165, 35, 255));
+                Raylib.DrawCylinder(groundPoint + new Vector3(0, 0.12f, 0), 0.1f, 0.1f, 0.02f, 6, new Color(250, 210, 90, 255));
+                return;
+            case FoodShardKind.Honeydew:
+                // A glossy amber drop.
+                Detail.Sphere(groundPoint + new Vector3(0, 0.1f, 0), 0.12f, new Color(235, 180, 60, 255));
+                Detail.Sphere(groundPoint + new Vector3(0.03f, 0.15f, 0.03f), 0.04f, new Color(255, 235, 170, 255));
                 return;
         }
         Color color = Kind == FoodShardKind.Berry ? new Color(210, 40, 45, 255) : new Color(245, 150, 45, 255);
-        Raylib.DrawSphere(groundPoint + new Vector3(0, Radius, 0), Radius, color);
+        Detail.Sphere(groundPoint + new Vector3(0, Radius, 0), Radius, color);
     }
 }

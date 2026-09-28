@@ -45,7 +45,7 @@ public sealed partial class Bramblekin
         Raylib.DrawModelEx(_bodyModel, Position, axis, angleDegrees, new Vector3(scale), color);
 
         var top = Position + new Vector3(0, (BodyHeight - BodyRadius) * scale, 0);
-        Raylib.DrawSphere(top + new Vector3(0, BodyRadius * 0.5f, 0), BodyRadius * 0.35f, group?.Color ?? SolitaryHeadColor);
+        Detail.Sphere(top + new Vector3(0, BodyRadius * 0.5f, 0), BodyRadius * 0.35f, group?.Color ?? SolitaryHeadColor);
         DrawSickness(top);
 
         Vector2 facing = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;
@@ -65,11 +65,15 @@ public sealed partial class Bramblekin
             var grip = Position + new Vector3(0, BodyHeight * 0.6f, 0);
             var tip = grip + new Vector3(facing.X, 0.55f, facing.Y) * 0.6f;
             Raylib.DrawLine3D(grip, tip, thornColor);
-            Raylib.DrawSphere(tip, 0.025f, thornColor);
+            Detail.Sphere(tip, 0.025f, thornColor);
         }
 
         if (State == BramblekinState.Fishing && _fishingSpot is { } spot && GroundMover.HorizontalDistanceSquared(Position, spot) < 1f)
             DrawFishingRod(facing);
+        if (State == BramblekinState.Healing)
+            DrawPoultice(facing);
+        if (State == BramblekinState.Sleeping)
+            DrawSleep(world);
 
         _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
         DrawSack(facing);

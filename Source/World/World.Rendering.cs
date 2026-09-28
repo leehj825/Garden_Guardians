@@ -33,6 +33,7 @@ public sealed partial class World
 
     public void Draw(Camera3D camera)
     {
+        Detail.BeginFrame(camera);
         var (seasonTint, seasonAmount) = SeasonTint;
         Terrain.Draw(seasonTint, seasonAmount);
         DrawTerritories(camera);
@@ -70,6 +71,8 @@ public sealed partial class World
             Color? stake = bush.GroupId is { } bushGroup && _groups.TryGetValue(bushGroup, out KinGroup? farmer) ? farmer.Color : null;
             bush.Draw(winter, stake);
         }
+        DrawSnares(camera);
+        DrawPens(camera);
 
         foreach (Twig twig in Twigs)
         {
@@ -111,6 +114,8 @@ public sealed partial class World
 
         DrawAnts(camera);
         DrawPondLife(camera);
+        DrawOwl(camera);
+        DrawBeehive(camera);
 
         // Group tethers: a faint line in the group's colour from every
         // follower's head to its Leader's, so who runs with whom reads at a
@@ -142,6 +147,7 @@ public sealed partial class World
         DrawPebbles();
 
         DrawWater();
+        DrawCreek();
 
         // Kin Inspector: ring the selected Bramblekin, and trace its
         // Intelligence-scaled detection radius over the hills.

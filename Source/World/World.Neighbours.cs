@@ -186,7 +186,7 @@ public sealed partial class World
 
             GroupStance stance = relation?.Stance ?? GroupStance.Neutral;
             float grievance = relation?.Grievance ?? 0f;
-            Personality p = leader.Personality;
+            Personality p = group.Counsel;
             switch (stance)
             {
                 case GroupStance.AtWar:
@@ -199,6 +199,8 @@ public sealed partial class World
                     break;
 
                 case GroupStance.Neutral:
+                    if (neighbours && grievance >= WarGrievance && p.Aggression < WarAggression && leader.Personality.Aggression >= WarAggression)
+                        WarsHeldBack++; // The council cooled a hot head.
                     if (neighbours && grievance >= WarGrievance && p.Aggression >= WarAggression &&
                         Rng.NextDouble() < WarChance * p.Aggression * (1f + 2f * group.Culture.Martial))
                     {
@@ -311,6 +313,8 @@ public sealed partial class World
     {
         WarRaids++;
         AddWarScore(raider.GroupId, store.GroupId, RaidWarScore);
+        raider.AddInfamy(RaidInfamy);
+        TryRustle(raider, store);
     }
 
     /// <summary>Lines between allied (green) and warring (red) groups' main homes.</summary>

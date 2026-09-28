@@ -19,10 +19,40 @@ public sealed partial class Bramblekin
     /// <summary>Free to pair up: grown, not yet an elder, single, and not still mourning.</summary>
     public bool CanCourt => !IsYoung && !IsElder && Partner is null && _mourningTimer <= 0f && !IsDead;
 
-    /// <summary>A parent, a child, or a (half-)sibling of <paramref name="other"/> — never a partner.</summary>
+    /// <summary>A child is still one — and can be taken in as an orphan (see World.AdoptOrphans) — until this age (s): its first year.</summary>
+    public const float ChildhoodAge = 600f;
+
+    /// <summary>Born here and not yet a year old.</summary>
+    public bool IsChild => _bornHere && _age < ChildhoodAge;
+
+    /// <summary>The couple who took it in when it was orphaned, if any — family from then on, like parents.</summary>
+    public (int A, int B)? GuardianIds { get; private set; }
+
+    /// <summary>Its guardians' names, kept after they're gone.</summary>
+    public (string A, string B)? GuardianNames { get; private set; }
+
+    /// <summary>Taken in by <paramref name="a"/> and <paramref name="b"/>: they count it among their children, and it's close kin to them from now on.</summary>
+    public void Adopt(Bramblekin a, Bramblekin b)
+    {
+        GuardianIds = (a.ID, b.ID);
+        GuardianNames = (a.Name, b.Name);
+        a.Children++;
+        b.Children++;
+        foreach (Bramblekin guardian in new[] { a, b })
+        {
+            SetRelationship(guardian, RelationshipState.Friend);
+            guardian.SetRelationship(this, RelationshipState.Friend);
+        }
+    }
+
+    /// <summary>A parent (or guardian), a child (or ward), or a (half-)sibling of <paramref name="other"/> — never a partner.</summary>
     public bool IsCloseKinOf(Bramblekin other)
     {
         if (ParentIds is { } mine && (mine.Mother == other.ID || mine.Father == other.ID))
+            return true;
+        if (GuardianIds is { } guardians && (guardians.A == other.ID || guardians.B == other.ID))
+            return true;
+        if (other.GuardianIds is { } theirGuardians && (theirGuardians.A == ID || theirGuardians.B == ID))
             return true;
         if (other.ParentIds is { } theirs)
         {

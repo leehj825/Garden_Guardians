@@ -233,6 +233,7 @@ public static partial class Game
         var input = new WorldTapInput();
         var touchCamera = new TouchCameraController();
         var followCamera = new FollowCamera(camera);
+        var director = new Director();
         Camera3D overview = camera;
         float autosaveTimer = AutosaveInterval;
 
@@ -267,6 +268,8 @@ public static partial class Game
                 (int)(190 * uiScale), speedButtonHeight));
             var historyButton = new UiButton(new Rectangle(mapButton.Bounds.X + mapButton.Bounds.Width + speedButtonMargin, speedButtonMargin,
                 (int)(290 * uiScale), speedButtonHeight));
+            UiButton? autoButton = _showChronicle ? null : new UiButton(new Rectangle(historyButton.Bounds.X + historyButton.Bounds.Width + speedButtonMargin, speedButtonMargin,
+                (int)(190 * uiScale), speedButtonHeight));
             UiButton? followButton = _showChronicle ? null : FollowButton(world);
             UiButton? newGardenButton = _showChronicle ? NewGardenButton(historyButton, speedButtonMargin) : null;
             UiButton? gardenSlotButton = newGardenButton is null ? null : GardenSlotButton(newGardenButton, speedButtonMargin);
@@ -282,7 +285,13 @@ public static partial class Game
             Vector2 mousePosition = Raylib.GetMousePosition();
             if (mousePressed && TapBanner(mousePosition, followCamera))
             {
-                // Flew to the banner's big moment.
+                director.Stop(); // Flew to the banner's big moment.
+            }
+            else if (mousePressed && autoButton is not null && autoButton.Contains(mousePosition))
+            {
+                director.Toggle();
+                if (director.IsOn)
+                    followCamera.Release();
             }
             else if (mousePressed && speedDownButton.Contains(mousePosition))
                 DecreaseTimeScale();
@@ -298,6 +307,7 @@ public static partial class Game
                     ClearBanners();
                     camera = overview;
                     followCamera = new FollowCamera(overview);
+                    director.Stop();
                     autosaveTimer = AutosaveInterval;
                 }
             }
@@ -307,6 +317,7 @@ public static partial class Game
                 ClearBanners();
                 camera = overview;
                 followCamera = new FollowCamera(overview);
+                director.Stop();
                 autosaveTimer = AutosaveInterval;
             }
             else if (_showChronicle)
@@ -318,12 +329,16 @@ public static partial class Game
                 // Showed more, less or none of the log.
             }
             else if (mousePressed && mapButton.Contains(mousePosition))
+            {
+                director.Stop();
                 followCamera.ShowWholeMap();
+            }
             else if (mousePressed && followButton is not null && followButton.Contains(mousePosition))
                 followCamera.ToggleFollow(world);
             else
                 input.Update(camera, world);
             followCamera.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture);
+            director.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture || followCamera.IsBusy);
 
             // 2) Simulation, in fixed steps (see StepSimulation).
             StepSimulation(world, rawDeltaTime);
@@ -336,6 +351,7 @@ public static partial class Game
             Raylib.BeginMode3D(camera);
             world.Draw(camera);
             Raylib.EndMode3D();
+            DrawNight(camera, world);
 
             // 2D overlay (UI) is drawn after EndMode3D so it sits on top.
             DrawClanLabels(camera, world);
@@ -347,6 +363,7 @@ public static partial class Game
             speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
             mapButton.Draw("Map", highlighted: false);
             historyButton.Draw("History", highlighted: _showChronicle);
+            autoButton?.Draw("Auto", highlighted: director.IsOn);
             newGardenButton?.Draw(_newGardenConfirm > 0f ? "Sure?" : "New", highlighted: _newGardenConfirm > 0f);
             gardenSlotButton?.Draw($"Garden {_gardenSlot}", highlighted: false);
             if (!_showChronicle)
@@ -354,6 +371,8 @@ public static partial class Game
             followButton?.Draw(followCamera.IsFollowing ? "Following" : "Follow", highlighted: followCamera.IsFollowing);
             int hudTop = DrawHud(world);
             DrawBanner(hudTop);
+            if (!_showChronicle)
+                DrawDirectorCaption(director, (int)(speedButtonMargin * 2 + speedButtonHeight));
             if (_showChronicle)
                 DrawChronicle(world, top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
             else
@@ -436,7 +455,7 @@ public static partial class Game
             $"Food eaten {world.FoodEaten}, shared {world.FoodShared}, stolen {world.Thefts}; " +
             $"alliances {world.AlliancesFormed}; grubs hunted {world.GrubsKilled}, beetles {world.BeetlesKilled}, hornets swatted {world.HornetsKilled}, spiders slain {world.SpidersKilled}.");
         Console.WriteLine(
-            $"Homes: {world.TentsBuilt} tents and {world.HousesBuilt} houses built, {world.SheltersCollapsed} collapsed; " +
+            $"Homes: {world.TentsBuilt} tents and {world.HousesBuilt} houses built, {world.BurrowsDug} burrows dug ({world.Shelters.Count(s => s.IsBuilt && s.IsBurrow)} lived in at the end), {world.SheltersCollapsed} collapsed; " +
             $"{world.StoreMeals} meals eaten from stores, {world.StoreRaids} store raids; " +
             $"{world.VillagesFounded} villages founded, {world.Buddings} daughter groups budded off.");
         Console.WriteLine(
@@ -457,7 +476,9 @@ public static partial class Game
             $"{world.Groups.Count(g => World.Knows(g, Craft.Grain))} grain, {world.Groups.Count(g => World.Knows(g, Craft.Mushrooms))} mushrooms, " +
             $"{world.Groups.Count(g => World.Knows(g, Craft.Cress))} cress, {world.Groups.Count(g => World.Knows(g, Craft.Fishing))} fishing, " +
             $"{world.Groups.Count(g => World.Knows(g, Craft.Stonework))} stonework, {world.Groups.Count(g => World.Knows(g, Craft.Slings))} slings. " +
-            $"Sickness: {world.SicknessCases} fell ill, {world.DeathsBySickness} died of it.");
+            $"Sickness: {world.SicknessCases} fell ill, {world.DeathsBySickness} died of it; " +
+            $"healers tended {world.Tendings} times ({world.HealthTended} health restored, {world.SicknessEased:0}s of sickness eased), " +
+            $"{world.Groups.Count(g => World.Knows(g, Craft.Herbalism))} clans know herb-lore.");
         Console.WriteLine(
             $"Culture: {world.Groups.Count(g => g.Culture.Leading == Tradition.Warlike)} warlike, {world.Groups.Count(g => g.Culture.Leading == Tradition.Hunting)} hunting and " +
             $"{world.Groups.Count(g => g.Culture.Leading == Tradition.Farming)} farming clans of {world.Groups.Count} at the end.");
@@ -475,7 +496,7 @@ public static partial class Game
             $"{world.FishCaught} fish caught.");
         Console.WriteLine(
             $"Water: {world.DrinksAtPond} drinks at the pond (a {(world.DrinksAtPond > 0 ? world.WaterTrekMeters / world.DrinksAtPond : 0):0}m walk from home on average), " +
-            $"{world.CisternDrinks} from cisterns ({world.CupfulsCarried} cupfuls carried home), {world.WellDrinks} from wells ({world.WellsDug} dug, " +
+            $"{world.CreekDrinks} of them at the creek, {world.CisternDrinks} from cisterns ({world.CupfulsCarried} cupfuls carried home), {world.WellDrinks} from wells ({world.WellsDug} dug, " +
             $"{world.Wells.Count(w => !w.IsDug)} being dug); {world.DeathsByThirst} died of thirst; " +
             $"at the end {world.Groups.Count(g => World.Knows(g, Craft.Cisterns))} clans have cisterns, and the average home is " +
             $"{(world.Shelters.Count(s => s.IsBuilt) > 0 ? world.Shelters.Where(s => s.IsBuilt).Average(s => WaterMap.UsualDistanceToWater(s.Position.X, s.Position.Z)) : 0):0}m from water.");
@@ -492,8 +513,23 @@ public static partial class Game
         Console.WriteLine(
             $"Slings: {world.PebblesLoosed} pebbles loosed, {world.PebbleHits} hits, {world.SlingKills} kills; {world.HornetsKilled} hornets swatted or slung in all.");
         Console.WriteLine(
+            $"Hearths: {world.CookedMeals} meals eaten cooked, {world.TwigsBurned} twigs burned; at the end {world.Groups.Count(g => World.Knows(g, Craft.Hearth))} clans keep a hearth, " +
+            $"{world.Shelters.Count(s => s.IsHearthLit)} lit. " +
+            $"Snares: {world.SnareCatches} grubs caught, {world.SnaresReset} snares set again; at the end {world.Groups.Count(g => World.Knows(g, Craft.Snares))} clans snare, " +
+            $"{world.Snares.Count(s => s.IsSet)} of {world.Snares.Count} snares set.");
+        Console.WriteLine(
             $"Pond life: {world.FrogsCaught} frogs caught by kin, {world.FrogsTakenByHeron} by the heron; the heron came {world.HeronVisits} times, " +
             $"lunged {world.HeronStabs} times, was driven off {world.HeronsDrivenOff} times and brought down {world.HeronsKilled} times.");
+        Console.WriteLine(
+            $"Herding: {world.PensFenced} pens fenced, {world.HoneydewDrops} drops of honeydew, {world.AphidsBred} aphids bred; lost {world.AphidsLostToAnts} to ants, " +
+            $"{world.AphidsLostToSpider} to the spider, {world.AphidsRustled} rustled in raids; at the end {world.Groups.Count(g => World.Knows(g, Craft.Herding))} clans herd, " +
+            $"{world.Pens.Sum(p => p.Aphids)} aphids in {world.Pens.Count(p => p.Aphids > 0)} pens.");
+        Console.WriteLine(
+            $"Honey: {world.HoneyTaken} combs taken from the hive ({world.HiveHoney} left in it), {world.SwarmsRoused} swarms roused, {world.BeeStings} stings, " +
+            $"{world.BeesSwatted} bees swatted; {world.HoneyGifts} combs given as courtship gifts; {world.Groups.Count(g => World.Knows(g, Craft.Smoking))} clans smoke the bees out.");
+        Console.WriteLine(
+            $"Nights: {world.NightsPassed} nights; {world.WatchesPosted} watches posted, {world.AlarmsRaised} alarms raised, {world.NightRaids} raids set out in the dark. " +
+            $"The owl came out {world.OwlVisits} nights, struck {world.OwlStrikes} times ({world.OwlKills} killed), was driven off {world.OwlsDrivenOff} times and brought down {world.OwlsKilled} times.");
         Console.WriteLine(
             $"Building: a Tent takes {world.AverageTentBuildSeconds:0}s on average, a House upgrade {world.AverageHouseUpgradeSeconds:0}s; " +
             $"{world.StagesOlderThan(600f)} of {world.Shelters.Count(s => !s.IsBuilt || s.IsUpgrading)} construction stages under way have stalled over 10 min.");
@@ -514,6 +550,10 @@ public static partial class Game
         Console.WriteLine(
             $"Rebellion: {world.Departures} left, {world.Splinters} splinter groups, {world.Coups} coups " +
             $"({world.FailedChallenges} failed challenges), {world.Exiles} exiles; {world.Rejoins} independents later joined another group.");
+        Console.WriteLine(
+            $"Succession: {world.HeirsNamed} heirs named, {world.Successions} Leaders succeeded by their heir, {world.LeaderlessScrambles} lost with none named. " +
+            $"Plots: {world.PlotsHatched} hatched, {world.PlotsCarried} carried out, {world.PlotsUncovered} uncovered, {world.PlotsAbandoned} given up. " +
+            $"Councils: average sway {world.AverageCouncilSway:P0}; talked {world.SharingOverruled} Leaders out of eating first, held {world.WarsHeldBack} back from war.");
         Console.WriteLine(
             $"  {independents.Count} independents alive at the end, {independents.Count(b => b.Home is { IsBuilt: true })} of them with a home of their own.");
     }
@@ -579,6 +619,8 @@ public static partial class Game
             $"({living.Count(b => b.Sex == Sex.Female)} female, {living.Count(b => b.Sex == Sex.Male)} male, {living.Count(b => b.IsElder)} elders).");
         Console.WriteLine(
             $"Families: {world.CouplesFormed} couples formed, {world.LivingCouples} together now, {world.Separations} separated; " +
+            $"{world.Adoptions} orphans adopted, {world.OrphansTakenIn} lone young taken in; " +
+            $"{world.CourtshipGifts} courtship gifts ({world.GiftsWon} won a partner); " +
             $"{world.DeathsByOldAge} died of old age" +
             (living.Count > 0 ? $"; the oldest alive is {living.Max(b => b.AgeInYears):0.0} years." : "."));
         if (living.Count > 0)
@@ -588,6 +630,10 @@ public static partial class Game
                 $"sociability {living.Average(b => b.Personality.Sociability):0.00}, intelligence {living.Average(b => b.Personality.Intelligence):0.00}, " +
                 $"rebellion {living.Average(b => b.Personality.Rebelliousness):0.00}, persuasion {living.Average(b => b.Personality.Persuasiveness):0.00}, " +
                 $"courage {living.Average(b => b.Personality.Courage):0.00}, diligence {living.Average(b => b.Personality.Diligence):0.00}");
+            Console.WriteLine(
+                "  Skills: masters made - " + string.Join(", ", Enum.GetValues<Skill>().Select(s => $"{world.Masteries(s)} {Bramblekin.TradeNoun(s)}s")) +
+                "; best among the living - " + string.Join(", ", Enum.GetValues<Skill>().Select(s => $"{s.ToString().ToLowerInvariant()} {living.Max(b => b.SkillAt(s)):0.00}")) +
+                $"; {world.SkilledHarvests} extra pieces from skilled harvests.");
         }
     }
 
@@ -603,7 +649,8 @@ public static partial class Game
     /// <summary>", stone footing, palisade 2/3" — what's been built onto a home beyond its walls.</summary>
     private static string HomeWorks(Shelter home) =>
         (home.HasFooting ? ", stone footing" : home.StonesLaid > 0 ? $", footing {home.StonesLaid}/{Shelter.FootingStoneCost}" : "") +
-        (home.HasPalisade ? ", palisade" : home.StakesSet > 0 ? $", palisade {home.StakesSet}/{Shelter.PalisadeStakeCost}" : "");
+        (home.HasPalisade ? ", palisade" : home.StakesSet > 0 ? $", palisade {home.StakesSet}/{Shelter.PalisadeStakeCost}" : "") +
+        (home.HasHearth ? home.IsHearthLit ? ", hearth lit" : ", hearth cold" : "");
 
     /// <summary>Debug Time Scale: steps down to the previous speed in <see cref="TimeScaleSteps"/>, clamped at 1x.</summary>
     private static void DecreaseTimeScale()
@@ -620,6 +667,35 @@ public static partial class Game
     }
 
     /// <summary>The current speed ("5x"), on a small panel in the gap between the +/- buttons — gold once sped up.</summary>
+    /// <summary>What the Director is showing, in a strip under the top buttons.</summary>
+    private static void DrawDirectorCaption(Director director, int top)
+    {
+        if (director.Caption is not { } caption)
+            return;
+        int size = ScaledFontSize(0.55f);
+        int pad = (int)(10 * UiScale) + 2;
+        string text = Fit(caption, size, (int)(Raylib.GetScreenWidth() * 0.7f));
+        int width = Raylib.MeasureText(text, size) + pad * 2;
+        int x = (Raylib.GetScreenWidth() - width) / 2;
+        Raylib.DrawRectangle(x, top, width, size + pad * 2, BannerFill);
+        Raylib.DrawText(text, x + pad, top + pad, size, PanelInk);
+    }
+
+    /// <summary>At its darkest, night lays this much shade over the garden.</summary>
+    private const float NightShade = 0.55f;
+
+    /// <summary>Night: the garden darkened, then whatever shines in the dark drawn over it (see World.DrawNightLights).</summary>
+    private static void DrawNight(Camera3D camera, World world)
+    {
+        float darkness = world.Darkness;
+        if (darkness <= 0f)
+            return;
+        Raylib.DrawRectangle(0, 0, Raylib.GetScreenWidth(), Raylib.GetScreenHeight(), new Color(6, 10, 38, (int)(255 * NightShade * darkness)));
+        Raylib.BeginMode3D(camera);
+        world.DrawNightLights(camera);
+        Raylib.EndMode3D();
+    }
+
     private static void DrawSpeedLabel(Rectangle bounds, float uiScale)
     {
         // Responsive UI: bounds is the exact same, freshly-scaled rectangle
@@ -883,7 +959,9 @@ public static partial class Game
     private static List<(string Text, Color Color)> KinPanelLines(World world, Bramblekin kin, Color ink)
     {
         KinGroup? group = world.GroupOf(kin);
-        string role = group is null ? "Solitary" : group.Leader == kin ? "Leader" : "Follower";
+        string role = group is null ? "Solitary" : group.Leader == kin ? "Leader"
+            : group.Heir == kin ? "Follower, heir" : world.CouncilOf(group).Contains(kin) ? "Follower, councillor"
+            : group.Plot is { } plot && (plot.Instigator == kin || plot.Conspirators.Contains(kin)) ? "Follower, plotting" : "Follower";
         int friends = kin.KnownKins.Values.Count(r => r == RelationshipState.Friend);
         int enemies = kin.KnownKins.Values.Count(r => r == RelationshipState.Enemy);
         int neutral = kin.KnownKins.Values.Count(r => r == RelationshipState.Neutral);
@@ -892,7 +970,8 @@ public static partial class Game
         {
             ($"{kin.Name}  ({kin.Sex.ToString().ToLowerInvariant()}, {role}{(kin.IsYoung ? ", young" : kin.IsElder ? ", elder" : "")})", ink),
             ($"Age {kin.DescribeAge()}, generation {kin.Generation}", ink),
-            (kin.ParentNames is { } parents ? $"Child of {parents.Mother} & {parents.Father}" : "Wandered in from the edge", ink),
+            ((kin.ParentNames is { } parents ? $"Child of {parents.Mother} & {parents.Father}" : "Wandered in from the edge") +
+                (kin.GuardianNames is { } guardians ? $", raised by {guardians.A} & {guardians.B}" : ""), ink),
             (kin.DescribeFamily(), kin.Partner is not null ? new Color(190, 70, 120, 255) : ink),
             ($"State: {kin.State}   Health: {kin.Health} / {Bramblekin.MaxHealth}", ink),
             ($"Hunger: {(int)kin.Hunger}%{(kin.IsStarving ? " STARVING" : kin.IsHungry ? " (hungry)" : "")}{(kin.HasFood ? "  +food" : "")}{(kin.IsSick ? "  SICK" : "")}",
@@ -905,6 +984,7 @@ public static partial class Game
             ($"Aggression {kin.Personality.Aggression:0.00}   Sociability {kin.Personality.Sociability:0.00}", new Color(185, 60, 45, 255)),
             ($"Intelligence {kin.Personality.Intelligence:0.00} ({kin.DetectionRadius:0}m)   Courage {kin.Personality.Courage:0.00}", new Color(60, 100, 170, 255)),
             ($"Rebellion {kin.Personality.Rebelliousness:0.00}  Persuasion {kin.Personality.Persuasiveness:0.00}  Diligence {kin.Personality.Diligence:0.00}", new Color(60, 130, 70, 255)),
+            ($"Skills: {kin.DescribeSkills()}{(kin.DescribeTrade() is { } trade ? $"  ({trade})" : "")}", new Color(150, 100, 40, 255)),
             (group is null ? "Group: none" : $"Group: {group.Name ?? group.ShortId}, {group.Members.Count} members" +
                 (DescribeClan(world, group) is { } about ? $" ({about})" : ""), ink),
             (DescribeHome(kin), ink),
@@ -914,7 +994,9 @@ public static partial class Game
                 ? $"Reputation: {kin.Reputation:0.0}{(kin.Status == SurvivalStatus.Independent ? "  (independent)" : "")}"
                 : $"Loyalty: {kin.Loyalty:0.00}{(kin.Loyalty < Bramblekin.ObedienceThreshold ? " (disobedient)" : "")}   Reputation: {kin.Reputation:0.0}",
                 kin.GroupId is not null && group?.Leader != kin && kin.Loyalty < Bramblekin.ObedienceThreshold ? new Color(170, 60, 40, 255) : ink),
-            ($"Known: {friends} friend, {enemies} enemy, {neutral} neutral", ink),
+            ($"Known: {friends} friend, {enemies} enemy, {neutral} neutral" +
+                (kin.IsNotorious ? "   Notorious!" : kin.Infamy > 0 ? $"   Infamy: {kin.Infamy:0.0}" : ""),
+                kin.IsNotorious ? new Color(170, 60, 40, 255) : ink),
         };
     }
 
@@ -984,14 +1066,14 @@ public static partial class Game
         // screen at any size (the font scales with UiScale).
         string[] lines =
         {
-            $"Year {world.Year} {world.CurrentSeason}{(world.WeatherLabel is { } weather ? $" - {weather}" : "")} (food x{world.FoodAbundance:0.0})   Speed {_timeScale}x{(_achievedSpeed < _timeScale * 0.85f ? $" (running {_achievedSpeed:0}x)" : "")}   FPS {Raylib.GetFPS()}   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
+            $"Year {world.Year} {world.CurrentSeason}, day {world.DayOfYear} {world.TimeOfDayLabel.ToLowerInvariant()}{(world.WeatherLabel is { } weather ? $" - {weather}" : "")} (food x{world.FoodAbundance:0.0})   Speed {_timeScale}x{(_achievedSpeed < _timeScale * 0.85f ? $" (running {_achievedSpeed:0}x)" : "")}   FPS {Raylib.GetFPS()}   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
             $"Homes: {world.Shelters.Count(s => s.IsBuilt && s.Tier == ShelterTier.Tent)} tents, {world.Shelters.Count(s => s.Tier == ShelterTier.House)} houses, " +
-            $"{world.Shelters.Count(s => !s.IsBuilt)} being built   Food stored {world.Shelters.Sum(s => s.StoredFood)}   " +
+            $"{world.Shelters.Count(s => s.IsBuilt && s.IsBurrow)} burrows, {world.Shelters.Count(s => !s.IsBuilt)} being built   Food stored {world.Shelters.Sum(s => s.StoredFood)}   " +
             $"Villages {world.Groups.Count(g => g.Annexes.Count > 0)} (budded {world.Buddings})   Crops {world.Crops.Count}",
             $"Bramblekin {living}: {solitary} solitary, {world.Groups.Count} groups (largest {largestGroup}, {world.Groups.Count(World.KnowsFarming)} farming)   " +
             $"Alliances {world.CurrentAlliances}   Wars {world.CurrentWars}",
             $"Foraging {Count(BramblekinState.Foraging) + Count(BramblekinState.Hunting)}   Eating {Count(BramblekinState.Eating)}   Drinking {Count(BramblekinState.Drinking)}   " +
-            $"Fleeing {Count(BramblekinState.Fleeing)}   Fighting {Count(BramblekinState.Fighting)}   Robbing {Count(BramblekinState.Attacking)}",
+            $"Fleeing {Count(BramblekinState.Fleeing)}   Fighting {Count(BramblekinState.Fighting)}   Robbing {Count(BramblekinState.Attacking)}   Asleep {Count(BramblekinState.Sleeping)}{(world.Owl is { IsLeaving: false } ? "   Owl out!" : "")}",
             $"Arrived {world.Arrivals}   Died: starved {world.DeathsByStarvation}, thirst {world.DeathsByThirst}, old age {world.DeathsByOldAge}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}, sickness {world.DeathsBySickness}   Sick {world.SickCount}",
             $"Born {world.Births} (gen {world.MaxGeneration})   Couples {world.LivingCouples}   Politics: {world.Departures} left, {world.Splinters} splits, {world.Coups} coups, {world.Exiles} exiles   Raids {world.StoreRaids}",
         };

@@ -94,7 +94,7 @@ public sealed partial class Bramblekin
     private void DrawSickness(System.Numerics.Vector3 head)
     {
         if (IsSick)
-            Raylib.DrawSphere(head + new System.Numerics.Vector3(0f, 0.25f, 0f), 0.07f, SickColor);
+            Detail.Sphere(head + new System.Numerics.Vector3(0f, 0.25f, 0f), 0.07f, SickColor);
     }
 
     /// <summary>For saving: how much longer it's ill, and immune.</summary>

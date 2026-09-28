@@ -18,6 +18,9 @@ public sealed class Ant : ICombatant
 
     private const float Speed = 1.5f;
 
+    /// <summary>Odds an ant setting out goes for an aphid pen before any store.</summary>
+    private const double PenFirstChance = 0.4;
+
     /// <summary>It bites back at whoever hit it, this hard…</summary>
     public const int BiteDamage = 2;
 
@@ -31,10 +34,12 @@ public sealed class Ant : ICombatant
 
     private static readonly Color BodyColor = new(90, 35, 25, 255);
     private static readonly Color LoadColor = new(210, 40, 45, 255);
+    private static readonly Color AphidLoadColor = new(150, 210, 90, 255);
 
     private readonly GroundMover _mover;
     private readonly Random _rng;
     private Shelter? _targetStore;
+    private AphidPen? _targetPen;
     private FoodShard? _targetFood;
     private Vector3 _wanderTarget;
     private Bramblekin? _angryAt;
@@ -48,13 +53,16 @@ public sealed class Ant : ICombatant
         _wanderTarget = position;
     }
 
-    public Vector3 Position => World.Grounded(_mover.Position);
+    public Vector3 Position => _mover.GroundedPosition;
     public bool IsDead { get; private set; }
     public int Health { get; private set; } = MaxHealth;
     public float CollisionRadius => BodyRadius;
 
     /// <summary>True while it's carrying a piece of food home.</summary>
     public bool IsLaden { get; private set; }
+
+    /// <summary>True while what it carries home is an aphid from a clan's pen, not food.</summary>
+    public bool CarriesAphid { get; private set; }
 
     public void MarkDead() => IsDead = true;
 
@@ -96,13 +104,21 @@ public sealed class Ant : ICombatant
             if (_mover.MoveTowards(hill.Position, Speed, deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius)) ||
                 GroundMover.HorizontalDistance(Position, hill.Position) <= Anthill.Radius)
             {
+                if (!CarriesAphid)
+                    hill.Stock++;
                 IsLaden = false;
-                hill.Stock++;
+                CarriesAphid = false;
             }
             return;
         }
 
-        // A store to rob, else loose food, else a wander near the hill.
+        // An aphid pen, to carry one off for the hill to milk: some ants go for one first, the rest only with no store to rob.
+        if (_targetPen is null && _targetStore is null && world.Pens.Count > 0 && _rng.NextDouble() < PenFirstChance)
+            _targetPen = world.PenForAnts(Position, hill);
+        if (_targetPen is { Aphids: > 0 } firstPen && TryPen(firstPen, deltaTime, world))
+            return;
+
+        // A store to rob, else a pen, else loose food, else a wander near the hill.
         if (_targetStore is not { IsCollapsed: false, IsBuilt: true, HasPalisade: false, HasFooting: false, StoredFood: > 0 })
             _targetStore = world.StoreForAnts(Position, hill);
         if (_targetStore is { } store)
@@ -117,6 +133,11 @@ public sealed class Ant : ICombatant
             _mover.MoveTowards(store.Position, Speed, deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius));
             return;
         }
+
+        if (_targetPen is not { Aphids: > 0 })
+            _targetPen = world.Pens.Count > 0 ? world.PenForAnts(Position, hill) : null;
+        if (_targetPen is { } pen && TryPen(pen, deltaTime, world))
+            return;
 
         if (_targetFood is null || !world.IsAvailable(_targetFood, claimant: null))
         {
@@ -144,17 +165,36 @@ public sealed class Ant : ICombatant
         }
     }
 
+    /// <summary>Heads for <paramref name="pen"/> and, once in it, carries off an aphid. False if the pen's empty.</summary>
+    private bool TryPen(AphidPen pen, float deltaTime, World world)
+    {
+        if (pen.Aphids <= 0)
+        {
+            _targetPen = null;
+            return false;
+        }
+        if (pen.Contains(Position))
+        {
+            if (world.AntTakesAphid(this, pen))
+                IsLaden = CarriesAphid = true;
+            _targetPen = null;
+            return true;
+        }
+        _mover.MoveTowards(pen.Position, Speed, deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius));
+        return true;
+    }
+
     /// <summary>Three dark red-brown beads — head, thorax, abdomen — with a berry on its back when laden.</summary>
     public void Draw()
     {
         Vector2 heading = _mover.Heading;
         var forward = new Vector3(heading.X, 0f, heading.Y) * 0.11f;
         Vector3 center = Position + new Vector3(0f, 0.07f, 0f);
-        Raylib.DrawSphere(center + forward, 0.05f, BodyColor);
-        Raylib.DrawSphere(center, 0.04f, BodyColor);
-        Raylib.DrawSphere(center - forward * 1.1f, 0.065f, BodyColor);
+        Detail.Sphere(center + forward, 0.05f, BodyColor);
+        Detail.Sphere(center, 0.04f, BodyColor);
+        Detail.Sphere(center - forward * 1.1f, 0.065f, BodyColor);
         if (IsLaden)
-            Raylib.DrawSphere(center + new Vector3(0f, 0.09f, 0f), 0.06f, LoadColor);
+            Detail.Sphere(center + new Vector3(0f, 0.09f, 0f), 0.06f, CarriesAphid ? AphidLoadColor : LoadColor);
     }
 }
 
@@ -190,6 +230,6 @@ public sealed class Anthill
     {
         float size = Radius * (1f + Math.Min(Stock, 60) / 120f);
         Raylib.DrawCylinder(Position, 0f, size, size * 0.8f, 10, MoundColor);
-        Raylib.DrawSphere(Position + new Vector3(0f, size * 0.78f, 0f), 0.09f, HoleColor);
+        Detail.Sphere(Position + new Vector3(0f, size * 0.78f, 0f), 0.09f, HoleColor);
     }
 }

@@ -39,6 +39,10 @@ public sealed class SaveGame
     public List<MaterialSave>? Materials { get; set; }
 
     public List<WellSave> Wells { get; set; } = new();
+    public List<SnareSave> Snares { get; set; } = new();
+
+    /// <summary>Aphid pens; null in a save from before herding.</summary>
+    public List<PenSave>? Pens { get; set; }
     public List<LooseSave> Food { get; set; } = new();
     public List<LooseSave> Twigs { get; set; } = new();
     public List<RelationSave> Relations { get; set; } = new();
@@ -82,6 +86,8 @@ public sealed class ShelterSave
     public int Stones { get; set; }
     public bool Cistern { get; set; }
     public int Water { get; set; }
+    public bool Hearth { get; set; }
+    public float HearthFuel { get; set; }
 }
 
 public sealed class KinSave
@@ -110,12 +116,17 @@ public sealed class KinSave
     public int? FatherId { get; set; }
     public string? MotherName { get; set; }
     public string? FatherName { get; set; }
+    public int? GuardianA { get; set; }
+    public int? GuardianB { get; set; }
+    public string? GuardianAName { get; set; }
+    public string? GuardianBName { get; set; }
     public int Children { get; set; }
     public Guid? GroupId { get; set; }
     public int? Home { get; set; }
     public KinJob Job { get; set; }
     public float Loyalty { get; set; }
     public float Reputation { get; set; }
+    public float Infamy { get; set; }
     public bool HasLeftGroup { get; set; }
     public List<Guid> FormerGroups { get; set; } = new();
     public Dictionary<int, RelationshipState> KnownKins { get; set; } = new();
@@ -133,6 +144,9 @@ public sealed class KinSave
     public int SpiderKills { get; set; }
     public float Sickness { get; set; }
     public float Immunity { get; set; }
+
+    /// <summary>Hunting, farming, building and fishing skill; null in a save from before skills.</summary>
+    public float[]? Skills { get; set; }
 }
 
 public sealed class ErrandSave
@@ -153,6 +167,7 @@ public sealed class GroupSave
     public Guid Id { get; set; }
     public string? Name { get; set; }
     public int? Leader { get; set; }
+    public int? Heir { get; set; }
     public int? Home { get; set; }
     public List<int> Annexes { get; set; } = new();
     public float HomeSiteRetryTimer { get; set; }
@@ -191,6 +206,22 @@ public sealed class WellSave
     public Guid? GroupId { get; set; }
     public int StonesNeeded { get; set; }
     public int StonesLaid { get; set; }
+}
+
+public sealed class SnareSave
+{
+    public V3 Position { get; set; }
+    public Guid? GroupId { get; set; }
+    public bool IsSet { get; set; }
+}
+
+public sealed class PenSave
+{
+    public V3 Position { get; set; }
+    public Guid? GroupId { get; set; }
+    public int Aphids { get; set; }
+    public float HoneydewTimer { get; set; }
+    public float BreedTimer { get; set; }
 }
 
 public sealed class MaterialSave

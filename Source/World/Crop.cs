@@ -239,15 +239,15 @@ public sealed class Crop
     {
         Color leaves = Blend(winter ? WinterLeafColor : LeafColor, WinterLeafColor, withering);
         Vector3 center = Position + new Vector3(0f, size * 0.8f, 0f);
-        Raylib.DrawSphere(center, size, leaves);
-        Raylib.DrawSphere(center + new Vector3(size * 0.6f, -size * 0.3f, 0f), size * 0.7f, leaves);
-        Raylib.DrawSphere(center + new Vector3(-size * 0.5f, -size * 0.35f, size * 0.3f), size * 0.65f, leaves);
+        Detail.Sphere(center, size, leaves);
+        Detail.Sphere(center + new Vector3(size * 0.6f, -size * 0.3f, 0f), size * 0.7f, leaves);
+        Detail.Sphere(center + new Vector3(-size * 0.5f, -size * 0.35f, size * 0.3f), size * 0.65f, leaves);
 
         for (int i = 0; i < Fruit; i++)
         {
             float angle = i * MathF.Tau / MaxFruit + 0.4f;
             Vector3 berry = center + new Vector3(MathF.Cos(angle) * size * 0.95f, size * 0.1f * (i % 2), MathF.Sin(angle) * size * 0.95f);
-            Raylib.DrawSphere(berry, 0.07f, BerryColor);
+            Detail.Sphere(berry, 0.07f, BerryColor);
         }
     }
 
@@ -274,7 +274,7 @@ public sealed class Crop
         Rlgl.PushMatrix();
         Rlgl.Translatef(Position.X, Position.Y, Position.Z);
         Rlgl.Scalef(1f, 0.35f, 1f);
-        Raylib.DrawSphere(Vector3.Zero, Radius, SoilColor);
+        Detail.Sphere(Vector3.Zero, Radius, SoilColor, Position);
         Rlgl.PopMatrix();
 
         int shown = Math.Max(Fruit, IsMature ? 0 : 2);
@@ -299,15 +299,15 @@ public sealed class Crop
         {
             float angle = i * MathF.Tau / 6f;
             Vector3 at = Position + new Vector3(MathF.Cos(angle) * size * 0.7f, size * 0.25f, MathF.Sin(angle) * size * 0.7f);
-            Raylib.DrawSphere(at, size * 0.4f, leaves);
+            Detail.Sphere(at, size * 0.4f, leaves);
         }
-        Raylib.DrawSphere(Position + new Vector3(0f, size * 0.35f, 0f), size * 0.45f, leaves);
+        Detail.Sphere(Position + new Vector3(0f, size * 0.35f, 0f), size * 0.45f, leaves);
         for (int i = 0; i < Fruit; i++)
         {
             float angle = i * MathF.Tau / MaxFruit + 0.5f;
             Vector3 foot = Position + new Vector3(MathF.Cos(angle) * size * 0.4f, size * 0.4f, MathF.Sin(angle) * size * 0.4f);
             Raylib.DrawCylinderEx(foot, foot + new Vector3(0f, 0.22f, 0f), 0.02f, 0.02f, 4, CressSprigColor);
-            Raylib.DrawSphere(foot + new Vector3(0f, 0.24f, 0f), 0.06f, CressSprigColor);
+            Detail.Sphere(foot + new Vector3(0f, 0.24f, 0f), 0.06f, CressSprigColor);
         }
     }
 

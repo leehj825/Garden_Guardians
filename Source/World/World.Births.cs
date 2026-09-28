@@ -80,6 +80,7 @@ public sealed partial class World
         MaxGeneration = Math.Max(MaxGeneration, child.Generation);
         group.BirthCooldown = BirthCooldownSeconds;
         QueueFloatingText(nursery.Position, "Born!", group.Color);
+        Spotlight($"A {(child.Sex == Sex.Female ? "daughter" : "son")} is born in {group.Title}", 4f, nursery.Position);
         Game.AddEventLog($"[BIRTH] A {(child.Sex == Sex.Female ? "daughter" : "son")}, {child.Name}, was born to {mother.Name} and {father.Name} in {group.Title} (generation {child.Generation})");
     }
 

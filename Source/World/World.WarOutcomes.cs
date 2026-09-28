@@ -141,7 +141,7 @@ public sealed partial class World
             }
             loser.Members.Clear();
             AbsorbHomes(winner, loser);
-            _groups.Remove(loser.Id);
+            Disband(loser.Id);
 
             Conquests++;
             QueueFloatingText(victor.Position, "Conquest!", HostileTextColor);

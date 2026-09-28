@@ -54,13 +54,15 @@ public sealed partial class World
 
     public int DeathsIn(SurvivalStatus status) => _deathsByStatus[(int)status];
 
-    /// <summary>Adds this frame's time to each living Bramblekin's current status.</summary>
+    /// <summary>Adds this frame's time to each living Bramblekin's current status, and fades its Infamy a little (see <see cref="Bramblekin.DecayInfamy"/>).</summary>
     private void AccumulateExposure(float deltaTime)
     {
         foreach (Bramblekin kin in Colony)
         {
-            if (!kin.IsDead)
-                _exposureSeconds[(int)kin.Status] += deltaTime;
+            if (kin.IsDead)
+                continue;
+            _exposureSeconds[(int)kin.Status] += deltaTime;
+            kin.DecayInfamy(deltaTime);
         }
     }
 

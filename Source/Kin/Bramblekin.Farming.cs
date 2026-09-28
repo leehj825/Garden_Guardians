@@ -71,10 +71,11 @@ public sealed partial class Bramblekin
                     return true;
                 }
 
-                _plantTimer += deltaTime;
+                _plantTimer += deltaTime * WorkPace;
                 if (_plantTimer >= PlantingSeconds)
                 {
-                    world.PlantCrop(this, group, spot, cropKind);
+                    if (world.PlantCrop(this, group, spot, cropKind) is not null)
+                        Train(Skill.Farming, world, 2f);
                     _plantPlan = null;
                     _plantTimer = 0f;
                 }
@@ -101,6 +102,16 @@ public sealed partial class Bramblekin
             return;
         _carried = fruit;
         if (eat)
+        {
             StartEating();
+            return;
+        }
+        Train(Skill.Farming, world, 0.3f); // Picking is the everyday part of farming; planting teaches more.
+        // A skilled hand coaxes more out of a crop: now and then a second piece, straight into the store.
+        if (_rng.NextDouble() < SkilledHarvestChance * SkillAt(Skill.Farming) && StoreToStock(world) is { } store)
+            world.DepositBonusHarvest(store, bush);
     }
+
+    /// <summary>At full farming skill, a picking yields a second piece this often.</summary>
+    private const float SkilledHarvestChance = 0.2f;
 }
