@@ -640,7 +640,7 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
 ## Phase 20: Wells
 *   ✅ **Wells:** clans with stonework whose main home is more than 20m
     from water dig a well beside it, lined with stones their Builders
-    carry in (4, plus one per 1.5m the ground stands above the pond) —
+    carry in (3, plus one per 2m the ground stands above the pond) —
     water at the door, all year and through droughts, for the clan, its
     allies, or anyone once the clan is gone; crops beside it are watered.
 *   **Benchmark (24 seeds × 7800s, no crashes):** 2.6 wells dug a run

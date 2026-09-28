@@ -257,10 +257,11 @@ public static class WaterMap
     private static int _search;
 
     /// <summary>
-    /// A way round the water from <paramref name="from"/> to
-    /// <paramref name="to"/>: waypoints ending at <paramref name="to"/> (or,
-    /// if that's in the water, the nearest dry spot to it). Null if there's
-    /// no way round — the walker then goes straight, and stops at the shore.
+    /// A way round the water (and the oak) from <paramref name="from"/> to
+    /// <paramref name="to"/>: waypoints ending at <paramref name="to"/> —
+    /// if that's in blocked ground, by a last straight step from the nearest
+    /// open square. Null if there's no way round — the walker then goes
+    /// straight, and stops at the shore.
     /// </summary>
     public static List<Vector2>? FindRoute(Vector2 from, Vector2 to)
     {
@@ -319,7 +320,13 @@ public static class WaterMap
         for (int index = goalIndex; index >= 0; index = CameFrom[index])
             cells.Add(new Vector2(CellCenter(index / Cells), CellCenter(index % Cells)));
         cells.Reverse();
-        cells[^1] = IsOpen(CellOf(to.X), CellOf(to.Y)) ? to : cells[^1];
+        // The way always ends at the target itself: when that lies in ground the grid counts as blocked
+        // (right by a root, a rock or the shore), the last step is a short straight one from the nearest
+        // open square — never stopping a pace short and waiting there for good.
+        if (IsOpen(CellOf(to.X), CellOf(to.Y)))
+            cells[^1] = to;
+        else
+            cells.Add(to);
 
         // …pulled tight: from each waypoint, straight on as far along them as is in clear sight.
         var route = new List<Vector2>();

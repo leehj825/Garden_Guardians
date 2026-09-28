@@ -702,14 +702,17 @@ overhead camera:
     *   **Wells** (needs stonework and a main home more than 20m from
         water, walking): the clan marks out a well 1–5m from its main
         home, on the lowest ground to hand, and its Builders carry stones
-        to line the shaft — 4, plus one for every 1.5m the ground there
+        to line the shaft — 3, plus one for every 2m the ground there
         stands above the pond (the water lies deeper under a hill), so a
-        hilltop well takes some 10. Stones go to a well before any footing.
+        hilltop well takes some 8. Stones go to a well before any footing.
         Once dug it's water at the door, all year and through any drought;
-        crops within 6m of it count as watered. It's drawn as a ring of
-        stones rising course by course over a dark shaft (a heap of dug
-        earth beside it), then dark water under a wooden frame with a rope
-        and an acorn-cup bucket, a pennant in its clan's colour. A well
+        crops within 6m of it count as watered. A clan of just two keeps
+        a Builder on it too. While it's being dug it's a dark shaft with a
+        heap of earth beside it and only as many stones round it as have
+        been carried in (the clan card counts them: "digging a well (3/7
+        stones)"); dug, the ring stands three courses high round dark
+        water, under a wooden frame with a rope and an acorn-cup bucket, a
+        pennant in its clan's colour. A well
         outlives its clan — anyone may drink from it then — but a
         half-dug one nobody's digging any more is filled in.
     *   **Stonework** (needs a House): each House is raised on a stone
@@ -1007,7 +1010,7 @@ overhead camera:
     (one every 6s of it) and off the big sticks now and then (every 90s),
     up to 10, rotting after 900s or carried off by a flood. A clan with a
     footing or palisade to finish keeps its most diligent Gatherer as a
-    Builder, fetching them from up to 45m away — a stone carried in front,
+    Builder, fetching them from up to 60m away — a stone carried in front,
     a branch dragged behind (at three-quarters pace).
 *   **Wandering Arrivals:** every 15s, while fewer than 30 Bramblekin are
     alive, a new solitary one with a freshly rolled Personality wanders

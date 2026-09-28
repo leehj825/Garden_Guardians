@@ -27,7 +27,7 @@ public sealed partial class World
     private const float BranchSpawnInterval = 90f;
 
     /// <summary>A Builder looks for stones and branches this far (m) from where it stands.</summary>
-    public const float MaterialSearchRadius = 45f;
+    public const float MaterialSearchRadius = 60f;
 
     private static readonly Color MaterialTextColor = new(110, 110, 120, 255);
 

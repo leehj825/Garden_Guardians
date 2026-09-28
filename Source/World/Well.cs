@@ -45,14 +45,14 @@ public sealed class Well
 
     public bool IsDug => StonesLaid >= StonesNeeded;
 
-    /// <summary>The ring of stones, rising course by course as they're laid; dug, dark water inside, a frame over it and a bucket on a rope. While it's being dug, a heap of earth beside it.</summary>
+    /// <summary>The ring of stones, rising course by course as they're laid (only as many as have been carried in); dug, dark water inside, a frame over it and a bucket on a rope. While it's being dug, a dark shaft and a heap of earth beside it.</summary>
     public void Draw(Color? clanColor)
     {
-        const int perCourse = 10;
-        int courses = IsDug ? 3 : Math.Max(1, 3 * StonesLaid / Math.Max(1, StonesNeeded));
+        const int perCourse = 10, courses = 3;
+        int shown = IsDug ? perCourse * courses : perCourse * courses * StonesLaid / Math.Max(1, StonesNeeded);
         for (int course = 0; course < courses; course++)
         {
-            for (int i = 0; i < perCourse; i++)
+            for (int i = 0; i < perCourse && course * perCourse + i < shown; i++)
             {
                 float angle = (i + 0.5f * (course % 2)) * MathF.Tau / perCourse;
                 Vector3 stone = Position + new Vector3(MathF.Cos(angle) * Radius * 0.85f, 0.08f + course * 0.13f, MathF.Sin(angle) * Radius * 0.85f);

@@ -25,9 +25,9 @@ public sealed partial class World
     private const float WellSiteMax = 5f;
 
     /// <summary>…and takes this many stones, plus one for every <see cref="WellDepthPerStone"/> meters the ground there stands above the pond (the water lies deeper under a hill).</summary>
-    private const int WellBaseStones = 4;
+    private const int WellBaseStones = 3;
 
-    private const float WellDepthPerStone = 1.5f;
+    private const float WellDepthPerStone = 2f;
 
     /// <summary>Crops this close (m) to a dug well are watered from it.</summary>
     private const float WellWateringReach = 6f;
