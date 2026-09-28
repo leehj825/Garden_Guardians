@@ -2,7 +2,7 @@
 
 **Status key:** ✅ Done · 🟡 In progress (partly done) · ⬜ Not started · ❌ Removed/superseded
 
-*Last updated: 2026-09-27*
+*Last updated: 2026-09-28*
 
 ## Progress Snapshot
 The game is an **Emergent Survival** simulation (Phase 7) that has grown
@@ -695,16 +695,38 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     cleared nests near home; and until the Heron took a moment to get
     airborne, nobody could bring it down.
 
+## Phase 22: Reputation Between Individuals, and a Balance Check
+*   ✅ **Infamy:** a Bramblekin that robs someone starving, deals another
+    Bramblekin its killing blow, or carries off a piece of an enemy's
+    store on a war raid earns Infamy (fading slowly on its own, like a
+    grievance). At 1.2 or more it's **notorious**: word travels ahead of
+    it, so even a stranger who's never met it is warier — with odds 0.7
+    it shies away from banding together with a notorious Bramblekin,
+    taking one in as a struggling loner, or warming into a first
+    friendship, exactly as if it had heard the stories. It never stands
+    in the way of two strangers banding together to survive a predator
+    right now — that's a matter of life or death, not reputation. Unlike
+    Reputation (standing earned *within* a Bramblekin's own group, toward
+    its claim to lead), Infamy is what the wider garden thinks of it. The
+    Kin Inspector shows it once it's earned any ("Infamy: 0.6", or
+    "Notorious!" past the threshold).
+*   ✅ **Group vs. homestead balance, re-measured:** the Phase 8-era
+    finding that groups and homesteaders die at similar rates no longer
+    holds — the wells, cisterns, defensive bonuses, food-sharing and
+    crafts added in later phases have shifted it. No code change was
+    needed; this closes out that backlog item with the current numbers.
+    *Result* (10 seeds × 7800s, survival trend): Members die at 1.79 per
+    kin-hour against 2.32 for Homesteaders — groups are already about a
+    quarter safer, consistently across 9 of 10 seeds — while Independents
+    (3.42/h) and Wanderers (3.28/h) confirm settling and grouping still
+    pay off in that order. Final population averaged 39.1 across the
+    seeds, in the normal range; no crashes. The Infamy change above ran
+    across the same seeds with no sign of destabilizing alliance-forming
+    or population.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:
-*   ⬜ **Reputation between groups.** Groups remember grievances and
-    places, but not individuals: a notorious raider is no more feared by
-    the next village than anyone else.
-*   ⬜ **Group vs. homestead balance.** Settling alone and living in a group
-    now have similar death rates; groups win on food and on numbers, and
-    lose some of that edge to risky hunts, defence and politics. Worth
-    tuning if groups should be the clearly safer choice.
 *   ⬜ **Real pathfinding round rocks and homes.** Walkers find their way
     round the pond on a grid (Phase 17), but still steer round rocks,
     homes and the oak with a short sideways detour when stuck. Fine at

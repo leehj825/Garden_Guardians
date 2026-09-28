@@ -1,11 +1,12 @@
 # Garden_Guardians_Design.md
 
-*Last updated: 2026-09-27 — the **Emergent Survival** pivot, now with
+*Last updated: 2026-09-28 — the **Emergent Survival** pivot, now with
 **settling and society**, and a living population: **seasons**, **births**
 and **villages** that bud off daughter groups, **named** Bramblekin who
 pair up as **couples** and die of **old age**, a **follow camera**,
-**farming**, and villages that live as **neighbours** — allies or enemies.
-The game is no longer a
+**farming**, villages that live as **neighbours** — allies or enemies —
+and **Infamy**, a reputation that travels beyond who you've personally
+met. The game is no longer a
 macro-RTS faction simulator: there are no factions, no top-down economy
 and no faction wars. Every Bramblekin is an individual agent with its own
 Personality and needs.
@@ -397,6 +398,19 @@ overhead camera:
 *   **Relationships:** each Bramblekin keeps `KnownKins` — every other
     Bramblekin it has met, by ID, as **Friend**, **Neutral** or
     **Enemy**. Enemy is permanent. Dead Bramblekin are forgotten.
+*   **Infamy — reputation beyond who you've met:** a starving robbery, a
+    killing blow against another Bramblekin, or carrying off a piece of an
+    enemy's store on a war raid earns Infamy, which fades slowly on its
+    own (like a grievance). At 1.2 or more a Bramblekin is **notorious**:
+    word has travelled, so even a stranger who has never crossed its path
+    is warier of it (odds 0.7 of shying away) when the two might band
+    together, when a struggling loner asks to join a settled group, or
+    when two strangers might warm into a first friendship. Nothing about
+    it stops two strangers banding together to survive a predator that's
+    after them both right now — that's survival, not trust. Unlike
+    Reputation (standing earned *within* a Bramblekin's own group, feeding
+    its claim to lead), Infamy is what the wider garden has heard about
+    it. The Kin Inspector shows it once any has been earned.
 *   **The Encounter:** whenever two living Bramblekin come within 1.2m of
     each other (at most once per pair every 12s), the World resolves it,
     in priority order:

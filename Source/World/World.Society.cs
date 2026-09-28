@@ -5,6 +5,31 @@ namespace GardenGuardians;
 
 public sealed partial class World
 {
+    // --- Infamy: reputation between individuals -----------------------------------
+
+    /// <summary>Infamy earned for a successful starving robbery.</summary>
+    private const float RobberyInfamy = 0.6f;
+
+    /// <summary>Infamy earned for dealing another Bramblekin its killing blow.</summary>
+    private const float KillingInfamy = 1.2f;
+
+    /// <summary>Infamy earned for carrying off a piece of an enemy's store on a war raid.</summary>
+    private const float RaidInfamy = 0.3f;
+
+    /// <summary>How much a stranger's notoriety cuts the odds of trusting it — see <see cref="IsWaryOf"/>.</summary>
+    private const float NotorietyDistrustChance = 0.7f;
+
+    /// <summary>
+    /// Word gets around: with odds <see cref="NotorietyDistrustChance"/>,
+    /// either side being <see cref="Bramblekin.IsNotorious"/> makes two
+    /// strangers shy away from banding together, taking each other in, or
+    /// warming up to one another — even though neither has personally met
+    /// the other's trouble before. Never stands in the way of two people
+    /// banding together to survive a predator right now.
+    /// </summary>
+    private bool IsWaryOf(Bramblekin a, Bramblekin b) =>
+        (a.IsNotorious || b.IsNotorious) && Rng.NextDouble() < NotorietyDistrustChance;
+
     // --- Groups ------------------------------------------------------------------
 
     /// <summary>The group <paramref name="kin"/> currently belongs to, if any.</summary>
@@ -179,15 +204,21 @@ public sealed partial class World
         bool bothThreatened = a.IsThreatenedByPredator && b.IsThreatenedByPredator;
         bool bothSociable = a.Personality.Sociability >= AllianceSociabilityThreshold &&
                             b.Personality.Sociability >= AllianceSociabilityThreshold;
-        if ((bothThreatened || bothSociable) && TryFormAlliance(a, b, bothThreatened))
+        // Fear of a predator overrides notoriety — nobody turns down help surviving one, right now.
+        if (bothThreatened && TryFormAlliance(a, b, bothThreatened))
+            return true;
+        if (bothSociable && !IsWaryOf(a, b) && TryFormAlliance(a, b, bothThreatened))
             return true;
 
-        if (TryJoinSettledGroup(a, b))
+        if (!IsWaryOf(a, b) && TryJoinSettledGroup(a, b))
             return true;
 
         if (relationship is null)
         {
-            bool friendly = Rng.NextDouble() < a.Personality.Sociability * b.Personality.Sociability;
+            double friendlyOdds = a.Personality.Sociability * b.Personality.Sociability;
+            if (a.IsNotorious || b.IsNotorious)
+                friendlyOdds *= 1f - NotorietyDistrustChance;
+            bool friendly = Rng.NextDouble() < friendlyOdds;
             SetMutualRelationship(a, b, friendly ? RelationshipState.Friend : RelationshipState.Neutral);
         }
         return false;
@@ -217,6 +248,7 @@ public sealed partial class World
 
         DeclareEnemies(attacker, victim);
         AddGrievance(attacker.GroupId, victim.GroupId, RobberyGrievance);
+        attacker.AddInfamy(RobberyInfamy);
         attacker.BeginRobbery(victim);
         QueueFloatingText(attacker.Position, "Attack!", HostileTextColor);
         Game.AddEventLog($"[HOSTILITY] Starving {attacker.Name} turned on {victim.Name} for its food");

@@ -116,6 +116,7 @@ public sealed class KinSave
     public KinJob Job { get; set; }
     public float Loyalty { get; set; }
     public float Reputation { get; set; }
+    public float Infamy { get; set; }
     public bool HasLeftGroup { get; set; }
     public List<Guid> FormerGroups { get; set; } = new();
     public Dictionary<int, RelationshipState> KnownKins { get; set; } = new();

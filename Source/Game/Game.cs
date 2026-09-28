@@ -914,7 +914,9 @@ public static partial class Game
                 ? $"Reputation: {kin.Reputation:0.0}{(kin.Status == SurvivalStatus.Independent ? "  (independent)" : "")}"
                 : $"Loyalty: {kin.Loyalty:0.00}{(kin.Loyalty < Bramblekin.ObedienceThreshold ? " (disobedient)" : "")}   Reputation: {kin.Reputation:0.0}",
                 kin.GroupId is not null && group?.Leader != kin && kin.Loyalty < Bramblekin.ObedienceThreshold ? new Color(170, 60, 40, 255) : ink),
-            ($"Known: {friends} friend, {enemies} enemy, {neutral} neutral", ink),
+            ($"Known: {friends} friend, {enemies} enemy, {neutral} neutral" +
+                (kin.IsNotorious ? "   Notorious!" : kin.Infamy > 0 ? $"   Infamy: {kin.Infamy:0.0}" : ""),
+                kin.IsNotorious ? new Color(170, 60, 40, 255) : ink),
         };
     }
 

@@ -149,6 +149,7 @@ public sealed partial class World
                 {
                     AddGrievance(kin.GroupId, slayer.GroupId, KillingGrievance);
                     AddWarScore(slayer.GroupId, kin.GroupId, KillWarScore);
+                    slayer.AddInfamy(KillingInfamy);
                 }
                 how = killer is Bramblekin attacker ? $"was killed by {attacker.Name}" : "was killed by another Bramblekin";
                 break;
