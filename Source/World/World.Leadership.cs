@@ -219,7 +219,7 @@ public sealed partial class World
     /// a first home), Hunters from the Aggressive; everyone else gathers.
     /// The Leader takes a job too.
     /// </summary>
-    private static void AssignJobs(KinGroup group)
+    private void AssignJobs(KinGroup group)
     {
         foreach (Bramblekin young in group.Members.Where(m => m.IsYoung))
             young.AssignJob(KinJob.None);
@@ -264,7 +264,7 @@ public sealed partial class World
                 break;
         }
 
-        // A farming group keeps some of its sharpest Gatherers on its bushes.
+        // A farming group keeps some of its sharpest Gatherers on its crops.
         if (group.Goal != GroupGoal.Defend && group.Home is { IsBuilt: true } && KnowsFarming(group))
         {
             int perFarmer = Math.Max(2, FarmersPerMembers - (int)MathF.Round(2f * group.Culture.Farming)); // A farming clan farms more.
@@ -272,6 +272,11 @@ public sealed partial class World
             foreach (Bramblekin member in members.Where(m => m.Job == KinJob.Gatherer).OrderByDescending(m => m.Personality.Intelligence).Take(farmers))
                 member.AssignJob(KinJob.Farmer);
         }
+
+        // A clan with a footing or a palisade to finish keeps its most diligent Gatherer fetching stones and branches.
+        if (group.Goal is not (GroupGoal.Defend or GroupGoal.Raid) && members.Count >= 3 && group.Home is { IsBuilt: true } home &&
+            (HomeNeeding(group, MaterialKind.Stone, home.Position) ?? HomeNeeding(group, MaterialKind.Branch, home.Position)) is not null)
+            members.Where(m => m.Job == KinJob.Gatherer).MaxBy(m => m.Personality.Diligence)?.AssignJob(KinJob.Builder);
     }
 
     /// <summary>A farming group makes one Farmer for every this many grown members (at least one).</summary>

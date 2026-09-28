@@ -82,10 +82,14 @@ public static partial class Game
         sections.Add(("Farming", new List<string>
         {
             $"Worked out: {world.FarmingDiscoveries}, taught {world.FarmingTaught}",
-            $"Bushes planted: {world.BushesPlanted}",
-            $"Bushes now: {world.Bushes.Count} ({world.Bushes.Count(b => b.GroupId is null)} wild)",
-            $"Berries picked: {world.FruitHarvested}",
+            $"Crops planted: {world.BushesPlanted}",
+            $"Crops now: {world.Crops.Count} ({world.Crops.Count(b => b.GroupId is null)} wild, {world.Crops.Count(c => c.IsWatered)} watered)",
+            $"  {string.Join(", ", Enum.GetValues<CropKind>().Select(k => $"{world.Crops.Count(c => c.Kind == k)} {Crop.NameOf(k)}"))}",
+            $"Picked: {world.FruitHarvested}; fish caught: {world.FishCaught}",
         }));
+
+        sections.Add(("Food eaten or stored", Enum.GetValues<FoodShardKind>()
+            .Select(k => $"{k}: {world.FoodTaken(k)}").ToList()));
 
         int KnowCraft(Craft craft) => world.Groups.Count(g => World.Knows(g, craft));
         sections.Add(("Crafts", new List<string>
@@ -93,7 +97,9 @@ public static partial class Game
             $"Worked out: {world.CraftsDiscovered}, taught {world.CraftsTaught}",
             $"Clans with granaries: {KnowCraft(Craft.Granary)}",
             $"With spears: {KnowCraft(Craft.Spears)}",
-            $"With palisades: {KnowCraft(Craft.Palisade)}",
+            $"With palisades: {KnowCraft(Craft.Palisade)} ({world.Shelters.Count(s => s.HasPalisade)} up)",
+            $"Grain: {KnowCraft(Craft.Grain)}, mushrooms {KnowCraft(Craft.Mushrooms)}, cress {KnowCraft(Craft.Cress)}",
+            $"Fishing: {KnowCraft(Craft.Fishing)}, stonework {KnowCraft(Craft.Stonework)} ({world.Shelters.Count(s => s.HasFooting)} footings)",
         }));
 
         sections.Add(("Pests & plagues", new List<string>
@@ -141,7 +147,7 @@ public static partial class Game
             $"Leader: {clan.Leader?.Name ?? "nobody"}",
             $"Homes: {houses} {(houses == 1 ? "house" : "houses")}, {tents} {(tents == 1 ? "tent" : "tents")}",
             $"Food stored: {world.StoredFood(clan)}",
-            World.KnowsFarming(clan) ? $"Bushes: {world.BushesOf(clan)} of {world.BushAllowance(clan)}" : "Doesn't farm yet",
+            World.KnowsFarming(clan) ? $"Crops: {world.CropsOf(clan)} of {world.CropAllowance(clan)}" : "Doesn't farm yet",
             $"Wolf Spiders slain: {clan.SpidersSlain}",
             $"Crafts: {CraftList(World.CraftsOf(clan))}",
             $"Martial {Percent(clan.Culture.Martial)}, hunting {Percent(clan.Culture.Hunting)}, farming {Percent(clan.Culture.Farming)}",

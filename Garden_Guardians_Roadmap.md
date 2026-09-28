@@ -576,9 +576,10 @@ matter most:
     tuning if groups should be the clearly safer choice.
 *   ⬜ **More than one garden.** A single autosave slot; no way to keep
     a favourite world aside and start another.
-*   ⬜ **Real pathfinding.** Bramblekin still steer around obstacles with
-    a short sideways detour when stuck, rather than any actual NavMesh/
-    grid pathfinding. Fine at current Pebble density.
+*   ⬜ **Real pathfinding round rocks and homes.** Walkers find their way
+    round the pond on a grid (Phase 17), but still steer round rocks,
+    homes and the oak with a short sideways detour when stuck. Fine at
+    current density.
 *   ⬜ **Tuning.** Every rate and threshold is a constant at the top of its
     class (`World`, `Bramblekin`, `Shelter`, the wildlife); the headless
     survival trend is the tool for revisiting them.

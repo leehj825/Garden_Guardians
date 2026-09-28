@@ -34,6 +34,9 @@ public sealed class SaveGame
     public List<KinSave> Kin { get; set; } = new();
     public List<GroupSave> Groups { get; set; } = new();
     public List<BushSave> Bushes { get; set; } = new();
+
+    /// <summary>Loose stones and branches; null in a save from before they were kept.</summary>
+    public List<MaterialSave>? Materials { get; set; }
     public List<LooseSave> Food { get; set; } = new();
     public List<LooseSave> Twigs { get; set; } = new();
     public List<RelationSave> Relations { get; set; } = new();
@@ -69,7 +72,12 @@ public sealed class ShelterSave
     public float AbandonedSeconds { get; set; }
     public float StageStartedAt { get; set; }
     public bool Granary { get; set; }
+
+    /// <summary>A save from before palisades took branches: true if it had one.</summary>
     public bool Palisade { get; set; }
+
+    public int Stakes { get; set; }
+    public int Stones { get; set; }
 }
 
 public sealed class KinSave
@@ -161,11 +169,20 @@ public sealed class GroupSave
 public sealed class BushSave
 {
     public V3 Position { get; set; }
+    public CropKind Kind { get; set; }
+    public float Age { get; set; }
     public Guid? GroupId { get; set; }
     public float Growth { get; set; }
     public int Fruit { get; set; }
     public float FruitTimer { get; set; }
     public float WildSeconds { get; set; }
+}
+
+public sealed class MaterialSave
+{
+    public V3 Position { get; set; }
+    public MaterialKind Kind { get; set; }
+    public float DespawnTimer { get; set; }
 }
 
 public sealed class LooseSave

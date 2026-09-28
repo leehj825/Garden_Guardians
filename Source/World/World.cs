@@ -73,10 +73,10 @@ public sealed partial class World
     private const int InitialBerries = 45;
 
     /// <summary>Passive Foraging: seconds between wild Berry spawns in a normal season — divided by the season's abundance (see <see cref="AbundanceOf"/>).</summary>
-    public const float BerrySpawnInterval = 0.6f;
+    public const float BerrySpawnInterval = 0.7f;
 
     /// <summary>Wild Berries stop spawning once this many are on the ground in a normal season — scaled by the season's abundance.</summary>
-    public const int MaxBerries = 100;
+    public const int MaxBerries = 85;
 
     /// <summary>
     /// Berry Patches: how many fixed spots (preferably Dandelions) most
@@ -271,6 +271,7 @@ public sealed partial class World
         for (int i = 0; i < InitialBerries; i++)
             ActivateFood(RandomBerrySpot(), FoodShardKind.Berry);
         InitializeTwigs();
+        InitializeMaterials(scatterStones: true);
 
         // Every starting Bramblekin is solitary, with its own freshly
         // rolled Personality (see the Bramblekin constructor) — groups only
@@ -407,7 +408,9 @@ public sealed partial class World
         UpdateShelters(deltaTime);
         UpdateFarming(deltaTime);
         UpdateBerrySpawn(deltaTime);
+        UpdateWildFood(deltaTime);
         UpdateTwigSpawn(deltaTime);
+        UpdateMaterials(deltaTime);
         UpdateSpiderRespawn(deltaTime);
         UpdateHornetSpawn(deltaTime);
         UpdateGrubSpawn(deltaTime);

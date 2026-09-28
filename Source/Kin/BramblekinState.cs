@@ -80,4 +80,9 @@ public enum BramblekinState
 
     /// <summary>Fighting a leadership duel with a groupmate, until one yields.</summary>
     Dueling,
+
+    // --- Duty, added later (kept at the end so saved numbers still line up) ---
+
+    /// <summary>Sitting on the shore with a line in the water (see Bramblekin.Fishing).</summary>
+    Fishing,
 }

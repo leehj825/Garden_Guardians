@@ -442,7 +442,10 @@ public static partial class Game
             $"The oak dropped {world.AcornsFallen} acorns. Ways found round the pond: {WaterMap.RoutesFound}.");
         Console.WriteLine(
             $"Crafts: {world.CraftsDiscovered} worked out, {world.CraftsTaught} taught; at the end {world.Groups.Count(g => World.Knows(g, Craft.Granary))} clans have granaries, " +
-            $"{world.Groups.Count(g => World.Knows(g, Craft.Spears))} spears, {world.Groups.Count(g => World.Knows(g, Craft.Palisade))} palisades. " +
+            $"{world.Groups.Count(g => World.Knows(g, Craft.Spears))} spears, {world.Groups.Count(g => World.Knows(g, Craft.Palisade))} palisades, " +
+            $"{world.Groups.Count(g => World.Knows(g, Craft.Grain))} grain, {world.Groups.Count(g => World.Knows(g, Craft.Mushrooms))} mushrooms, " +
+            $"{world.Groups.Count(g => World.Knows(g, Craft.Cress))} cress, {world.Groups.Count(g => World.Knows(g, Craft.Fishing))} fishing, " +
+            $"{world.Groups.Count(g => World.Knows(g, Craft.Stonework))} stonework. " +
             $"Sickness: {world.SicknessCases} fell ill, {world.DeathsBySickness} died of it.");
         Console.WriteLine(
             $"Culture: {world.Groups.Count(g => g.Culture.Leading == Tradition.Warlike)} warlike, {world.Groups.Count(g => g.Culture.Leading == Tradition.Hunting)} hunting and " +
@@ -450,9 +453,18 @@ public static partial class Game
         Console.WriteLine(
             $"War outcomes: {world.Conquests} conquests, {world.TributesAgreed} tribute peaces ({world.TributeDelivered} food delivered, {world.TributesMissed} payments missed).");
         Console.WriteLine(
-            $"Farming: worked out {world.FarmingDiscoveries} times, taught {world.FarmingTaught} times; {world.BushesPlanted} bushes planted, " +
-            $"{world.FruitHarvested} berries picked; at the end {world.Groups.Count(World.KnowsFarming)} groups farm {world.Bushes.Count(b => b.GroupId is not null)} bushes " +
-            $"({world.Bushes.Count(b => b.GroupId is null)} wild).");
+            $"Farming: worked out {world.FarmingDiscoveries} times, taught {world.FarmingTaught} times; {world.BushesPlanted} crops planted, " +
+            $"{world.FruitHarvested} pieces picked; at the end {world.Groups.Count(World.KnowsFarming)} groups farm {world.Crops.Count(b => b.GroupId is not null)} crops " +
+            $"({string.Join(", ", Enum.GetValues<CropKind>().Select(k => $"{world.Crops.Count(c => c.Kind == k)} {k.ToString().ToLowerInvariant()}"))}; " +
+            $"{world.Crops.Count(b => b.GroupId is null)} wild, {world.Crops.Count(c => c.IsWatered)} watered).");
+        Console.WriteLine(
+            $"Food eaten or stored, by kind: {string.Join(", ", Enum.GetValues<FoodShardKind>().Select(k => $"{k.ToString().ToLowerInvariant()} {world.FoodTaken(k)}"))}; " +
+            $"{world.FishCaught} fish caught.");
+        Console.WriteLine(
+            $"Stones and branches: {world.StonesLaid} stones laid ({world.FootingsLaid} footings finished), {world.StakesSet} branches staked " +
+            $"({world.PalisadesRaised} palisades raised); at the end {world.Shelters.Count(s => s.HasFooting)} homes on footings, " +
+            $"{world.Shelters.Count(s => s.HasPalisade)} palisaded; {world.Materials.Count(m => m is { IsActive: true, Kind: MaterialKind.Stone })} stones and " +
+            $"{world.Materials.Count(m => m is { IsActive: true, Kind: MaterialKind.Branch })} branches lying about.");
         Console.WriteLine(
             $"Building: a Tent takes {world.AverageTentBuildSeconds:0}s on average, a House upgrade {world.AverageHouseUpgradeSeconds:0}s; " +
             $"{world.StagesOlderThan(600f)} of {world.Shelters.Count(s => !s.IsBuilt || s.IsUpgrading)} construction stages under way have stalled over 10 min.");
@@ -522,7 +534,7 @@ public static partial class Game
         int houses = world.Shelters.Count(s => s.Tier == ShelterTier.House);
         int stored = world.Shelters.Sum(s => s.StoredFood);
         Console.WriteLine(
-            $"[t={world.ElapsedSeconds,6:0}s Y{world.Year} {world.CurrentSeason,-6}] kin {living.Count,3} (solitary {solitary}, groups {world.Groups.Count}, largest {largestGroup}, villages {villages}, bushes {world.Bushes.Count}, allies {world.CurrentAlliances}, wars {world.CurrentWars}) " +
+            $"[t={world.ElapsedSeconds,6:0}s Y{world.Year} {world.CurrentSeason,-6}] kin {living.Count,3} (solitary {solitary}, groups {world.Groups.Count}, largest {largestGroup}, villages {villages}, crops {world.Crops.Count}, allies {world.CurrentAlliances}, wars {world.CurrentWars}) " +
             $"avg hunger {averageHunger,5:0.0}  food on map {world.LooseFoodCount,3}, stored {stored,3}  tents {tents} houses {houses}  " +
             $"arrived {world.Arrivals} born {world.Births}  died: starved {world.DeathsByStarvation}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}, old age {world.DeathsByOldAge}, sickness {world.DeathsBySickness}");
     }
@@ -555,8 +567,13 @@ public static partial class Game
         null => "Home: none",
         { IsBuilt: false } site => $"Home: building a Tent ({site.TwigsDelivered}/{site.TwigsNeeded} twigs)",
         { IsUpgrading: true } home => $"Home: Tent -> House ({home.TwigsDelivered}/{home.TwigsNeeded}), store {home.StoredFood}/{home.StoreCapacity}",
-        { } home => $"Home: {home.Tier}{(home.GroupId is null ? "" : " (group)")}, store {home.StoredFood}/{home.StoreCapacity}",
+        { } home => $"Home: {home.Tier}{(home.GroupId is null ? "" : " (group)")}{HomeWorks(home)}, store {home.StoredFood}/{home.StoreCapacity}",
     };
+
+    /// <summary>", stone footing, palisade 2/3" — what's been built onto a home beyond its walls.</summary>
+    private static string HomeWorks(Shelter home) =>
+        (home.HasFooting ? ", stone footing" : home.StonesLaid > 0 ? $", footing {home.StonesLaid}/{Shelter.FootingStoneCost}" : "") +
+        (home.HasPalisade ? ", palisade" : home.StakesSet > 0 ? $", palisade {home.StakesSet}/{Shelter.PalisadeStakeCost}" : "");
 
     /// <summary>Debug Time Scale: steps down to the previous speed in <see cref="TimeScaleSteps"/>, clamped at 1x.</summary>
     private static void DecreaseTimeScale()
@@ -929,7 +946,7 @@ public static partial class Game
             $"Year {world.Year} {world.CurrentSeason}{(world.WeatherLabel is { } weather ? $" - {weather}" : "")} (food x{world.FoodAbundance:0.0})   Speed {_timeScale}x{(_achievedSpeed < _timeScale * 0.85f ? $" (running {_achievedSpeed:0}x)" : "")}   FPS {Raylib.GetFPS()}   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
             $"Homes: {world.Shelters.Count(s => s.IsBuilt && s.Tier == ShelterTier.Tent)} tents, {world.Shelters.Count(s => s.Tier == ShelterTier.House)} houses, " +
             $"{world.Shelters.Count(s => !s.IsBuilt)} being built   Food stored {world.Shelters.Sum(s => s.StoredFood)}   " +
-            $"Villages {world.Groups.Count(g => g.Annexes.Count > 0)} (budded {world.Buddings})   Bushes {world.Bushes.Count}",
+            $"Villages {world.Groups.Count(g => g.Annexes.Count > 0)} (budded {world.Buddings})   Crops {world.Crops.Count}",
             $"Bramblekin {living}: {solitary} solitary, {world.Groups.Count} groups (largest {largestGroup}, {world.Groups.Count(World.KnowsFarming)} farming)   " +
             $"Alliances {world.CurrentAlliances}   Wars {world.CurrentWars}",
             $"Foraging {Count(BramblekinState.Foraging) + Count(BramblekinState.Hunting)}   Eating {Count(BramblekinState.Eating)}   " +

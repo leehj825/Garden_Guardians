@@ -30,7 +30,7 @@ public sealed partial class World
                 Id = s.ID, Position = s.Position, Tier = s.Tier, Built = s.IsBuilt, Upgrading = s.IsUpgrading, Twigs = s.TwigsDelivered,
                 Stored = s.StoredFood, Owner = s.Owner is { IsDead: false } owner ? owner.ID : null, GroupId = s.GroupId,
                 AbandonedSeconds = s.AbandonedSeconds, StageStartedAt = s.StageStartedAt,
-                Granary = s.HasGranary, Palisade = s.HasPalisade,
+                Granary = s.HasGranary, Stakes = s.StakesSet, Stones = s.StonesLaid,
             }).ToList(),
             Kin = Colony.Where(k => !k.IsDead).Select(k => k.ToSave()).ToList(),
             Groups = _groups.Values.Select(g => new GroupSave
@@ -46,12 +46,14 @@ public sealed partial class World
                 Dangers = g.Dangers.Places.Select(p => new PlaceSave(p.Where, p.When)).ToList(),
                 FoodSpots = g.FoodSpots.Places.Select(p => new PlaceSave(p.Where, p.When)).ToList(),
             }).ToList(),
-            Bushes = Bushes.Select(b => new BushSave
+            Bushes = Crops.Select(b => new BushSave
             {
-                Position = b.Position, GroupId = b.GroupId, Growth = b.Growth, Fruit = b.Fruit, FruitTimer = b.FruitTimer, WildSeconds = b.WildSeconds,
+                Position = b.Position, Kind = b.Kind, Age = b.Age, GroupId = b.GroupId, Growth = b.Growth, Fruit = b.Fruit, FruitTimer = b.FruitTimer, WildSeconds = b.WildSeconds,
             }).ToList(),
             Food = FoodShards.Where(f => f is { IsActive: true, IsCarried: false })
                 .Select(f => new LooseSave { Position = f.Position, Kind = f.Kind, DespawnTimer = f.DespawnTimer }).ToList(),
+            Materials = Materials.Where(m => m is { IsActive: true, IsCarried: false })
+                .Select(m => new MaterialSave { Position = m.Position, Kind = m.Kind, DespawnTimer = m.DespawnTimer }).ToList(),
             Twigs = Twigs.Where(t => t is { IsActive: true, IsCarried: false })
                 .Select(t => new LooseSave { Position = t.Position, DespawnTimer = t.DespawnTimer }).ToList(),
             Relations = _relations.Select(r => new RelationSave
@@ -124,13 +126,20 @@ public sealed partial class World
             }
         }
 
+        InitializeMaterials(scatterStones: save.Materials is null);
+        foreach (MaterialSave loose in save.Materials ?? new List<MaterialSave>())
+        {
+            if (ActivateMaterial(loose.Position, loose.Kind) is { } material)
+                material.DespawnTimer = loose.DespawnTimer;
+        }
+
         var shelters = new Dictionary<int, Shelter>();
         foreach (ShelterSave s in save.Shelters)
         {
             var shelter = new Shelter(s.Position)
             {
                 GroupId = s.GroupId, AbandonedSeconds = s.AbandonedSeconds, StageStartedAt = s.StageStartedAt,
-                HasGranary = s.Granary, HasPalisade = s.Palisade,
+                HasGranary = s.Granary, StakesSet = s.Palisade ? Shelter.PalisadeStakeCost : s.Stakes, StonesLaid = s.Stones,
             };
             shelter.Restore(s.Id, s.Tier, s.Built, s.Upgrading, s.Twigs, s.Stored);
             Shelters.Add(shelter);
@@ -196,9 +205,9 @@ public sealed partial class World
 
         foreach (BushSave b in save.Bushes)
         {
-            var bush = new BerryBush(b.Position, b.GroupId);
+            var bush = new Crop(b.Position, b.GroupId, b.Kind) { IsWatered = IsWatered(b.Position, b.Kind), Age = b.Age };
             bush.Restore(b.Growth, b.Fruit, b.FruitTimer, b.WildSeconds);
-            Bushes.Add(bush);
+            Crops.Add(bush);
         }
         ClearOakGround();
         RebuildObstacles();

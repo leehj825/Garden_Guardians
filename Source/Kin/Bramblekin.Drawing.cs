@@ -68,10 +68,14 @@ public sealed partial class Bramblekin
             Raylib.DrawSphere(tip, 0.025f, thornColor);
         }
 
+        if (State == BramblekinState.Fishing && _fishingSpot is { } spot && GroundMover.HorizontalDistanceSquared(Position, spot) < 1f)
+            DrawFishingRod(facing);
+
         _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
         DrawSack(facing);
         if (_carriedTwig is not null)
             Twig.DrawCarried(Position + new Vector3(0, BodyHeight * 0.55f, 0), facing);
+        _carriedMaterial?.DrawCarried(Position, BodyHeight, facing);
     }
 
     private static Color LerpColor(Color a, Color b, float t)

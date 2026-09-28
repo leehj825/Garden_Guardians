@@ -103,7 +103,7 @@ public sealed class Ant : ICombatant
         }
 
         // A store to rob, else loose food, else a wander near the hill.
-        if (_targetStore is not { IsCollapsed: false, IsBuilt: true, HasPalisade: false, StoredFood: > 0 })
+        if (_targetStore is not { IsCollapsed: false, IsBuilt: true, HasPalisade: false, HasFooting: false, StoredFood: > 0 })
             _targetStore = world.StoreForAnts(Position, hill);
         if (_targetStore is { } store)
         {

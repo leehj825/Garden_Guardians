@@ -18,9 +18,16 @@ public sealed partial class World
     /// <summary>A Bramblekin finished eating <paramref name="food"/>: its pool slot is freed.</summary>
     public void ConsumeFood(FoodShard food)
     {
+        _foodByKind[(int)food.Kind]++;
         food.Deactivate();
         FoodEaten++;
     }
+
+    /// <summary>Food eaten or stored, by kind (see <see cref="FoodShardKind"/>) — which sources the garden lives on.</summary>
+    private readonly int[] _foodByKind = new int[Enum.GetValues<FoodShardKind>().Length];
+
+    /// <summary>How much <paramref name="kind"/> has been eaten or stored.</summary>
+    public int FoodTaken(FoodShardKind kind) => _foodByKind[(int)kind];
 
     /// <summary>Puts carried <paramref name="food"/> back on the ground at <paramref name="position"/>, loose for anyone to find.</summary>
     public static void DropFood(FoodShard food, Vector3 position)
@@ -70,6 +77,8 @@ public sealed partial class World
                 Math.Clamp(center.X + MathF.Cos(angle) * distance, -half, half),
                 Terrain.GroundHeight,
                 Math.Clamp(center.Z + MathF.Sin(angle) * distance, -half, half));
+            if (WaterMap.IsWet(position.X, position.Z))
+                position = center; // Never into the pond.
             _pendingFoodSpawns.Add((position, kind));
         }
     }

@@ -64,8 +64,12 @@ overhead camera:
 *   **Two-finger twist** rotates the whole world around the camera's
     current focus point (Target) on the Y axis — the camera's height and
     distance don't change, only the compass direction it's looking from.
-*   **Two-finger pinch** zooms in/out, clamped between 8m and 220m from
-    Target.
+*   **Two-finger pinch** (or the mouse wheel, on desktop) zooms in/out,
+    from 8m to just far enough that the whole garden fits on screen from
+    any angle (the circle through its corners, worked out from the
+    screen's shape — about 185m on a 16:9 screen, never less than the
+    starting overview). There's no draw distance: zoomed out, everything
+    in the garden shows.
 *   **Two fingers sliding up/down together** tilts the camera's pitch —
     dragging down flattens toward a top-down view, dragging up tilts
     into a lower, more oblique angle — clamped to roughly 15°–85° so it
@@ -148,15 +152,16 @@ overhead camera:
 ## Code Layout & Performance
 *   **Layout:** `Program.cs` is only the entry point. Everything else is
     under `Source/`, one type per file: `Engine/` (touch and follow
-    cameras, terrain, tap input, spatial grid, movement), `World/` (the
-    `World` partial class split by concern — core, society, families,
-    neighbours, errands, war outcomes, farming, group homes & villages,
-    leadership, rebellion, culture, seasons, weather, births, chronicle,
-    lives, save, shelters, hunting, interactions, spawning, stats,
-    rendering —
-    plus Food, Twigs, Shelters and Garden Props), `Kin/` (the `Bramblekin`
-    partial class with one file per need — Hunger, Safety, Duty, Settle,
-    Social — plus Hunting, Farming, Loyalty, Lineage, Family, Aging,
+    cameras, terrain, tap input, spatial grid, movement, the water map),
+    `World/` (the `World` partial class split by concern — core, society,
+    families, neighbours, errands, war outcomes, farming, wild food,
+    materials, group homes & villages, leadership, rebellion, culture,
+    seasons, weather, births, chronicle, lives, save, shelters, hunting,
+    interactions, spawning, stats, rendering —
+    plus Food, Crops, Twigs, Materials, Shelters and Garden Props), `Kin/`
+    (the `Bramblekin` partial class with one file per need — Hunger,
+    Safety, Duty, Settle, Social — plus Hunting, Farming, Fishing,
+    Materials, Loyalty, Lineage, Family, Aging,
     Errands, Memory, Fame, Save, Actions and Drawing, and the Personality, names,
     sex, relationship, group, errand, place-memory, clan-culture and
     society types), `Wildlife/`, `Save/` (the save file's data types and
@@ -182,8 +187,16 @@ overhead camera:
 *   **Deferred spawns/removals** are applied once per frame
     (`World.CommitPendingChanges`); rebellions are queued during the
     Leaders' decision pass and applied after it.
-*   **Raylib culling** skips anything off-screen or beyond
-    `World.RenderRadius`.
+*   **Raylib culling** skips anything off-screen; there's no draw
+    distance. The lawn's 2,500 cells are worked out once (corners and
+    grass colour) and only tinted for the season each frame.
+*   **Walking round the water** (`WaterMap`): a 1m grid of the garden
+    marks the pond with room to spare; a walker whose straight way is cut
+    by it runs A* (eight ways, no cutting corners) and pulls the path
+    tight into a few waypoints — worked out again only when its target
+    moves a meter. A fine 0.25m grid answers "is this spot wet?" for every
+    step. Over a 13-year run that's some 30,000 routes, well under a
+    second in all.
 *   **Headless mode:** `dotnet run -f net8.0 -p:DesktopOnly=true --
     --headless 600 --seed 1` steps the simulation with no window (roughly
     150× real time) and prints a population report every 30 simulated
@@ -235,7 +248,10 @@ overhead camera:
     *   **Courage** (brave ↔ cautious) — standing up to predators and big
         game is 70% nerve and 30% temper (against another Bramblekin, the
         reverse); the brave hold their nerve down to 0.16 of their Health,
-        the cautious break at 0.56; a place of danger is shunned for 150s
+        the cautious break at 0.56 — but however brave, a fighter breaks
+        off while it can still survive one more blow from its foe (a
+        spider's bite is 10), and backs away on guard, safe from the
+        spider's pounce, for 1–3s (longer the braver); a place of danger is shunned for 150s
         by the bravest, 450s by the most cautious; Leaders make the brave
         their Hunters and Guards, and the brave (with the fierce) drive
         off enemies near home in a war. Dangerous orders cost the brave
@@ -582,24 +598,45 @@ overhead camera:
     it, a group teaches everyone who joins, and kin carry it with them
     when they split off, bud off or marry into another group. An ally
     may also teach it (see Neighbours).
-*   **Berry bushes:** a farming group keeps up to 2 bushes per House and
-    1 per Tent, planted 2.5–6m from home (at least 1.4m apart, clear of
-    shelters; 40 on the map at most). Planting costs a berry from the
-    stores as seed and never happens in winter. A bush grows for 90s (at
-    the season's pace) and then ripens a berry every 40s — again at the
-    season's pace, so it fruits hardest in summer and barely in winter —
-    holding up to 4; an overripe one drops a loose Berry anyone can eat.
-    Drawn as a leafy clump dotted with its ripe berries, with a stake in
-    its group's colour; browner in winter.
+*   **Crops:** a farming group keeps up to 2 crops per House and 1 per
+    Tent (at least 1.4m apart, clear of shelters; 60 on the map at most).
+    Planting costs a piece of food from the stores as seed and never
+    happens in winter. Each kind needs its own craft and bears in its own
+    seasons (pace relative to normal, spring/summer/autumn/winter):
+
+    | Crop | Craft | Where | Grows, then one every | Holds | Pace | Lasts |
+    |---|---|---|---|---|---|---|
+    | Berry bush | Farming | 2.5–6m from home | 90s, 40s | 4 | 1.0/1.3/0.8/0.3 | 3 years |
+    | Grain patch | Grain | 2.5–6m from home | 60s, 26s | 6 | 0.5/1.3/1.3/0 | 1 year |
+    | Mushroom bed | Mushrooms | against a House wall | 70s, 45s | 3 | 0.9/0.5/1.4/0.8 | 2 years |
+    | Cress bed | Cress | on the shore, within 14m | 45s, 32s | 3 | 1.3/1.0/0.8/0.3 | 2 years |
+
+    The weather scales them too (a drought halves them, a bountiful
+    season adds half). A crop within 8m of the pond is **watered**: a
+    quarter faster, and a drought doesn't touch it (cress beds always
+    are). A Farmer plants whichever kind the clan knows and has fewest
+    of, so its fields spread across the year: grain for late summer,
+    mushrooms through winter, cress in spring. A worn-out crop is simply
+    gone, and replanted. Overripe fruit drops for anyone. Each is drawn in
+    its own way — a leafy bush dotted with berries, a tuft of stalks
+    nodding under golden seed heads, a mound of dark soil sprouting
+    russet caps, a mat of round green leaves — with a stake in its
+    clan's colour.
 *   **Farmers:** a farming group makes one Farmer per 4 grown members (at
     least one), from its most Intelligent Gatherers, under any goal but
-    Defend. A Farmer picks ripe berries into the stores, and plants while
-    the group has room for more bushes and a berry to spare; otherwise it
-    gathers. Gatherers pick ripe bushes too, and a hungry member eats
+    Defend. A Farmer picks what's ripe into the stores, and plants while
+    the group has room for more crops and food to spare; otherwise it
+    gathers. Gatherers pick ripe crops too, and a hungry member eats
     straight off one.
-*   **Wild bushes:** when its group is gone, a bush runs wild — still
-    fruiting (and dropping berries for anyone) — and withers after 600s.
-    Bushes go with the house nearest them when a village buds or two
+*   **Fishing:** a Gatherer (or Farmer) that knows fishing, with nothing
+    ripe and no food in sight, walks to a stretch of shore within 20m of
+    home and casts — a rod held out over the water, its line dropping to
+    a red float — every 8s (quicker for the diligent), landing a minnow
+    or tadpole at 0.55/0.45/0.5/0.25 odds by season, which it carries to
+    the stores. Winter's poor catch still beats an empty lawn.
+*   **Wild crops:** when its group is gone, a crop runs wild — still
+    bearing (and dropping food for anyone) — and withers after 600s.
+    Crops go with the house nearest them when a village buds or two
     groups merge.
 
 ## Crafts
@@ -609,17 +646,27 @@ overhead camera:
     live in individuals like farming does: taught to everyone in the clan,
     inherited by children (both parents' crafts), carried along by anyone
     who leaves, and taught to allies (odds 0.05 per decision, farming
-    first, then granary, spears, palisade).
+    first, then granary, spears, palisade, grain, mushrooms, cress,
+    fishing, stonework). When a clan is ready for several, the one it
+    works out is picked at random.
     *   **Granary** (needs farming and a House): each House gets a round
         granary beside it and holds half as much again in store.
     *   **Spears** (needs a hunting tradition or a Wolf Spider brought
         down): half as much again of a blow against the Stag Beetle, the
         Wolf Spider, Grubs, Hornets and ants — never against kin.
     *   **Palisade** (needs a House and a martial tradition, or three
-        remembered dangers): a ring of stakes round each home. The Wolf
-        Spider won't hunt anyone inside it, ants can't get at its store,
-        and a raider must spend 4s breaking in first — time for the
-        defenders to come.
+        remembered dangers): a ring of thorny stakes round each home, once
+        its Builders have dragged in 3 branches (the ring goes up branch
+        by branch). The Wolf Spider won't hunt anyone inside it, ants
+        can't get at its store, and a raider must spend 4s breaking in
+        first — time for the defenders to come.
+    *   **Grain, Mushrooms, Cress** (need farming; mushrooms a House,
+        cress a home within 20m of the shore): new crops (see Farming).
+    *   **Fishing** (needs a home within 20m of the shore): see Farming.
+    *   **Stonework** (needs a House): each House is raised on a stone
+        footing, once its Builders have carried in 4 stones (a ring of
+        grey stones round its foot): its store holds 4 more, stays dry in
+        a flood, and ants can't dig into it.
 *   The Stats tab and the clan card list a clan's crafts; the headless
     summary counts them. Over 13 years a clan works out about six and
     teaches eleven; most clans end up knowing all of them.
@@ -829,10 +876,16 @@ overhead camera:
 *   **The pond:** water always stands in the lowest 5% of the garden —
     a pond in the main hollow, and a pool cut by the east edge. Nothing
     is built, planted, spawned or set down in it (it counts as blocked
-    ground for every site, spawn and wander point), but walkers can wade
-    through it at half pace; Hornets fly over. A flood rises out of the
-    pond and drains back into it. The water is drawn only over the ground
-    that dips below it.
+    ground for every site, spawn and wander point), and nothing that
+    walks ever steps into it: Bramblekin, the Wolf Spider, beetles, grubs
+    and ants all find their way round (see Code Layout & Performance);
+    Hornets fly over. A flood rises out of the pond and drains back into
+    it — flood water is shallow, and walkable. The water is drawn only
+    over the ground that dips below it.
+*   **What the water gives:** watercress grows wild along the shore
+    (most in spring, and never minding a drought); clans near it can
+    fish and plant cress beds; crops within 8m of it are watered — faster,
+    and drought-proof (see Farming).
 *   **The Giant Oak:** the foot of a real tree stands at the garden's back
     edge — a trunk 12m across, ridged bark and a mossy foot, rising far
     out of sight, with one great bough overhead and roots sprawling over
@@ -844,11 +897,18 @@ overhead camera:
     where the trunk is now.
 
 ## Food & Wildlife
-*   **Food:** wild Berries grow passively (one every 0.6s, up to 100 on
+*   **Food:** wild Berries grow passively (one every 0.7s, up to 85 on
     the map, both scaled by the season), about two-thirds in eight Berry
-    Patches around Dandelions.
-    Hunted Grubs, Stag Beetles and a slain Wolf Spider drop meat (same
-    value). Loose Food rots after 60s; stored Food never does. A
+    Patches around Dandelions. Besides them, all at their season's pace
+    (the same curves as the crops): **watercress** springs up on the shore
+    (every 7s, up to 6); **mushrooms** come up in the oak's shade and at
+    the foot of the rocks (every 9s, up to 6, twice as fast for a minute
+    after rain); **grass seed** is shed in twos and threes on the open
+    lawn (every 8s, up to 8, high summer into autumn). The oak drops
+    acorns in autumn, fishers land fish, and hunted Grubs, Stag Beetles
+    and a slain Wolf Spider drop meat. Every kind is worth the same one
+    bite; what differs is where and when it turns up. The headless summary
+    and the Stats tab count how much of each was eaten or stored. Loose Food rots after 60s; stored Food never does. A
     Bramblekin walking to a piece claims it (Dibs) so others look
     elsewhere.
 *   **The Wolf Spider** (50 HP): hunts by vibration — any Bramblekin
@@ -865,8 +925,16 @@ overhead camera:
     (ignoring claims), skitter away from nearby Bramblekin, and drop 1–4
     pieces of meat when hunted down.
 *   **Stag Beetles** (60 HP, up to 2): see Hunting & Defending.
-*   **Garden Props:** Pebbles (solid), Twigs (where fallen twigs gather)
-    and Dandelions (where berries grow).
+*   **Garden Props:** Pebbles (solid rocks), Twigs (big sticks, where
+    fallen twigs gather) and Dandelions (where berries grow).
+*   **Stones and branches:** building material bigger than a twig. Stones
+    work loose at the foot of the rocks (16 to start, one every 12s up to
+    24; they never rot); thorny branches come down off the oak in a storm
+    (one every 6s of it) and off the big sticks now and then (every 90s),
+    up to 10, rotting after 900s or carried off by a flood. A clan with a
+    footing or palisade to finish keeps its most diligent Gatherer as a
+    Builder, fetching them from up to 45m away — a stone carried in front,
+    a branch dragged behind (at three-quarters pace).
 *   **Wandering Arrivals:** every 15s, while fewer than 30 Bramblekin are
     alive, a new solitary one with a freshly rolled Personality wanders
     in from a random edge of the map — so a hard winter never ends the

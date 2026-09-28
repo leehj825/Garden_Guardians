@@ -31,6 +31,8 @@ public sealed partial class Bramblekin
         if (_errand is { } errand)
             return DoErrand(errand, deltaTime, world);
 
+        if (Job != KinJob.Builder && (_carriedMaterial is not null || _materialTarget is not null))
+            PutDownMaterial(); // Moved off building: leaves the stone (or branch) where it is.
         if (GroupId is null || IsYoung || !IsObedient || world.GroupOf(this) is not { } group)
             return false;
 
@@ -38,7 +40,7 @@ public sealed partial class Bramblekin
         {
             KinJob.Guard => DoGuardDuty(group, deltaTime, world),
             KinJob.Hunter => DoHuntDuty(group, deltaTime, world),
-            KinJob.Builder => DoBuilderDuty(deltaTime, world),
+            KinJob.Builder => DoBuilderDuty(group, deltaTime, world),
             KinJob.Gatherer => DoGatherDuty(deltaTime, world),
             KinJob.Farmer => DoFarmDuty(group, deltaTime, world),
             KinJob.Raider => DoRaidDuty(group, deltaTime, world),
@@ -157,18 +159,18 @@ public sealed partial class Bramblekin
     private bool IsOnWarRaid(World world) =>
         Job == KinJob.Raider && IsObedient && world.GroupOf(this) is { Goal: GroupGoal.Raid, WarTarget: not null };
 
-    /// <summary>Builder: fetches twigs for whichever group home is under construction; with nothing to build, gathers.</summary>
-    private bool DoBuilderDuty(float deltaTime, World world)
+    /// <summary>Builder: fetches twigs for whichever group home is under construction; else stones and branches for footings and palisades (see <see cref="TryFetchMaterial"/>); with nothing to build, gathers.</summary>
+    private bool DoBuilderDuty(KinGroup group, float deltaTime, World world)
     {
         if (BuildSite is { } site)
         {
             DoBuildWork(site, deltaTime, world);
             return true;
         }
-        return DoGatherDuty(deltaTime, world);
+        return TryFetchMaterial(group, deltaTime, world) || DoGatherDuty(deltaTime, world);
     }
 
-    /// <summary>Gatherer: brings ripe berries off the group's bushes, and Food lying within <see cref="GatherRange"/> of home, into the shared stores until they're full.</summary>
+    /// <summary>Gatherer: brings what's ripe off the group's crops, and Food lying within <see cref="GatherRange"/> of home, into the shared stores until they're full — and, with neither, fishes if it knows how (see <see cref="TryFishing"/>).</summary>
     private bool DoGatherDuty(float deltaTime, World world)
     {
         if (Home is not { IsBuilt: true } home || StoreToStock(world) is not { } store)
@@ -180,7 +182,7 @@ public sealed partial class Bramblekin
             return true;
         }
 
-        if (world.GroupOf(this) is { } group && world.NearestRipeBush(this, group, GatherRange) is { } bush)
+        if (world.GroupOf(this) is { } group && world.NearestRipeCrop(this, group, GatherRange) is { } bush)
         {
             Harvest(bush, deltaTime, world, eat: false);
             return true;
@@ -192,6 +194,6 @@ public sealed partial class Bramblekin
             ApproachFood(food, WalkSpeed, deltaTime, world, eatOnArrival: false);
             return true;
         }
-        return false;
+        return TryFishing(home, deltaTime, world);
     }
 }

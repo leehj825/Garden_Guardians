@@ -244,7 +244,7 @@ public sealed partial class Bramblekin
             return;
         }
 
-        if (_carried is { } food && World.DepositFood(home, food))
+        if (_carried is { } food && world.DepositFood(home, food))
             _carried = null;
         StartPause();
     }

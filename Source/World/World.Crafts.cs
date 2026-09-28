@@ -9,7 +9,13 @@ public sealed partial class World
     private const double CraftInsightChance = 0.006;
 
     /// <summary>The crafts a clan can work out after farming, in the order an ally teaches them.</summary>
-    private static readonly Craft[] LaterCrafts = { Craft.Granary, Craft.Spears, Craft.Palisade };
+    private static readonly Craft[] LaterCrafts =
+    {
+        Craft.Granary, Craft.Spears, Craft.Palisade, Craft.Grain, Craft.Mushrooms, Craft.Cress, Craft.Fishing, Craft.Stonework,
+    };
+
+    /// <summary>A clan with a home within this far (m) of the shore can work out fishing.</summary>
+    private const float FishingSettleReach = 20f;
 
     private static readonly Color CraftTextColor = new(120, 90, 200, 255);
 
@@ -44,9 +50,9 @@ public sealed partial class World
 
     /// <summary>
     /// At each Leader decision: a clan teaches every craft any member knows
-    /// to all of them, builds what they know onto its homes (granaries,
-    /// palisades), and — once ready for one (see <see cref="ReadyFor"/>) —
-    /// may work out a new craft.
+    /// to all of them, builds what they know onto its homes (granaries), and
+    /// — once ready for one or more (see <see cref="ReadyFor"/>) — may work
+    /// out one of them, picked at random.
     /// </summary>
     private void UpdateCrafts(KinGroup group)
     {
@@ -54,47 +60,53 @@ public sealed partial class World
         foreach (Bramblekin member in group.Members)
             member.Learn(known);
         foreach (Shelter home in GroupHomes(group))
-        {
             home.HasGranary = (known & Craft.Granary) != 0;
-            home.HasPalisade = (known & Craft.Palisade) != 0 && home.IsBuilt;
-        }
 
-        foreach (Craft craft in LaterCrafts)
-        {
-            if ((known & craft) != 0 || !ReadyFor(group, craft))
-                continue;
-            if (group.Members.Where(m => !m.IsDead && !m.IsYoung).MaxBy(m => m.Personality.Intelligence) is not { } thinker)
-                return;
-            if (Rng.NextDouble() >= CraftInsightChance * thinker.Personality.Intelligence)
-                return; // One idea at a time.
-
-            foreach (Bramblekin member in group.Members)
-                member.Learn(craft);
-            CraftsDiscovered++;
-            string what = Describe(craft);
-            QueueFloatingText(thinker.Position, $"Idea: {craft.ToString().ToLowerInvariant()}!", CraftTextColor);
-            Game.AddEventLog($"[CRAFT] {thinker.Name} of {group.Title} worked out how to {what}");
-            Headline("Discovery", $"{thinker.Name} of {group.Title} worked out how to {what}", thinker.Position, false, group);
+        Craft[] ready = LaterCrafts.Where(c => (known & c) == 0 && ReadyFor(group, c)).ToArray();
+        if (ready.Length == 0)
             return;
-        }
+        if (group.Members.Where(m => !m.IsDead && !m.IsYoung).MaxBy(m => m.Personality.Intelligence) is not { } thinker)
+            return;
+        if (Rng.NextDouble() >= CraftInsightChance * thinker.Personality.Intelligence)
+            return; // One idea at a time.
+
+        Craft craft = ready[Rng.Next(ready.Length)];
+        foreach (Bramblekin member in group.Members)
+            member.Learn(craft);
+        CraftsDiscovered++;
+        string what = Describe(craft);
+        QueueFloatingText(thinker.Position, $"Idea: {craft.ToString().ToLowerInvariant()}!", CraftTextColor);
+        Game.AddEventLog($"[CRAFT] {thinker.Name} of {group.Title} worked out how to {what}");
+        Headline("Discovery", $"{thinker.Name} of {group.Title} worked out how to {what}", thinker.Position, false, group);
     }
 
     /// <summary>
     /// What a clan needs before it can work out <paramref name="craft"/>: a
     /// granary takes farming and a House; spears, a hunting tradition or a
     /// Wolf Spider brought down; a palisade, a House and either a martial
-    /// tradition or a memory of danger close to home.
+    /// tradition or a memory of danger close to home; grain, farming;
+    /// mushrooms, farming and a House; cress beds, farming and a home near
+    /// the pond; fishing, just a home near the pond; stonework, a House.
     /// </summary>
     private bool ReadyFor(KinGroup group, Craft craft)
     {
-        bool hasHouse = false;
+        bool hasHouse = false, nearPond = false;
         foreach (Shelter home in GroupHomes(group))
+        {
             hasHouse |= home is { IsBuilt: true, Tier: ShelterTier.House };
+            nearPond |= home.IsBuilt && NearestShoreSpot(home.Position, FishingSettleReach) is not null;
+        }
+        bool farms = Knows(group, Craft.Farming);
         return craft switch
         {
-            Craft.Granary => hasHouse && Knows(group, Craft.Farming),
+            Craft.Granary => hasHouse && farms,
             Craft.Spears => group.Culture.Hunting >= 0.1f || group.SpidersSlain > 0,
             Craft.Palisade => hasHouse && (group.Culture.Martial >= 0.1f || group.Dangers.Count >= 3),
+            Craft.Grain => farms,
+            Craft.Mushrooms => farms && hasHouse,
+            Craft.Cress => farms && nearPond,
+            Craft.Fishing => nearPond,
+            Craft.Stonework => hasHouse,
             _ => false,
         };
     }
@@ -105,6 +117,11 @@ public sealed partial class World
         Craft.Granary => "build a granary",
         Craft.Spears => "sharpen twigs into spears",
         Craft.Palisade => "raise a palisade",
+        Craft.Grain => "sow seed grass",
+        Craft.Mushrooms => "grow mushrooms in the shade of their walls",
+        Craft.Cress => "grow cress on the shore",
+        Craft.Fishing => "fish from the shore",
+        Craft.Stonework => "raise a house on a stone footing",
         _ => craft.ToString().ToLowerInvariant(),
     };
 

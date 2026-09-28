@@ -63,7 +63,7 @@ public sealed partial class World
         DrawRelations(camera);
         DrawRain(camera);
         bool winter = CurrentSeason == Season.Winter;
-        foreach (BerryBush bush in Bushes)
+        foreach (Crop bush in Crops)
         {
             if (!IsVisible(bush.Position, camera))
                 continue;
@@ -76,6 +76,7 @@ public sealed partial class World
             if (twig.IsActive && !twig.IsCarried && IsVisible(twig.Position, camera))
                 twig.Draw();
         }
+        DrawMaterials(camera);
 
         // Object Pooling: most Food slots sit inactive at any given time, so
         // every loop over the pool must skip anything with IsActive false.

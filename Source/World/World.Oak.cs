@@ -68,7 +68,7 @@ public sealed partial class World
     {
         bool Inside(Vector3 p, float margin) => GroundMover.HorizontalDistance(p, OakCenter) < OakRadius + margin;
         GardenProps.RemoveAll(p => Inside(p.Position, 0.5f));
-        Bushes.RemoveAll(b => Inside(b.Position, BerryBush.Radius));
+        Crops.RemoveAll(b => Inside(b.Position, Crop.Radius));
         for (int i = Shelters.Count - 1; i >= 0; i--)
         {
             Shelter shelter = Shelters[i];

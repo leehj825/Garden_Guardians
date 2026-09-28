@@ -126,7 +126,7 @@ public sealed partial class World
             if (twig is { IsActive: true, IsCarried: false } && GetHeightAt(twig.Position.X, twig.Position.Z) < level)
                 twig.Deactivate();
         }
-        foreach (BerryBush bush in Bushes)
+        foreach (Crop bush in Crops)
         {
             if (GetHeightAt(bush.Position.X, bush.Position.Z) < level)
                 bush.LoseFruit();
@@ -140,6 +140,8 @@ public sealed partial class World
                 continue;
 
             _floodedHomes.Add(shelter.ID);
+            if (shelter.HasFooting)
+                continue; // Raised on its stone footing: the water swirls round, the store stays dry.
             HomesFlooded++;
             int spoiled = shelter.Tier == ShelterTier.Tent ? shelter.StoredFood : shelter.StoredFood / 2;
             for (int n = 0; n < spoiled && shelter.TryWithdraw(); n++)

@@ -349,7 +349,7 @@ public sealed partial class World
 
             larger.Annexes.Add(home);
             home.GroupId = larger.Id;
-            HandOverBushes(smaller, larger, home, fromHome: null);
+            HandOverCrops(smaller, larger, home, fromHome: null);
             if (larger.Annexes.Count == 1)
                 VillagesFounded++;
         }

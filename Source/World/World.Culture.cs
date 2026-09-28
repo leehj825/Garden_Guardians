@@ -27,9 +27,9 @@ public sealed partial class World
             culture.Martial += TraditionGrowth;
         if (group.Goal == GroupGoal.Hunt)
             culture.Hunting += TraditionGrowth;
-        int allowance = BushAllowance(group);
+        int allowance = CropAllowance(group);
         if (allowance > 0)
-            culture.Farming += TraditionGrowth * MathF.Min(1f, BushesOf(group) / (float)allowance);
+            culture.Farming += TraditionGrowth * MathF.Min(1f, CropsOf(group) / (float)allowance);
 
         culture.Martial = Math.Clamp(culture.Martial * TraditionFade, 0f, 1f);
         culture.Hunting = Math.Clamp(culture.Hunting * TraditionFade, 0f, 1f);

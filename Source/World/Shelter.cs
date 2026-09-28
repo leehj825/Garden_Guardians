@@ -58,6 +58,7 @@ public sealed class Shelter
     private static readonly Color HazelColor = new(150, 100, 55, 255);
     private static readonly Color HazelBaseColor = new(205, 180, 135, 255);
     private static readonly Color ThornColor = new(128, 58, 44, 255);
+    private static readonly Color FootingColor = new(140, 140, 146, 255);
     private static readonly Color StickColor = new(115, 80, 45, 255);
     private static readonly Color StoredFoodColor = new(210, 40, 45, 255);
     private static readonly Color AbandonedTint = new(150, 150, 150, 255);
@@ -103,14 +104,55 @@ public sealed class Shelter
     public int StoredFood { get; private set; }
 
     public int StoreCapacity => Tier == ShelterTier.House
-        ? HasGranary ? HouseStoreCapacity * 3 / 2 : HouseStoreCapacity
+        ? (HasGranary ? HouseStoreCapacity * 3 / 2 : HouseStoreCapacity) + (HasFooting ? FootingStoreBonus : 0)
         : TentStoreCapacity;
 
     /// <summary>Its clan knows <see cref="Craft.Granary"/> (Houses only): half as much again in store.</summary>
     public bool HasGranary { get; set; }
 
-    /// <summary>Its clan knows <see cref="Craft.Palisade"/>: a ring of stakes (<see cref="PalisadeRadius"/>) round it.</summary>
-    public bool HasPalisade { get; set; }
+    /// <summary>A palisade takes this many branches staked round the home (see <see cref="Craft.Palisade"/>)…</summary>
+    public const int PalisadeStakeCost = 3;
+
+    /// <summary>…and a House's stone footing this many stones (see <see cref="Craft.Stonework"/>), which gives its store this much more room.</summary>
+    public const int FootingStoneCost = 4;
+
+    public const int FootingStoreBonus = 4;
+
+    /// <summary>Branches staked into its palisade so far.</summary>
+    public int StakesSet { get; set; }
+
+    /// <summary>Stones laid into its footing so far.</summary>
+    public int StonesLaid { get; set; }
+
+    /// <summary>Its palisade is up (every stake set): a ring of stakes (<see cref="PalisadeRadius"/>) round it.</summary>
+    public bool HasPalisade => StakesSet >= PalisadeStakeCost;
+
+    /// <summary>A House raised on a stone footing: its store holds more, stays dry in a flood, and ants can't dig into it.</summary>
+    public bool HasFooting => Tier == ShelterTier.House && StonesLaid >= FootingStoneCost;
+
+    /// <summary>True while a built home's palisade still wants branches.</summary>
+    public bool NeedsStakes => IsBuilt && StakesSet < PalisadeStakeCost;
+
+    /// <summary>True while a House (not mid-upgrade) still wants stones for its footing.</summary>
+    public bool NeedsStones => IsBuilt && Tier == ShelterTier.House && StonesLaid < FootingStoneCost;
+
+    /// <summary>Stakes a branch into the palisade. False if it's already up.</summary>
+    public bool SetStake()
+    {
+        if (!NeedsStakes)
+            return false;
+        StakesSet++;
+        return true;
+    }
+
+    /// <summary>Lays a stone into the footing. False if it's done (or this isn't a House).</summary>
+    public bool LayStone()
+    {
+        if (!NeedsStones)
+            return false;
+        StonesLaid++;
+        return true;
+    }
 
     /// <summary>How far out a palisade stands from the home's centre.</summary>
     public float PalisadeRadius => Radius + 1.6f;
@@ -275,11 +317,24 @@ public sealed class Shelter
             Raylib.DrawCylinderEx(hazel + new Vector3(0f, 0.3f, 0f), hazel + new Vector3(0.04f, 0.42f, 0f), 0.04f, 0.02f, 4, Tint(StickColor));
         }
 
-        if (HasPalisade)
+        if (StonesLaid > 0 && Tier == ShelterTier.House)
         {
-            // A ring of rose thorns, curving outward, with a gap for the door.
+            // The stone footing: grey stones set round the foot of the nut, filling in as they're laid.
+            int stones = 16 * Math.Min(StonesLaid, FootingStoneCost) / FootingStoneCost;
+            for (int i = 0; i < stones; i++)
+            {
+                float angle = i * MathF.Tau / 16f + 0.2f;
+                Vector3 stone = basePosition + new Vector3(MathF.Cos(angle) * radius * 0.95f, 0.08f, MathF.Sin(angle) * radius * 0.95f);
+                Raylib.DrawSphereEx(stone, 0.17f, 4, 6, Tint(FootingColor));
+            }
+        }
+
+        if (StakesSet > 0)
+        {
+            // A ring of thorny stakes, curving outward, with a gap for the door — going up branch by branch.
             float ring = PalisadeRadius;
-            for (int i = 1; i < 22; i++)
+            int standing = 1 + 21 * Math.Min(StakesSet, PalisadeStakeCost) / PalisadeStakeCost;
+            for (int i = 1; i < standing; i++)
             {
                 float angle = i * MathF.Tau / 22f;
                 var outward = new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle));

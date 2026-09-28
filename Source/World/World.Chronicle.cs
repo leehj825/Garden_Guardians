@@ -88,7 +88,7 @@ public sealed partial class World
             Colony.Count(k => !k.IsDead),
             _groups.Count,
             _groups.Values.Count(KnowsFarming),
-            Bushes.Count,
+            Crops.Count,
             CurrentAlliances,
             CurrentWars,
             Shelters.Sum(s => s.StoredFood)));

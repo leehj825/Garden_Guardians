@@ -5,9 +5,10 @@
 //    * A fixed isometric camera looking down at a 100 m x 100 m patch of
 //      procedurally-hilly terrain, with a mobile-friendly one-finger-pan/
 //      two-finger-pinch camera controller layered on top.
-//    * No factions, no top-down economy. The map is the terrain and whatever
-//      loose things live on it: wild Berries (Food), fallen Twigs, Hornet
-//      swarms, a Wolf Spider, Grubs, Stag Beetles, and the Bramblekin.
+//    * No factions, no top-down economy. The map is the terrain, a pond no
+//      walker may enter, and whatever loose things live on it: wild Berries,
+//      seeds, mushrooms and cress (Food), fallen Twigs, stones and branches,
+//      Hornet swarms, a Wolf Spider, Grubs, Stag Beetles, and the Bramblekin.
 //    * Every Bramblekin is an individual agent with its own randomly rolled
 //      Personality (Aggression, Sociability, Intelligence, Rebelliousness,
 //      Persuasiveness, Courage, Diligence) and a strict

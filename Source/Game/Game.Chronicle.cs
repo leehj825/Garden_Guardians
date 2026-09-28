@@ -118,7 +118,7 @@ public static partial class Game
             return;
         }
 
-        // The chart: population and groups (Story), or food stored and bushes (Stats), over the whole run.
+        // The chart: population and groups (Story), or food stored and crops (Stats), over the whole run.
         bool stats = _historyTab == HistoryTab.Stats;
         int chartHeight = (int)(panel.Height * (stats ? 0.22f : 0.3f));
         DrawHistoryChart(world, new Rectangle(x, y, width, chartHeight), textSize, food: stats);
@@ -153,7 +153,7 @@ public static partial class Game
 
     /// <summary>
     /// Population (brown) and number of groups (green, own scale) over time
-    /// — or, for the Stats tab, food stored (brown) and berry bushes (green)
+    /// — or, for the Stats tab, food stored (brown) and crops (green)
     /// — with a mark at each new year.
     /// </summary>
     private static void DrawHistoryChart(World world, Rectangle area, int fontSize, bool food)
@@ -186,7 +186,7 @@ public static partial class Game
 
         int labelX = (int)area.X + 8, labelY = (int)area.Y + 6;
         Raylib.DrawText(food ? $"Food stored (up to {maxMain})" : $"Bramblekin (up to {maxMain})", labelX, labelY, fontSize, ChartPopulationColor);
-        Raylib.DrawText(food ? $"Berry bushes (up to {maxSecond})" : $"Groups (up to {maxSecond})", labelX, labelY + fontSize + 4, fontSize, ChartGroupsColor);
+        Raylib.DrawText(food ? $"Crops (up to {maxSecond})" : $"Groups (up to {maxSecond})", labelX, labelY + fontSize + 4, fontSize, ChartGroupsColor);
     }
 
     /// <summary>Splits <paramref name="text"/> into lines no wider than <paramref name="width"/> pixels.</summary>
