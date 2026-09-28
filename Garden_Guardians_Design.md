@@ -97,8 +97,8 @@ overhead camera:
     Inspector shows its name, sex and role (Solitary/Leader/Follower,
     young or elder), its age and generation, its mother and father, its
     partner and how many children it has, State, Health, Hunger, its
-    three Personality traits (and the detection radius its Intelligence
-    buys it), its group, its home
+    nature and all seven Personality traits (and the detection radius its
+    Intelligence buys it), its group, its home
     (tent or house, construction progress, store), its job and
     its group's current goal (and whether the Leader eats first), its
     Loyalty (followers) and Reputation, and how many Friends, Enemies and
@@ -132,6 +132,18 @@ overhead camera:
     The event console on the left narrates the seasons, alliances,
     settlements, villages, births, hunts, leader decisions, rebellions
     and deaths.
+*   **The log, as much as you like:** the **Log** button under the event
+    console steps it through *brief* (the newest 3 entries, a line each —
+    the default), *off* (just the button, counting what you've missed:
+    "Log: off (+4)") and *full* (the last 15 entries, word-wrapped, as
+    tall as the screen allows). The choice is remembered
+    (`settings.txt`, beside the save) — and kept through a new garden.
+*   **Health and hunger bars** float over any Bramblekin that's hurt or
+    hungry (and a wounded Spider). They grow with the zoom — about 2.4×
+    as wide as the creature looks on screen — so zoomed in close they're
+    easy to read, while at the whole-map view they shrink back to the
+    same small 34px bars (the floor, and 150px the ceiling, both scaled
+    up on bigger screens).
 
 ## Code Layout & Performance
 *   **Layout:** `Program.cs` is only the entry point. Everything else is

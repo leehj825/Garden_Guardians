@@ -95,6 +95,32 @@ public static partial class Game
     /// <summary>Oldest-entries-dropped cap for <see cref="_debugLogs"/> — see <see cref="AddEventLog"/>.</summary>
     private const int DebugLogCapacity = 15;
 
+    /// <summary>How much of the event log the player has chosen to see (tap the Log button to change it; kept in <see cref="Preferences"/>).</summary>
+    private enum LogView
+    {
+        /// <summary>Just the newest few entries (<see cref="BriefLogEntries"/>), a line each.</summary>
+        Brief,
+
+        /// <summary>No log, only the Log button (with a count of entries missed).</summary>
+        Hidden,
+
+        /// <summary>Everything kept (<see cref="DebugLogCapacity"/>), as tall as the screen allows.</summary>
+        Full,
+    }
+
+    /// <summary>Entries shown in <see cref="LogView.Brief"/>.</summary>
+    private const int BriefLogEntries = 3;
+
+    private const string LogViewSetting = "log";
+
+    private static LogView _logView = LogView.Brief;
+
+    /// <summary>Entries logged while the log was hidden, shown on the Log button.</summary>
+    private static int _unseenLogs;
+
+    /// <summary>Where the Log button was drawn last frame, for taps.</summary>
+    private static Rectangle _logButtonBounds;
+
     /// <summary>True while <see cref="RunHeadless"/> is driving the simulation — event logs go to stdout instead of the on-screen console.</summary>
     private static bool _isHeadless;
 
@@ -115,6 +141,24 @@ public static partial class Game
         _debugLogs.Add(message);
         while (_debugLogs.Count > DebugLogCapacity)
             _debugLogs.RemoveAt(0);
+        if (_logView == LogView.Hidden)
+            _unseenLogs = Math.Min(_unseenLogs + 1, 99);
+    }
+
+    /// <summary>A tap on the Log button steps it Brief → Hidden → Full → Brief, and remembers the choice. Returns true if the tap was on it.</summary>
+    private static bool TapLogButton(Vector2 point)
+    {
+        if (!Raylib.CheckCollisionPointRec(point, _logButtonBounds))
+            return false;
+        _logView = _logView switch
+        {
+            LogView.Brief => LogView.Hidden,
+            LogView.Hidden => LogView.Full,
+            _ => LogView.Brief,
+        };
+        _unseenLogs = 0;
+        Preferences.Set(LogViewSetting, _logView);
+        return true;
     }
 
     /// <summary>
@@ -183,6 +227,8 @@ public static partial class Game
         };
         // Save/Load: the garden carries on where it was left (see SaveSystem).
         string savePath = SaveSystem.DefaultPath;
+        Preferences.Load(Preferences.DefaultPath);
+        _logView = Preferences.Get(LogViewSetting, LogView.Brief);
         World world = LoadOrCreateWorld(savePath);
         var input = new WorldTapInput();
         var touchCamera = new TouchCameraController();
@@ -257,6 +303,10 @@ public static partial class Game
             else if (_showChronicle)
             {
                 // The History screen scrolls instead (see DrawChronicle).
+            }
+            else if (mousePressed && TapLogButton(mousePosition))
+            {
+                // Showed more, less or none of the log.
             }
             else if (mousePressed && mapButton.Contains(mousePosition))
                 followCamera.ShowWholeMap();
@@ -564,14 +614,44 @@ public static partial class Game
                 continue;
 
             Vector3 barAnchor = b.Position + new Vector3(0, Bramblekin.BodyHeight + 0.15f, 0);
+            float width = BarWidth(camera, barAnchor, Bramblekin.BodyRadius * 2f);
             if (b.Health < Bramblekin.MaxHealth)
-                DrawBar(camera, barAnchor, 0, (float)b.Health / Bramblekin.MaxHealth, Color.Green);
+                DrawBar(camera, barAnchor, 0f, width, (float)b.Health / Bramblekin.MaxHealth, Color.Green);
             if (b.IsHungry)
-                DrawBar(camera, barAnchor, 7, 1f - b.Hunger / Bramblekin.MaxHunger, HungerBarColor);
+                DrawBar(camera, barAnchor, width * 0.21f, width, 1f - b.Hunger / Bramblekin.MaxHunger, HungerBarColor);
         }
 
         if (world.Spider is { IsDead: false } spider && spider.Health < WolfSpider.MaxHealth)
-            DrawBar(camera, spider.Position + new Vector3(0, WolfSpider.BodyRadius * 2f + 0.3f, 0), 0, (float)spider.Health / WolfSpider.MaxHealth, Color.Green);
+        {
+            Vector3 anchor = spider.Position + new Vector3(0, WolfSpider.BodyRadius * 2f + 0.3f, 0);
+            DrawBar(camera, anchor, 0f, BarWidth(camera, anchor, WolfSpider.BodyRadius * 2f), (float)spider.Health / WolfSpider.MaxHealth, Color.Green);
+        }
+    }
+
+    /// <summary>A status bar is never narrower than this (px, at the reference screen width)…</summary>
+    private const float MinBarWidth = 34f;
+
+    /// <summary>…nor wider than this…</summary>
+    private const float MaxBarWidth = 150f;
+
+    /// <summary>…and in between it's this many times as wide as the creature looks on screen — so it grows as the camera zooms in.</summary>
+    private const float BarWidthPerBody = 2.4f;
+
+    /// <summary>
+    /// How wide a status bar over something <paramref name="bodyWidth"/>
+    /// meters across at <paramref name="anchor"/> should be: in step with
+    /// how big it looks from where the camera is (so zooming in makes the
+    /// bars easy to read), between <see cref="MinBarWidth"/> and
+    /// <see cref="MaxBarWidth"/> scaled to the screen.
+    /// </summary>
+    private static float BarWidth(Camera3D camera, Vector3 anchor, float bodyWidth)
+    {
+        Vector3 forward = Vector3.Normalize(camera.Target - camera.Position);
+        Vector3 right = Vector3.Cross(forward, camera.Up);
+        right = right.LengthSquared() > 1e-6f ? Vector3.Normalize(right) : Vector3.UnitX;
+        float onScreen = Vector2.Distance(Raylib.GetWorldToScreen(anchor, camera), Raylib.GetWorldToScreen(anchor + right * bodyWidth, camera));
+        float scale = MathF.Max(1f, UiScale);
+        return Math.Clamp(onScreen * BarWidthPerBody, MinBarWidth * scale, MaxBarWidth * scale);
     }
 
     /// <summary>Basic bounds check: true unless <paramref name="worldPosition"/> projects to a screen point entirely outside the camera's current viewport — used to skip status-bar/UI draw calls for off-screen entities.</summary>
@@ -583,16 +663,16 @@ public static partial class Game
                screen.Y >= -margin && screen.Y <= Raylib.GetScreenHeight() + margin;
     }
 
-    /// <summary>A small red-background bar filled to <paramref name="fraction"/> at <paramref name="worldPosition"/>'s projected screen point, <paramref name="yOffset"/> pixels below it.</summary>
-    private static void DrawBar(Camera3D camera, Vector3 worldPosition, int yOffset, float fraction, Color fillColor)
+    /// <summary>A red-background bar <paramref name="width"/> pixels wide (and a seventh as tall) filled to <paramref name="fraction"/> at <paramref name="worldPosition"/>'s projected screen point, <paramref name="yOffset"/> pixels below it.</summary>
+    private static void DrawBar(Camera3D camera, Vector3 worldPosition, float yOffset, float width, float fraction, Color fillColor)
     {
         Vector2 screen = Raylib.GetWorldToScreen(worldPosition, camera);
-        const int width = 34, height = 5;
+        float height = MathF.Max(5f, width / 7f);
         var back = new Rectangle(screen.X - width / 2f, screen.Y - height / 2f + yOffset, width, height);
         Raylib.DrawRectangleRec(back, Color.Red);
         var fill = back with { Width = back.Width * Math.Clamp(fraction, 0f, 1f) };
         Raylib.DrawRectangleRec(fill, fillColor);
-        Raylib.DrawRectangleLinesEx(back, 1f, Color.Black);
+        Raylib.DrawRectangleLinesEx(back, MathF.Max(1f, height / 6f), Color.Black);
     }
 
     /// <summary>
@@ -880,13 +960,41 @@ public static partial class Game
     /// <see cref="AddEventLog"/>) as a small, semi-transparent panel on the
     /// left of the screen, between <paramref name="top"/> and
     /// <paramref name="bottom"/> (below the speed buttons, above the HUD) —
-    /// a running history of recent notable events for on-device debugging.
-    /// Newest entry at the bottom, oldest at top, matching the natural
-    /// reading order of a scrolling log.
+    /// a running history of recent notable events. Newest entry at the
+    /// bottom, oldest at top, matching the natural reading order of a
+    /// scrolling log. Under it sits the Log button: the player chooses to see
+    /// just the newest few entries, all of them, or none (see
+    /// <see cref="LogView"/>).
     /// </summary>
     private static void DrawDebugConsole(int top, int bottom)
     {
-        if (_debugLogs.Count == 0)
+        const int gap = 10;
+        const int x = 10;
+
+        // The Log button, bottom-left just above the HUD.
+        string label = _logView switch
+        {
+            LogView.Brief => "Log: brief",
+            LogView.Full => "Log: full",
+            _ => _unseenLogs > 0 ? $"Log: off (+{_unseenLogs})" : "Log: off",
+        };
+        int buttonFont = Math.Max(14, (int)(30 * UiScale));
+        int buttonPad = Math.Max(6, (int)(14 * UiScale));
+        int buttonWidth = Math.Max(Raylib.MeasureText("Log: brief", buttonFont), Raylib.MeasureText(label, buttonFont)) + buttonPad * 2;
+        int buttonHeight = buttonFont + buttonPad * 2;
+        _logButtonBounds = new Rectangle(x, bottom - gap - buttonHeight, buttonWidth, buttonHeight);
+        bool hovered = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), _logButtonBounds);
+        Raylib.DrawRectangleRec(_logButtonBounds, new Color(0, 0, 0, hovered ? 190 : 150));
+        Raylib.DrawRectangleLinesEx(_logButtonBounds, 2f, new Color(255, 255, 255, 110));
+        Raylib.DrawText(label, x + buttonPad, (int)_logButtonBounds.Y + buttonPad, buttonFont, Color.RayWhite);
+
+        int entries = _logView switch
+        {
+            LogView.Full => _debugLogs.Count,
+            LogView.Brief => Math.Min(BriefLogEntries, _debugLogs.Count),
+            _ => 0,
+        };
+        if (entries == 0)
             return;
 
         // Readability: scaled by UiScale like the rest of this file's
@@ -895,17 +1003,23 @@ public static partial class Game
         int fontSize = (int)(18 * UiScale);
         int lineHeight = fontSize + 4;
 
-        // Word-Wrap: each stored entry is greedily word-wrapped at render
-        // time into as many visual lines as it takes to stay under maxWidth.
+        // Word-Wrap: in full, each stored entry is greedily word-wrapped at
+        // render time into as many visual lines as it takes to stay under
+        // maxWidth; brief keeps each to one line, cut short if need be.
         int maxWidth = (int)(400 * UiScale);
         var wrappedLines = new List<string>();
-        for (int i = 0; i < _debugLogs.Count; i++)
-            WrapLine(_debugLogs[i], fontSize, maxWidth, wrappedLines);
+        for (int i = _debugLogs.Count - entries; i < _debugLogs.Count; i++)
+        {
+            if (_logView == LogView.Brief)
+                wrappedLines.Add(Fit(_debugLogs[i], fontSize, maxWidth * 3 / 2));
+            else
+                WrapLine(_debugLogs[i], fontSize, maxWidth, wrappedLines);
+        }
 
         // Only the newest lines that fit between the speed buttons and the
-        // HUD, so a burst of long entries never grows the panel into either.
-        const int gap = 10;
-        int maxLines = Math.Max(1, (bottom - top - 2 * gap - 16) / lineHeight);
+        // Log button, so a burst of long entries never grows the panel into either.
+        int panelBottom = (int)_logButtonBounds.Y - gap / 2;
+        int maxLines = Math.Max(1, (panelBottom - top - gap - 16) / lineHeight);
         if (wrappedLines.Count > maxLines)
             wrappedLines.RemoveRange(0, wrappedLines.Count - maxLines);
 
@@ -915,8 +1029,7 @@ public static partial class Game
 
         int width = widestLine + 16;
         int height = wrappedLines.Count * lineHeight + 16;
-        int x = 10;
-        int y = bottom - gap - height;
+        int y = panelBottom - height;
 
         Raylib.DrawRectangle(x, y, width, height, new Color(0, 0, 0, 150));
         Raylib.DrawRectangleLines(x, y, width, height, new Color(255, 255, 255, 60));

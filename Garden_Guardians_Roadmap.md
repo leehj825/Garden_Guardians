@@ -546,6 +546,23 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     children's traits now draws them toward 0.8 rather than adding a
     fixed push each generation (farming clans' Intelligence used to
     climb to ~0.96).
+*   **Benchmark (24 seeds × 7800s, vs. the pond-and-oak build):**
+    population 52.2 ± 3.1 vs 57.5 ± 3.4 (within the spread); deaths to
+    predators up from 26.4 to 34.1 — brave Bramblekin stand and fight —
+    and to other Bramblekin down from 31.3 to 25.2; starvation unchanged
+    (48.5 vs 47.9); splits and challenges unchanged (165 vs 163). By the
+    end the living lean diligent (0.73) and a little brave (0.59), with
+    rebellion still at the middle (0.50). No crashes.
+
+## Phase 16: Easier to Watch
+*   ✅ **The log, your way:** a **Log** button under the event console
+    steps it through brief (newest 3 entries, a line each — the default),
+    off (with a count of what's been missed) and full; the choice is
+    remembered in `settings.txt` beside the save.
+*   ✅ **Bars that grow with the zoom:** health and hunger bars scale with
+    how big the creature looks on screen (2.4× its width, 34–150px scaled
+    to the screen), so they're readable up close and unchanged at the
+    whole-map view.
 
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
