@@ -73,11 +73,11 @@ public sealed partial class World
             }
             if (kin.State == BramblekinState.Raiding && kin.RaidTarget is { } raided && fights.Add((kin.GroupId, raided.GroupId)))
             {
-                shots.Add(new Shot($"{Side(kin)} raid {(raided.GroupId is { } id && _groups.TryGetValue(id, out KinGroup? victim) ? victim.Title : "a store")}", 7.5f, kin, kin.Position));
+                shots.Add(new Shot($"{Capitalized(Side(kin))} raid {(raided.GroupId is { } id && _groups.TryGetValue(id, out KinGroup? victim) ? victim.Title : "a store")}", 7.5f, kin, kin.Position));
                 continue;
             }
             if (kin.State == BramblekinState.Hunting && kin.CombatTarget is StagBeetle beetle && !beetle.IsDead && fights.Add((kin.GroupId, null)))
-                shots.Add(new Shot($"{Side(kin)} hunt a stag beetle", 5f, beetle, beetle.Position));
+                shots.Add(new Shot($"{Capitalized(Side(kin))} hunt a stag beetle", 5f, beetle, beetle.Position));
         }
 
         if (Spider is { IsDead: false } spider && spider.State is SpiderState.Hunting or SpiderState.Pouncing or SpiderState.Feeding)
@@ -109,5 +109,6 @@ public sealed partial class World
         return shots;
 
         string Side(Bramblekin who) => GroupOf(who)?.Title ?? who.Name;
+        static string Capitalized(string text) => char.ToUpperInvariant(text[0]) + text[1..];
     }
 }

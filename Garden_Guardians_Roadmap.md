@@ -23,6 +23,10 @@ scarcity; named Bramblekin pair up as couples, thriving groups raise
 young who inherit their parents' traits and family names, grow into
 villages of up to three homes, and bud off daughter groups; the old grow
 grey and die. A follow camera keeps any one of them in view.
+Since Phase 26 the garden has **day and night** (sleep, a night watch, the
+Owl), **aphid herding**, a **beehive** in the oak, **harvest feasts**,
+**shrines and beliefs**, **shields and champions**, an automatic
+**Director** camera and a **timeline** on the History screen.
 Code lives under `Source/` (one type per file; see the
 Design doc's Code Layout). The player is a spectator with a
 Google-Maps-style camera whose only action is tapping a Bramblekin to
@@ -928,6 +932,15 @@ three fixes:
     headline as a coloured diamond along the top — tap one to jump the
     chronicle to it. Older saves load as before (their clan lines start
     from the load).
+
+## Phases 26–33 Together
+*   **Benchmark (24 seeds × 7800s, the Phase 33 build against Phase 25 on
+    the same seeds):** population 51.1 time-averaged vs 50.4 — about the
+    same, but a healthier garden: starvation 31.3 a run vs 45.0; kin
+    killed by kin 23.9 vs 27.7; predators 30.9 vs 34.9; old age 59.6 vs
+    56.3; sickness 16.3 vs 16.8; births 195 vs 198. No crashes.
+*   **Speed:** the busy garden (112 kin) keeps up at 50x on desktop with
+    software rendering (37 FPS), with the Director on.
 
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
