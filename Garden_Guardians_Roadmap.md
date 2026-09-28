@@ -629,6 +629,13 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     fish get scarcer, and the pond fills again after (faster in rain).
 *   ✅ **New clans without a home yet** say so on their clan card, and
     their site shows on the map (bare earth, a clan flag, the twigs laid).
+*   **Benchmark (24 seeds × 7800s, no crashes):** the pond all but dries
+    up in almost every drought (3.7 times a run, of 4 droughts), and
+    droughts now bite: starvation 64.5 vs 45.8, deaths of old age 40.0 vs
+    45.7, deaths of thirst 0.8 vs 0.3 a run, fish caught 199 vs 247 —
+    while population holds at 52.3 vs 53.0 (more newcomers wander in to
+    fill the gaps: 33.5 vs 26.3). Walkers find some 24,000 ways round
+    the pond and the roots a run (was 12,000), still well under a second.
 
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
