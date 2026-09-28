@@ -66,6 +66,7 @@ public sealed partial class Bramblekin
         child.Hunger = 20f;
         child.Thirst = 10f;
         child.Crafts = mother.Crafts | father.Crafts;
+        child.InheritSkills(mother, father);
         child.SetRelationship(mother, RelationshipState.Friend);
         child.SetRelationship(father, RelationshipState.Friend);
         mother.SetRelationship(child, RelationshipState.Friend);

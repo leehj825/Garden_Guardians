@@ -141,6 +141,9 @@ public sealed class KinSave
     public int SpiderKills { get; set; }
     public float Sickness { get; set; }
     public float Immunity { get; set; }
+
+    /// <summary>Hunting, farming, building and fishing skill; null in a save from before skills.</summary>
+    public float[]? Skills { get; set; }
 }
 
 public sealed class ErrandSave

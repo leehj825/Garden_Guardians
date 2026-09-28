@@ -595,6 +595,10 @@ public static partial class Game
                 $"sociability {living.Average(b => b.Personality.Sociability):0.00}, intelligence {living.Average(b => b.Personality.Intelligence):0.00}, " +
                 $"rebellion {living.Average(b => b.Personality.Rebelliousness):0.00}, persuasion {living.Average(b => b.Personality.Persuasiveness):0.00}, " +
                 $"courage {living.Average(b => b.Personality.Courage):0.00}, diligence {living.Average(b => b.Personality.Diligence):0.00}");
+            Console.WriteLine(
+                "  Skills: masters made - " + string.Join(", ", Enum.GetValues<Skill>().Select(s => $"{world.Masteries(s)} {Bramblekin.TradeNoun(s)}s")) +
+                "; best among the living - " + string.Join(", ", Enum.GetValues<Skill>().Select(s => $"{s.ToString().ToLowerInvariant()} {living.Max(b => b.SkillAt(s)):0.00}")) +
+                $"; {world.SkilledHarvests} extra pieces from skilled harvests.");
         }
     }
 
@@ -914,6 +918,7 @@ public static partial class Game
             ($"Aggression {kin.Personality.Aggression:0.00}   Sociability {kin.Personality.Sociability:0.00}", new Color(185, 60, 45, 255)),
             ($"Intelligence {kin.Personality.Intelligence:0.00} ({kin.DetectionRadius:0}m)   Courage {kin.Personality.Courage:0.00}", new Color(60, 100, 170, 255)),
             ($"Rebellion {kin.Personality.Rebelliousness:0.00}  Persuasion {kin.Personality.Persuasiveness:0.00}  Diligence {kin.Personality.Diligence:0.00}", new Color(60, 130, 70, 255)),
+            ($"Skills: {kin.DescribeSkills()}{(kin.DescribeTrade() is { } trade ? $"  ({trade})" : "")}", new Color(150, 100, 40, 255)),
             (group is null ? "Group: none" : $"Group: {group.Name ?? group.ShortId}, {group.Members.Count} members" +
                 (DescribeClan(world, group) is { } about ? $" ({about})" : ""), ink),
             (DescribeHome(kin), ink),

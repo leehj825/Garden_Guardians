@@ -169,7 +169,7 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>At work — gathering, building, stocking, farming, carrying for its group — the diligent go briskly and the idle slowly.</summary>
     private float WorkPace => State is BramblekinState.Collecting or BramblekinState.Building or BramblekinState.Stockpiling or
         BramblekinState.Farming or BramblekinState.Traveling or BramblekinState.Fishing
-        ? 0.85f + 0.3f * Personality.Diligence
+        ? (0.85f + 0.3f * Personality.Diligence) * SkillPace
         : 1f;
 
     /// <summary>Its nerve breaks at this fraction of its Health: lower for the brave, higher for the cautious (<see cref="FightBreakHealthFraction"/> for the middling).</summary>
@@ -403,8 +403,8 @@ public sealed partial class Bramblekin : ICombatant
 
     private int StrikeDamage => (int)MathF.Round((BaseStrikeDamage + StrikeDamagePerAggression * Personality.Aggression) * (IsElder ? ElderStrikeFactor : 1f));
 
-    /// <summary>A blow against a creature: half as hard again with <see cref="Craft.Spears"/>.</summary>
-    private int HuntingDamage => Knows(Craft.Spears) ? StrikeDamage * 3 / 2 : StrikeDamage;
+    /// <summary>A blow against a creature: half as hard again with <see cref="Craft.Spears"/>, and up to half as hard again for a master hunter.</summary>
+    private int HuntingDamage => (int)MathF.Round((Knows(Craft.Spears) ? StrikeDamage * 1.5f : StrikeDamage) * (1f + 0.5f * SkillAt(Skill.Hunting)));
 
     // --- Relationships & groups ----------------------------------------------------------
 
@@ -587,6 +587,7 @@ public sealed partial class Bramblekin : ICombatant
         if (UpdateAging(deltaTime, world))
             return;
         UpdateFamily(deltaTime);
+        RustSkills(deltaTime);
         if (Home is { IsCollapsed: true })
             Home = null;
 

@@ -39,6 +39,7 @@ public sealed partial class Bramblekin
             {
                 _carriedMaterial = null;
                 world.DeliverMaterial(this, target, carried);
+                Train(Skill.Building, world, 1.5f);
                 StartPause();
                 return true;
             }

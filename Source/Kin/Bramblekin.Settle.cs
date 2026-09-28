@@ -195,6 +195,7 @@ public sealed partial class Bramblekin
             if (GroundMover.HorizontalDistanceSquared(Position, site.Position) <= reach * reach)
             {
                 _carriedTwig = null;
+                Train(Skill.Building, world);
                 if (site == _hearthToFeed && !site.NeedsTwigs)
                 {
                     world.FuelHearth(site, twig);

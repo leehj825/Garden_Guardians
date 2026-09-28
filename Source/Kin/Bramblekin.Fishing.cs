@@ -61,11 +61,14 @@ public sealed partial class Bramblekin
         if (_fishingTimer < FishingSeconds)
             return true;
         _fishingTimer = 0f;
-        if (_rng.NextDouble() >= CatchChance(world.CurrentSeason) * (0.3f + 0.7f * WaterMap.Fullness)) // A shrunken pond holds fewer fish.
+        Train(Skill.Fishing, world, 0.5f);
+        float skill = 1f + 0.5f * SkillAt(Skill.Fishing); // A practised fisher knows where they bite.
+        if (_rng.NextDouble() >= MathF.Min(0.95f, CatchChance(world.CurrentSeason) * skill) * (0.3f + 0.7f * WaterMap.Fullness)) // A shrunken pond holds fewer fish.
             return true;
 
         if (world.CatchFish(this) is { } fish)
         {
+            Train(Skill.Fishing, world);
             _carried = fish;
             _fishingSpot = null; // Next time, maybe another spot.
         }

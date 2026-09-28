@@ -245,12 +245,13 @@ public sealed partial class World
             case GroupGoal.Settle:
                 // Everyone builds a first home; an upgrade or a new home takes the most Intelligent half.
                 int builders = group.Home is { IsBuilt: false } ? members.Count : Math.Max(1, (members.Count + 1) / 2);
-                foreach (Bramblekin member in members.OrderByDescending(m => m.Personality.Intelligence).Take(builders))
+                foreach (Bramblekin member in members.OrderByDescending(m => m.Personality.Intelligence + m.SkillAt(Skill.Building)).Take(builders))
                     member.AssignJob(KinJob.Builder);
                 break;
 
             case GroupGoal.Hunt:
-                foreach (Bramblekin member in members.OrderByDescending(m => m.Personality.Courage + 0.5f * m.Personality.Aggression).Take(Math.Max(2, (members.Count + 1) / 2)))
+                foreach (Bramblekin member in members.OrderByDescending(m => m.Personality.Courage + 0.5f * m.Personality.Aggression + m.SkillAt(Skill.Hunting))
+                             .Take(Math.Max(2, (members.Count + 1) / 2)))
                     member.AssignJob(KinJob.Hunter);
                 break;
 
@@ -272,7 +273,7 @@ public sealed partial class World
         {
             int perFarmer = Math.Max(2, FarmersPerMembers - (int)MathF.Round(2f * group.Culture.Farming)); // A farming clan farms more.
             int farmers = Math.Max(1, members.Count / perFarmer);
-            foreach (Bramblekin member in members.Where(m => m.Job == KinJob.Gatherer).OrderByDescending(m => m.Personality.Intelligence).Take(farmers))
+            foreach (Bramblekin member in members.Where(m => m.Job == KinJob.Gatherer).OrderByDescending(m => m.Personality.Intelligence + m.SkillAt(Skill.Farming)).Take(farmers))
                 member.AssignJob(KinJob.Farmer);
         }
 
@@ -281,12 +282,12 @@ public sealed partial class World
         if (group.Goal is not (GroupGoal.Defend or GroupGoal.Raid) && group.Home is { IsBuilt: true } home &&
             (members.Count >= 3 || (members.Count >= 2 && WellBeingDug(group) is not null)) &&
             (MaterialTarget(group, MaterialKind.Stone, home.Position) ?? MaterialTarget(group, MaterialKind.Branch, home.Position)) is not null)
-            members.Where(m => m.Job == KinJob.Gatherer).MaxBy(m => m.Personality.Diligence)?.AssignJob(KinJob.Builder);
+            members.Where(m => m.Job == KinJob.Gatherer).MaxBy(m => m.Personality.Diligence + m.SkillAt(Skill.Building))?.AssignJob(KinJob.Builder);
 
         // A hearth burning low: someone keeps the fire fed.
         if (group.Goal is not (GroupGoal.Defend or GroupGoal.Raid) && members.Count >= 2 && !members.Any(m => m.Job == KinJob.Builder) &&
             AnyHearthNeedsFuel(group))
-            members.Where(m => m.Job == KinJob.Gatherer).MaxBy(m => m.Personality.Diligence)?.AssignJob(KinJob.Builder);
+            members.Where(m => m.Job == KinJob.Gatherer).MaxBy(m => m.Personality.Diligence + m.SkillAt(Skill.Building))?.AssignJob(KinJob.Builder);
     }
 
     /// <summary>A farming group makes one Farmer for every this many grown members (at least one).</summary>

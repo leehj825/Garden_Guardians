@@ -59,6 +59,7 @@ public sealed partial class Bramblekin
         SpiderKills = SpiderKills,
         Sickness = SicknessState.Sickness,
         Immunity = SicknessState.Immunity,
+        Skills = SkillsForSave,
         Errand = _errand is { } errand
             ? new ErrandSave
             {
@@ -118,6 +119,7 @@ public sealed partial class Bramblekin
             kin._knownKins[id] = relationship;
         kin._dangers.Load(save.Dangers.Select(p => ((Vector3)p.Where, p.When)));
         kin.RestoreSickness(save.Sickness, save.Immunity);
+        kin.RestoreSkills(save.Skills);
         return kin;
     }
 
