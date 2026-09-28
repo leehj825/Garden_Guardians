@@ -591,8 +591,8 @@ public sealed partial class World
     /// <summary>True if a round body of <paramref name="clearance"/> radius at <paramref name="point"/> would overlap an obstacle, or the pond.</summary>
     public bool IsBlocked(Vector3 point, float clearance)
     {
-        if (IsWaterNear(point, clearance))
-            return true; // Nothing is built, planted or set down in the pond.
+        if (IsWaterNear(point, clearance) || WaterMap.IsNearCreek(point.X, point.Z, clearance))
+            return true; // Nothing is built, planted or set down in the pond — or the creek.
         var p = new Vector2(point.X, point.Z);
         foreach (var obstacle in _obstacles)
         {

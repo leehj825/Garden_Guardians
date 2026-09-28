@@ -41,6 +41,99 @@ public static class WaterMap
     /// <summary>At its lowest, the water stands this far (m) below its usual level — a sixth or so of the pond left, in the bottom of each hollow.</summary>
     private const float DroughtDrop = 0.92f;
 
+    // --- The creek ------------------------------------------------------------------
+    // A spring in the garden's driest corner, far from either pond, feeds a
+    // brook that runs downhill into a small pool in the next hollow. It's
+    // narrow enough to step across (it doesn't block walkers), and spring-fed
+    // (a drought doesn't touch it) — but its banks are a place to drink, and it
+    // counts as water for everyone weighing up how far they live from some.
+
+    /// <summary>Where the spring rises.</summary>
+    private static readonly Vector2 Spring = new(-40f, 45f);
+
+    /// <summary>The brook is this wide (m)…</summary>
+    public const float CreekWidth = 0.7f;
+
+    /// <summary>…and pools this wide (radius, m) where it comes to rest.</summary>
+    public const float CreekPoolRadius = 1.4f;
+
+    /// <summary>The brook's course: from the spring, a meter a step, straight downhill until the ground levels out.</summary>
+    public static readonly Vector2[] Creek = TraceCreek();
+
+    /// <summary>Where the brook comes to rest and pools.</summary>
+    public static Vector2 CreekPool => Creek[^1];
+
+    /// <summary>Points along the creek's banks (and round its pool) — somewhere to drink, and to grow cress.</summary>
+    public static readonly Vector3[] CreekBanks = BuildCreekBanks();
+
+    private static Vector2[] TraceCreek()
+    {
+        var course = new List<Vector2> { Spring };
+        Vector2 at = Spring;
+        for (int i = 0; i < 60; i++)
+        {
+            const float e = 0.05f;
+            var slope = new Vector2(
+                World.GetHeightAt(at.X + e, at.Y) - World.GetHeightAt(at.X - e, at.Y),
+                World.GetHeightAt(at.X, at.Y + e) - World.GetHeightAt(at.X, at.Y - e)) / (2f * e);
+            if (slope.Length() < 0.02f)
+                break;
+            Vector2 next = at - Vector2.Normalize(slope);
+            if (World.GetHeightAt(next.X, next.Y) >= World.GetHeightAt(at.X, at.Y) - 0.005f || MathF.Abs(next.X) > 46f || MathF.Abs(next.Y) > 46f)
+                break; // Level ground (or the garden's edge): it pools here.
+            at = next;
+            course.Add(at);
+        }
+        return course.ToArray();
+    }
+
+    /// <summary>The creek's bounds, grown by <see cref="CreekPoolRadius"/> — a quick first check before <see cref="DistanceToCreek"/>.</summary>
+    private static readonly (float MinX, float MaxX, float MinZ, float MaxZ) CreekBounds = (
+        Creek.Min(p => p.X) - CreekPoolRadius, Creek.Max(p => p.X) + CreekPoolRadius,
+        Creek.Min(p => p.Y) - CreekPoolRadius, Creek.Max(p => p.Y) + CreekPoolRadius);
+
+    /// <summary>True if the creek's water comes within <paramref name="clearance"/> of (x, z).</summary>
+    public static bool IsNearCreek(float x, float z, float clearance) =>
+        x >= CreekBounds.MinX - clearance && x <= CreekBounds.MaxX + clearance &&
+        z >= CreekBounds.MinZ - clearance && z <= CreekBounds.MaxZ + clearance &&
+        DistanceToCreek(x, z) < clearance;
+
+    /// <summary>How far (m) (x, z) is from the creek's water — its brook or its pool.</summary>
+    public static float DistanceToCreek(float x, float z)
+    {
+        var p = new Vector2(x, z);
+        float best = Vector2.Distance(p, CreekPool) - CreekPoolRadius;
+        for (int i = 0; i + 1 < Creek.Length; i++)
+        {
+            Vector2 a = Creek[i], ab = Creek[i + 1] - a;
+            float t = Math.Clamp(Vector2.Dot(p - a, ab) / ab.LengthSquared(), 0f, 1f);
+            best = MathF.Min(best, Vector2.Distance(p, a + ab * t) - CreekWidth / 2f);
+        }
+        return MathF.Max(0f, best);
+    }
+
+    private static Vector3[] BuildCreekBanks()
+    {
+        var banks = new List<Vector3>();
+        for (int i = 0; i + 1 < Creek.Length; i += 2)
+        {
+            Vector2 along = Vector2.Normalize(Creek[i + 1] - Creek[i]);
+            var across = new Vector2(-along.Y, along.X) * (CreekWidth / 2f + 0.7f);
+            foreach (Vector2 bank in new[] { Creek[i] + across, Creek[i] - across })
+            {
+                if (!World.IsOnOak(new Vector3(bank.X, 0f, bank.Y), 0.5f))
+                    banks.Add(World.Grounded(new Vector3(bank.X, 0f, bank.Y)));
+            }
+        }
+        for (int i = 0; i < 8; i++)
+        {
+            float angle = i * MathF.Tau / 8f;
+            Vector2 bank = CreekPool + new Vector2(MathF.Cos(angle), MathF.Sin(angle)) * (CreekPoolRadius + 0.7f);
+            banks.Add(World.Grounded(new Vector3(bank.X, 0f, bank.Y)));
+        }
+        return banks.ToArray();
+    }
+
     /// <summary>The surface (world Y) at each level.</summary>
     public static readonly float[] LevelHeights = Enumerable.Range(0, Levels).Select(i => World.PondLevel - DroughtDrop * i / (Levels - 1)).ToArray();
 
@@ -139,8 +232,9 @@ public static class WaterMap
         var frontier = new PriorityQueue<int, float>();
         for (int i = 0; i < distance.Length; i++)
         {
-            distance[i] = water[i] ? 0f : float.MaxValue;
-            if (water[i])
+            bool source = water[i] || DistanceToCreek(CellCenter(i / Cells), CellCenter(i % Cells)) <= 0.5f; // The creek is water too.
+            distance[i] = source ? 0f : float.MaxValue;
+            if (source)
                 frontier.Enqueue(i, 0f);
         }
         while (frontier.TryDequeue(out int current, out float reached))

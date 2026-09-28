@@ -143,6 +143,7 @@ public sealed partial class World
         DrawPebbles();
 
         DrawWater();
+        DrawCreek();
 
         // Kin Inspector: ring the selected Bramblekin, and trace its
         // Intelligence-scaled detection radius over the hills.

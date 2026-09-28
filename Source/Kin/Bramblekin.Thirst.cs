@@ -205,7 +205,7 @@ public sealed partial class Bramblekin
     {
         _drinkTimer = 0f;
         _drinkGeneration = WaterMap.Generation;
-        _waterSpot = World.NearestShoreSpot(Position, 200f);
+        _waterSpot = World.NearestShoreSpot(Position, 200f, creek: true);
         float nearest = _waterSpot is { } shore ? GroundMover.HorizontalDistance(Position, shore) : float.MaxValue;
 
         _drinkWell = world.NearestUsableWell(this, nearest);

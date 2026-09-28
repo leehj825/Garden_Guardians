@@ -26,9 +26,14 @@ public sealed partial class World
     public float WaterTrekMeters { get; private set; }
 
     /// <summary>A Bramblekin drank its fill at the pond.</summary>
+    /// <summary>Drinks taken at the creek (counted among <see cref="DrinksAtPond"/> too).</summary>
+    public int CreekDrinks { get; private set; }
+
     public void NoteDrinkAtPond(Bramblekin kin)
     {
         DrinksAtPond++;
+        if (WaterMap.IsNearCreek(kin.Position.X, kin.Position.Z, 2f))
+            CreekDrinks++;
         if (kin.Home is { } home)
             WaterTrekMeters += WaterMap.DistanceToWater(home.Position.X, home.Position.Z);
     }
