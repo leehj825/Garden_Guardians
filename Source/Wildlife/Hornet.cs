@@ -97,7 +97,7 @@ public sealed class Hornet : ICombatant
     {
         _rng = rng;
         _anchor = anchor;
-        _mover = new GroundMover(position, BodyRadius, EdgeMargin, rng);
+        _mover = new GroundMover(position, BodyRadius, EdgeMargin, rng, wades: false);
         _target = position;
         _pauseTimer = (float)rng.NextDouble() * WanderPauseDuration;
     }

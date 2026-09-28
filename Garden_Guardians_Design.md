@@ -254,9 +254,14 @@ overhead camera:
 *   **Twigs** fall around the big Twig props (up to 50 loose, pooled);
     they never rot. A builder carries one at a time to its site.
 *   **Tent:** 3 twigs. Room for 2, a store of 4 Food that never rots.
+    Drawn as an acorn cap propped on three twig legs.
 *   **House:** a group's upgrade of a Tent, once the group outgrows its
     housing — 6 more twigs. Room for 6, a store of 12, and healing half
-    again as fast. Drawn as walls under a roof, flying its group's colour.
+    again as fast. Drawn as a whole hollowed acorn under its scaly cap,
+    with a round door and a warm round window, flying its group's colour
+    from the cap's stalk. A granary is a hazelnut beside it; a palisade a
+    ring of rose thorns curving outward, with a gap at the door. (An
+    acorn village: the Bramblekin are tiny, and live like it.)
 *   A built home hides whoever is inside it from the Wolf Spider's pounce
     and from Hornets — unless more residents are crammed inside than it
     has room for, in which case it protects nobody.
@@ -767,6 +772,24 @@ overhead camera:
     leave half a save. A save that can't be read, or is from an
     incompatible version, is ignored and a fresh garden begins. Headless
     runs can `--load` a save and `--save` one at the end.
+
+## A Small World: the Pond and the Giant Oak
+*   **The pond:** water always stands in the lowest 5% of the garden —
+    a pond in the main hollow, and a pool cut by the east edge. Nothing
+    is built, planted, spawned or set down in it (it counts as blocked
+    ground for every site, spawn and wander point), but walkers can wade
+    through it at half pace; Hornets fly over. A flood rises out of the
+    pond and drains back into it. The water is drawn only over the ground
+    that dips below it.
+*   **The Giant Oak:** the foot of a real tree stands at the garden's back
+    edge — a trunk 12m across, ridged bark and a mossy foot, rising far
+    out of sight, with one great bough overhead and roots sprawling over
+    the lawn — so the garden reads as the small world it is. Its trunk is
+    solid (walkers steer round it) and its shade darkens the lawn around
+    it. In autumn it drops an acorn every 4s (up to 12 lying about at
+    once) up to 16m from the trunk: food like any other, for whoever
+    gathers it. Loading an older garden clears away anything that stood
+    where the trunk is now.
 
 ## Food & Wildlife
 *   **Food:** wild Berries grow passively (one every 0.6s, up to 100 on

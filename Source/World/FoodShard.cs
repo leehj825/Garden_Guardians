@@ -11,6 +11,9 @@ public enum FoodShardKind
 
     /// <summary>Dropped by a hunted Grub or a slain Wolf Spider. Orange.</summary>
     Meat,
+
+    /// <summary>Fallen from the Giant Oak in autumn (see World.Oak). An acorn in its cap.</summary>
+    Acorn,
 }
 
 /// <summary>
@@ -86,6 +89,13 @@ public sealed class FoodShard
     /// <summary>Draws the Food resting on the ground at (or carried above) <paramref name="groundPoint"/>.</summary>
     public void Draw(Vector3 groundPoint)
     {
+        if (Kind == FoodShardKind.Acorn)
+        {
+            // A little acorn: a tan nut under a darker cap.
+            Raylib.DrawSphere(groundPoint + new Vector3(0, Radius, 0), Radius, new Color(176, 116, 52, 255));
+            Raylib.DrawCylinder(groundPoint + new Vector3(0, Radius * 1.3f, 0), Radius * 0.6f, Radius * 1.05f, Radius * 0.6f, 8, new Color(112, 90, 60, 255));
+            return;
+        }
         Color color = Kind == FoodShardKind.Berry ? new Color(210, 40, 45, 255) : new Color(245, 150, 45, 255);
         Raylib.DrawSphere(groundPoint + new Vector3(0, Radius, 0), Radius, color);
     }

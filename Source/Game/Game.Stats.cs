@@ -48,6 +48,7 @@ public static partial class Game
             $"Meals from stores: {world.StoreMeals}",
             $"Shared: {world.FoodShared}",
             $"Stolen: {world.Thefts}, store raids {world.StoreRaids}",
+            $"Acorns from the oak: {world.AcornsFallen}",
         }));
 
         sections.Add(("Homes", new List<string>

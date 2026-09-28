@@ -47,6 +47,7 @@ public sealed partial class World
         var (seasonTint, seasonAmount) = SeasonTint;
         Terrain.Draw(camera.Target, RenderRadius, seasonTint, seasonAmount);
         DrawTerritories(camera);
+        DrawOak();
         for (int i = _splats.Count - 1; i >= 0; i--)
         {
             var (position, timeLeft) = _splats[i];
@@ -147,7 +148,7 @@ public sealed partial class World
         if (Spider is { IsDead: false } spider)
             spider.Draw();
 
-        DrawFlood();
+        DrawWater();
 
         // Kin Inspector: ring the selected Bramblekin, and trace its
         // Intelligence-scaled detection radius over the hills.
@@ -206,6 +207,8 @@ public sealed partial class World
             {
                 float a0 = i * MathF.Tau / segments, a1 = (i + 1) * MathF.Tau / segments;
                 Vector3 p00 = Around(r0, a0), p01 = Around(r0, a1), p10 = Around(r1, a0), p11 = Around(r1, a1);
+                if (!OnMap(p00) || !OnMap(p01) || !OnMap(p10) || !OnMap(p11))
+                    continue; // Nothing drawn off the edge of the garden.
                 Raylib.DrawTriangle3D(p00, p11, p10, color);
                 if (r0 > 0f)
                     Raylib.DrawTriangle3D(p00, p01, p11, color);
@@ -214,6 +217,8 @@ public sealed partial class World
 
         Vector3 Around(float radius, float angle) =>
             Grounded(center + new Vector3(MathF.Cos(angle) * radius, 0f, MathF.Sin(angle) * radius), 0.06f);
+
+        static bool OnMap(Vector3 p) => MathF.Abs(p.X) <= 50f && MathF.Abs(p.Z) <= 50f;
     }
 
     /// <summary>A circle of <paramref name="radius"/> around <paramref name="center"/>, drawn as line segments that follow the terrain's height.</summary>

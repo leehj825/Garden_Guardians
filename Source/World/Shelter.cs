@@ -46,11 +46,18 @@ public sealed class Shelter
     /// <summary>An abandoned shelter collapses after this many seconds without an owner.</summary>
     public const float AbandonedCollapseSeconds = 90f;
 
-    private static readonly Color CanvasColor = new(222, 205, 160, 255);
-    private static readonly Color WallColor = new(170, 120, 70, 255);
-    private static readonly Color RoofColor = new(120, 70, 40, 255);
-    private static readonly Color EdgeColor = new(70, 45, 25, 255);
-    private static readonly Color DoorColor = new(45, 30, 20, 255);
+    // Acorn village: a Tent is an acorn cap propped on twigs, a House a whole
+    // hollowed acorn under its cap, a granary a hazelnut, a palisade rose thorns.
+    private static readonly Color NutColor = new(176, 116, 52, 255);
+    private static readonly Color NutShadeColor = new(140, 88, 38, 255);
+    private static readonly Color CapColor = new(128, 104, 70, 255);
+    private static readonly Color CapScaleColor = new(112, 90, 60, 255);
+    private static readonly Color StalkColor = new(92, 72, 46, 255);
+    private static readonly Color DoorColor = new(62, 38, 22, 255);
+    private static readonly Color WindowColor = new(245, 210, 120, 255);
+    private static readonly Color HazelColor = new(150, 100, 55, 255);
+    private static readonly Color HazelBaseColor = new(205, 180, 135, 255);
+    private static readonly Color ThornColor = new(128, 58, 44, 255);
     private static readonly Color StickColor = new(115, 80, 45, 255);
     private static readonly Color StoredFoodColor = new(210, 40, 45, 255);
     private static readonly Color AbandonedTint = new(150, 150, 150, 255);
@@ -200,7 +207,13 @@ public sealed class Shelter
         return spilled;
     }
 
-    /// <summary>A construction site shows the twigs laid so far; a Tent is a canvas pyramid; a House is walls under a roof. Stored Food piles up by the door, and a group home flies its group's colour.</summary>
+    /// <summary>
+    /// A construction site shows the twigs laid so far; a Tent is an acorn
+    /// cap propped on twig legs; a House is a whole hollowed acorn under its
+    /// cap, with a round door and a lit window. A granary is a hazelnut
+    /// beside the House, a palisade a ring of rose thorns. Stored Food piles
+    /// up by the door, and a group home flies its group's colour.
+    /// </summary>
     public void Draw(Color? groupColor)
     {
         Vector3 basePosition = Position + new Vector3(0f, 0.02f, 0f);
@@ -213,32 +226,41 @@ public sealed class Shelter
         }
 
         float radius = Radius;
+        float roofTop;
         if (Tier == ShelterTier.Tent)
         {
-            const float height = 1.1f;
-            Raylib.DrawCylinder(basePosition, 0f, radius, height, 4, Tint(CanvasColor));
-            Raylib.DrawCylinderWires(basePosition, 0f, radius, height, 4, EdgeColor);
-            Raylib.DrawCube(basePosition + new Vector3(radius * 0.55f, 0.18f, 0f), 0.05f, 0.36f, 0.24f, DoorColor);
+            // Three twig legs holding an acorn cap up like a little umbrella.
+            const float legHeight = 0.62f;
+            for (int i = 0; i < 3; i++)
+            {
+                float angle = MathF.PI / 3f + i * MathF.Tau / 3f;
+                Vector3 foot = basePosition + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * radius * 0.7f;
+                Raylib.DrawCylinderEx(foot, basePosition + new Vector3(0f, legHeight, 0f) + (foot - basePosition) * 0.35f, 0.04f, 0.03f, 5, Tint(StickColor));
+            }
+            roofTop = DrawCap(basePosition + new Vector3(0f, legHeight, 0f), radius * 1.05f, Tint);
             if (IsUpgrading)
                 DrawSticks(basePosition, HouseRadius, TwigsDelivered, HouseUpgradeTwigCost);
         }
         else
         {
-            float wall = radius * 1.4f;
-            const float wallHeight = 0.9f;
-            Vector3 wallCenter = basePosition + new Vector3(0f, wallHeight / 2f, 0f);
-            Raylib.DrawCube(wallCenter, wall, wallHeight, wall, Tint(WallColor));
-            Raylib.DrawCubeWires(wallCenter, wall, wallHeight, wall, EdgeColor);
-            Vector3 roofBase = basePosition + new Vector3(0f, wallHeight, 0f);
-            Raylib.DrawCylinder(roofBase, 0f, radius * 1.15f, 0.75f, 4, Tint(RoofColor));
-            Raylib.DrawCylinderWires(roofBase, 0f, radius * 1.15f, 0.75f, 4, EdgeColor);
-            Raylib.DrawCube(basePosition + new Vector3(wall / 2f + 0.01f, 0.25f, 0f), 0.04f, 0.5f, 0.3f, DoorColor);
+            // The nut: a tall egg, sitting a little into the ground.
+            float bodyHeight = radius * 1.25f;
+            Vector3 bodyCenter = basePosition + new Vector3(0f, bodyHeight * 0.82f, 0f);
+            DrawEllipsoid(bodyCenter, radius * 0.92f, bodyHeight, Tint(NutColor));
+            DrawEllipsoid(bodyCenter + new Vector3(0f, -bodyHeight * 0.55f, 0f), radius * 0.7f, bodyHeight * 0.35f, Tint(NutShadeColor));
+
+            // A round door facing out (+X), and a warm round window above to one side.
+            Vector3 door = basePosition + new Vector3(radius * 0.86f, 0.36f, 0f);
+            Raylib.DrawCylinderEx(door, door + new Vector3(0.06f, 0f, 0f), 0.3f, 0.3f, 14, DoorColor);
+            Vector3 window = basePosition + new Vector3(radius * 0.6f, bodyHeight * 1.12f, radius * 0.55f);
+            Raylib.DrawCylinderEx(window, window + new Vector3(0.05f, 0f, 0.05f), 0.13f, 0.13f, 10, IsAbandoned ? DoorColor : WindowColor);
+
+            roofTop = DrawCap(bodyCenter + new Vector3(0f, bodyHeight * 0.62f, 0f), radius * 1.02f, Tint);
         }
 
         if (groupColor is { } color)
         {
-            float top = Tier == ShelterTier.House ? 0.9f + 0.75f : 1.1f;
-            Vector3 poleBase = basePosition + new Vector3(0f, top, 0f);
+            Vector3 poleBase = new(basePosition.X, roofTop, basePosition.Z);
             Vector3 poleTop = poleBase + new Vector3(0f, 0.45f, 0f);
             Raylib.DrawLine3D(poleBase, poleTop, StickColor);
             Raylib.DrawCube(poleTop + new Vector3(0.12f, -0.08f, 0f), 0.22f, 0.15f, 0.02f, color);
@@ -246,21 +268,25 @@ public sealed class Shelter
 
         if (HasGranary && Tier == ShelterTier.House)
         {
-            // A little round granary on the far side from the door.
-            Vector3 granary = basePosition + new Vector3(-radius - 0.35f, 0f, 0.25f);
-            Raylib.DrawCylinder(granary, 0.28f, 0.28f, 0.55f, 8, Tint(CanvasColor));
-            Raylib.DrawCylinder(granary + new Vector3(0f, 0.55f, 0f), 0f, 0.36f, 0.3f, 8, Tint(RoofColor));
+            // A hazelnut on the far side from the door, its pale base to the ground.
+            Vector3 hazel = basePosition + new Vector3(-radius - 0.3f, 0.32f, 0.3f);
+            Raylib.DrawSphere(hazel, 0.33f, Tint(HazelColor));
+            DrawEllipsoid(hazel + new Vector3(0f, -0.2f, 0f), 0.27f, 0.12f, Tint(HazelBaseColor));
+            Raylib.DrawCylinderEx(hazel + new Vector3(0f, 0.3f, 0f), hazel + new Vector3(0.04f, 0.42f, 0f), 0.04f, 0.02f, 4, Tint(StickColor));
         }
 
         if (HasPalisade)
         {
-            // A ring of stakes, with a gap for the door.
+            // A ring of rose thorns, curving outward, with a gap for the door.
             float ring = PalisadeRadius;
             for (int i = 1; i < 22; i++)
             {
                 float angle = i * MathF.Tau / 22f;
-                Vector3 foot = World.Grounded(Position + new Vector3(MathF.Cos(angle) * ring, 0f, MathF.Sin(angle) * ring));
-                Raylib.DrawCylinder(foot, 0.05f, 0.03f, 0.55f, 4, Tint(StickColor));
+                var outward = new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle));
+                Vector3 foot = World.Grounded(Position + outward * ring);
+                Vector3 bend = foot + new Vector3(0f, 0.28f, 0f) + outward * 0.05f;
+                Raylib.DrawCylinderEx(foot, bend, 0.09f, 0.05f, 5, Tint(ThornColor));
+                Raylib.DrawCylinderEx(bend, bend + new Vector3(0f, 0.14f, 0f) + outward * 0.16f, 0.05f, 0f, 5, Tint(ThornColor));
             }
         }
 
@@ -272,6 +298,39 @@ public sealed class Shelter
             Vector3 berry = basePosition + new Vector3(radius + 0.2f + 0.12f * MathF.Cos(angle), 0.08f + 0.1f * (i / 4), 0.12f * MathF.Sin(angle));
             Raylib.DrawSphere(berry, 0.08f, StoredFoodColor);
         }
+    }
+
+    /// <summary>An acorn cap: a low scaly dome with a stalk, sitting on <paramref name="rim"/>. Returns the height of its top.</summary>
+    private static float DrawCap(Vector3 rim, float radius, Func<Color, Color> tint)
+    {
+        float height = radius * 0.5f;
+        Vector3 center = rim + new Vector3(0f, height * 0.15f, 0f);
+        DrawEllipsoid(center, radius, height, tint(CapColor));
+        // The scales: rings of small, low-poly bumps round the dome, staggered like a woven cup.
+        for (int ring = 0; ring < 3; ring++)
+        {
+            float lift = (0.08f + ring * 0.3f) * height;
+            float across = radius * MathF.Sqrt(MathF.Max(0f, 1f - (lift / height) * (lift / height))) * 1.005f;
+            int bumps = 16 - ring * 4;
+            for (int i = 0; i < bumps; i++)
+            {
+                float angle = (i + ring * 0.5f) * MathF.Tau / bumps;
+                Raylib.DrawSphereEx(center + new Vector3(MathF.Cos(angle) * across, lift, MathF.Sin(angle) * across), radius * 0.08f, 3, 5, tint(CapScaleColor));
+            }
+        }
+        Vector3 stalkBase = center + new Vector3(0f, height * 0.95f, 0f);
+        Raylib.DrawCylinderEx(stalkBase, stalkBase + new Vector3(0.05f, 0.22f, 0f), 0.07f, 0.045f, 6, tint(StalkColor));
+        return stalkBase.Y + 0.2f;
+    }
+
+    /// <summary>A sphere stretched to <paramref name="radius"/> across and <paramref name="height"/> tall.</summary>
+    private static void DrawEllipsoid(Vector3 center, float radius, float height, Color color)
+    {
+        Rlgl.PushMatrix();
+        Rlgl.Translatef(center.X, center.Y, center.Z);
+        Rlgl.Scalef(radius, height, radius);
+        Raylib.DrawSphereEx(Vector3.Zero, 1f, 8, 12, color);
+        Rlgl.PopMatrix();
     }
 
     /// <summary>A construction stage in progress: <paramref name="delivered"/> of <paramref name="needed"/> sticks leaned in a ring, over a faint outline.</summary>

@@ -296,13 +296,15 @@ public sealed partial class World
         for (int i = 0; i < GardenPropCount; i++)
         {
             Vector3 candidate = Terrain.RandomPoint(Rng, margin: 1f);
+            for (int attempt = 0; attempt < 10 && (IsWater(candidate) || GroundMover.HorizontalDistance(candidate, OakCenter) < OakRadius + 1f); attempt++)
+                candidate = Terrain.RandomPoint(Rng, margin: 1f); // Not in the pond, nor where the oak stands.
             var kind = (GardenPropKind)Rng.Next(3);
             float rotation = (float)(Rng.NextDouble() * MathF.Tau);
             GardenProps.Add(new GardenProp(Grounded(candidate), kind, rotation, Rng));
         }
     }
 
-    /// <summary>Large Pebbles are the only solid things on the map; built once, since props never move.</summary>
+    /// <summary>Large Pebbles and the Giant Oak's trunk are the only solid things on the map; built once, since neither moves.</summary>
     private void RebuildObstacles()
     {
         _obstacles.Clear();
@@ -311,6 +313,7 @@ public sealed partial class World
             if (prop.FootprintRadius > 0f)
                 _obstacles.Add(new Obstacle(new Vector2(prop.Position.X, prop.Position.Z), prop.FootprintRadius));
         }
+        AddOakObstacle();
     }
 
     /// <summary>Berry Patches: anchors on Dandelions first (a flowerbed reads naturally as a berry patch), then random open ground.</summary>
@@ -410,6 +413,7 @@ public sealed partial class World
         UpdateGrubSpawn(deltaTime);
         UpdateBeetleSpawn(deltaTime);
         UpdateAnts(deltaTime);
+        UpdateOak(deltaTime);
         UpdateArrivals(deltaTime);
         UpdateFoodDespawn(deltaTime);
         UpdateEncounterCleanup(deltaTime);
@@ -535,9 +539,11 @@ public sealed partial class World
 
     // --- Queries used by the AI ------------------------------------------------------
 
-    /// <summary>True if a round body of <paramref name="clearance"/> radius at <paramref name="point"/> would overlap an obstacle.</summary>
+    /// <summary>True if a round body of <paramref name="clearance"/> radius at <paramref name="point"/> would overlap an obstacle, or the pond.</summary>
     public bool IsBlocked(Vector3 point, float clearance)
     {
+        if (IsWaterNear(point, clearance))
+            return true; // Nothing is built, planted or set down in the pond.
         var p = new Vector2(point.X, point.Z);
         foreach (var obstacle in _obstacles)
         {

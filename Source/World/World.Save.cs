@@ -200,6 +200,8 @@ public sealed partial class World
             bush.Restore(b.Growth, b.Fruit, b.FruitTimer, b.WildSeconds);
             Bushes.Add(bush);
         }
+        ClearOakGround();
+        RebuildObstacles();
         foreach (RelationSave r in save.Relations)
         {
             _relations[RelationKey(r.First, r.Second)] = new GroupRelation

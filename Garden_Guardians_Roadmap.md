@@ -522,6 +522,15 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     killings 25 vs 30; sickness takes about 17 a run, mostly elders, so
     old-age deaths fall from 69 to 58.
 
+## Phase 14: A Small World
+*   ✅ **Acorn village:** homes redrawn at Bramblekin scale — an acorn cap
+    on twig legs for a Tent, a whole acorn for a House, a hazelnut
+    granary, a palisade of rose thorns.
+*   ✅ **The pond:** permanent water in the lowest ground; no building or
+    spawning in it, wading at half pace; floods rise from it.
+*   ✅ **The Giant Oak:** a trunk rising out of sight at the back edge,
+    with roots, shade, and acorns falling in autumn.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:

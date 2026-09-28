@@ -8,8 +8,11 @@ public sealed partial class World
     /// <summary>A spring or autumn storm is a downpour this often — and floods the low ground.</summary>
     private const double DownpourChance = 0.4;
 
-    /// <summary>At its height a flood covers about this much of the garden, lowest ground first.</summary>
+    /// <summary>At its height a flood covers about this much of the garden, lowest ground first…</summary>
     private const float FloodedFraction = 0.15f;
+
+    /// <summary>…and the pond, always, this much (see <see cref="PondLevel"/>).</summary>
+    private const float PondFraction = 0.05f;
 
     /// <summary>After the rain stops, the water drains away over this long.</summary>
     private const float FloodRecedeSeconds = 60f;
@@ -17,10 +20,27 @@ public sealed partial class World
     /// <summary>A flooded Tent is swept away with these odds (it always loses its store); a flooded House loses half its store.</summary>
     private const double TentSweptAwayChance = 0.5;
 
-    private static readonly Color WaterColor = new(70, 120, 190, 140);
+    private static readonly Color WaterColor = new(70, 120, 190, 150);
 
-    /// <summary>The lowest ground in the garden, and how high a flood reaches (see <see cref="FloodedFraction"/>) — the terrain never changes, so worked out once.</summary>
+    /// <summary>The pond's surface, and how high a flood reaches (see <see cref="PondFraction"/>, <see cref="FloodedFraction"/>) — the terrain never changes, so worked out once.</summary>
     private static readonly (float Lowest, float Peak) FloodHeights = MeasureFloodHeights();
+
+    /// <summary>
+    /// The pond: water standing in the lowest hollows of the garden (world
+    /// Y). Nothing is built, planted or spawned in it; walkers wade through
+    /// at half pace; floods rise out of it.
+    /// </summary>
+    public static float PondLevel => FloodHeights.Lowest;
+
+    /// <summary>True if <paramref name="point"/> is under the pond.</summary>
+    public static bool IsWater(Vector3 point) => GetHeightAt(point.X, point.Z) < PondLevel;
+
+    /// <summary>True if the pond reaches within <paramref name="clearance"/> of <paramref name="point"/> (checked at its centre and four points round it).</summary>
+    public static bool IsWaterNear(Vector3 point, float clearance) =>
+        IsWater(point) ||
+        (clearance > 0.3f &&
+         (IsWater(point + new Vector3(clearance, 0f, 0f)) || IsWater(point - new Vector3(clearance, 0f, 0f)) ||
+          IsWater(point + new Vector3(0f, 0f, clearance)) || IsWater(point - new Vector3(0f, 0f, clearance))));
 
     private bool _downpour;
 
@@ -48,7 +68,7 @@ public sealed partial class World
                 heights.Add(GetHeightAt(x, z));
         }
         heights.Sort();
-        return (heights[0], heights[(int)(heights.Count * FloodedFraction)]);
+        return (heights[(int)(heights.Count * PondFraction)], heights[(int)(heights.Count * FloodedFraction)]);
     }
 
     /// <summary>A storm blowing up in spring or autumn may be a downpour, and flood the low ground.</summary>
@@ -144,15 +164,52 @@ public sealed partial class World
         }
     }
 
-    /// <summary>The flood: a sheet of water at <see cref="WaterLevel"/> — the hills stand out of it, the hollows fill.</summary>
-    private void DrawFlood()
+    /// <summary>Size (m) of the squares the water surface is drawn in.</summary>
+    private const float WaterCell = 1f;
+
+    /// <summary>The squares of the garden the water covers at <see cref="_waterCellsLevel"/> — worked out again only when the level moves.</summary>
+    private readonly List<Vector2> _waterCells = new();
+    private float _waterCellsLevel = float.NaN;
+
+    /// <summary>
+    /// The pond — or, in a flood, the risen water: a surface at
+    /// <see cref="WaterLevel"/>, drawn only over the squares of the garden
+    /// whose ground dips below it, so the hollows fill and nothing shows
+    /// past the garden's edge.
+    /// </summary>
+    private void DrawWater()
     {
-        if (!IsFlooded)
-            return;
+        float level = WaterLevel;
+        if (MathF.Abs(level - _waterCellsLevel) > 0.02f || float.IsNaN(_waterCellsLevel))
+        {
+            _waterCellsLevel = level;
+            _waterCells.Clear();
+            float half = Terrain.Size / 2f;
+            for (float x = -half; x < half; x += WaterCell)
+            {
+                for (float z = -half; z < half; z += WaterCell)
+                {
+                    if (GetHeightAt(x, z) < level || GetHeightAt(x + WaterCell, z) < level ||
+                        GetHeightAt(x, z + WaterCell) < level || GetHeightAt(x + WaterCell, z + WaterCell) < level)
+                        _waterCells.Add(new Vector2(x, z));
+                }
+            }
+        }
+
         Rlgl.DrawRenderBatchActive();
         Rlgl.DisableDepthMask();
-        Raylib.DrawPlane(new Vector3(0f, WaterLevel, 0f), new Vector2(Terrain.Size, Terrain.Size), WaterColor);
+        Rlgl.DisableBackfaceCulling();
+        foreach (Vector2 cell in _waterCells)
+        {
+            var a = new Vector3(cell.X, level, cell.Y);
+            var b = new Vector3(cell.X + WaterCell, level, cell.Y);
+            var c = new Vector3(cell.X + WaterCell, level, cell.Y + WaterCell);
+            var d = new Vector3(cell.X, level, cell.Y + WaterCell);
+            Raylib.DrawTriangle3D(a, d, c, WaterColor);
+            Raylib.DrawTriangle3D(a, c, b, WaterColor);
+        }
         Rlgl.DrawRenderBatchActive();
+        Rlgl.EnableBackfaceCulling();
         Rlgl.EnableDepthMask();
     }
 }

@@ -66,14 +66,21 @@ public sealed class GroundMover
     /// <summary>True if the body moved this frame (for walk animations).</summary>
     public bool IsMoving { get; private set; }
 
-    public GroundMover(Vector3 position, float bodyRadius, float edgeMargin, Random rng)
+    /// <param name="wades">Walkers wade through the pond at <see cref="WadeSpeedFactor"/> of their pace; fliers (false) don't.</param>
+    public GroundMover(Vector3 position, float bodyRadius, float edgeMargin, Random rng, bool wades = true)
     {
         Position = position;
         BodyRadius = bodyRadius;
         _edgeMargin = edgeMargin;
         _rng = rng;
+        _wades = wades;
         ResetProgress();
     }
+
+    /// <summary>Wading through the pond goes at this fraction of the usual pace.</summary>
+    public const float WadeSpeedFactor = 0.5f;
+
+    private readonly bool _wades;
 
     /// <summary>Forget any detour and restart stuck detection (call on every change of plan).</summary>
     public void ResetProgress()
@@ -112,7 +119,7 @@ public sealed class GroundMover
     public bool MoveTowards(Vector3 target, float speed, float deltaTime, World world, Func<World, Vector3, bool> isSafeSpot)
     {
         IReadOnlyList<Obstacle> obstacles = world.Obstacles;
-        float step = speed * deltaTime;
+        float step = speed * deltaTime * (_wades && World.IsWater(Position) ? WadeSpeedFactor : 1f);
         CheckIfStuck(target, step, deltaTime, world, isSafeSpot);
 
         // Head for the detour waypoint first, if we're working our way round something.
