@@ -43,21 +43,20 @@ public sealed partial class World
     /// <summary>Daughter groups budded off a village.</summary>
     public int Buddings { get; private set; }
 
-    /// <summary>Every home <paramref name="group"/> has: its main home, then any others in its village.</summary>
-    public IEnumerable<Shelter> GroupHomes(KinGroup group)
-    {
-        if (group.Home is { IsCollapsed: false } home)
-            yield return home;
-        foreach (Shelter annex in group.Annexes)
-        {
-            if (!annex.IsCollapsed)
-                yield return annex;
-        }
-    }
+    /// <summary>Every home <paramref name="group"/> has: its main home, then any others in its village (see <see cref="VillageHomes"/>).</summary>
+    public VillageHomes GroupHomes(KinGroup group) => new(group);
 
     /// <summary>How many the group's finished homes house between them (Tent 2, House 6).</summary>
-    public int HousingCapacity(KinGroup group) =>
-        GroupHomes(group).Where(h => h.IsBuilt).Sum(h => h.ResidentCapacity);
+    public int HousingCapacity(KinGroup group)
+    {
+        int capacity = 0;
+        foreach (Shelter home in GroupHomes(group))
+        {
+            if (home.IsBuilt)
+                capacity += home.ResidentCapacity;
+        }
+        return capacity;
+    }
 
     /// <summary>How big <paramref name="group"/> may grow by taking others in: its housing, but never below <see cref="MaxGroupSize"/> or above <see cref="MaxVillageSize"/>.</summary>
     public int GroupSizeLimit(KinGroup group) => Math.Clamp(HousingCapacity(group), MaxGroupSize, MaxVillageSize);
@@ -67,7 +66,13 @@ public sealed partial class World
         Math.Clamp(HousingCapacity(group) + BirthCrowdingAllowance, MaxGroupSize, MaxVillageSize);
 
     /// <summary>Food stored across all the group's homes.</summary>
-    public int StoredFood(KinGroup group) => GroupHomes(group).Sum(h => h.StoredFood);
+    public int StoredFood(KinGroup group)
+    {
+        int stored = 0;
+        foreach (Shelter home in GroupHomes(group))
+            stored += home.StoredFood;
+        return stored;
+    }
 
     /// <summary>Food stored across all the group's finished homes, as a fraction of what they can hold (0 with none).</summary>
     public float StoreFill(KinGroup group)
@@ -117,7 +122,11 @@ public sealed partial class World
                 if (group.HomeSiteRetryTimer > 0f || group.Leader is not { } leader)
                     continue;
 
-                group.Home = TryCreateShelterSite(leader.FoodMemory ?? leader.Position, owner: null, groupId: group.Id);
+                // Pioneers make for the open ground they picked; anyone else settles where its Leader last found food.
+                group.Home = group.SettleTarget is { } target
+                    ? TryCreateShelterSite(target, owner: null, groupId: group.Id, searchRadius: PioneerSiteRadius)
+                    : TryCreateShelterSite(leader.FoodMemory ?? leader.Position, owner: null, groupId: group.Id);
+                group.SettleTarget = null;
                 if (group.Home is null)
                 {
                     group.HomeSiteRetryTimer = GroupSiteRetryDelay;
@@ -132,6 +141,10 @@ public sealed partial class World
                 home.Owner = null;
                 home.AbandonedSeconds = 0f;
             }
+
+            // A budded group's dowry goes into its store as soon as it has one.
+            while (group.Dowry > 0 && group.Home is { IsBuilt: true } newHome && newHome.TryDeposit())
+                group.Dowry--;
 
             foreach (Bramblekin member in group.Members)
             {
@@ -184,6 +197,8 @@ public sealed partial class World
             if (group.Annexes.Count == 1)
                 VillagesFounded++;
             Game.AddEventLog($"[VILLAGE] {group.CapitalTitle} ({members} strong) is building a {(group.Annexes.Count == 1 ? "second" : "third")} home");
+            if (group.Annexes.Count == 1)
+                Chronicle($"{group.CapitalTitle} grew into a village of {members}", group);
         }
     }
 
@@ -286,22 +301,31 @@ public sealed partial class World
             if (settlers.Count(m => !m.IsYoung) < MinBuddingResidents)
                 continue;
 
+            // The settlers leave the House to the old village and head out, with
+            // a share of its stores, to found a village of their own on open ground.
             var daughter = new KinGroup(Guid.NewGuid());
             _groups[daughter.Id] = daughter;
-            parent.Annexes.Remove(house);
-            daughter.Home = house;
-            house.GroupId = daughter.Id;
             foreach (Bramblekin settler in settlers)
             {
                 settler.BudOff(daughter.Id);
+                settler.SetHome(null);
                 daughter.Members.Add(settler);
             }
             daughter.ElectLeader();
             NameGroup(daughter);
+            daughter.SettleTarget = FindOpenGround(house.Position);
+            daughter.Culture.CopyFrom(parent.Culture);
+            int dowry = Math.Min(MaxDowry, StoredFood(parent) / 3);
+            TakeFromStores(parent, dowry, preferred: house);
+            daughter.Dowry = dowry;
+            SetStance(parent, daughter, GroupStance.Allied); // Kin villages stand together.
 
             Buddings++;
             QueueFloatingText(house.Position, "New group!", daughter.Color);
-            Game.AddEventLog($"[COLONY] {parent.CapitalTitle} has grown too big: {settlers.Count} of them set up as {daughter.Title} in their own House, led by {daughter.Leader!.Name}");
+            float distance = daughter.SettleTarget is { } target ? GroundMover.HorizontalDistance(house.Position, target) : 0f;
+            Game.AddEventLog($"[COLONY] {parent.CapitalTitle} has grown too big: {settlers.Count} of them set out, led by {daughter.Leader!.Name}, " +
+                             $"to found {daughter.Title} {distance:0}m away{(dowry > 0 ? $", taking {dowry} food" : "")} - allies of their old village");
+            Headline("A new village", $"{settlers.Count} settlers left {parent.Title} to found {daughter.Title}, {distance:0}m away", PlaceOf(parent), false, parent, daughter);
         }
         _pendingBuddings.Clear();
     }
@@ -325,11 +349,72 @@ public sealed partial class World
 
             larger.Annexes.Add(home);
             home.GroupId = larger.Id;
+            HandOverCrops(smaller, larger, home, fromHome: null);
             if (larger.Annexes.Count == 1)
                 VillagesFounded++;
         }
         smaller.Home = null;
         smaller.Annexes.Clear();
+    }
+
+    // --- Spreading out -------------------------------------------------------------------
+
+    /// <summary>Pioneers look for a spot at least this far (m) from every other home…</summary>
+    private const float PioneerSpacing = 25f;
+
+    /// <summary>…but no further than this from where they set out.</summary>
+    private const float PioneerMaxTrek = 55f;
+
+    /// <summary>They mark out their site within this many meters of the spot they picked.</summary>
+    private const float PioneerSiteRadius = 10f;
+
+    /// <summary>Pioneers weigh every meter to the water's edge (up to 50) this much against open ground and berries.</summary>
+    private const float WaterPull = 0.35f;
+
+    /// <summary>A budding village gives its settlers up to this much of its stores.</summary>
+    private const int MaxDowry = 6;
+
+    /// <summary>
+    /// Spreading out: a spot for a new village — the most open ground
+    /// (furthest from every home, up to <see cref="PioneerSpacing"/> and
+    /// beyond) within <see cref="PioneerMaxTrek"/> of <paramref name="from"/>,
+    /// with a bonus for Berry Patches nearby and for water within easy reach
+    /// (see <see cref="WaterPull"/>). Null if the map is too crowded to find
+    /// anywhere clear, in which case they settle wherever they find food.
+    /// </summary>
+    private Vector3? FindOpenGround(Vector3 from)
+    {
+        Vector3? best = null;
+        float bestScore = float.MinValue;
+        for (int attempt = 0; attempt < 48; attempt++)
+        {
+            float angle = (float)(Rng.NextDouble() * MathF.Tau);
+            float distance = 15f + (float)Rng.NextDouble() * (PioneerMaxTrek - 15f);
+            Vector3 candidate = from + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * distance;
+            if (!Terrain.Contains(candidate, 8f) || IsBlocked(candidate, Shelter.HouseRadius + 0.3f))
+                continue;
+
+            float nearestHome = PioneerMaxTrek;
+            foreach (Shelter shelter in Shelters)
+            {
+                if (!shelter.IsAbandoned && !shelter.IsCollapsed)
+                    nearestHome = MathF.Min(nearestHome, GroundMover.HorizontalDistance(shelter.Position, candidate));
+            }
+            if (nearestHome < PioneerSpacing * 0.6f)
+                continue;
+
+            float nearestPatch = _berryPatches.Count == 0 ? 30f
+                : _berryPatches.Min(patch => GroundMover.HorizontalDistance(patch, candidate));
+            float toWater = WaterMap.UsualDistanceToWater(candidate.X, candidate.Z);
+            float score = MathF.Min(nearestHome, PioneerSpacing * 1.4f) - 0.5f * MathF.Min(nearestPatch, 30f) - 0.1f * distance -
+                          WaterPull * MathF.Min(toWater, 50f);
+            if (score > bestScore)
+            {
+                best = candidate;
+                bestScore = score;
+            }
+        }
+        return best;
     }
 
     /// <summary>The best home any member of <paramref name="group"/> already has, if any.</summary>
@@ -395,7 +480,8 @@ public sealed partial class World
         bool struggling = loner.IsHungry || loner.Health < Bramblekin.MaxHealth * 0.6f || loner.Home is not { IsBuilt: true };
         if (!struggling || group.Members.Count >= GroupSizeLimit(group) || HasEnemyIn(loner, group) || loner.HasLeft(group.Id))
             return false;
-        if (Rng.NextDouble() >= 0.3 + 0.5 * loner.Personality.Sociability)
+        // A persuasive member can talk a wavering loner into joining.
+        if (Rng.NextDouble() >= 0.3 + 0.5 * loner.Personality.Sociability + 0.3 * (member.Personality.Persuasiveness - 0.5))
             return false;
         if (group.Members.Count >= 3 && group.Leader is { } leader && Rng.NextDouble() >= 0.3 + 0.7 * leader.Personality.Sociability)
             return false;
@@ -408,5 +494,72 @@ public sealed partial class World
         QueueFloatingText(loner.Position, "+Joined", group.Color);
         Game.AddEventLog($"[JOIN] {loner.Name} asked to join {group.Title} for its home, and was taken in ({group.Members.Count} strong)");
         return true;
+    }
+}
+
+/// <summary>
+/// A group's homes — its main home, then the rest of its village, skipping
+/// any that have collapsed — walked without allocating (the World asks
+/// for them many times a step). Still an <see cref="IEnumerable{T}"/> for
+/// LINQ, which does allocate.
+/// </summary>
+public readonly struct VillageHomes : IEnumerable<Shelter>
+{
+    private readonly KinGroup _group;
+
+    public VillageHomes(KinGroup group) => _group = group;
+
+    public Enumerator GetEnumerator() => new(_group);
+
+    IEnumerator<Shelter> IEnumerable<Shelter>.GetEnumerator() => GetEnumerator();
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+    public struct Enumerator : IEnumerator<Shelter>
+    {
+        private readonly KinGroup _group;
+
+        /// <summary>-1 before the main home, then the index into its Annexes.</summary>
+        private int _next;
+
+        public Enumerator(KinGroup group)
+        {
+            _group = group;
+            _next = -1;
+            Current = null!;
+        }
+
+        public Shelter Current { get; private set; }
+
+        object System.Collections.IEnumerator.Current => Current;
+
+        public bool MoveNext()
+        {
+            if (_next == -1)
+            {
+                _next = 0;
+                if (_group.Home is { IsCollapsed: false } home)
+                {
+                    Current = home;
+                    return true;
+                }
+            }
+            while (_next < _group.Annexes.Count)
+            {
+                Shelter annex = _group.Annexes[_next++];
+                if (!annex.IsCollapsed)
+                {
+                    Current = annex;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public void Reset() => _next = -1;
+
+        public void Dispose()
+        {
+        }
     }
 }

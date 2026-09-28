@@ -42,6 +42,12 @@ public enum BramblekinState
     /// <summary>A Guard returning to its post by the group's home.</summary>
     Guarding,
 
+    /// <summary>Planting or harvesting its group's berry bushes — see Bramblekin.Farming.</summary>
+    Farming,
+
+    /// <summary>On an errand for its group: carrying food to an ally, or home with its pay — see Bramblekin.Errands.</summary>
+    Traveling,
+
     // --- Critical (hunger) ---
 
     /// <summary>Hungry with no food in sight: roaming further afield to find some.</summary>
@@ -74,4 +80,12 @@ public enum BramblekinState
 
     /// <summary>Fighting a leadership duel with a groupmate, until one yields.</summary>
     Dueling,
+
+    // --- Duty, added later (kept at the end so saved numbers still line up) ---
+
+    /// <summary>Sitting on the shore with a line in the water (see Bramblekin.Fishing).</summary>
+    Fishing,
+
+    /// <summary>Critical: going for a drink, at the pond or its home's cistern (see Bramblekin.Thirst).</summary>
+    Drinking,
 }

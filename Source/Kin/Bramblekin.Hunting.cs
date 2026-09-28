@@ -25,7 +25,7 @@ public sealed partial class Bramblekin
     /// </summary>
     private bool TryPackHunt(float deltaTime, World world, bool hungry)
     {
-        if (IsYoung || _perceivedBeetle is not { IsDead: false } beetle || Health <= MaxHealth * FightBreakHealthFraction)
+        if (IsYoung || _perceivedBeetle is not { IsDead: false } beetle || NerveBroken(beetle))
             return false;
 
         bool packNearby = false;
@@ -89,6 +89,8 @@ public sealed partial class Bramblekin
             return true;
         }
 
+        if (!BreakIn(target, deltaTime))
+            return true;
         _raidTarget = null;
         if (world.RaidStore(this, target) is { } food)
         {

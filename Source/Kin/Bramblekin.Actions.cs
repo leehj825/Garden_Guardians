@@ -56,7 +56,8 @@ public sealed partial class Bramblekin
             world.ConsumeFood(food);
             _carried = null;
             Hunger = MathF.Max(0f, Hunger - FoodNourishment);
-            Health = Math.Min(MaxHealth, Health + FoodHealing);
+            QuenchWith(food.Kind);
+            Heal(FoodHealing);
         }
         _robTarget = null;
         StartPause();
@@ -89,7 +90,7 @@ public sealed partial class Bramblekin
     {
         if (_robTarget is not { IsDead: false } victim || !victim.HasFood || HasFood)
             return false;
-        if (Health <= MaxHealth * FightBreakHealthFraction)
+        if (NerveBroken(victim))
             return false;
         if (GroupId is not null && victim.GroupId == GroupId)
             return false;
@@ -101,7 +102,9 @@ public sealed partial class Bramblekin
     /// <summary>
     /// Closes to strike range of <paramref name="target"/> and strikes on
     /// cooldown. When robbing, the first blow that lands takes the victim's
-    /// food (see <see cref="World.StealFood"/>).
+    /// food (see <see cref="World.StealFood"/>). Blood is thicker than
+    /// water: it never deals a close relative (parent, child, sibling) the
+    /// blow that would kill it.
     /// </summary>
     private void PursueAndStrike(ICombatant target, float speed, float deltaTime, World world)
     {
@@ -120,12 +123,14 @@ public sealed partial class Bramblekin
         if (_strikeCooldown > 0f)
             return;
         _strikeCooldown = StrikeCooldownDuration;
+        if (target is Bramblekin relative && relative.Health <= StrikeDamage && relative.IsCloseKinOf(this))
+            return;
 
         if (State == BramblekinState.Attacking && target is Bramblekin victim && victim.HasFood)
             world.StealFood(this, victim);
         if (State == BramblekinState.Fighting && _threatIsAllyDefense)
             world.NoteDefended(this, target);
-        target.TakeHit(StrikeDamage, this, world);
+        target.TakeHit(target is Bramblekin ? StrikeDamage : HuntingDamage, this, world);
     }
 
     /// <summary>
@@ -177,12 +182,12 @@ public sealed partial class Bramblekin
 
     /// <summary>Walks toward <paramref name="target"/>, steering round Pebbles. Returns true on arrival.</summary>
     private bool MoveTo(Vector3 target, float speed, float deltaTime, World world) =>
-        _mover.MoveTowards(target, speed * AgeSpeedFactor, deltaTime, world, p => !world.IsBlocked(p, BodyRadius));
+        _mover.MoveTowards(target, speed * AgeSpeedFactor * (IsSick ? SickSpeedFactor : 1f) * WorkPace, deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius));
 
     private void StartPause()
     {
         SetState(BramblekinState.Idle);
-        _pauseTimer = PauseDuration * (0.5f + (float)_rng.NextDouble());
+        _pauseTimer = PauseDuration * (0.5f + (float)_rng.NextDouble()) * (1.4f - 0.8f * Personality.Diligence); // The idle dawdle.
     }
 
     private void SetState(BramblekinState state)
@@ -207,6 +212,15 @@ public sealed partial class Bramblekin
 
     /// <summary>A random reachable point within <paramref name="radius"/> of where it stands (anywhere on the map as a fallback).</summary>
     private Vector3 RandomWanderPoint(World world, float radius) => RandomWanderPointAround(Position, radius, world);
+
+    /// <summary>A random wander point that isn't somewhere it remembers danger (if one turns up in a few tries).</summary>
+    private Vector3 SafeWanderPoint(World world, float radius)
+    {
+        Vector3 point = RandomWanderPoint(world, radius);
+        for (int attempt = 0; attempt < 3 && IsDangerous(point, world); attempt++)
+            point = RandomWanderPoint(world, radius);
+        return point;
+    }
 
     /// <summary>A random reachable point within <paramref name="radius"/> of <paramref name="center"/> (anywhere on the map as a fallback).</summary>
     private Vector3 RandomWanderPointAround(Vector3 center, float radius, World world)

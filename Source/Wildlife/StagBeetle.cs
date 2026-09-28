@@ -31,7 +31,7 @@ public sealed class StagBeetle : ICombatant
     private const float RetaliationRadius = 3f;
 
     private const float BiteRange = BodyRadius + Bramblekin.BodyRadius + 0.35f;
-    private const int BiteDamage = 7;
+    public const int BiteDamage = 7;
     private const float BiteCooldownDuration = 1.5f;
 
     private static readonly Color ShellColor = new(70, 45, 30, 255);
@@ -98,7 +98,7 @@ public sealed class StagBeetle : ICombatant
                 return;
             }
 
-            _mover.MoveTowards(attacker.Position, ChargeSpeed, deltaTime, world, p => !world.IsBlocked(p, BodyRadius));
+            _mover.MoveTowards(attacker.Position, ChargeSpeed, deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius));
             return;
         }
 
@@ -116,7 +116,7 @@ public sealed class StagBeetle : ICombatant
             return;
         }
 
-        if (_mover.MoveTowards(_wanderTarget, WanderSpeed, deltaTime, world, p => !world.IsBlocked(p, BodyRadius)))
+        if (_mover.MoveTowards(_wanderTarget, WanderSpeed, deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius)))
             _pauseTimer = WanderPauseDuration * (0.5f + (float)_rng.NextDouble());
     }
 
@@ -125,7 +125,7 @@ public sealed class StagBeetle : ICombatant
     {
         Bramblekin? best = null;
         float bestDistanceSquared = RetaliationRadius * RetaliationRadius;
-        List<Bramblekin> nearby = world.QueryNearbyColony(Position);
+        List<Bramblekin> nearby = world.QueryNearbyColony(Position, RetaliationRadius);
         for (int i = 0; i < nearby.Count; i++)
         {
             Bramblekin kin = nearby[i];

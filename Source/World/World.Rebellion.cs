@@ -46,18 +46,19 @@ public sealed partial class World
     /// </summary>
     private void ReviewLoyalty(KinGroup group, Bramblekin leader)
     {
+        bool sharedHardship = CurrentSeason == Season.Winter && StoredFood(group) == 0 && group.Sharing == SharingRule.Equal;
         foreach (Bramblekin member in group.Members)
         {
             if (!member.IsDead && !member.IsYoung)
-                member.UpdateLoyalty(group);
+                member.UpdateLoyalty(group, sharedHardship);
         }
 
         foreach (Bramblekin member in group.Members)
         {
-            if (member == leader || member.IsDead || member.IsDueling || member.IsYoung)
+            if (member == leader || member.IsDead || member.IsDueling || member.IsYoung || member.IsNewMember)
                 continue;
 
-            if (member.Loyalty < Bramblekin.RebelThreshold && Rng.NextDouble() < RebelChancePerDecision)
+            if (member.Loyalty < Bramblekin.RebelThreshold && Rng.NextDouble() < RebelChancePerDecision * (0.4 + 1.2 * member.Personality.Rebelliousness))
                 _pendingRebellions.Add((group, member, false));
             else if (leader.Personality.Aggression >= ExileLeaderAggression && member.Loyalty < ExileLoyaltyThreshold &&
                      Rng.NextDouble() < ExileChancePerDecision)
@@ -89,7 +90,7 @@ public sealed partial class World
     private void Rebel(KinGroup group, Bramblekin rebel)
     {
         if (group.Leader is { IsDead: false, IsDueling: false } leader &&
-            rebel.Personality.Aggression >= ChallengeAggression &&
+            rebel.Personality.Aggression + 0.3f * (rebel.Personality.Rebelliousness - 0.5f) >= ChallengeAggression &&
             rebel.Health > Bramblekin.MaxHealth * 0.6f &&
             ChallengeStrength(rebel) >= ChallengeStrength(leader) * ChallengeOddsNeeded)
         {
@@ -100,7 +101,13 @@ public sealed partial class World
             return;
         }
 
-        if (rebel.Personality.Sociability >= SplinterSociability && TrySplinter(group, rebel))
+        // Walking out into the snow is how loners starve: a sharp mind
+        // grumbles and waits for spring.
+        if (CurrentSeason == Season.Winter && Rng.NextDouble() < rebel.Personality.Intelligence * (1.3f - 0.6f * rebel.Personality.Rebelliousness))
+            return;
+
+        // A sociable — or persuasive — rebel talks the other unhappy members into going with it.
+        if (rebel.Personality.Sociability + 0.5f * (rebel.Personality.Persuasiveness - 0.5f) >= SplinterSociability && TrySplinter(group, rebel))
             return;
 
         Depart(group, rebel);
@@ -113,8 +120,10 @@ public sealed partial class World
     /// <summary>The instigator leaves with every other unhappy follower, as a new (homeless) group. False if nobody else wants to go.</summary>
     private bool TrySplinter(KinGroup group, Bramblekin instigator)
     {
+        // A persuasive instigator sways the wavering too; a passive one only the fed-up.
+        float swayed = SplinterLoyaltyThreshold + 0.25f * (instigator.Personality.Persuasiveness - 0.5f);
         List<Bramblekin> faction = group.Members
-            .Where(m => m != group.Leader && !m.IsDead && !m.IsDueling && !m.IsYoung && m.Loyalty < SplinterLoyaltyThreshold)
+            .Where(m => m != group.Leader && !m.IsDead && !m.IsDueling && !m.IsYoung && (m == instigator || m.Loyalty < swayed))
             .Take(MaxGroupSize)
             .ToList();
         if (faction.Count < 2 || !faction.Contains(instigator))
@@ -136,10 +145,14 @@ public sealed partial class World
         }
         splinter.ElectLeader();
         NameGroup(splinter);
+        splinter.SettleTarget = FindOpenGround(instigator.Position); // Well away from the group they left.
+        splinter.Culture.CopyFrom(group.Culture);
+        AddGrievance(group.Id, splinter.Id, SplinterGrievance);
 
         Splinters++;
         QueueFloatingText(instigator.Position, "Split off!", splinter.Color);
         Game.AddEventLog($"[SPLIT] {instigator.Name} led {faction.Count} unhappy members out of {group.Title} into a new group, {splinter.Title}, led by {splinter.Leader!.Name}");
+        Headline("A clan splits", $"{Epithet(instigator)}{instigator.Name} led {faction.Count} unhappy members out of {group.Title} to form {splinter.Title}", instigator.Position, false, group, splinter);
         return true;
     }
 
@@ -175,7 +188,8 @@ public sealed partial class World
         if (PartnerGoesAlong(group, outcast))
         {
             Bramblekin partner = outcast.Partner!;
-            LeaveAsCouple(outcast, partner);
+            KinGroup household = LeaveAsCouple(outcast, partner);
+            AddGrievance(group.Id, household.Id, ExileGrievance);
             partnerNote = $"; {partner.Name} went with them";
         }
         else
@@ -223,6 +237,7 @@ public sealed partial class World
             Coups++;
             QueueFloatingText(winner.Position, "New leader!", group.Color);
             Game.AddEventLog($"[COUP] {winner.Name} beat {loser.Name} and now leads {group.Title}");
+            Headline("Coup", $"{Epithet(winner)}{winner.Name} overthrew {loser.Name} as Leader of {group.Title}", winner.Position, false, group);
             return;
         }
 

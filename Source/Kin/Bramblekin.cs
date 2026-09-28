@@ -9,11 +9,13 @@ namespace GardenGuardians;
 /// need, in strict priority order (a leadership duel, once started, comes
 /// before all of them):
 ///
-///   1. Critical — Hunger (Bramblekin.Hunger.cs): once <see cref="IsHungry"/>,
-///      it eats what it's carrying, forages visible Food, eats from its
-///      home's store, scavenges, hunts, raids or robs, or searches further
-///      afield. Nothing else matters until it's fed — a hungry Bramblekin
-///      will brave a Hornet swarm for a berry.
+///   1. Critical — Thirst (Bramblekin.Thirst.cs) and Hunger
+///      (Bramblekin.Hunger.cs), whichever is worse: once <see cref="IsThirsty"/>
+///      it walks to the pond (or its home's cistern) and drinks; once
+///      <see cref="IsHungry"/> it eats what it's carrying, forages visible
+///      Food, eats from its home's store, scavenges, hunts, raids or robs,
+///      or searches further afield. Nothing else matters until it's fed
+///      and watered — a hungry Bramblekin will brave a Hornet swarm for a berry.
 ///   2. Safety (Bramblekin.Safety.cs): a predator, a raider, a hostile
 ///      Bramblekin, or anything attacking a groupmate inside its
 ///      Intelligence-scaled <see cref="DetectionRadius"/> triggers one
@@ -33,7 +35,7 @@ public sealed partial class Bramblekin : ICombatant
     private static int _nextId = 0;
 
     /// <summary>A stable, never-reused identity — what other Bramblekin remember it by in their <see cref="KnownKins"/>.</summary>
-    public int ID { get; } = _nextId++;
+    public int ID { get; private set; } = _nextId++;
 
     // --- Body --------------------------------------------------------------------
 
@@ -137,6 +139,12 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>A threat or target is let go once it's this many detection radii away.</summary>
     private const float ThreatLeashMultiplier = 1.3f;
 
+    /// <summary>At war, only a resident at least this Aggressive goes after an enemy passer-by…</summary>
+    private const float WarIntruderAggression = 0.5f;
+
+    /// <summary>…and only one this close (m) to home.</summary>
+    private const float WarIntruderRadius = 6f;
+
     /// <summary>Whoever last hit this Bramblekin stays its top threat for this many seconds.</summary>
     private const float RecentAttackWindow = 4f;
 
@@ -157,6 +165,44 @@ public sealed partial class Bramblekin : ICombatant
 
     /// <summary>At or below this fraction of <see cref="MaxHealth"/>, a fighter's nerve breaks and it flees instead — high enough that a fighter at the threshold can still survive one more Wolf Spider bite.</summary>
     private const float FightBreakHealthFraction = 0.4f;
+
+    /// <summary>At work — gathering, building, stocking, farming, carrying for its group — the diligent go briskly and the idle slowly.</summary>
+    private float WorkPace => State is BramblekinState.Collecting or BramblekinState.Building or BramblekinState.Stockpiling or
+        BramblekinState.Farming or BramblekinState.Traveling or BramblekinState.Fishing
+        ? 0.85f + 0.3f * Personality.Diligence
+        : 1f;
+
+    /// <summary>Its nerve breaks at this fraction of its Health: lower for the brave, higher for the cautious (<see cref="FightBreakHealthFraction"/> for the middling).</summary>
+    private float NerveBreaksAt => FightBreakHealthFraction * (1.4f - 0.8f * Personality.Courage);
+
+    /// <summary>
+    /// True once its nerve breaks against <paramref name="foe"/>: at or
+    /// below <see cref="NerveBreaksAt"/> of its Health — or, however brave,
+    /// once one more of the foe's blows could kill it. Courage holds a
+    /// fighter in longer, never into a blow it can't survive.
+    /// </summary>
+    private bool NerveBroken(ICombatant? foe) =>
+        Health <= MaxHealth * NerveBreaksAt || (foe is not null && Health <= HardestBlow(foe));
+
+    /// <summary>The most one blow from <paramref name="foe"/> takes off.</summary>
+    private static int HardestBlow(ICombatant foe) => foe switch
+    {
+        WolfSpider => WolfSpider.BiteDamage,
+        StagBeetle => StagBeetle.BiteDamage,
+        Hornet => Hornet.BiteDamage,
+        Ant => Ant.BiteDamage,
+        Bramblekin kin => kin.StrikeDamage,
+        _ => 0,
+    };
+
+    /// <summary>A fighter whose nerve breaks backs away still braced — the Wolf Spider can't pounce on it — for this long, times (0.5 + Courage).</summary>
+    private const float GuardedRetreatSeconds = 2f;
+
+    /// <summary>Seconds left of a guarded retreat (see <see cref="GuardedRetreatSeconds"/>).</summary>
+    private float _guardedRetreat;
+
+    /// <summary>Braced for the Wolf Spider — fighting it, or backing away from a fight on guard — so its pounce can't catch it.</summary>
+    public bool IsBraced => State == BramblekinState.Fighting || _guardedRetreat > 0f;
 
     /// <summary>Keeps running for at least this long after losing sight of whatever it fled from.</summary>
     private const float FleeMinDuration = 2.5f;
@@ -267,6 +313,7 @@ public sealed partial class Bramblekin : ICombatant
         Sex = rng.Next(2) == 0 ? Sex.Female : Sex.Male;
         RollLifespan(rng);
         Hunger = (float)rng.NextDouble() * StartingHungerMax;
+        Thirst = (float)rng.NextDouble() * StartingThirstMax;
         _mover = new GroundMover(position, BodyRadius, EdgeMargin, rng);
         _perceptionTimer = (float)rng.NextDouble() * PerceptionInterval;
 
@@ -278,7 +325,7 @@ public sealed partial class Bramblekin : ICombatant
     public Personality Personality { get; }
 
     /// <summary>Female or male, at even odds — see <see cref="GardenGuardians.Sex"/>. Only births care.</summary>
-    public Sex Sex { get; }
+    public Sex Sex { get; private set; }
 
     /// <summary>The group this Bramblekin has joined, or null while solitary.</summary>
     public Guid? GroupId { get; private set; }
@@ -320,7 +367,7 @@ public sealed partial class Bramblekin : ICombatant
 
     public float CollisionRadius => BodyRadius;
 
-    /// <summary>True while it's holding a piece of Food (a reserve, or a meal about to be eaten).</summary>
+    /// <summary>True while it's holding a piece of Food (a reserve, or a meal about to be eaten) — food a thief could snatch. (An errand sack is slung tight: it's only lost if the runner is cut down.)</summary>
     public bool HasFood => _carried is not null;
 
     public bool IsHungry => Hunger >= HungryThreshold;
@@ -350,10 +397,13 @@ public sealed partial class Bramblekin : ICombatant
     public bool SeesFood => _perceivedFood is { IsActive: true, IsCarried: false };
 
     /// <summary>The Wolf Spider hunts by vibration: a Bramblekin busy with food (or a fight over it) gives itself away.</summary>
-    public bool IsVibrating => !IsDead && State is BramblekinState.Foraging or BramblekinState.Eating or BramblekinState.Hunting
-        or BramblekinState.Attacking or BramblekinState.Raiding;
+    public bool IsVibrating => !IsDead && (State is BramblekinState.Foraging or BramblekinState.Eating or BramblekinState.Hunting
+        or BramblekinState.Attacking or BramblekinState.Raiding or BramblekinState.Farming || IsDrinkingAtPond);
 
     private int StrikeDamage => (int)MathF.Round((BaseStrikeDamage + StrikeDamagePerAggression * Personality.Aggression) * (IsElder ? ElderStrikeFactor : 1f));
+
+    /// <summary>A blow against a creature: half as hard again with <see cref="Craft.Spears"/>.</summary>
+    private int HuntingDamage => Knows(Craft.Spears) ? StrikeDamage * 3 / 2 : StrikeDamage;
 
     // --- Relationships & groups ----------------------------------------------------------
 
@@ -377,7 +427,17 @@ public sealed partial class Bramblekin : ICombatant
     {
         GroupId = groupId;
         Loyalty = LoyaltyBaseline;
+        _joinedAt = _timeHere;
     }
+
+    /// <summary>When (in <see cref="_timeHere"/>) it last joined a group.</summary>
+    private float _joinedAt;
+
+    /// <summary>A newcomer to a group gives it this long (s) before it rebels, or is thrown out.</summary>
+    private const float NewMemberGrace = 90f;
+
+    /// <summary>True for a while after it joins a group — see <see cref="NewMemberGrace"/>.</summary>
+    public bool IsNewMember => _timeHere - _joinedAt < NewMemberGrace;
 
     /// <summary>Splinter: leaves its group, along with other unhappy members, for a new one of their own — homeless, but keen.</summary>
     public void SplitOff(Guid newGroupId)
@@ -463,6 +523,9 @@ public sealed partial class Bramblekin : ICombatant
             return;
         }
 
+        if (source is WolfSpider or Hornet)
+            RememberDanger(source.Position, world);
+
         if (source is not null)
         {
             _lastAttacker = source;
@@ -498,6 +561,7 @@ public sealed partial class Bramblekin : ICombatant
             World.DropTwig(_carriedTwig, Position);
             _carriedTwig = null;
         }
+        PutDownMaterial();
         ReleaseFoodClaim();
         ReleaseTwigClaim();
         _robTarget = null;
@@ -527,6 +591,10 @@ public sealed partial class Bramblekin : ICombatant
 
         // Metabolism: Hunger always rises (slower huddled at home in winter); at the very top it starts costing Health.
         float metabolism = world.CurrentSeason == Season.Winter && IsSheltered ? WinterShelterMetabolism : 1f;
+        if (!IsSheltered)
+            metabolism *= world.ColdFactor; // A harsh winter bites anyone caught outdoors.
+        if (IsSick)
+            metabolism *= SickHungerFactor;
         Hunger = MathF.Min(MaxHunger, Hunger + HungerPerSecond * metabolism * deltaTime);
         if (Hunger >= MaxHunger)
         {
@@ -543,6 +611,10 @@ public sealed partial class Bramblekin : ICombatant
         {
             _starvationTimer = 0f;
         }
+        if (UpdateThirstMetabolism(deltaTime, world))
+            return;
+        if (UpdateSickness(deltaTime, world))
+            return;
 
         _perceptionTimer -= deltaTime;
         if (_perceptionTimer <= 0f)
@@ -555,7 +627,13 @@ public sealed partial class Bramblekin : ICombatant
         if (UpdateDuel(deltaTime, world))
             return;
 
-        // 1) Critical: Hunger. A meal already under way is always finished.
+        // 1) Critical: Thirst or Hunger — whichever is worse. A meal already under way is always finished.
+        if (State != BramblekinState.Eating && ThirstComesFirst)
+        {
+            _fleeTimer = 0f; // Whatever it was running from, water comes first now.
+            UpdateThirst(deltaTime, world);
+            return;
+        }
         if (IsHungry || State == BramblekinState.Eating)
         {
             _fleeTimer = 0f; // Whatever it was running from, food comes first now.
@@ -566,6 +644,14 @@ public sealed partial class Bramblekin : ICombatant
 
         // 2) Safety.
         if (UpdateSafety(deltaTime, world))
+            return;
+
+        // 2b) Ants at its home's store get swatted.
+        if (UpdateAntDefense(deltaTime, world))
+            return;
+
+        // 2c) A cupful of pond water goes home to the cistern.
+        if (UpdateWaterCarry(deltaTime, world))
             return;
 
         // 3) Duty: the job its group's Leader gave it.
@@ -591,9 +677,16 @@ public sealed partial class Bramblekin : ICombatant
     {
         float radius = DetectionRadius;
         _perceivedFood = world.NearestAvailableFood(Position, radius, this);
+        // Memory: food near a remembered danger isn't worth it (unless starving).
+        if (_perceivedFood is not null && !WorthTheRisk(_perceivedFood.Position, world))
+            _perceivedFood = null;
         if (_perceivedFood is not null)
+        {
             _foodMemory = _perceivedFood.Position;
+            world.GroupOf(this)?.FoodSpots.Remember(_perceivedFood.Position, world.ElapsedSeconds);
+        }
         _perceivedGrub = world.NearestLiveGrub(Position, radius);
+        _perceivedAnt = world.Ants.Count > 0 ? world.NearestLiveAnt(Position, radius) : null;
         _perceivedBeetle = world.NearestLiveBeetle(Position, radius);
         _perceivedTwig = NeedsTwig ? world.NearestAvailableTwig(Position, radius, this) : null;
         if (_perceivedTwig is not null)
@@ -644,22 +737,36 @@ public sealed partial class Bramblekin : ICombatant
                 continue;
             }
 
-            // Fight to protect: a raider heading for its home (or any of its group's).
-            if (other.RaidTarget is { } raided && (raided == Home || (GroupId is not null && raided.GroupId == GroupId)))
+            // Fight to protect: a raider heading for its home (or any of its group's, or its allies').
+            if (other.RaidTarget is { } raided &&
+                (raided == Home || (GroupId is not null && (raided.GroupId == GroupId || world.AreAllied(raided.GroupId, GroupId)))))
             {
                 Consider(other, allyDefense: true);
                 continue;
             }
 
-            if (GroupId is null || other.GroupId != GroupId)
+            if (GroupId is null || other.GroupId is null)
                 continue;
 
-            // Group Dynamics: a groupmate under attack, or already
-            // fighting, pulls its foe into this Bramblekin's sights too.
+            // War: a bold resident drives off a member of an enemy group that comes right up to home.
+            if (Home is { } home && (Personality.Aggression + Personality.Courage) / 2f >= WarIntruderAggression && world.AreAtWar(GroupId, other.GroupId) &&
+                GroundMover.HorizontalDistanceSquared(other.Position, home.Position) <= WarIntruderRadius * WarIntruderRadius)
+            {
+                Consider(other, allyDefense: true);
+                continue;
+            }
+
+            if (other.GroupId != GroupId && !world.AreAllied(GroupId, other.GroupId))
+                continue;
+
+            // Group Dynamics: a groupmate under attack, or already fighting,
+            // pulls its foe into this Bramblekin's sights too; an ally only
+            // when it's actually being hit.
+            bool groupmate = other.GroupId == GroupId;
             ICombatant? allyFoe = other.RecentAttacker(world) ??
-                                  (other.State == BramblekinState.Fighting ? other.CombatTarget : null);
+                                  (groupmate && other.State == BramblekinState.Fighting ? other.CombatTarget : null);
             if (allyFoe is { IsDead: false } && !ReferenceEquals(allyFoe, this) &&
-                !(allyFoe is Bramblekin foeKin && foeKin.GroupId == GroupId))
+                !(allyFoe is Bramblekin foeKin && (foeKin.GroupId == GroupId || world.AreAllied(foeKin.GroupId, GroupId))))
                 Consider(allyFoe, allyDefense: true);
         }
 

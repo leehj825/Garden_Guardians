@@ -18,9 +18,16 @@ public sealed partial class World
     /// <summary>A Bramblekin finished eating <paramref name="food"/>: its pool slot is freed.</summary>
     public void ConsumeFood(FoodShard food)
     {
+        _foodByKind[(int)food.Kind]++;
         food.Deactivate();
         FoodEaten++;
     }
+
+    /// <summary>Food eaten or stored, by kind (see <see cref="FoodShardKind"/>) — which sources the garden lives on.</summary>
+    private readonly int[] _foodByKind = new int[Enum.GetValues<FoodShardKind>().Length];
+
+    /// <summary>How much <paramref name="kind"/> has been eaten or stored.</summary>
+    public int FoodTaken(FoodShardKind kind) => _foodByKind[(int)kind];
 
     /// <summary>Puts carried <paramref name="food"/> back on the ground at <paramref name="position"/>, loose for anyone to find.</summary>
     public static void DropFood(FoodShard food, Vector3 position)
@@ -43,7 +50,14 @@ public sealed partial class World
     /// <summary>Hostility pays off: <paramref name="thief"/> takes <paramref name="victim"/>'s carried food on a successful blow.</summary>
     public void StealFood(Bramblekin thief, Bramblekin victim)
     {
-        if (victim.SurrenderFood() is not { } food)
+        // Food in hand first; else a grab from an errand sack.
+        FoodShard? food = victim.SurrenderFood();
+        if (food is null && victim.TakeFromSack() && ActivateFood(victim.Position, FoodShardKind.Berry) is { } grabbed)
+        {
+            PickUpFood(grabbed);
+            food = grabbed;
+        }
+        if (food is null)
             return;
 
         thief.ReceiveFood(food);
@@ -63,11 +77,26 @@ public sealed partial class World
                 Math.Clamp(center.X + MathF.Cos(angle) * distance, -half, half),
                 Terrain.GroundHeight,
                 Math.Clamp(center.Z + MathF.Sin(angle) * distance, -half, half));
+            if (WaterMap.IsWet(position.X, position.Z))
+                position = center; // Never into the pond.
             _pendingFoodSpawns.Add((position, kind));
         }
     }
 
+    /// <summary>Memory: a member ran into danger — its whole group remembers the spot.</summary>
+    public void NoteDanger(Bramblekin kin, Vector3 where)
+    {
+        if (GroupOf(kin) is { } group)
+            group.Dangers.Remember(where, ElapsedSeconds);
+    }
+
     // --- Deaths -----------------------------------------------------------------------
+
+    /// <summary>This many starving to death in one season is a famine (a headline — see <see cref="Headline"/>).</summary>
+    private const int FamineDeaths = 4;
+
+    /// <summary>Starvation deaths so far this season.</summary>
+    private int _starvedThisSeason;
 
     /// <summary>
     /// A Bramblekin dies: it drops any carried food and is marked dead
@@ -82,6 +111,10 @@ public sealed partial class World
 
         RecordDeath(kin, cause); // Before MarkDead, while its status is still its own.
         NoteBereavement(kin);
+        if (cause == DeathCause.Predator && GroupOf(kin) is { } mourners)
+            mourners.Dangers.Remember(kin.Position, ElapsedSeconds); // Its group won't forget where it fell.
+        if (kin.Errand is { } errand)
+            AbandonErrand(kin, errand);
         kin.MarkDead();
         _pendingKinRemovals.Add(kin);
 
@@ -91,6 +124,19 @@ public sealed partial class World
             case DeathCause.Starvation:
                 DeathsByStarvation++;
                 how = "starved to death";
+                if (++_starvedThisSeason == FamineDeaths)
+                {
+                    Headline("Famine", $"Famine: {FamineDeaths} Bramblekin have starved this {CurrentSeason.ToString().ToLowerInvariant()}",
+                        kin.Position, true, GroupOf(kin));
+                }
+                break;
+            case DeathCause.Sickness:
+                DeathsBySickness++;
+                how = "died of a sickness";
+                break;
+            case DeathCause.Thirst:
+                DeathsByThirst++;
+                how = "died of thirst";
                 break;
             case DeathCause.OldAge:
                 DeathsByOldAge++;
@@ -99,6 +145,11 @@ public sealed partial class World
                 break;
             case DeathCause.Kin:
                 DeathsByKin++;
+                if (killer is Bramblekin slayer)
+                {
+                    AddGrievance(kin.GroupId, slayer.GroupId, KillingGrievance);
+                    AddWarScore(slayer.GroupId, kin.GroupId, KillWarScore);
+                }
                 how = killer is Bramblekin attacker ? $"was killed by {attacker.Name}" : "was killed by another Bramblekin";
                 break;
             default:
@@ -107,11 +158,17 @@ public sealed partial class World
                 {
                     WolfSpider => "was caught by the Wolf Spider",
                     Hornet => "was stung to death by hornets",
+                    Ant => "was bitten to death by ants",
                     _ => "was killed by a predator",
                 };
                 break;
         }
+        CloseLife(kin, how);
         Game.AddEventLog($"[DEATH] {kin.Name} {how}");
+        if (GroupOf(kin) is { } clan && clan.Leader == kin)
+            Chronicle($"Leader {kin.Name} {how}", clan);
+        else if (cause == DeathCause.OldAge && kin.Children >= 5)
+            Chronicle($"{kin.Name} {how}", GroupOf(kin));
     }
 
     /// <summary>
@@ -133,6 +190,7 @@ public sealed partial class World
         ScatterFoodAround(spider.Position, SpiderCarcassFood, 0.6f, FoodShardKind.Meat);
         CreditMeat(attacker, SpiderCarcassFood);
         attacker.AddReputation(1f);
+        attacker.NoteSpiderKill();
         Spider = null;
         SpiderRespawnTimer = SpiderRespawnDelay;
         SpidersKilled++;
@@ -141,7 +199,20 @@ public sealed partial class World
         Game.AddEventLog(group is null
             ? $"[HUNT] {attacker.Name} slew the Wolf Spider alone!"
             : $"[HUNT] {group.CapitalTitle} brought down the Wolf Spider (final blow by {attacker.Name})");
+        if (group is not null)
+        {
+            // Only the milestones make the chronicle: a clan's first spider, then every fifth.
+            int slain = ++group.SpidersSlain;
+            if (slain == 1 || slain % 5 == 0)
+            {
+                Chronicle($"{group.CapitalTitle} brought down its {(slain == 1 ? "first" : Ordinal(slain))} Wolf Spider (final blow by {attacker.Name})", group);
+            }
+        }
     }
+
+    /// <summary>"5th", "21st", "12th"…</summary>
+    private static string Ordinal(int n) =>
+        n + ((n % 100) is 11 or 12 or 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
 
     /// <summary>A Hornet swatted out of the air. Removal from <see cref="Hornets"/> is deferred to the end of the frame.</summary>
     public void KillHornet(Hornet hornet)

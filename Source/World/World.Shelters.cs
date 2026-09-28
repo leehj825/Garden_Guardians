@@ -240,6 +240,9 @@ public sealed partial class World
     /// </summary>
     public Shelter? TryCreateShelterSite(Vector3 near, Bramblekin? owner, Guid? groupId, float searchRadius = ShelterSiteSearchRadius)
     {
+        // Of the open spots it tries, the one nearest water: nobody wants a long walk for a drink.
+        Vector3? best = null;
+        float bestToWater = float.MaxValue;
         for (int attempt = 0; attempt < 16; attempt++)
         {
             float angle = (float)(Rng.NextDouble() * MathF.Tau);
@@ -249,12 +252,19 @@ public sealed partial class World
                 continue;
             if (Shelters.Any(s => GroundMover.HorizontalDistanceSquared(s.Position, candidate) < MinShelterSpacing * MinShelterSpacing))
                 continue;
-
-            var shelter = new Shelter(candidate) { Owner = owner, GroupId = groupId, StageStartedAt = ElapsedSeconds };
-            Shelters.Add(shelter);
-            return shelter;
+            float toWater = WaterMap.UsualDistanceToWater(candidate.X, candidate.Z);
+            if (toWater < bestToWater)
+            {
+                best = candidate;
+                bestToWater = toWater;
+            }
         }
-        return null;
+        if (best is not { } site)
+            return null;
+
+        var shelter = new Shelter(site) { Owner = owner, GroupId = groupId, StageStartedAt = ElapsedSeconds };
+        Shelters.Add(shelter);
+        return shelter;
     }
 
     /// <summary>The nearest built, abandoned shelter within <paramref name="radius"/> — free for the taking.</summary>
@@ -332,10 +342,11 @@ public sealed partial class World
     // --- The food store ---------------------------------------------------------------------
 
     /// <summary>Puts <paramref name="kin"/>'s carried food into <paramref name="shelter"/>'s store, where it never rots. Returns false if the store is full.</summary>
-    public static bool DepositFood(Shelter shelter, FoodShard food)
+    public bool DepositFood(Shelter shelter, FoodShard food)
     {
         if (!shelter.TryDeposit())
             return false;
+        _foodByKind[(int)food.Kind]++;
         food.Deactivate();
         return true;
     }
@@ -368,8 +379,14 @@ public sealed partial class World
         StoreRaids++;
         foreach (Bramblekin victim in ResidentsOf(shelter))
             DeclareEnemies(raider, victim);
+        AddGrievance(raider.GroupId, shelter.GroupId, RaidGrievance);
         QueueFloatingText(shelter.Position, "Raided!", new Color(210, 50, 40, 255));
-        Game.AddEventLog($"[RAID] {raider.Name} raided {(shelter.GroupId is null ? $"{shelter.Owner?.Name}'s" : "a group's")} {shelter.Tier} store");
+        // A war raid is announced once, when the party sets out (see DecideGroupGoal).
+        if (!AreAtWar(raider.GroupId, shelter.GroupId))
+        {
+            string whose = shelter.GroupId is { } owners && _groups.TryGetValue(owners, out KinGroup? victims) ? $"{victims.Title}'s" : $"{shelter.Owner?.Name}'s";
+            Game.AddEventLog($"[RAID] {raider.Name} raided {whose} {shelter.Tier} store");
+        }
         return food;
     }
 
@@ -390,13 +407,15 @@ public sealed partial class World
                 continue;
             if (abandonedOnly && !shelter.IsAbandoned)
                 continue;
-
             float distanceSquared = GroundMover.HorizontalDistanceSquared(kin.Position, shelter.Position);
-            if (distanceSquared <= bestDistanceSquared)
-            {
-                best = shelter;
-                bestDistanceSquared = distanceSquared;
-            }
+            if (distanceSquared > bestDistanceSquared)
+                continue;
+            // Nobody raids a home its own parent, child or sibling lives in.
+            if (!shelter.IsAbandoned && HasCloseKinLivingIn(shelter, kin))
+                continue;
+
+            best = shelter;
+            bestDistanceSquared = distanceSquared;
         }
         return best;
     }
@@ -412,6 +431,17 @@ public sealed partial class World
     public int StoreMeals { get; private set; }
 
     /// <summary>Everyone who calls <paramref name="shelter"/> home.</summary>
+    /// <summary>True if a parent, child or sibling of <paramref name="kin"/> lives in <paramref name="shelter"/>.</summary>
+    private bool HasCloseKinLivingIn(Shelter shelter, Bramblekin kin)
+    {
+        foreach (Bramblekin resident in Colony)
+        {
+            if (!resident.IsDead && resident.Home == shelter && resident.IsCloseKinOf(kin))
+                return true;
+        }
+        return false;
+    }
+
     public IEnumerable<Bramblekin> ResidentsOf(Shelter shelter)
     {
         foreach (Bramblekin kin in Colony)

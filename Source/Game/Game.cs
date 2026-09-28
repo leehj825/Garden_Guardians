@@ -7,7 +7,7 @@ namespace GardenGuardians;
 /// Owns the window and the main loop: reads input, steps the <see cref="World"/>,
 /// and draws it with the UI on top. Platform-independent.
 /// </summary>
-public static class Game
+public static partial class Game
 {
     // Window settings for Desktop. Android instead opens at its native
     // screen size (see Run's InitWindow call) so the game fills the whole
@@ -21,23 +21,39 @@ public static class Game
     private const int InitialKinCount = 20;
 
     /// <summary>
-    /// Largest time step the game simulates in one frame. A hitch (window
-    /// dragged, app resumed) would otherwise teleport walkers past obstacles.
+    /// Longest frame the game catches up on. A hitch (window dragged, app
+    /// resumed) is simply lost time rather than a burst of catching up.
     /// </summary>
     private const float MaxDeltaTime = 1f / 20f;
 
+    /// <summary>
+    /// The simulation always advances in steps of exactly this — the same
+    /// step the headless tuning runs use — at every speed, on every device:
+    /// bigger steps played a noticeably different game (at 0.046s a step,
+    /// ~50% more starvation), so fast-forward takes more steps instead.
+    /// </summary>
+    private const float SimulationStep = 1f / 60f;
+
+    /// <summary>Real time a frame may spend simulating; past it, the game runs slower than the chosen speed rather than dropping frames…</summary>
+    private const double SimulationBudgetSeconds = 0.028;
+
+    /// <summary>…or at 10x and up, where more speed is worth a few frames a second.</summary>
+    private const double FastSimulationBudgetSeconds = 0.045;
+
+    /// <summary>Simulated time owed (the chosen speed × real time) but not yet stepped.</summary>
+    private static float _simulationBacklog;
+
+    /// <summary>The speed the simulation is actually managing (smoothed) — below the chosen one on a slow device.</summary>
+    private static float _achievedSpeed = 1f;
+
     /// <summary>Debug Time Scale: the speeds the corner +/- buttons step through, clamped at either end.</summary>
-    private static readonly float[] TimeScaleSteps = { 1f, 2f, 5f, 10f, 20f };
+    private static readonly float[] TimeScaleSteps = { 1f, 2f, 5f, 10f, 20f, 50f };
 
     /// <summary>
-    /// Debug Time Scale. Rather than feeding World.Update() an oversized
-    /// deltaTime at high multiples (which would let walkers skip past
-    /// obstacles in a single giant step), the main loop below instead calls
-    /// World.Update() this many
-    /// times per rendered frame, each with its own normal, clamped
-    /// deltaTime — every timer, cooldown and movement speed inside it ends
-    /// up advancing exactly TimeScale times faster in wall-clock terms,
-    /// without ever destabilizing the physics.
+    /// Debug Time Scale: how many seconds of garden time pass per real
+    /// second. The main loop covers them in fixed <see cref="SimulationStep"/>s
+    /// (see <see cref="StepSimulation"/>), so a faster speed is more steps per
+    /// frame, never bigger ones.
     /// </summary>
     private static float _timeScale = 1f;
 
@@ -79,6 +95,32 @@ public static class Game
     /// <summary>Oldest-entries-dropped cap for <see cref="_debugLogs"/> — see <see cref="AddEventLog"/>.</summary>
     private const int DebugLogCapacity = 15;
 
+    /// <summary>How much of the event log the player has chosen to see (tap the Log button to change it; kept in <see cref="Preferences"/>).</summary>
+    private enum LogView
+    {
+        /// <summary>Just the newest few entries (<see cref="BriefLogEntries"/>), a line each.</summary>
+        Brief,
+
+        /// <summary>No log, only the Log button (with a count of entries missed).</summary>
+        Hidden,
+
+        /// <summary>Everything kept (<see cref="DebugLogCapacity"/>), as tall as the screen allows.</summary>
+        Full,
+    }
+
+    /// <summary>Entries shown in <see cref="LogView.Brief"/>.</summary>
+    private const int BriefLogEntries = 3;
+
+    private const string LogViewSetting = "log";
+
+    private static LogView _logView = LogView.Brief;
+
+    /// <summary>Entries logged while the log was hidden, shown on the Log button.</summary>
+    private static int _unseenLogs;
+
+    /// <summary>Where the Log button was drawn last frame, for taps.</summary>
+    private static Rectangle _logButtonBounds;
+
     /// <summary>True while <see cref="RunHeadless"/> is driving the simulation — event logs go to stdout instead of the on-screen console.</summary>
     private static bool _isHeadless;
 
@@ -99,6 +141,52 @@ public static class Game
         _debugLogs.Add(message);
         while (_debugLogs.Count > DebugLogCapacity)
             _debugLogs.RemoveAt(0);
+        if (_logView == LogView.Hidden)
+            _unseenLogs = Math.Min(_unseenLogs + 1, 99);
+    }
+
+    /// <summary>A tap on the Log button steps it Brief → Hidden → Full → Brief, and remembers the choice. Returns true if the tap was on it.</summary>
+    private static bool TapLogButton(Vector2 point)
+    {
+        if (!Raylib.CheckCollisionPointRec(point, _logButtonBounds))
+            return false;
+        _logView = _logView switch
+        {
+            LogView.Brief => LogView.Hidden,
+            LogView.Hidden => LogView.Full,
+            _ => LogView.Brief,
+        };
+        _unseenLogs = 0;
+        Preferences.Set(LogViewSetting, _logView);
+        return true;
+    }
+
+    /// <summary>
+    /// Advances the garden by <paramref name="realDeltaTime"/> × the chosen
+    /// speed, in fixed <see cref="SimulationStep"/>s — committing each
+    /// step's births and deaths as the headless runs do — until it's caught
+    /// up or its real-time budget is spent (<see cref="SimulationBudgetSeconds"/>,
+    /// <see cref="FastSimulationBudgetSeconds"/>); a
+    /// device that can't keep up drops the rest, running slower instead.
+    /// </summary>
+    private static void StepSimulation(World world, float realDeltaTime)
+    {
+        _simulationBacklog += realDeltaTime * _timeScale;
+        double budget = _timeScale >= 10f ? FastSimulationBudgetSeconds : SimulationBudgetSeconds;
+        long start = System.Diagnostics.Stopwatch.GetTimestamp();
+        float simulated = 0f;
+        while (_simulationBacklog >= SimulationStep)
+        {
+            world.Update(SimulationStep);
+            world.CommitPendingChanges();
+            _simulationBacklog -= SimulationStep;
+            simulated += SimulationStep;
+            if (System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalSeconds > budget)
+                break;
+        }
+        _simulationBacklog = MathF.Min(_simulationBacklog, SimulationStep);
+        if (realDeltaTime > 0f)
+            _achievedSpeed += (simulated / realDeltaTime - _achievedSpeed) * 0.05f;
     }
 
     public static void Run(GamePlatform platform)
@@ -137,10 +225,16 @@ public static class Game
             FovY = 45f,
             Projection = CameraProjection.Perspective,
         };
-        var world = new World(new Terrain(size: 100f), new Random(), InitialKinCount);
+        // Save/Load: the garden carries on where it was left (see SaveSystem).
+        string savePath = SaveSystem.DefaultPath;
+        Preferences.Load(Preferences.DefaultPath);
+        _logView = Preferences.Get(LogViewSetting, LogView.Brief);
+        World world = LoadOrCreateWorld(savePath);
         var input = new WorldTapInput();
         var touchCamera = new TouchCameraController();
         var followCamera = new FollowCamera(camera);
+        Camera3D overview = camera;
+        float autosaveTimer = AutosaveInterval;
 
         // --- Main loop -------------------------------------------------------
         while (!Raylib.WindowShouldClose())
@@ -151,7 +245,9 @@ public static class Game
             //    to pan, two fingers twist to rotate around the current
             //    Target and pinch to zoom. Runs before the tap input below
             //    so the rest of the frame sees an already-settled camera.
-            touchCamera.Update(ref camera, world.Terrain.Size / 2f);
+            // (The History screen takes over touches and drags while it's open.)
+            if (!_showChronicle)
+                touchCamera.Update(ref camera, world.Terrain.Size / 2f);
 
             // Responsive UI: the Debug Time Scale buttons' geometry (and the
             // "Nx" label panel between them) is recomputed from the CURRENT
@@ -169,7 +265,11 @@ public static class Game
             var speedLabelBounds = new Rectangle(speedButtonMargin + speedButtonWidth, speedButtonMargin, speedButtonGap, speedButtonHeight);
             var mapButton = new UiButton(new Rectangle(speedButtonMargin * 2 + speedButtonWidth * 2 + speedButtonGap, speedButtonMargin,
                 (int)(190 * uiScale), speedButtonHeight));
-            UiButton? followButton = FollowButton(world);
+            var historyButton = new UiButton(new Rectangle(mapButton.Bounds.X + mapButton.Bounds.Width + speedButtonMargin, speedButtonMargin,
+                (int)(290 * uiScale), speedButtonHeight));
+            UiButton? followButton = _showChronicle ? null : FollowButton(world);
+            UiButton? newGardenButton = _showChronicle ? NewGardenButton(historyButton, speedButtonMargin) : null;
+            _newGardenConfirm = MathF.Max(0f, _newGardenConfirm - Raylib.GetFrameTime());
 
             // 1) Input: the player has no lever on the world. The only tap
             //    left is inspecting a single Bramblekin (see WorldTapInput,
@@ -179,10 +279,35 @@ public static class Game
             //    ground tap.
             bool mousePressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
             Vector2 mousePosition = Raylib.GetMousePosition();
-            if (mousePressed && speedDownButton.Contains(mousePosition))
+            if (mousePressed && TapBanner(mousePosition, followCamera))
+            {
+                // Flew to the banner's big moment.
+            }
+            else if (mousePressed && speedDownButton.Contains(mousePosition))
                 DecreaseTimeScale();
             else if (mousePressed && speedUpButton.Contains(mousePosition))
                 IncreaseTimeScale();
+            else if (mousePressed && historyButton.Contains(mousePosition))
+                ToggleChronicle();
+            else if (mousePressed && newGardenButton is not null && newGardenButton.Contains(mousePosition))
+            {
+                if (ConfirmNewGarden())
+                {
+                    world = StartNewGarden(savePath);
+                    ClearBanners();
+                    camera = overview;
+                    followCamera = new FollowCamera(overview);
+                    autosaveTimer = AutosaveInterval;
+                }
+            }
+            else if (_showChronicle)
+            {
+                // The History screen scrolls instead (see DrawChronicle).
+            }
+            else if (mousePressed && TapLogButton(mousePosition))
+            {
+                // Showed more, less or none of the log.
+            }
             else if (mousePressed && mapButton.Contains(mousePosition))
                 followCamera.ShowWholeMap();
             else if (mousePressed && followButton is not null && followButton.Contains(mousePosition))
@@ -191,12 +316,9 @@ public static class Game
                 input.Update(camera, world);
             followCamera.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture);
 
-            // 2) Simulation: TimeScale runs World.Update() several times per
-            //    rendered frame (see _timeScale's own doc comment) rather
-            //    than scaling deltaTime itself.
-            int simulationSteps = Math.Max(1, (int)MathF.Round(_timeScale));
-            for (int step = 0; step < simulationSteps; step++)
-                world.Update(rawDeltaTime);
+            // 2) Simulation, in fixed steps (see StepSimulation).
+            StepSimulation(world, rawDeltaTime);
+            UpdateBanners(world, Raylib.GetFrameTime());
 
             // 3) Rendering.
             Raylib.BeginDrawing();
@@ -207,6 +329,7 @@ public static class Game
             Raylib.EndMode3D();
 
             // 2D overlay (UI) is drawn after EndMode3D so it sits on top.
+            DrawClanLabels(camera, world);
             DrawStatusBars(camera, world);
             DrawNameTag(camera, world);
             DrawFloatingTexts(camera, world);
@@ -214,10 +337,17 @@ public static class Game
             DrawSpeedLabel(speedLabelBounds, uiScale);
             speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
             mapButton.Draw("Map", highlighted: false);
-            DrawKinPanel(world);
+            historyButton.Draw("History", highlighted: _showChronicle);
+            newGardenButton?.Draw(_newGardenConfirm > 0f ? "Sure?" : "New", highlighted: _newGardenConfirm > 0f);
+            if (!_showChronicle)
+                DrawKinPanel(world); // The History screen covers it (its header names the selected clan).
             followButton?.Draw(followCamera.IsFollowing ? "Following" : "Follow", highlighted: followCamera.IsFollowing);
             int hudTop = DrawHud(world);
-            DrawDebugConsole(top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
+            DrawBanner(hudTop);
+            if (_showChronicle)
+                DrawChronicle(world, top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
+            else
+                DrawDebugConsole(top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
 
             Raylib.EndDrawing();
 
@@ -226,8 +356,17 @@ public static class Game
             //    entity list ever changes size while something is iterating
             //    it (an arrival mid-Colony-update, a kill mid-pounce, etc).
             world.CommitPendingChanges();
+
+            // 5) Autosave, between frames (see World.ToSave).
+            autosaveTimer -= Raylib.GetFrameTime();
+            if (autosaveTimer <= 0f)
+            {
+                autosaveTimer = AutosaveInterval;
+                SaveSystem.Save(world, savePath);
+            }
         }
 
+        SaveSystem.Save(world, savePath);
         Raylib.CloseWindow();
     }
 
@@ -240,18 +379,34 @@ public static class Game
     /// display, and for tuning — pass a <paramref name="seed"/> to replay
     /// the exact same run.
     /// </summary>
-    public static void RunHeadless(float simulatedSeconds, int? seed)
+    public static void RunHeadless(float simulatedSeconds, int? seed, string? loadPath = null, string? savePath = null)
     {
         _isHeadless = true;
         const float step = 1f / 60f;
         const float reportInterval = 30f;
 
-        var world = new World(new Terrain(size: 100f), seed is { } s ? new Random(s) : new Random(), InitialKinCount);
+        var rng = seed is { } s ? new Random(s) : new Random();
+        World world;
+        if (loadPath is null)
+        {
+            world = new World(new Terrain(size: 100f), rng, InitialKinCount);
+        }
+        else if (SaveSystem.TryLoad(loadPath, rng) is { } loaded)
+        {
+            world = loaded;
+            Console.WriteLine($"Loaded {loadPath}: Year {world.Year}, {world.ElapsedSeconds:0}s in");
+        }
+        else
+        {
+            Console.WriteLine($"Couldn't load {loadPath}");
+            return;
+        }
         Console.WriteLine($"Garden Guardians headless run: {simulatedSeconds:0}s simulated, seed {(seed?.ToString() ?? "random")}");
         PrintReport(world);
 
+        float endTime = world.ElapsedSeconds + simulatedSeconds;
         float reportTimer = 0f;
-        while (world.ElapsedSeconds < simulatedSeconds)
+        while (world.ElapsedSeconds < endTime)
         {
             world.Update(step);
             world.CommitPendingChanges();
@@ -275,12 +430,62 @@ public static class Game
             $"{world.StoreMeals} meals eaten from stores, {world.StoreRaids} store raids; " +
             $"{world.VillagesFounded} villages founded, {world.Buddings} daughter groups budded off.");
         Console.WriteLine(
+            $"Neighbours: {world.AlliancesMade} alliances made, {world.WarsDeclared} wars declared, {world.PeacesMade} peaces made; " +
+            $"{world.AidSent} aid shipments ({world.FoodAided} food delivered, {world.ErrandsLost} sacks lost on the way), " +
+            $"{world.HelpersHired} helpers hired ({world.LabourFoodPaid} food paid), {world.WarRaids} pieces carried off in war raids; " +
+            $"at the end {world.CurrentAlliances} alliances and {world.CurrentWars} wars.");
+        Console.WriteLine(
+            $"Weather: {world.BountifulSeasons} bountiful seasons, {world.Droughts} droughts, {world.HarshWinters} harsh winters, {world.Storms} storms, " +
+            $"{world.Floods} floods ({world.HomesFlooded} homes flooded, {world.FoodWashedAway} food washed away).");
+        Console.WriteLine(
+            $"Ants: {(world.Anthill is { } hill ? $"a hill with {hill.Stock} food" : "none yet")}; {world.AntThefts} food stolen from stores, {world.AntsKilled} ants swatted. " +
+            $"The oak dropped {world.AcornsFallen} acorns. Ways found round the pond: {WaterMap.RoutesFound}.");
+        Console.WriteLine(
+            $"Crafts: {world.CraftsDiscovered} worked out, {world.CraftsTaught} taught; at the end {world.Groups.Count(g => World.Knows(g, Craft.Granary))} clans have granaries, " +
+            $"{world.Groups.Count(g => World.Knows(g, Craft.Spears))} spears, {world.Groups.Count(g => World.Knows(g, Craft.Palisade))} palisades, " +
+            $"{world.Groups.Count(g => World.Knows(g, Craft.Grain))} grain, {world.Groups.Count(g => World.Knows(g, Craft.Mushrooms))} mushrooms, " +
+            $"{world.Groups.Count(g => World.Knows(g, Craft.Cress))} cress, {world.Groups.Count(g => World.Knows(g, Craft.Fishing))} fishing, " +
+            $"{world.Groups.Count(g => World.Knows(g, Craft.Stonework))} stonework. " +
+            $"Sickness: {world.SicknessCases} fell ill, {world.DeathsBySickness} died of it.");
+        Console.WriteLine(
+            $"Culture: {world.Groups.Count(g => g.Culture.Leading == Tradition.Warlike)} warlike, {world.Groups.Count(g => g.Culture.Leading == Tradition.Hunting)} hunting and " +
+            $"{world.Groups.Count(g => g.Culture.Leading == Tradition.Farming)} farming clans of {world.Groups.Count} at the end.");
+        Console.WriteLine(
+            $"War outcomes: {world.Conquests} conquests, {world.TributesAgreed} tribute peaces ({world.TributeDelivered} food delivered, {world.TributesMissed} payments missed).");
+        Console.WriteLine(
+            $"Farming: worked out {world.FarmingDiscoveries} times, taught {world.FarmingTaught} times; {world.BushesPlanted} crops planted, " +
+            $"{world.FruitHarvested} pieces picked; at the end {world.Groups.Count(World.KnowsFarming)} groups farm {world.Crops.Count(b => b.GroupId is not null)} crops " +
+            $"({string.Join(", ", Enum.GetValues<CropKind>().Select(k => $"{world.Crops.Count(c => c.Kind == k)} {k.ToString().ToLowerInvariant()}"))}; " +
+            $"{world.Crops.Count(b => b.GroupId is null)} wild, {world.Crops.Count(c => c.IsWatered)} watered).");
+        Console.WriteLine(
+            $"Food eaten or stored, by kind: {string.Join(", ", Enum.GetValues<FoodShardKind>().Select(k => $"{k.ToString().ToLowerInvariant()} {world.FoodTaken(k)}"))}; " +
+            $"{world.FishCaught} fish caught.");
+        Console.WriteLine(
+            $"Water: {world.DrinksAtPond} drinks at the pond (a {(world.DrinksAtPond > 0 ? world.WaterTrekMeters / world.DrinksAtPond : 0):0}m walk from home on average), " +
+            $"{world.CisternDrinks} from cisterns ({world.CupfulsCarried} cupfuls carried home); {world.DeathsByThirst} died of thirst; " +
+            $"at the end {world.Groups.Count(g => World.Knows(g, Craft.Cisterns))} clans have cisterns, and the average home is " +
+            $"{(world.Shelters.Count(s => s.IsBuilt) > 0 ? world.Shelters.Where(s => s.IsBuilt).Average(s => WaterMap.UsualDistanceToWater(s.Position.X, s.Position.Z)) : 0):0}m from water.");
+        Console.WriteLine("  Clans by distance to water: " + string.Join(", ", world.Groups
+            .Where(g => g.Home is not null)
+            .Select(g => (Group: g, Water: WaterMap.UsualDistanceToWater(g.Home!.Position.X, g.Home.Position.Z)))
+            .OrderBy(c => c.Water)
+            .Select(c => $"{c.Group.Members.Count} kin at {c.Water:0}m")));
+        Console.WriteLine(
+            $"Stones and branches: {world.StonesLaid} stones laid ({world.FootingsLaid} footings finished), {world.StakesSet} branches staked " +
+            $"({world.PalisadesRaised} palisades raised); at the end {world.Shelters.Count(s => s.HasFooting)} homes on footings, " +
+            $"{world.Shelters.Count(s => s.HasPalisade)} palisaded; {world.Materials.Count(m => m is { IsActive: true, Kind: MaterialKind.Stone })} stones and " +
+            $"{world.Materials.Count(m => m is { IsActive: true, Kind: MaterialKind.Branch })} branches lying about.");
+        Console.WriteLine(
             $"Building: a Tent takes {world.AverageTentBuildSeconds:0}s on average, a House upgrade {world.AverageHouseUpgradeSeconds:0}s; " +
             $"{world.StagesOlderThan(600f)} of {world.Shelters.Count(s => !s.IsBuilt || s.IsUpgrading)} construction stages under way have stalled over 10 min.");
         PrintSurvivalTrend(world);
         PrintLeadership(world);
         PrintRebellion(world);
         PrintLineage(world);
+        PrintChronicle(world);
+
+        if (savePath is not null)
+            Console.WriteLine(SaveSystem.Save(world, savePath) ? $"Saved to {savePath}" : $"Couldn't save to {savePath}");
     }
 
     /// <summary>Headless summary: how often followers rebelled, and how the Independents who left are faring.</summary>
@@ -323,7 +528,8 @@ public static class Game
             Console.WriteLine(
                 $"  {status,-12} deaths {rate}   meat hunted {meat}   ({world.DeathsIn(status)} deaths over {hours:0.0} kin-hours: " +
                 $"{world.DeathsIn(status, DeathCause.Starvation)} starved, {world.DeathsIn(status, DeathCause.Predator)} to predators, " +
-                $"{world.DeathsIn(status, DeathCause.Kin)} to kin, {world.DeathsIn(status, DeathCause.OldAge)} of old age)");
+                $"{world.DeathsIn(status, DeathCause.Kin)} to kin, {world.DeathsIn(status, DeathCause.OldAge)} of old age, {world.DeathsIn(status, DeathCause.Sickness)} of sickness, " +
+                $"{world.DeathsIn(status, DeathCause.Thirst)} of thirst)");
         }
     }
 
@@ -339,9 +545,9 @@ public static class Game
         int houses = world.Shelters.Count(s => s.Tier == ShelterTier.House);
         int stored = world.Shelters.Sum(s => s.StoredFood);
         Console.WriteLine(
-            $"[t={world.ElapsedSeconds,6:0}s Y{world.Year} {world.CurrentSeason,-6}] kin {living.Count,3} (solitary {solitary}, groups {world.Groups.Count}, largest {largestGroup}, villages {villages}) " +
+            $"[t={world.ElapsedSeconds,6:0}s Y{world.Year} {world.CurrentSeason,-6}] kin {living.Count,3} (solitary {solitary}, groups {world.Groups.Count}, largest {largestGroup}, villages {villages}, crops {world.Crops.Count}, allies {world.CurrentAlliances}, wars {world.CurrentWars}) " +
             $"avg hunger {averageHunger,5:0.0}  food on map {world.LooseFoodCount,3}, stored {stored,3}  tents {tents} houses {houses}  " +
-            $"arrived {world.Arrivals} born {world.Births}  died: starved {world.DeathsByStarvation}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}, old age {world.DeathsByOldAge}");
+            $"arrived {world.Arrivals} born {world.Births}  died: starved {world.DeathsByStarvation}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}, old age {world.DeathsByOldAge}, sickness {world.DeathsBySickness}, thirst {world.DeathsByThirst}");
     }
 
     /// <summary>Headless summary: births, how far the generations have come, and whether the traits of the living have drifted from the 0.5 average a newcomer brings.</summary>
@@ -360,7 +566,9 @@ public static class Game
         {
             Console.WriteLine(
                 $"  Traits of the living (a newcomer averages 0.50): aggression {living.Average(b => b.Personality.Aggression):0.00}, " +
-                $"sociability {living.Average(b => b.Personality.Sociability):0.00}, intelligence {living.Average(b => b.Personality.Intelligence):0.00}");
+                $"sociability {living.Average(b => b.Personality.Sociability):0.00}, intelligence {living.Average(b => b.Personality.Intelligence):0.00}, " +
+                $"rebellion {living.Average(b => b.Personality.Rebelliousness):0.00}, persuasion {living.Average(b => b.Personality.Persuasiveness):0.00}, " +
+                $"courage {living.Average(b => b.Personality.Courage):0.00}, diligence {living.Average(b => b.Personality.Diligence):0.00}");
         }
     }
 
@@ -370,8 +578,13 @@ public static class Game
         null => "Home: none",
         { IsBuilt: false } site => $"Home: building a Tent ({site.TwigsDelivered}/{site.TwigsNeeded} twigs)",
         { IsUpgrading: true } home => $"Home: Tent -> House ({home.TwigsDelivered}/{home.TwigsNeeded}), store {home.StoredFood}/{home.StoreCapacity}",
-        { } home => $"Home: {home.Tier}{(home.GroupId is null ? "" : " (group)")}, store {home.StoredFood}/{home.StoreCapacity}",
+        { } home => $"Home: {home.Tier}{(home.GroupId is null ? "" : " (group)")}{HomeWorks(home)}, store {home.StoredFood}/{home.StoreCapacity}",
     };
+
+    /// <summary>", stone footing, palisade 2/3" — what's been built onto a home beyond its walls.</summary>
+    private static string HomeWorks(Shelter home) =>
+        (home.HasFooting ? ", stone footing" : home.StonesLaid > 0 ? $", footing {home.StonesLaid}/{Shelter.FootingStoneCost}" : "") +
+        (home.HasPalisade ? ", palisade" : home.StakesSet > 0 ? $", palisade {home.StakesSet}/{Shelter.PalisadeStakeCost}" : "");
 
     /// <summary>Debug Time Scale: steps down to the previous speed in <see cref="TimeScaleSteps"/>, clamped at 1x.</summary>
     private static void DecreaseTimeScale()
@@ -410,6 +623,7 @@ public static class Game
     private static readonly Color PanelFill = new(255, 250, 235, 220);
     private static readonly Color PanelInk = new(110, 70, 35, 255);
     private static readonly Color HungerBarColor = new(235, 150, 40, 255);
+    private static readonly Color ThirstBarColor = new(60, 130, 220, 255);
 
     /// <summary>
     /// Health and hunger bars for every living Bramblekin and the Wolf
@@ -429,14 +643,50 @@ public static class Game
                 continue;
 
             Vector3 barAnchor = b.Position + new Vector3(0, Bramblekin.BodyHeight + 0.15f, 0);
+            float width = BarWidth(camera, barAnchor, Bramblekin.BodyRadius * 2f);
             if (b.Health < Bramblekin.MaxHealth)
-                DrawBar(camera, barAnchor, 0, (float)b.Health / Bramblekin.MaxHealth, Color.Green);
+                DrawBar(camera, barAnchor, 0f, width, (float)b.Health / Bramblekin.MaxHealth, Color.Green);
+            float below = width * 0.21f;
             if (b.IsHungry)
-                DrawBar(camera, barAnchor, 7, 1f - b.Hunger / Bramblekin.MaxHunger, HungerBarColor);
+            {
+                DrawBar(camera, barAnchor, below, width, 1f - b.Hunger / Bramblekin.MaxHunger, HungerBarColor);
+                below += width * 0.21f;
+            }
+            if (b.IsThirsty)
+                DrawBar(camera, barAnchor, below, width, 1f - b.Thirst / Bramblekin.MaxThirst, ThirstBarColor);
         }
 
         if (world.Spider is { IsDead: false } spider && spider.Health < WolfSpider.MaxHealth)
-            DrawBar(camera, spider.Position + new Vector3(0, WolfSpider.BodyRadius * 2f + 0.3f, 0), 0, (float)spider.Health / WolfSpider.MaxHealth, Color.Green);
+        {
+            Vector3 anchor = spider.Position + new Vector3(0, WolfSpider.BodyRadius * 2f + 0.3f, 0);
+            DrawBar(camera, anchor, 0f, BarWidth(camera, anchor, WolfSpider.BodyRadius * 2f), (float)spider.Health / WolfSpider.MaxHealth, Color.Green);
+        }
+    }
+
+    /// <summary>A status bar is never narrower than this (px, at the reference screen width)…</summary>
+    private const float MinBarWidth = 34f;
+
+    /// <summary>…nor wider than this…</summary>
+    private const float MaxBarWidth = 150f;
+
+    /// <summary>…and in between it's this many times as wide as the creature looks on screen — so it grows as the camera zooms in.</summary>
+    private const float BarWidthPerBody = 2.4f;
+
+    /// <summary>
+    /// How wide a status bar over something <paramref name="bodyWidth"/>
+    /// meters across at <paramref name="anchor"/> should be: in step with
+    /// how big it looks from where the camera is (so zooming in makes the
+    /// bars easy to read), between <see cref="MinBarWidth"/> and
+    /// <see cref="MaxBarWidth"/> scaled to the screen.
+    /// </summary>
+    private static float BarWidth(Camera3D camera, Vector3 anchor, float bodyWidth)
+    {
+        Vector3 forward = Vector3.Normalize(camera.Target - camera.Position);
+        Vector3 right = Vector3.Cross(forward, camera.Up);
+        right = right.LengthSquared() > 1e-6f ? Vector3.Normalize(right) : Vector3.UnitX;
+        float onScreen = Vector2.Distance(Raylib.GetWorldToScreen(anchor, camera), Raylib.GetWorldToScreen(anchor + right * bodyWidth, camera));
+        float scale = MathF.Max(1f, UiScale);
+        return Math.Clamp(onScreen * BarWidthPerBody, MinBarWidth * scale, MaxBarWidth * scale);
     }
 
     /// <summary>Basic bounds check: true unless <paramref name="worldPosition"/> projects to a screen point entirely outside the camera's current viewport — used to skip status-bar/UI draw calls for off-screen entities.</summary>
@@ -448,16 +698,16 @@ public static class Game
                screen.Y >= -margin && screen.Y <= Raylib.GetScreenHeight() + margin;
     }
 
-    /// <summary>A small red-background bar filled to <paramref name="fraction"/> at <paramref name="worldPosition"/>'s projected screen point, <paramref name="yOffset"/> pixels below it.</summary>
-    private static void DrawBar(Camera3D camera, Vector3 worldPosition, int yOffset, float fraction, Color fillColor)
+    /// <summary>A red-background bar <paramref name="width"/> pixels wide (and a seventh as tall) filled to <paramref name="fraction"/> at <paramref name="worldPosition"/>'s projected screen point, <paramref name="yOffset"/> pixels below it.</summary>
+    private static void DrawBar(Camera3D camera, Vector3 worldPosition, float yOffset, float width, float fraction, Color fillColor)
     {
         Vector2 screen = Raylib.GetWorldToScreen(worldPosition, camera);
-        const int width = 34, height = 5;
+        float height = MathF.Max(5f, width / 7f);
         var back = new Rectangle(screen.X - width / 2f, screen.Y - height / 2f + yOffset, width, height);
         Raylib.DrawRectangleRec(back, Color.Red);
         var fill = back with { Width = back.Width * Math.Clamp(fraction, 0f, 1f) };
         Raylib.DrawRectangleRec(fill, fillColor);
-        Raylib.DrawRectangleLinesEx(back, 1f, Color.Black);
+        Raylib.DrawRectangleLinesEx(back, MathF.Max(1f, height / 6f), Color.Black);
     }
 
     /// <summary>
@@ -484,7 +734,7 @@ public static class Game
 
     /// <summary>
     /// Kin Inspector: the selected Bramblekin's (tap one — see
-    /// <see cref="World.TrySelectKinAt"/>) vitals, Personality, group role
+    /// <see cref="World.TrySelectAt"/>) vitals, Personality, group role
     /// and relationships, top right. Replaces the old per-faction ledger;
     /// with nothing selected it's just a one-line hint.
     /// </summary>
@@ -493,9 +743,14 @@ public static class Game
         var (fontSize, lineHeight, topPadding, margin, inset) = KinPanelMetrics();
 
         Bramblekin? kin = world.SelectedKin;
+        if ((kin is null || kin.IsDead) && world.SelectedClan is { } clan)
+        {
+            DrawClanCard(world, clan);
+            return;
+        }
         if (kin is null || kin.IsDead)
         {
-            const string hint = "Tap a Bramblekin to follow it";
+            const string hint = "Tap a Bramblekin or a home";
             int hintWidth = Raylib.MeasureText(hint, fontSize);
             int hintX = Raylib.GetScreenWidth() - hintWidth - margin;
             Raylib.DrawRectangle(hintX - inset, topPadding, hintWidth + inset * 2, fontSize + inset * 2, PanelFill);
@@ -508,15 +763,70 @@ public static class Game
         Color ink = group is null ? PanelInk : BlendToward(PanelInk, group.Color, 0.35f);
         List<(string Text, Color Color)> lines = KinPanelLines(world, kin, ink);
 
-        // Sized to its widest line, so no stat ever runs off the panel.
-        int width = lines.Max(line => Raylib.MeasureText(line.Text, fontSize));
+        // Sized to its widest line — but never over the buttons along the top (a longer line is cut short).
+        int width = Math.Min(lines.Max(line => Raylib.MeasureText(line.Text, fontSize)), KinPanelMaxWidth(margin, inset));
         int height = KinPanelHeight(lines.Count);
         int x = Raylib.GetScreenWidth() - width - margin;
         Raylib.DrawRectangle(x - inset, topPadding, width + inset * 2, height, fill);
         Raylib.DrawRectangleLines(x - inset, topPadding, width + inset * 2, height, ink);
         for (int i = 0; i < lines.Count; i++)
-            Raylib.DrawText(lines[i].Text, x, topPadding + inset + lineHeight * i, fontSize, lines[i].Color);
+            Raylib.DrawText(Fit(lines[i].Text, fontSize, width), x, topPadding + inset + lineHeight * i, fontSize, lines[i].Color);
     }
+
+    /// <summary>The clan card, in the Kin Inspector's place, for a clan picked by tapping one of its homes.</summary>
+    private static void DrawClanCard(World world, KinGroup clan)
+    {
+        var (fontSize, lineHeight, topPadding, margin, inset) = KinPanelMetrics();
+        Color fill = BlendToward(PanelFill, clan.Color, 0.35f);
+        Color ink = BlendToward(PanelInk, clan.Color, 0.35f);
+        var lines = new List<string> { ClanHeading(clan) };
+        lines.AddRange(ClanLines(world, clan));
+        lines.Add("History shows its story");
+
+        int width = Math.Min(lines.Max(line => Raylib.MeasureText(line, fontSize)), KinPanelMaxWidth(margin, inset));
+        int height = KinPanelHeight(lines.Count);
+        int x = Raylib.GetScreenWidth() - width - margin;
+        Raylib.DrawRectangle(x - inset, topPadding, width + inset * 2, height, fill);
+        Raylib.DrawRectangleLines(x - inset, topPadding, width + inset * 2, height, ink);
+        for (int i = 0; i < lines.Count; i++)
+            Raylib.DrawText(Fit(lines[i], fontSize, width), x, topPadding + inset + lineHeight * i, fontSize, i == lines.Count - 1 ? ink with { A = 160 } : ink);
+    }
+
+    /// <summary>
+    /// Every village's clan name (and head count) floating over its main
+    /// home, on a tag edged in the clan's colour — so the clans named in
+    /// the chronicle can be found on the map.
+    /// </summary>
+    private static void DrawClanLabels(Camera3D camera, World world)
+    {
+        int fontSize = ScaledFontSize(0.42f);
+        KinGroup? highlighted = world.SelectedKin is { IsDead: false } kin ? world.GroupOf(kin) : world.SelectedClan;
+        foreach (KinGroup group in world.Groups)
+        {
+            if (group.Name is null || group.Home is not { IsCollapsed: false } home)
+                continue;
+            Vector3 anchor = home.Position + new Vector3(0f, 2.4f, 0f);
+            if (!IsPointOnScreen(camera, anchor))
+                continue;
+            Vector2 screen = Raylib.GetWorldToScreen(anchor, camera);
+            string text = $"{group.Name} ({group.Members.Count})";
+            int width = Raylib.MeasureText(text, fontSize);
+            int x = (int)(screen.X - width / 2f), y = (int)(screen.Y - fontSize);
+            byte alpha = group == highlighted ? (byte)240 : (byte)190;
+            Raylib.DrawRectangle(x - 6, y - 3, width + 12, fontSize + 6, PanelFill with { A = alpha });
+            Raylib.DrawRectangle(x - 6, y + fontSize + 1, width + 12, 3, group.Color);
+            if (group == highlighted)
+                Raylib.DrawRectangleLines(x - 7, y - 4, width + 14, fontSize + 9, group.Color);
+            Raylib.DrawText(text, x, y, fontSize, PanelInk);
+        }
+    }
+
+    /// <summary>The right edge (at the reference screen width) of the buttons along the top — speed, Map and History.</summary>
+    private const float TopButtonsRight = 1020f;
+
+    /// <summary>The widest the Kin Inspector (or clan card) may be without covering the buttons along the top.</summary>
+    private static int KinPanelMaxWidth(int margin, int inset) =>
+        Math.Max(200, Raylib.GetScreenWidth() - margin - inset * 2 - (int)(TopButtonsRight * UiScale) - 12);
 
     /// <summary>The Kin Inspector's font size, line spacing and placement (top-right corner).</summary>
     private static (int FontSize, int LineHeight, int TopPadding, int Margin, int Inset) KinPanelMetrics()
@@ -566,20 +876,47 @@ public static class Game
             (kin.ParentNames is { } parents ? $"Child of {parents.Mother} & {parents.Father}" : "Wandered in from the edge", ink),
             (kin.DescribeFamily(), kin.Partner is not null ? new Color(190, 70, 120, 255) : ink),
             ($"State: {kin.State}   Health: {kin.Health} / {Bramblekin.MaxHealth}", ink),
-            ($"Hunger: {(int)kin.Hunger}%{(kin.IsStarving ? " STARVING" : kin.IsHungry ? " (hungry)" : "")}{(kin.HasFood ? "  +food" : "")}",
-                kin.IsStarving ? new Color(170, 60, 40, 255) : ink),
-            ($"Aggression:   {kin.Personality.Aggression:0.00}", new Color(185, 60, 45, 255)),
-            ($"Sociability:  {kin.Personality.Sociability:0.00}", new Color(60, 130, 70, 255)),
-            ($"Intelligence: {kin.Personality.Intelligence:0.00} ({kin.DetectionRadius:0}m)", new Color(60, 100, 170, 255)),
-            (group is null ? "Group: none" : $"Group: {group.Name ?? group.ShortId}, {group.Members.Count} members", ink),
+            ($"Hunger: {(int)kin.Hunger}%{(kin.IsStarving ? " STARVING" : kin.IsHungry ? " (hungry)" : "")}{(kin.HasFood ? "  +food" : "")}{(kin.IsSick ? "  SICK" : "")}",
+                kin.IsStarving || kin.IsSick ? new Color(170, 60, 40, 255) : ink),
+            ($"Thirst: {(int)kin.Thirst}%{(kin.Thirst >= Bramblekin.MaxThirst ? " PARCHED" : kin.IsThirsty ? " (thirsty)" : "")}   " +
+             $"water {WaterMap.DistanceToWater((kin.Home?.Position ?? kin.Position).X, (kin.Home?.Position ?? kin.Position).Z):0}m from {(kin.Home is null ? "here" : "home")}",
+                kin.Thirst >= Bramblekin.MaxThirst ? new Color(170, 60, 40, 255) : kin.IsThirsty ? ThirstBarColor : ink),
+            ($"Nature: {kin.Personality.Describe()}", ink),
+            ($"Aggression {kin.Personality.Aggression:0.00}   Sociability {kin.Personality.Sociability:0.00}", new Color(185, 60, 45, 255)),
+            ($"Intelligence {kin.Personality.Intelligence:0.00} ({kin.DetectionRadius:0}m)   Courage {kin.Personality.Courage:0.00}", new Color(60, 100, 170, 255)),
+            ($"Rebellion {kin.Personality.Rebelliousness:0.00}  Persuasion {kin.Personality.Persuasiveness:0.00}  Diligence {kin.Personality.Diligence:0.00}", new Color(60, 130, 70, 255)),
+            (group is null ? "Group: none" : $"Group: {group.Name ?? group.ShortId}, {group.Members.Count} members" +
+                (DescribeClan(world, group) is { } about ? $" ({about})" : ""), ink),
             (DescribeHome(kin), ink),
-            (group is null ? "Job: none" : $"Job: {kin.Job} (group goal: {group.Goal}{(group.Sharing == SharingRule.LeaderFirst ? ", leader eats first" : "")})", ink),
+            (kin.Errand is { } errand ? DescribeErrand(world, errand)
+                : group is null ? "Job: none" : $"Job: {kin.Job} (group goal: {group.Goal}{(group.Sharing == SharingRule.LeaderFirst ? ", leader eats first" : "")})", ink),
             (group is null || group.Leader == kin
                 ? $"Reputation: {kin.Reputation:0.0}{(kin.Status == SurvivalStatus.Independent ? "  (independent)" : "")}"
                 : $"Loyalty: {kin.Loyalty:0.00}{(kin.Loyalty < Bramblekin.ObedienceThreshold ? " (disobedient)" : "")}   Reputation: {kin.Reputation:0.0}",
                 kin.GroupId is not null && group?.Leader != kin && kin.Loyalty < Bramblekin.ObedienceThreshold ? new Color(170, 60, 40, 255) : ink),
             ($"Known: {friends} friend, {enemies} enemy, {neutral} neutral", ink),
         };
+    }
+
+    /// <summary>"Errand: carrying 5 food in aid to the Mossbrook clan" for the Kin Inspector.</summary>
+    private static string DescribeErrand(World world, Errand errand)
+    {
+        string to = world.Groups.FirstOrDefault(g => g.Id == errand.To)?.Title ?? "its allies";
+        return errand switch
+        {
+            { Returning: true } => $"Errand: heading home with {errand.Load} food in pay",
+            { Kind: ErrandKind.Aid } => $"Errand: carrying {errand.Load} food in aid to {to}",
+            { Kind: ErrandKind.Tribute } => $"Errand: carrying {errand.Load} food in tribute to {to}",
+            _ => $"Errand: helping {to} build ({errand.TwigsOwed} twigs to go)",
+        };
+    }
+
+    /// <summary>"warlike; allied with 1" for the Kin Inspector — the clan's tradition and its neighbours — or null if there's nothing to say.</summary>
+    private static string? DescribeClan(World world, KinGroup group)
+    {
+        string?[] parts = { group.Culture.Label, world.DescribeRelations(group) };
+        string joined = string.Join("; ", parts.Where(p => p is not null));
+        return joined.Length > 0 ? joined : null;
     }
 
     /// <summary>The selected Bramblekin's name, floating above it (and its partner's, fainter, so a couple is easy to spot).</summary>
@@ -627,14 +964,15 @@ public static class Game
         // screen at any size (the font scales with UiScale).
         string[] lines =
         {
-            $"Year {world.Year} {world.CurrentSeason} (food x{world.FoodAbundance:0.0})   Speed {_timeScale}x   FPS {Raylib.GetFPS()}   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
+            $"Year {world.Year} {world.CurrentSeason}{(world.WeatherLabel is { } weather ? $" - {weather}" : "")} (food x{world.FoodAbundance:0.0})   Speed {_timeScale}x{(_achievedSpeed < _timeScale * 0.85f ? $" (running {_achievedSpeed:0}x)" : "")}   FPS {Raylib.GetFPS()}   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
             $"Homes: {world.Shelters.Count(s => s.IsBuilt && s.Tier == ShelterTier.Tent)} tents, {world.Shelters.Count(s => s.Tier == ShelterTier.House)} houses, " +
             $"{world.Shelters.Count(s => !s.IsBuilt)} being built   Food stored {world.Shelters.Sum(s => s.StoredFood)}   " +
-            $"Villages {world.Groups.Count(g => g.Annexes.Count > 0)} (budded {world.Buddings})",
-            $"Bramblekin {living}: {solitary} solitary, {world.Groups.Count} groups (largest {largestGroup})",
-            $"Foraging {Count(BramblekinState.Foraging) + Count(BramblekinState.Hunting)}   Eating {Count(BramblekinState.Eating)}   " +
+            $"Villages {world.Groups.Count(g => g.Annexes.Count > 0)} (budded {world.Buddings})   Crops {world.Crops.Count}",
+            $"Bramblekin {living}: {solitary} solitary, {world.Groups.Count} groups (largest {largestGroup}, {world.Groups.Count(World.KnowsFarming)} farming)   " +
+            $"Alliances {world.CurrentAlliances}   Wars {world.CurrentWars}",
+            $"Foraging {Count(BramblekinState.Foraging) + Count(BramblekinState.Hunting)}   Eating {Count(BramblekinState.Eating)}   Drinking {Count(BramblekinState.Drinking)}   " +
             $"Fleeing {Count(BramblekinState.Fleeing)}   Fighting {Count(BramblekinState.Fighting)}   Robbing {Count(BramblekinState.Attacking)}",
-            $"Arrived {world.Arrivals}   Died: starved {world.DeathsByStarvation}, old age {world.DeathsByOldAge}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}   Thefts {world.Thefts}",
+            $"Arrived {world.Arrivals}   Died: starved {world.DeathsByStarvation}, thirst {world.DeathsByThirst}, old age {world.DeathsByOldAge}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}, sickness {world.DeathsBySickness}   Sick {world.SickCount}",
             $"Born {world.Births} (gen {world.MaxGeneration})   Couples {world.LivingCouples}   Politics: {world.Departures} left, {world.Splinters} splits, {world.Coups} coups, {world.Exiles} exiles   Raids {world.StoreRaids}",
         };
 
@@ -660,13 +998,41 @@ public static class Game
     /// <see cref="AddEventLog"/>) as a small, semi-transparent panel on the
     /// left of the screen, between <paramref name="top"/> and
     /// <paramref name="bottom"/> (below the speed buttons, above the HUD) —
-    /// a running history of recent notable events for on-device debugging.
-    /// Newest entry at the bottom, oldest at top, matching the natural
-    /// reading order of a scrolling log.
+    /// a running history of recent notable events. Newest entry at the
+    /// bottom, oldest at top, matching the natural reading order of a
+    /// scrolling log. Under it sits the Log button: the player chooses to see
+    /// just the newest few entries, all of them, or none (see
+    /// <see cref="LogView"/>).
     /// </summary>
     private static void DrawDebugConsole(int top, int bottom)
     {
-        if (_debugLogs.Count == 0)
+        const int gap = 10;
+        const int x = 10;
+
+        // The Log button, bottom-left just above the HUD.
+        string label = _logView switch
+        {
+            LogView.Brief => "Log: brief",
+            LogView.Full => "Log: full",
+            _ => _unseenLogs > 0 ? $"Log: off (+{_unseenLogs})" : "Log: off",
+        };
+        int buttonFont = Math.Max(14, (int)(30 * UiScale));
+        int buttonPad = Math.Max(6, (int)(14 * UiScale));
+        int buttonWidth = Math.Max(Raylib.MeasureText("Log: brief", buttonFont), Raylib.MeasureText(label, buttonFont)) + buttonPad * 2;
+        int buttonHeight = buttonFont + buttonPad * 2;
+        _logButtonBounds = new Rectangle(x, bottom - gap - buttonHeight, buttonWidth, buttonHeight);
+        bool hovered = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), _logButtonBounds);
+        Raylib.DrawRectangleRec(_logButtonBounds, new Color(0, 0, 0, hovered ? 190 : 150));
+        Raylib.DrawRectangleLinesEx(_logButtonBounds, 2f, new Color(255, 255, 255, 110));
+        Raylib.DrawText(label, x + buttonPad, (int)_logButtonBounds.Y + buttonPad, buttonFont, Color.RayWhite);
+
+        int entries = _logView switch
+        {
+            LogView.Full => _debugLogs.Count,
+            LogView.Brief => Math.Min(BriefLogEntries, _debugLogs.Count),
+            _ => 0,
+        };
+        if (entries == 0)
             return;
 
         // Readability: scaled by UiScale like the rest of this file's
@@ -675,17 +1041,23 @@ public static class Game
         int fontSize = (int)(18 * UiScale);
         int lineHeight = fontSize + 4;
 
-        // Word-Wrap: each stored entry is greedily word-wrapped at render
-        // time into as many visual lines as it takes to stay under maxWidth.
+        // Word-Wrap: in full, each stored entry is greedily word-wrapped at
+        // render time into as many visual lines as it takes to stay under
+        // maxWidth; brief keeps each to one line, cut short if need be.
         int maxWidth = (int)(400 * UiScale);
         var wrappedLines = new List<string>();
-        for (int i = 0; i < _debugLogs.Count; i++)
-            WrapLine(_debugLogs[i], fontSize, maxWidth, wrappedLines);
+        for (int i = _debugLogs.Count - entries; i < _debugLogs.Count; i++)
+        {
+            if (_logView == LogView.Brief)
+                wrappedLines.Add(Fit(_debugLogs[i], fontSize, maxWidth * 3 / 2));
+            else
+                WrapLine(_debugLogs[i], fontSize, maxWidth, wrappedLines);
+        }
 
         // Only the newest lines that fit between the speed buttons and the
-        // HUD, so a burst of long entries never grows the panel into either.
-        const int gap = 10;
-        int maxLines = Math.Max(1, (bottom - top - 2 * gap - 16) / lineHeight);
+        // Log button, so a burst of long entries never grows the panel into either.
+        int panelBottom = (int)_logButtonBounds.Y - gap / 2;
+        int maxLines = Math.Max(1, (panelBottom - top - gap - 16) / lineHeight);
         if (wrappedLines.Count > maxLines)
             wrappedLines.RemoveRange(0, wrappedLines.Count - maxLines);
 
@@ -695,8 +1067,7 @@ public static class Game
 
         int width = widestLine + 16;
         int height = wrappedLines.Count * lineHeight + 16;
-        int x = 10;
-        int y = bottom - gap - height;
+        int y = panelBottom - height;
 
         Raylib.DrawRectangle(x, y, width, height, new Color(0, 0, 0, 150));
         Raylib.DrawRectangleLines(x, y, width, height, new Color(255, 255, 255, 60));

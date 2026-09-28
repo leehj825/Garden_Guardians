@@ -69,7 +69,7 @@ public sealed partial class World
 
         float angle = (float)(Rng.NextDouble() * MathF.Tau);
         Vector3 spot = nursery.Position + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * (nursery.Radius * 0.5f);
-        Bramblekin child = Bramblekin.BornTo(mother, father, spot, Rng);
+        Bramblekin child = Bramblekin.BornTo(mother, father, spot, Rng, group.Culture);
         mother.NoteChildBorn();
         father.NoteChildBorn();
         child.JoinGroup(group.Id);

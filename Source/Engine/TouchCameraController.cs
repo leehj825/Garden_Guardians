@@ -22,13 +22,29 @@ public sealed class TouchCameraController
     private const float MinZoomDistance = 8f;
 
     /// <summary>
-    /// Furthest the camera may zoom out, in meters from its Target. Must
-    /// stay above the God-Camera's starting distance (~156m — see
-    /// Game.Run's initial Camera3D) or the very first pinch clamps the
-    /// camera to this ceiling immediately, which reads as a sudden
-    /// snap-zoom-in that a further pinch-out can never undo.
+    /// Furthest the camera may zoom out, in meters from its Target: just far
+    /// enough that the whole garden (the circle through its corners) fits
+    /// on screen whichever way the camera faces — no further, so zooming
+    /// out never leaves the garden a speck. Worked out from the screen's
+    /// shape each time, so a tall phone screen can pull back further than a
+    /// wide one; never nearer than <see cref="MinOverviewDistance"/>, the
+    /// starting overview's distance (see Game.Run's initial Camera3D), so
+    /// the Map button's view is always reachable by pinching too.
     /// </summary>
-    private const float MaxZoomDistance = 220f;
+    private static float MaxZoomDistance(Camera3D camera, float worldHalfSize)
+    {
+        float halfFovY = camera.FovY * MathF.PI / 360f;
+        float aspect = Raylib.GetScreenWidth() / (float)Math.Max(1, Raylib.GetScreenHeight());
+        float halfFovX = MathF.Atan(MathF.Tan(halfFovY) * aspect);
+        float gardenRadius = worldHalfSize * MathF.Sqrt(2f);
+        return MathF.Max(MinOverviewDistance, gardenRadius / MathF.Sin(MathF.Min(halfFovY, halfFovX)));
+    }
+
+    /// <summary>The starting overview's distance from its Target (~156m), which zooming out can always reach.</summary>
+    private const float MinOverviewDistance = 160f;
+
+    /// <summary>Each notch of a mouse wheel zooms by this fraction of the current distance (desktop).</summary>
+    private const float WheelZoomFraction = 0.12f;
 
     /// <summary>How many meters of pinch-distance change it takes to move the camera one meter.</summary>
     private const float PinchZoomSensitivity = 0.05f;
@@ -116,7 +132,7 @@ public sealed class TouchCameraController
 
         if (touchCount >= 2)
         {
-            UpdateTwoFingerGesture(ref camera);
+            UpdateTwoFingerGesture(ref camera, worldHalfSize);
             _isOneFingerGesture = false; // A second finger landing mid-pan shouldn't jump-pan once it lifts back to one.
         }
         else
@@ -124,6 +140,11 @@ public sealed class TouchCameraController
             UpdateOneFingerPan(ref camera, touchCount);
             _isTwoFingerGesture = false;
         }
+
+        // Desktop: the mouse wheel zooms too.
+        float wheel = Raylib.GetMouseWheelMove();
+        if (wheel != 0f)
+            ZoomTo(ref camera, Vector3.Distance(camera.Position, camera.Target) * (1f - wheel * WheelZoomFraction), worldHalfSize);
 
         ClampTargetToWorld(ref camera, worldHalfSize);
     }
@@ -167,7 +188,7 @@ public sealed class TouchCameraController
     /// own vertical movement (both fingers sliding up or down together) is
     /// free to drive pitch without fighting either one.
     /// </summary>
-    private void UpdateTwoFingerGesture(ref Camera3D camera)
+    private void UpdateTwoFingerGesture(ref Camera3D camera, float worldHalfSize)
     {
         Vector2 pointA = Raylib.GetTouchPosition(0);
         Vector2 pointB = Raylib.GetTouchPosition(1);
@@ -209,7 +230,7 @@ public sealed class TouchCameraController
             // Negated: dragging clockwise should turn the world clockwise
             // beneath the camera, not the reverse.
             Rotate(ref camera, -angleDelta * RotationSensitivity);
-            Zoom(ref camera, distance - _lastPinchDistance);
+            Zoom(ref camera, distance - _lastPinchDistance, worldHalfSize);
             Tilt(ref camera, midpointY - _lastTwoFingerMidpointY);
         }
 
@@ -304,19 +325,23 @@ public sealed class TouchCameraController
     }
 
     /// <summary>Moves Position along the Target->Position axis: fingers spreading apart zooms in.</summary>
-    private static void Zoom(ref Camera3D camera, float pinchDistanceDelta)
+    private static void Zoom(ref Camera3D camera, float pinchDistanceDelta, float worldHalfSize)
     {
         if (pinchDistanceDelta == 0f)
             return;
+        ZoomTo(ref camera, Vector3.Distance(camera.Position, camera.Target) - pinchDistanceDelta * PinchZoomSensitivity, worldHalfSize);
+    }
 
+    /// <summary>Puts the camera <paramref name="distance"/> from its Target (within the zoom limits), keeping its viewing angle.</summary>
+    private static void ZoomTo(ref Camera3D camera, float distance, float worldHalfSize)
+    {
         Vector3 offset = camera.Position - camera.Target;
-        float distance = offset.Length();
-        if (distance < 1e-4f)
+        float current = offset.Length();
+        if (current < 1e-4f)
             return;
 
-        Vector3 direction = offset / distance;
-        float newDistance = Math.Clamp(distance - pinchDistanceDelta * PinchZoomSensitivity, MinZoomDistance, MaxZoomDistance);
-        camera.Position = camera.Target + direction * newDistance;
+        float newDistance = Math.Clamp(distance, MinZoomDistance, MaxZoomDistance(camera, worldHalfSize));
+        camera.Position = camera.Target + offset / current * newDistance;
     }
 
     /// <summary>Keeps the camera's Target from drifting off the playable terrain.</summary>

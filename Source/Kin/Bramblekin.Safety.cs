@@ -9,13 +9,20 @@ public sealed partial class Bramblekin
     /// Safety: responds to the perceived threat, rolling fight-or-flight
     /// once per new threat — Aggression, plus courage from nearby
     /// groupmates, plus a big bonus when defending one, minus fear of the
-    /// Wolf Spider. A fighter whose Health drops below
-    /// <see cref="FightBreakHealthFraction"/> breaks and flees. Returns false
+    /// Wolf Spider. A fighter whose nerve breaks (see <see cref="NerveBroken"/>)
+    /// backs away on guard, then flees. Returns false
     /// when there's nothing to fear.
     /// </summary>
     private bool UpdateSafety(float deltaTime, World world)
     {
         ICombatant? threat = _perceivedThreat;
+        _guardedRetreat = MathF.Max(0f, _guardedRetreat - deltaTime);
+
+        // A raider on a war raid pushes through the defenders to the store
+        // and back, until it's hurt badly enough to stand down.
+        if (threat is Bramblekin && IsOnWarRaid(world) && Health > MaxHealth * DutyStandDownHealthFraction)
+            return false;
+
         if (threat is not null)
         {
             float leash = DetectionRadius * ThreatLeashMultiplier;
@@ -42,8 +49,12 @@ public sealed partial class Bramblekin
             _respondingTo = threat;
             _fightDecision = RollFightOrFlight(threat, world);
         }
-        if (_fightDecision && Health <= MaxHealth * FightBreakHealthFraction)
-            _fightDecision = false; // Nerve breaks.
+        if (_fightDecision && NerveBroken(threat))
+        {
+            // Nerve breaks: it backs away, on guard for a moment (longer the braver it is).
+            _fightDecision = false;
+            _guardedRetreat = GuardedRetreatSeconds * (0.5f + Personality.Courage);
+        }
 
         _lastThreatPosition = threat.Position;
         _lastThreatStopsAtHome = threat is not Bramblekin;
@@ -75,7 +86,7 @@ public sealed partial class Bramblekin
     private bool RollFightOrFlight(ICombatant threat, World world)
     {
         // The young never fight — they run (home, if it's close).
-        if (IsYoung || Health <= MaxHealth * FightBreakHealthFraction)
+        if (IsYoung || NerveBroken(threat))
             return false;
 
         // Nobody picks a fight with a Hornet nest: an idle swarm is just
@@ -83,7 +94,10 @@ public sealed partial class Bramblekin
         if (threat is Hornet { IsChasing: false })
             return false;
 
-        float chance = Personality.Aggression;
+        // Standing up to another Bramblekin is mostly a matter of temper; to a predator, of nerve.
+        float chance = threat is Bramblekin
+            ? 0.7f * Personality.Aggression + 0.3f * Personality.Courage
+            : 0.3f * Personality.Aggression + 0.7f * Personality.Courage;
         if (world.GroupOf(this) is { } group)
         {
             foreach (Bramblekin member in group.Members)

@@ -55,6 +55,24 @@ public sealed class KinGroup
         Home is { NeedsTwigs: true, IsCollapsed: false } home ? home
         : Annexes.FirstOrDefault(a => a is { NeedsTwigs: true, IsCollapsed: false });
 
+    /// <summary>Where a newly founded group means to settle — open ground away from other villages (see World.FindOpenGround). Null once it has a home, or if it has nowhere in mind.</summary>
+    public Vector3? SettleTarget { get; set; }
+
+    /// <summary>Food a budded group took from its parent village, set aside for its new store once it's built.</summary>
+    public int Dowry { get; set; }
+
+    /// <summary>Wolf Spiders this group has brought down (the chronicle marks its first, then every fifth).</summary>
+    public int SpidersSlain { get; set; }
+
+    /// <summary>The clan's traditions — see <see cref="ClanCulture"/>.</summary>
+    public ClanCulture Culture { get; } = new();
+
+    /// <summary>Danger spots its members have run into, shared by all of them — see Bramblekin.Memory.</summary>
+    public PlaceMemory Dangers { get; } = new(capacity: 6, mergeRadius: 4f);
+
+    /// <summary>Where its members have found food lately, shared by all of them.</summary>
+    public PlaceMemory FoodSpots { get; } = new(capacity: 6, mergeRadius: 5f);
+
     /// <summary>Counts down after a failed attempt to find a site for a group home.</summary>
     public float HomeSiteRetryTimer { get; set; }
 
@@ -69,6 +87,15 @@ public sealed class KinGroup
 
     /// <summary>The threat near home the Leader sent its Guards against, if any.</summary>
     public ICombatant? DefendTarget { get; set; }
+
+    /// <summary>The enemy store the Leader sent its Raiders against, if any — see World.Neighbours.</summary>
+    public Shelter? WarTarget { get; set; }
+
+    /// <summary>When the current raiding party gives up and heads home.</summary>
+    public float RaidEndsAt { get; set; }
+
+    /// <summary>No new raid before this (World.ElapsedSeconds).</summary>
+    public float NextRaidAt { get; set; }
 
     /// <summary>Counts down to the Leader's next decision.</summary>
     public float DecisionTimer { get; set; }

@@ -86,7 +86,7 @@ public sealed class WolfSpider : ICombatant
     private const float BiteRange = 1.5f;
 
     /// <summary>Bite damage dealt to the nearest fighting Bramblekin in range.</summary>
-    private const int BiteDamage = 10;
+    public const int BiteDamage = 10;
 
     /// <summary>Cooldown (s) between Bites.</summary>
     private const float BiteCooldownDuration = 1.5f;
@@ -197,7 +197,7 @@ public sealed class WolfSpider : ICombatant
         // to Prowling out of an active Hunt — a Pounce already in flight
         // doesn't use _prey for its hit test, so it's left to finish (and,
         // on a kill, sets Feeding itself).
-        if (_prey is not null && (_prey.IsDead || !world.Colony.Contains(_prey)))
+        if (_prey is not null && _prey.IsDead)
         {
             _prey = null;
             if (State == SpiderState.Hunting)
@@ -268,7 +268,7 @@ public sealed class WolfSpider : ICombatant
             return;
         }
 
-        if (_mover.MoveTowards(_target, ProwlSpeed, deltaTime, world, p => !world.IsBlocked(p, BodyRadius)))
+        if (_mover.MoveTowards(_target, ProwlSpeed, deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius)))
             _timer = ProwlPauseDuration;
     }
 
@@ -276,10 +276,9 @@ public sealed class WolfSpider : ICombatant
     {
         // Keep chasing while the prey is alive, in range, and either still
         // vibrating or only recently gone quiet. Otherwise switch to another
-        // busy worker if there is one, or give up. IsDead is checked
-        // explicitly: a killed Bramblekin's removal from Colony is deferred
-        // to the end of the frame, so Contains() alone can't tell it's gone.
-        if (_prey is null || _prey.IsDead || !world.Colony.Contains(_prey) ||
+        // busy worker if there is one, or give up. (A Bramblekin is marked
+        // dead before it's taken out of the Colony, so IsDead is enough.)
+        if (_prey is null || _prey.IsDead ||
             GroundMover.HorizontalDistanceSquared(Position, _prey.Position) > (VibrationRadius * 1.5f) * (VibrationRadius * 1.5f))
         {
             _prey = null;
@@ -312,18 +311,19 @@ public sealed class WolfSpider : ICombatant
             return;
         }
 
-        _mover.MoveTowards(_prey.Position, HuntSpeed, deltaTime, world, p => !world.IsBlocked(p, BodyRadius));
+        _mover.MoveTowards(_prey.Position, HuntSpeed, deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius));
     }
 
     private void Pounce(float deltaTime, World world)
     {
         // Dash along the committed direction (still solid against rocks).
         var dashTarget = Position + new Vector3(_pounceDirection.X, 0, _pounceDirection.Y) * (PounceSpeed * deltaTime + 0.01f);
-        _mover.MoveTowards(dashTarget, PounceSpeed, deltaTime, world, _ => false);
+        _mover.MoveTowards(dashTarget, PounceSpeed, deltaTime, world, static (_, _) => false);
         _mover.Heading = _pounceDirection;
 
         // Anything it touches mid-pounce is caught — except a Bramblekin
-        // that's Fighting: it's braced for the spider, so it doesn't block
+        // that's Fighting it, or backing away from the fight on guard (see
+        // Bramblekin.IsBraced): it's braced for the spider, so it doesn't block
         // or interrupt the pounce, and the Strike/Bite exchange handles that
         // fight instead. Reverse for-loop: World.Kill only queues the
         // removal, so Colony never actually changes size during this walk,
@@ -332,7 +332,7 @@ public sealed class WolfSpider : ICombatant
         for (int i = world.Colony.Count - 1; i >= 0; i--)
         {
             Bramblekin bramblekin = world.Colony[i];
-            if (bramblekin.IsDead || bramblekin.State == BramblekinState.Fighting || bramblekin.IsSheltered)
+            if (bramblekin.IsDead || bramblekin.IsBraced || bramblekin.IsSheltered)
                 continue;
 
             if (GroundMover.HorizontalDistance(Position, bramblekin.Position) >= BodyRadius + Bramblekin.BodyRadius)
@@ -376,7 +376,7 @@ public sealed class WolfSpider : ICombatant
             }
             else
             {
-                _mover.MoveTowards(_target, HuntSpeed, deltaTime, world, p => !world.IsBlocked(p, BodyRadius));
+                _mover.MoveTowards(_target, HuntSpeed, deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius));
             }
             return;
         }
@@ -427,8 +427,9 @@ public sealed class WolfSpider : ICombatant
     {
         Bramblekin? best = null;
         float bestDistanceSquared = VibrationRadius * VibrationRadius;
-        // The Spatial Grid: only the Colony chunks around this spider.
-        List<Bramblekin> nearby = world.QueryNearbyColony(Position);
+        // The Spatial Grid: only the Colony chunks around this spider — out
+        // far enough to count the company around the furthest possible prey.
+        List<Bramblekin> nearby = world.QueryNearbyColony(Position, VibrationRadius + CrowdRadius);
         for (int i = nearby.Count - 1; i >= 0; i--)
         {
             Bramblekin bramblekin = nearby[i];
@@ -436,6 +437,8 @@ public sealed class WolfSpider : ICombatant
             // again explicitly so this never targets one even if that changes.
             if (bramblekin.IsDead || !bramblekin.IsVibrating || bramblekin.IsSheltered)
                 continue;
+            if (world.IsInsidePalisade(bramblekin.Position))
+                continue; // Stakes it won't go past.
 
             float distanceSquared = GroundMover.HorizontalDistanceSquared(Position, bramblekin.Position);
             if (distanceSquared <= bestDistanceSquared && !IsInACrowd(bramblekin, nearby))
@@ -473,7 +476,7 @@ public sealed class WolfSpider : ICombatant
         Bramblekin? best = null;
         float bestDistanceSquared = range * range;
         // The Spatial Grid: only the Colony chunks around this spider.
-        List<Bramblekin> nearby = world.QueryNearbyColony(Position);
+        List<Bramblekin> nearby = world.QueryNearbyColony(Position, range);
         for (int i = nearby.Count - 1; i >= 0; i--)
         {
             Bramblekin bramblekin = nearby[i];

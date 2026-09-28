@@ -5,13 +5,15 @@
 //    * A fixed isometric camera looking down at a 100 m x 100 m patch of
 //      procedurally-hilly terrain, with a mobile-friendly one-finger-pan/
 //      two-finger-pinch camera controller layered on top.
-//    * No factions, no top-down economy. The map is the terrain and whatever
-//      loose things live on it: wild Berries (Food), fallen Twigs, Hornet
-//      swarms, a Wolf Spider, Grubs, Stag Beetles, and the Bramblekin.
+//    * No factions, no top-down economy. The map is the terrain, a pond no
+//      walker may enter, and whatever loose things live on it: wild Berries,
+//      seeds, mushrooms and cress (Food), fallen Twigs, stones and branches,
+//      Hornet swarms, a Wolf Spider, Grubs, Stag Beetles, and the Bramblekin.
 //    * Every Bramblekin is an individual agent with its own randomly rolled
-//      Personality (Aggression, Sociability, Intelligence) and a strict
-//      hierarchy of needs: Hunger, then Safety, then its group Duty, then
-//      Settling (its home), then Social.
+//      Personality (Aggression, Sociability, Intelligence, Rebelliousness,
+//      Persuasiveness, Courage, Diligence) and a strict
+//      hierarchy of needs: Thirst or Hunger (whichever is worse), then
+//      Safety, then its group Duty, then Settling (its home), then Social.
 //    * Groups are emergent, not assigned: two Bramblekin that cross paths
 //      resolve the encounter from their situation and traits — a starving,
 //      aggressive one may rob the other; two sociable ones (or two that are
@@ -53,9 +55,11 @@ namespace GardenGuardians;
 /// Desktop entry point. Android starts the game from MainActivity instead
 /// (see Platforms/Android/MainActivity.cs); both end up in <see cref="Game.Run"/>.
 ///
-/// <c>--headless [seconds] [--seed N]</c> skips the window entirely and
-/// steps the simulation on its own, printing periodic population reports —
-/// a quick way to check the survival loop end to end without a GPU.
+/// <c>--headless [seconds] [--seed N] [--load FILE] [--save FILE]</c> skips
+/// the window entirely and steps the simulation on its own, printing
+/// periodic population reports — a quick way to check the survival loop end
+/// to end without a GPU. <c>--load</c> carries on a saved garden (for
+/// <c>seconds</c> more) and <c>--save</c> writes it out at the end.
 /// </summary>
 public static class Program
 {
@@ -78,7 +82,17 @@ public static class Program
         if (seedIndex >= 0 && seedIndex + 1 < args.Length && int.TryParse(args[seedIndex + 1], out int parsedSeed))
             seed = parsedSeed;
 
-        Game.RunHeadless(seconds, seed);
+        // --load <file> carries on a saved garden; --save <file> saves it at the end.
+        string? load = OptionValue(args, "--load");
+        string? save = OptionValue(args, "--save");
+
+        Game.RunHeadless(seconds, seed, load, save);
+    }
+
+    private static string? OptionValue(string[] args, string option)
+    {
+        int index = Array.IndexOf(args, option);
+        return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
     }
 }
 

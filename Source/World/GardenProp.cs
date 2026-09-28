@@ -45,6 +45,22 @@ public sealed class GardenProp
     /// <summary>Solid footprint radius (m) — a Pebble's dome; Twigs and Dandelions are walked over/around freely (0).</summary>
     public float FootprintRadius => Kind == GardenPropKind.Pebble ? 0.5f * _scale : 0f;
 
+    /// <summary>Loading a saved world: a prop exactly as it was (see World.Save).</summary>
+    public GardenProp(Vector3 position, GardenPropKind kind, float rotation, float twigLength, bool isYellow, float scale)
+    {
+        Position = position;
+        Kind = kind;
+        _rotation = rotation;
+        _twigLength = twigLength;
+        _isYellow = isYellow;
+        _scale = scale;
+    }
+
+    public float Rotation => _rotation;
+    public float TwigLength => _twigLength;
+    public bool IsYellow => _isYellow;
+    public float Scale => _scale;
+
     public GardenProp(Vector3 groundPosition, GardenPropKind kind, float rotation, Random rng)
     {
         // Follow-up Part 2: the caller already grounded this point via

@@ -24,28 +24,19 @@ public sealed partial class World
     }
 
     /// <summary>
-    /// Frustum/Distance Culling: nothing culled from drawing here is ever
-    /// gated in Update — every entity keeps simulating regardless of what
-    /// the camera can see. Radius (m), measured in 2D (X/Z) from
-    /// <see cref="Camera3D.Target"/>, beyond which things simply aren't drawn.
+    /// Frustum Culling: anything whose ground point projects off screen
+    /// (see <see cref="IsOnScreen"/>) isn't drawn. There's no draw distance:
+    /// zoomed out, the whole garden shows. Nothing culled here is ever gated
+    /// in Update — every entity keeps simulating whatever the camera sees.
     /// </summary>
-    public const float RenderRadius = 60.0f;
-
-    /// <summary>True if <paramref name="worldPosition"/> is within <see cref="RenderRadius"/> (2D, X/Z) of the camera's target.</summary>
-    private static bool IsWithinRenderRadius(Vector3 worldPosition, Camera3D camera)
-    {
-        float dx = worldPosition.X - camera.Target.X;
-        float dz = worldPosition.Z - camera.Target.Z;
-        return dx * dx + dz * dz <= RenderRadius * RenderRadius;
-    }
-
-    private bool IsVisible(Vector3 worldPosition, Camera3D camera) =>
-        IsWithinRenderRadius(worldPosition, camera) && IsOnScreen(worldPosition, camera);
+    private static bool IsVisible(Vector3 worldPosition, Camera3D camera) => IsOnScreen(worldPosition, camera);
 
     public void Draw(Camera3D camera)
     {
         var (seasonTint, seasonAmount) = SeasonTint;
-        Terrain.Draw(camera.Target, RenderRadius, seasonTint, seasonAmount);
+        Terrain.Draw(seasonTint, seasonAmount);
+        DrawTerritories(camera);
+        DrawOak();
         for (int i = _splats.Count - 1; i >= 0; i--)
         {
             var (position, timeLeft) = _splats[i];
@@ -69,11 +60,23 @@ public sealed partial class World
             shelter.Draw(flag);
         }
 
+        DrawRelations(camera);
+        DrawRain(camera);
+        bool winter = CurrentSeason == Season.Winter;
+        foreach (Crop bush in Crops)
+        {
+            if (!IsVisible(bush.Position, camera))
+                continue;
+            Color? stake = bush.GroupId is { } bushGroup && _groups.TryGetValue(bushGroup, out KinGroup? farmer) ? farmer.Color : null;
+            bush.Draw(winter, stake);
+        }
+
         foreach (Twig twig in Twigs)
         {
             if (twig.IsActive && !twig.IsCarried && IsVisible(twig.Position, camera))
                 twig.Draw();
         }
+        DrawMaterials(camera);
 
         // Object Pooling: most Food slots sit inactive at any given time, so
         // every loop over the pool must skip anything with IsActive false.
@@ -105,6 +108,8 @@ public sealed partial class World
                 Beetles[i].Draw();
         }
 
+        DrawAnts(camera);
+
         // Group tethers: a faint line in the group's colour from every
         // follower's head to its Leader's, so who runs with whom reads at a
         // glance.
@@ -117,7 +122,7 @@ public sealed partial class World
             var tether = new Color(group.Color.R, group.Color.G, group.Color.B, (byte)120);
             foreach (Bramblekin member in group.Members)
             {
-                if (member == leader || member.IsDead || !IsWithinRenderRadius(member.Position, camera))
+                if (member == leader || member.IsDead)
                     continue;
                 Raylib.DrawLine3D(member.Position + new Vector3(0, Bramblekin.BodyHeight, 0), leaderHead, tether);
             }
@@ -133,6 +138,8 @@ public sealed partial class World
         if (Spider is { IsDead: false } spider)
             spider.Draw();
 
+        DrawWater();
+
         // Kin Inspector: ring the selected Bramblekin, and trace its
         // Intelligence-scaled detection radius over the hills.
         if (SelectedKin is { IsDead: false } selected)
@@ -140,6 +147,66 @@ public sealed partial class World
             DrawTerrainRing(selected.Position, 0.5f, new Color(255, 230, 60, 255));
             DrawTerrainRing(selected.Position, selected.DetectionRadius, new Color(255, 255, 255, 140));
         }
+    }
+
+    // --- Territory ---------------------------------------------------------------------------
+
+    /// <summary>A village's territory reaches this far past its outermost home…</summary>
+    private const float TerritoryMargin = 4f;
+
+    /// <summary>…and at least this far from its main home.</summary>
+    private const float MinTerritoryRadius = 6f;
+
+    /// <summary>
+    /// Every village's ground, faintly washed in its clan's colour with a
+    /// stronger rim — so who lives where reads at a glance. Drawn without
+    /// writing depth, so it never hides the berries and twigs lying on it.
+    /// </summary>
+    private void DrawTerritories(Camera3D camera)
+    {
+        Rlgl.DrawRenderBatchActive();
+        Rlgl.DisableDepthMask();
+        Rlgl.DisableBackfaceCulling();
+        foreach (KinGroup group in _groups.Values)
+        {
+            if (group.Home is not { IsCollapsed: false } home)
+                continue;
+            float radius = MinTerritoryRadius;
+            foreach (Shelter shelter in GroupHomes(group))
+                radius = MathF.Max(radius, GroundMover.HorizontalDistance(home.Position, shelter.Position) + TerritoryMargin);
+            DrawTerrainBand(home.Position, 0f, radius - 0.5f, group.Color with { A = 26 });
+            DrawTerrainBand(home.Position, radius - 0.5f, radius, group.Color with { A = 110 });
+        }
+        Rlgl.DrawRenderBatchActive();
+        Rlgl.EnableBackfaceCulling();
+        Rlgl.EnableDepthMask();
+    }
+
+    /// <summary>The ring between <paramref name="inner"/> and <paramref name="outer"/> around <paramref name="center"/>, filled, following the terrain's height.</summary>
+    private static void DrawTerrainBand(Vector3 center, float inner, float outer, Color color)
+    {
+        const int segments = 40;
+        int rings = Math.Max(1, (int)MathF.Ceiling((outer - inner) / 3f)); // Short steps across, so the fill hugs the hills.
+        for (int r = 0; r < rings; r++)
+        {
+            float r0 = inner + (outer - inner) * r / rings;
+            float r1 = inner + (outer - inner) * (r + 1) / rings;
+            for (int i = 0; i < segments; i++)
+            {
+                float a0 = i * MathF.Tau / segments, a1 = (i + 1) * MathF.Tau / segments;
+                Vector3 p00 = Around(r0, a0), p01 = Around(r0, a1), p10 = Around(r1, a0), p11 = Around(r1, a1);
+                if (!OnMap(p00) || !OnMap(p01) || !OnMap(p10) || !OnMap(p11))
+                    continue; // Nothing drawn off the edge of the garden.
+                Raylib.DrawTriangle3D(p00, p11, p10, color);
+                if (r0 > 0f)
+                    Raylib.DrawTriangle3D(p00, p01, p11, color);
+            }
+        }
+
+        Vector3 Around(float radius, float angle) =>
+            Grounded(center + new Vector3(MathF.Cos(angle) * radius, 0f, MathF.Sin(angle) * radius), 0.06f);
+
+        static bool OnMap(Vector3 p) => MathF.Abs(p.X) <= 50f && MathF.Abs(p.Z) <= 50f;
     }
 
     /// <summary>A circle of <paramref name="radius"/> around <paramref name="center"/>, drawn as line segments that follow the terrain's height.</summary>

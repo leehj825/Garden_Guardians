@@ -14,6 +14,9 @@ public enum GroupGoal
 
     /// <summary>Drive off a threat near home.</summary>
     Defend,
+
+    /// <summary>Send a raiding party to carry off an enemy group's stores (at war only).</summary>
+    Raid,
 }
 
 /// <summary>A group member's assignment from its Leader, carried out in the Duty need (see Bramblekin.UpdateDuty).</summary>
@@ -32,6 +35,12 @@ public enum KinJob
 
     /// <summary>Stays by the home and attacks whatever threatens it.</summary>
     Guard,
+
+    /// <summary>Plants the group's berry bushes and harvests them into the stores (once the group knows farming).</summary>
+    Farmer,
+
+    /// <summary>Goes with a raiding party to carry food home from an enemy group's store.</summary>
+    Raider,
 }
 
 /// <summary>Who may eat from a group's shared store — set by its Leader's personality.</summary>

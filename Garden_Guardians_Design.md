@@ -3,7 +3,8 @@
 *Last updated: 2026-09-27 — the **Emergent Survival** pivot, now with
 **settling and society**, and a living population: **seasons**, **births**
 and **villages** that bud off daughter groups, **named** Bramblekin who
-pair up as **couples** and die of **old age**, and a **follow camera**.
+pair up as **couples** and die of **old age**, a **follow camera**,
+**farming**, and villages that live as **neighbours** — allies or enemies.
 The game is no longer a
 macro-RTS faction simulator: there are no factions, no top-down economy
 and no faction wars. Every Bramblekin is an individual agent with its own
@@ -33,7 +34,7 @@ groups. The player is a spectator with a camera, and can tap any single
 Bramblekin to see what makes it tick.
 
 ## The Core Loop (as implemented)
-Hunger rises → each Bramblekin forages loose Food within its own
+Hunger and thirst rise → each Bramblekin walks to the water to drink, and forages loose Food within its own
 Intelligence-scaled senses, or eats from its home's store → threats (the
 Wolf Spider, Hornets, raiders, hostile Bramblekin) are fought or fled on a
 per-individual Aggression roll — or, if wildlife, hidden from at home →
@@ -46,7 +47,9 @@ decide group goals every few seconds; followers' loyalty rises and falls
 with how they're treated, and the disloyal leave, split off or stage a
 coup → singles pair up as couples, and thriving groups raise their young
 and grow into villages, while the seasons swing the food supply from
-plenty to scarcity and back → the old grow grey and die, and their
+plenty to scarcity and back → clever clans work out farming and plant
+berry bushes; neighbouring villages ally, send each other food, or go to
+war and raid each other's stores → the old grow grey and die, and their
 children carry the family name on → new solitary wanderers drift in
 from the map's edge whenever the population runs low.
 
@@ -61,8 +64,12 @@ overhead camera:
 *   **Two-finger twist** rotates the whole world around the camera's
     current focus point (Target) on the Y axis — the camera's height and
     distance don't change, only the compass direction it's looking from.
-*   **Two-finger pinch** zooms in/out, clamped between 8m and 220m from
-    Target.
+*   **Two-finger pinch** (or the mouse wheel, on desktop) zooms in/out,
+    from 8m to just far enough that the whole garden fits on screen from
+    any angle (the circle through its corners, worked out from the
+    screen's shape — about 185m on a 16:9 screen, never less than the
+    starting overview). There's no draw distance: zoomed out, everything
+    in the garden shows.
 *   **Two fingers sliding up/down together** tilts the camera's pitch —
     dragging down flattens toward a top-down view, dragging up tilts
     into a lower, more oblique angle — clamped to roughly 15°–85° so it
@@ -93,9 +100,9 @@ overhead camera:
     speed controls flies back out to the whole garden. The top-right Kin
     Inspector shows its name, sex and role (Solitary/Leader/Follower,
     young or elder), its age and generation, its mother and father, its
-    partner and how many children it has, State, Health, Hunger, its
-    three Personality traits (and the detection radius its Intelligence
-    buys it), its group, its home
+    partner and how many children it has, State, Health, Hunger, Thirst (and how far its home is from water), its
+    nature and all seven Personality traits (and the detection radius its
+    Intelligence buys it), its group, its home
     (tent or house, construction progress, store), its job and
     its group's current goal (and whether the Leader eats first), its
     Loyalty (followers) and Reputation, and how many Friends, Enemies and
@@ -106,25 +113,73 @@ overhead camera:
     robbing, raiding, grouping, leading, obeying and rebelling — is the
     Bramblekin's own business.
 *   The HUD shows the year and season (with its food multiplier), homes
-    (tents, houses, sites, food stored, villages and buddings), what the
-    colony is doing, deaths by cause, births and the highest generation,
+    (tents, houses, sites, food stored, villages and buddings, crops),
+    groups (how many farm) and current alliances and wars, what the
+    colony is doing (foraging, eating, drinking, fleeing, fighting,
+    robbing), deaths by cause (thirst among them), births and the highest generation,
     and the politics so far (walk-outs, splits, coups, exiles, raids).
+    The year line names the weather (drought, harsh winter, bountiful,
+    storm), and the Kin Inspector shows its clan's tradition and
+    neighbours, and any errand it's on.
+*   **Clans on the map:** every village's name and head count floats over
+    its main home, and its ground is washed faintly in the clan's colour
+    with a stronger rim (reaching 4m past its outermost home). Tapping a
+    home — rather than a Bramblekin standing at its door — picks its clan:
+    a clan card takes the Kin Inspector's place (tradition, members,
+    Leader, founding, homes, stores, crops, neighbours), and the History
+    screen then shows that clan. A loner's tent picks its owner. A clan
+    with nothing built yet — a new one, budded off or split away, whose
+    first tent is still a site — says so ("Homes: none yet - building its
+    first tent (1/3 twigs)", or "setting out for new ground"), and a
+    site shows on the map as a patch of bare earth with a stake flying
+    the clan's colour, the twigs laid so far standing on it.
+*   **Speed:** 1x, 2x, 5x, 10x, 20x and 50x. However fast, the garden
+    always advances in the same fixed 1/60s steps as the headless tuning
+    runs — bigger steps played a different game (about half as much
+    starvation again at a phone's 0.046s steps) — so fast-forward is more
+    steps per frame, never bigger ones. A device that can't keep up runs
+    as fast as it can, and the HUD says so ("Speed 20x (running 9x)").
     The event console on the left narrates the seasons, alliances,
     settlements, villages, births, hunts, leader decisions, rebellions
     and deaths.
+*   **The log, as much as you like:** the **Log** button under the event
+    console steps it through *brief* (the newest 3 entries, a line each —
+    the default), *off* (just the button, counting what you've missed:
+    "Log: off (+4)") and *full* (the last 15 entries, word-wrapped, as
+    tall as the screen allows). The choice is remembered
+    (`settings.txt`, beside the save) — and kept through a new garden.
+*   **Health, hunger and thirst bars** (green, orange, blue) float over
+    any Bramblekin that's hurt, hungry or thirsty (and a wounded Spider). They grow with the zoom — about 2.4×
+    as wide as the creature looks on screen — so zoomed in close they're
+    easy to read, while at the whole-map view they shrink back to the
+    same small 34px bars (the floor, and 150px the ceiling, both scaled
+    up on bigger screens).
 
 ## Code Layout & Performance
 *   **Layout:** `Program.cs` is only the entry point. Everything else is
     under `Source/`, one type per file: `Engine/` (touch and follow
-    cameras, terrain, tap input, spatial grid, movement), `World/` (the
-    `World` partial class split by concern — core, society, families,
-    group homes & villages, leadership, rebellion, seasons, births,
-    shelters, hunting, interactions, spawning, stats, rendering — plus
-    Food, Twigs, Shelters and Garden Props), `Kin/` (the `Bramblekin`
-    partial class with one file per need — Hunger, Safety, Duty, Settle,
-    Social — plus Hunting, Loyalty, Lineage, Family, Aging, Actions and
-    Drawing, and the Personality, names, sex, relationship, group and
-    society types), `Wildlife/` and `Game/`.
+    cameras, terrain, tap input, spatial grid, movement, the water map),
+    `World/` (the `World` partial class split by concern — core, society,
+    families, neighbours, errands, war outcomes, farming, wild food,
+    materials, group homes & villages, leadership, rebellion, culture,
+    seasons, weather, births, chronicle, lives, save, shelters, hunting,
+    interactions, spawning, stats, rendering —
+    plus Food, Crops, Twigs, Materials, Shelters and Garden Props), `Kin/`
+    (the `Bramblekin` partial class with one file per need — Hunger,
+    Safety, Duty, Settle, Social — plus Hunting, Farming, Fishing,
+    Materials, Loyalty, Lineage, Family, Aging,
+    Errands, Memory, Fame, Save, Actions and Drawing, and the Personality, names,
+    sex, relationship, group, errand, place-memory, clan-culture and
+    society types), `Wildlife/`, `Save/` (the save file's data types and
+    the JSON save system) and `Game/` (the main loop, HUD, History screen
+    with its Stats and Heroes tabs, banners, and saving).
+*   **Per-step budget:** the simulation runs 60 steps per simulated
+    second, so at 20x a phone needs 1,200 a second. Spatial queries ask
+    only for the radius they need (an encounter check used to scan a
+    30×30m window for a 1.2m radius), the grid is a flat array, and the
+    hot paths — movement, a group's homes, store searches — allocate
+    nothing: together about a quarter less CPU and a tenth of the
+    garbage, with results identical to the step.
 *   **Squared-distance math everywhere:** targeting/aggro/encounter checks
     compare squared distances against a squared threshold.
 *   **Staggered perception:** each Bramblekin rescans its surroundings
@@ -138,8 +193,20 @@ overhead camera:
 *   **Deferred spawns/removals** are applied once per frame
     (`World.CommitPendingChanges`); rebellions are queued during the
     Leaders' decision pass and applied after it.
-*   **Raylib culling** skips anything off-screen or beyond
-    `World.RenderRadius`.
+*   **Raylib culling** skips anything off-screen; there's no draw
+    distance. The lawn's 2,500 cells are worked out once (corners and
+    grass colour) and only tinted for the season each frame.
+*   **Obstacles by cell:** the rocks, the oak's trunk and the circles
+    along its roots (some 150 in all) are bucketed into 5m cells, each
+    listing every obstacle within 3m of it, so a walker only ever checks
+    the handful near it.
+*   **Walking round the water** (`WaterMap`): a 1m grid of the garden
+    marks the pond (at each of its drought levels) and the oak with room to spare; a walker whose straight way is cut
+    by it runs A* (eight ways, no cutting corners) and pulls the path
+    tight into a few waypoints — worked out again only when its target
+    moves a meter. A fine 0.25m grid answers "is this spot wet?" for every
+    step. Over a 13-year run that's some 30,000 routes, well under a
+    second in all.
 *   **Headless mode:** `dotnet run -f net8.0 -p:DesktopOnly=true --
     --headless 600 --seed 1` steps the simulation with no window (roughly
     150× real time) and prints a population report every 30 simulated
@@ -153,32 +220,87 @@ overhead camera:
     however late each Bramblekin arrived.
 
 ## Individuals: Personality & the Needs Hierarchy
-*   **Personality (DNA):** every newcomer rolls three traits, each
+*   **Personality (DNA):** every newcomer rolls seven traits, each
     uniformly random in 0..1, the moment it arrives; one born here
-    inherits the average of its parents' (see Growth below). Fixed for
-    life:
-    *   **Aggression** — the odds of fighting rather than fleeing a
-        threat, of turning on a neighbour or raiding a store when
-        starving, of challenging a Leader; how hard it hits (5–11 per
-        strike); and, as a Leader, how much it prizes hunting and whether
-        it eats first. Its body is tinted redder the more Aggressive it is.
-    *   **Sociability** — the urge to meet strangers (vs. walking away
-        from anyone who crowds it, below 0.35), the odds a meeting ends
-        in friendship, whether two meeting Bramblekin band together (both
-        ≥ 0.6), how readily a struggling loner asks to join a group, how
-        loyal it naturally is, and — as a Leader — whether it shares the
-        store fairly and takes in newcomers.
+    inherits the average of its parents' (see Growth below), and its
+    clan's traditions pull it part of the way toward what the clan
+    prizes (see Clan Culture). Fixed for life. The four newer traits are
+    all centred on 0.5 — a middling Bramblekin behaves just as before —
+    and each has something to see it do:
+    *   **Aggression** — the odds of turning on another Bramblekin (to
+        rob it when starving, in a feud, in a war) and — with Courage —
+        of fighting rather than fleeing; how hard it hits (5–11 per
+        strike); and, as a Leader, its appetite for war and whether it
+        eats first. Its body is tinted redder the more Aggressive it is.
+    *   **Sociability** (extrovert ↔ introvert) — the urge to meet
+        strangers (vs. walking away from anyone who crowds it, below
+        0.35), the odds a meeting ends in friendship, whether two meeting
+        Bramblekin band together (both ≥ 0.6), how readily a struggling
+        loner asks to join a group, how loyal it naturally is, and — as a
+        Leader — whether it shares the store fairly and takes in
+        newcomers.
     *   **Intelligence** — detection radius from 5m to 20m, how soon a
-        newcomer settles (10–50s), and its claim to lead.
+        newcomer settles (10–50s), its claim to lead, planning ahead, and
+        working out crafts.
+    *   **Rebelliousness** (rebellious ↔ obedient) — a rebellious
+        follower's loyalty drains up to 1.4× as fast and recovers at
+        0.6× the pace (an obedient one's, the other way round); it stops
+        obeying sooner (the obedience line moves ±0.075); it's up to 1.6×
+        as likely to rebel once disloyal, readier to challenge the Leader,
+        and less willing to sit out the winter before walking out.
+    *   **Persuasiveness** (persuasive ↔ passive) — adds up to ±0.3 to its
+        claim to lead; as a Leader it keeps its followers' loyalty up (or
+        lets it slide), talks neighbours into alliances, peace and
+        learning a craft (odds 0.6–1.4×); a persuasive member talks
+        struggling loners into joining; a persuasive rebel draws the
+        wavering after it into a split (members up to 0.125 more loyal
+        follow), or can lead one without being sociable.
+    *   **Courage** (brave ↔ cautious) — standing up to predators and big
+        game is 70% nerve and 30% temper (against another Bramblekin, the
+        reverse); the brave hold their nerve down to 0.16 of their Health,
+        the cautious break at 0.56 — but however brave, a fighter breaks
+        off while it can still survive one more blow from its foe (a
+        spider's bite is 10), and backs away on guard, safe from the
+        spider's pounce, for 1–3s (longer the braver); a place of danger is shunned for 150s
+        by the bravest, 450s by the most cautious; Leaders make the brave
+        their Hunters and Guards, and the brave (with the fierce) drive
+        off enemies near home in a war. Dangerous orders cost the brave
+        less loyalty.
+    *   **Diligence** (diligent ↔ idle) — at work (gathering, building,
+        stocking, farming, carrying for its group) it goes at 0.85–1.15×
+        pace, and it dawdles and rests between things 0.6–1.4× as long.
+*   **In words:** the Kin Inspector sums a Bramblekin up ("Nature:
+    brave, persuasive, rebellious" — every trait 0.2 or more from the
+    middle) above all seven values; the chronicle calls a rebel or a
+    usurper by its most striking trait ("The rebellious Pip Thornwood led
+    four unhappy members out…"). The headless lineage report tracks the
+    living's average of every trait, so the garden's evolution shows.
 *   **Hunger:** rises 1 point per second from 0 to 100. At 60 a
     Bramblekin is *hungry*; at 80 *starving*; at 100 it loses 1 HP a
     second until it eats or dies. One piece of Food removes 40 Hunger and
     restores 6 HP. Resting at home heals too (1 HP per 1.5s; faster in a
     House).
+*   **Thirst:** rises 0.4 points per second (a quarter faster in summer,
+    a quarter slower in winter, faster when sick) from 0 to 100 — a drink
+    lasts about two and a half minutes. At 60 a Bramblekin is *thirsty*; at
+    100 it loses 1 HP every 2s until it drinks or dies. It drinks at the
+    pond (the nearest stretch of shore, however far — it slakes its thirst
+    entirely) or from its home's cistern (a sip takes off 70). Out in a
+    storm it drinks the rain (2 points a second). Juicy food helps a
+    little: a sprig of cress takes off 15, a fish 5, a berry or a
+    mushroom 3; seed, meat and acorns nothing. So **living far from water
+    costs**: every drink is a walk there and back (from the garden's dry
+    south-west corner, some 70m each way — most of a minute and a half),
+    time not spent foraging, working or resting — and a drinker crouched
+    at the water's edge is busy enough for the Wolf Spider to feel.
 *   **The strict needs hierarchy** — every frame, each Bramblekin serves
     exactly one need, in this order:
     0.  **A leadership duel,** once started, is settled first.
-    1.  **Critical (Hunger):** eat what it's carrying; else keep robbing
+    1.  **Critical (Thirst or Hunger, whichever is worse):** thirsty and
+        no hungrier than it is thirsty, it goes for a drink — its home's
+        cistern if that has water and is nearer, else the nearest shore —
+        and a drink under way is finished unless it's starving and
+        hungrier still. Otherwise, hungry, it eats what it's carrying; else keep robbing
         the neighbour it committed to; else, with a predator about, go
         home to eat from the store; else go for the nearest loose Food it
         can see or eat from its home's store (or a village home's, if the
@@ -222,9 +344,14 @@ overhead camera:
 *   **Twigs** fall around the big Twig props (up to 50 loose, pooled);
     they never rot. A builder carries one at a time to its site.
 *   **Tent:** 3 twigs. Room for 2, a store of 4 Food that never rots.
+    Drawn as an acorn cap propped on three twig legs.
 *   **House:** a group's upgrade of a Tent, once the group outgrows its
     housing — 6 more twigs. Room for 6, a store of 12, and healing half
-    again as fast. Drawn as walls under a roof, flying its group's colour.
+    again as fast. Drawn as a whole hollowed acorn under its scaly cap,
+    with a round door and a warm round window, flying its group's colour
+    from the cap's stalk. A granary is a hazelnut beside it; a palisade a
+    ring of rose thorns curving outward, with a gap at the door. (An
+    acorn village: the Bramblekin are tiny, and live like it.)
 *   A built home hides whoever is inside it from the Wolf Spider's pounce
     and from Hornets — unless more residents are crammed inside than it
     has room for, in which case it protects nobody.
@@ -250,11 +377,17 @@ overhead camera:
 *   **Grubs** are small prey for anyone: a hungry Bramblekin that can't
     see Food hunts one; a settler with a low store hunts those near home.
 *   **Defending home:** residents who see a raider heading for their home
-    (or any of their village's homes) treat it as a threat they're keen to
-    fight; a Leader rallies its group to Defend against anything that
-    comes within 10m of home.
+    (or any of their village's homes, or an ally's) treat it as a threat
+    they're keen to fight; a Leader rallies its group to Defend against
+    anything that comes within 10m of home — though not against an
+    outsider who's only defending its own home next door, or against
+    defenders fighting off its own raiding party.
 *   **Raids:** a starving, highly Aggressive Bramblekin raids someone
-    else's store, making Enemies of everyone who lives there.
+    else's store, making Enemies of everyone who lives there — never a
+    home where its parent, child or sibling lives.
+*   **Blood is thicker than water:** a Bramblekin never robs a close
+    relative (parent, child or sibling), and never deals one the blow
+    that would kill it.
 
 ## Encounters, Relationships & Groups
 *   **Relationships:** each Bramblekin keeps `KnownKins` — every other
@@ -343,9 +476,13 @@ overhead camera:
     food in it, having been defended by a groupmate and friendship with
     the Leader; it falls with hunger (more when starving), being turned
     away from the store, a Leader who eats first, dangerous orders
-    (Hunter on a hunt, Guard on a defence — felt less by the Aggressive)
-    and injury. Members of a badly run group share most of those
-    grievances, so they tend to sour together.
+    (Hunter on a hunt, Guard on a defence, Raider on a raid — felt less by
+    the Aggressive) and injury. Members of a badly run group share most of
+    those grievances, so they tend to sour together. But in a **shared
+    hardship** — winter, the stores empty and shared fairly — hunger is
+    nobody's fault, and costs the Leader only 40% of the usual loyalty.
+*   **New members** get 90s to settle in before they can rebel or be
+    thrown out.
 *   **Obedience:** below 0.3 a follower ignores its job and fends for
     itself.
 *   **Rebellion:** below 0.2, at each decision a follower rebels with odds
@@ -362,6 +499,9 @@ overhead camera:
         homeless group with a Leader of their own.
     *   **Leave** — otherwise: it walks out and goes it alone as an
         **Independent**, losing the group's home, store and defenders.
+    *   In winter a rebel who'd leave or split off waits for spring
+        instead, with odds of its Intelligence — walking out into the snow
+        is how loners starve.
 *   **Exile:** an Aggressive Leader (≥ 0.5) throws out a follower below
     0.15 loyalty (odds 0.25 per decision); the two become Enemies.
 *   Nobody ever rejoins a group it left. An Independent can be taken in
@@ -455,22 +595,379 @@ overhead camera:
 *   **Budding:** a village with at least 10 members (plus up to 6 more
     under a Sociable Leader, who holds a bigger village together) lets
     the residents of one of its other Houses — at least 3 grown ones, not
-    the Leader — set up as a daughter group of their own, keeping that
-    House and electing a Leader of their own. No quarrel: nobody holds it
-    against the old group. The parent village can then build again.
+    the Leader, with their partners and young — set out as a daughter
+    group of their own, electing a Leader of their own. No quarrel: the
+    two start out allied. The House stays with the old village, which can
+    grow into it again.
+*   **Spreading out:** the settlers take a share of the old village's
+    stores as a dowry (a third, up to 6) and head for **open ground**:
+    the spot, 15–55m away, that's furthest from every other home (at
+    least 25m if it can be found), with a bonus for Berry Patches nearby.
+    There they mark out a site and build from scratch; the dowry goes
+    into their store once it's finished. A splinter group and a couple
+    who walk out together look for open ground the same way, well away
+    from the group they left. Before this, daughter villages budded off
+    right next door and neighbours fought at close quarters; spreading
+    out cut kin-on-kin killings by about 70% and made wars rare.
 *   **The population** is no longer held at a fixed number: it rises
     through Summer and Autumn and thins in Winter and early Spring, and
-    over hours settles wherever the garden's food allows — about 30–50
-    in 4-hour headless runs, with births (150–210 per run) well ahead of
-    newcomers (60–120). Wandering Arrivals only top it up when it falls
-    below 30; a safety cap of 150 is never reached in practice.
+    over hours settles wherever the garden's food allows — with farming,
+    about 35–70 in 4-hour headless runs, with births (250–360 per run)
+    far ahead of newcomers (10–25). Wandering Arrivals only top it up when
+    it falls below 30; a safety cap of 150 is never reached in practice.
+
+## Farming
+*   **Working it out:** at each Leader decision, a group with a House
+    that doesn't yet farm works it out with odds 0.008 × the Intelligence
+    of its cleverest grown member — a bright clan within a year or two, a
+    dull one much later. Farming is something **individuals** know: the
+    whole group learns it, children of a farming parent are born knowing
+    it, a group teaches everyone who joins, and kin carry it with them
+    when they split off, bud off or marry into another group. An ally
+    may also teach it (see Neighbours).
+*   **Crops:** a farming group keeps up to 2 crops per House and 1 per
+    Tent (at least 1.4m apart, clear of shelters; 60 on the map at most).
+    Planting costs a piece of food from the stores as seed and never
+    happens in winter. Each kind needs its own craft and bears in its own
+    seasons (pace relative to normal, spring/summer/autumn/winter):
+
+    | Crop | Craft | Where | Grows, then one every | Holds | Pace | Lasts |
+    |---|---|---|---|---|---|---|
+    | Berry bush | Farming | 2.5–6m from home | 90s, 40s | 4 | 1.0/1.3/0.8/0.3 | 3 years |
+    | Grain patch | Grain | 2.5–6m from home | 60s, 26s | 6 | 0.5/1.3/1.3/0 | 1 year |
+    | Mushroom bed | Mushrooms | against a House wall | 70s, 45s | 3 | 0.9/0.5/1.4/0.4 | 2 years |
+    | Cress bed | Cress | on the shore, within 14m | 45s, 32s | 3 | 1.3/1.0/0.8/0.3 | 2 years |
+
+    The weather scales them too (a drought halves them, a bountiful
+    season adds half). A crop within 8m of the pond is **watered**: a
+    quarter faster, and a drought doesn't touch it (cress beds always
+    are). A Farmer plants whichever kind the clan knows and has fewest
+    of, so its fields spread across the year: grain for late summer,
+    mushrooms for autumn (and a little in winter), cress in spring. A worn-out crop is simply
+    gone, and replanted. Overripe fruit drops for anyone. Each is drawn in
+    its own way — a leafy bush dotted with berries, a tuft of stalks
+    nodding under golden seed heads, a mound of dark soil sprouting
+    russet caps, a mat of round green leaves — with a stake in its
+    clan's colour.
+*   **Farmers:** a farming group makes one Farmer per 4 grown members (at
+    least one), from its most Intelligent Gatherers, under any goal but
+    Defend. A Farmer picks what's ripe into the stores, and plants while
+    the group has room for more crops and food to spare; otherwise it
+    gathers. Gatherers pick ripe crops too, and a hungry member eats
+    straight off one.
+*   **Fishing:** a Gatherer (or Farmer) that knows fishing, with nothing
+    ripe and no food in sight, walks to a stretch of shore within 20m of
+    home and casts — a rod held out over the water, its line dropping to
+    a red float — every 8s (quicker for the diligent), landing a minnow
+    or tadpole at 0.55/0.45/0.5/0.15 odds by season, which it carries to
+    the stores. Winter's poor catch still beats an empty lawn.
+*   **Wild crops:** when its group is gone, a crop runs wild — still
+    bearing (and dropping food for anyone) — and withers after 600s.
+    Crops go with the house nearest them when a village buds or two
+    groups merge.
+
+## Crafts
+*   **Know-how clans work out**, the way they work out farming: at each
+    Leader decision a clan ready for a craft discovers it with odds
+    0.006 × its cleverest member's Intelligence (one at a time). Crafts
+    live in individuals like farming does: taught to everyone in the clan,
+    inherited by children (both parents' crafts), carried along by anyone
+    who leaves, and taught to allies (odds 0.05 per decision, farming
+    first, then granary, spears, palisade, grain, mushrooms, cress,
+    fishing, stonework, cisterns). When a clan is ready for several, the one it
+    works out is picked at random.
+    *   **Granary** (needs farming and a House): each House gets a round
+        granary beside it and holds half as much again in store.
+    *   **Spears** (needs a hunting tradition or a Wolf Spider brought
+        down): half as much again of a blow against the Stag Beetle, the
+        Wolf Spider, Grubs, Hornets and ants — never against kin.
+    *   **Palisade** (needs a House and a martial tradition, or three
+        remembered dangers): a ring of thorny stakes round each home, once
+        its Builders have dragged in 3 branches (the ring goes up branch
+        by branch). The Wolf Spider won't hunt anyone inside it, ants
+        can't get at its store, and a raider must spend 4s breaking in
+        first — time for the defenders to come.
+    *   **Grain, Mushrooms, Cress** (need farming; mushrooms a House,
+        cress a home within 20m of the shore): new crops (see Farming).
+    *   **Fishing** (needs a home within 20m of the shore): see Farming.
+    *   **Cisterns** (needs a House more than 25m from water — necessity
+        is the mother of invention): an acorn-cup cistern out front of
+        each House, holding 6 sips. It fills in the rain (a sip every 2s
+        of a storm), and whoever drinks at the pond carries a cupful home
+        (a sip) while it isn't full. A thirsty Bramblekin drinks from it
+        if it's nearer than the pond — so a far-off village makes one
+        long trip do for two drinks.
+    *   **Stonework** (needs a House): each House is raised on a stone
+        footing, once its Builders have carried in 4 stones (a ring of
+        grey stones round its foot): its store holds 2 more, stays dry in
+        a flood, and ants can't dig into it.
+*   The Stats tab and the clan card list a clan's crafts; the headless
+    summary counts them. Over 13 years a clan works out about six and
+    teaches eleven; most clans end up knowing all of them.
+
+## Sickness, Ants & Floods
+*   **Sickness:** anyone may fall ill (odds 1/8000 a second, doubled in
+    Winter and again when hungry), and it spreads: when the sick meet
+    someone (see Encounters) the other catches it at 0.2 odds. An illness
+    lasts 60–150s: the sick walk 25% slower, get hungry 30% faster,
+    can't heal, and lose 1 Health every 7s (every 4.7s for elders and the
+    young). Recovered, they're immune for a year. It kills mostly elders
+    and the already weak — about 17 deaths in 13 years out of some 290
+    cases. Three ill at once in a clan is an outbreak (a headline). The
+    sick carry a pale green blotch over their heads; the HUD counts them.
+*   **Ants:** in the garden's second year a rival ant colony digs in at
+    an edge, as far as it can from any home. From spring to autumn its
+    hill sends out ants — 2, plus one per 15 food it has taken, up to 6 —
+    that rob the nearest store within 55m (never a palisaded one), or
+    glean loose food near the hill, and carry it home; in winter they stay
+    underground. Easily swatted (5 Health), they bite back at whoever
+    hits them. Bramblekin go for any ant near their home, or one biting
+    them. About 34 food stolen from stores in 13 years, 118 ants swatted.
+*   **Floods:** a spring or autumn storm is a downpour 40% of the time.
+    The water rises through it over the lowest 15% of the garden, then
+    drains away over a minute. Under water, loose food and twigs float
+    away and bushes lose their ripe berries; a flooded Tent loses its
+    store and is swept away at even odds, a flooded House loses half its
+    store. About three floods in 13 years.
+
+## Neighbours: Alliances & War
+*   **Neighbours** are groups whose main homes are within 30m. Between
+    any two groups the World keeps a **stance** — Neutral, Allied or At
+    War — and a shared **grievance** that fades by 0.004 a second (about
+    2.4 a year): a killing adds 3, a raid 1, a robbery 1, a splinter
+    leaving in anger 2, an exile's household 1.5.
+*   **Leader decisions** (each Leader weighs every group it neighbours or
+    has history with):
+    *   **War** — a neighbour it holds a grievance of 10+ against, and a
+        Leader at least 0.4 Aggressive (odds 0.1 × Aggression per decision).
+    *   **Alliance** — a neighbour with little grievance (under 1), both
+        Leaders at least 0.35 Sociable, neither with 2 allies already, and
+        not Enemies: odds 0.02 × their average Sociability per decision,
+        three times that if they're family or friends. A village and the
+        daughter group that buds off it start out allied.
+    *   **Rift** — a grievance of 3+ breaks an alliance.
+    *   **Peace** — once the grievance has faded below 1.5, or after three
+        seasons of war however bitter, or once its side is clearly beaten
+        (see war outcomes): odds 0.02 + 0.08 × (1 − Aggression) per
+        decision (halved in a fully warlike clan), plus 0.1 when beaten.
+*   **Allies** defend each other (an ally being hit, or a raider heading
+    for an ally's home, is a threat), never rob each other, meet as
+    friends (sharing food), and marry across: a couple from allied groups
+    forms, and one of them (not a Leader) moves to the other's village. A
+    farming ally may teach the other to farm (odds 0.05 per decision).
+*   **Aid in person:** a well-stocked group (5+ stored, 40% full) whose
+    ally has run out (1 or less stored, a quarter of it hungry) sends a
+    **runner** — its most Sociable fit, fed, grown member (never the
+    Leader) — with up to 5 food in a sack slung on its back (odds: the
+    Leader's Sociability per decision; up to 3 runners on the road to one
+    ally at once). The runner walks it over and fills the ally's stores;
+    anything that won't fit is left at the door. On the way it's
+    vulnerable: a thief's successful blow grabs from the sack, and if the
+    runner dies (or leaves its group, or the ally is gone) the sack
+    spills on the ground for anyone to find.
+*   **Trade — labour for food:** a group with building under way and food
+    to spare hires a **helper** from an ally whose stores are under half
+    full (odds 0.3 × the Leader's Sociability; one helper at a time). The
+    helper walks over, fetches 3 twigs for the construction, and carries
+    3 food home to its own store as pay. An employer that can't pay in
+    full earns a grievance.
+*   **War:** members of warring groups keep their distance when they meet;
+    a bold resident (Aggression 0.5+) drives off an enemy that comes within
+    6m of home. An Aggressive Leader at war sends a **raiding party**: the
+    boldest healthy half of its group goes for the richest enemy store
+    within 60m, each Raider pushing past the defenders to take a piece of
+    Food and carry it home (standing down at half Health). A party keeps
+    at it for 45s or until the store is empty; the next can't set out for
+    240s.
+*   **War outcomes:** each side of a war keeps a score — 3 for every enemy
+    it kills, 1 for every piece of food it carries off. A side with at
+    least 4 and twice the other's has **won**; the beaten side is likelier
+    to sue for peace, and the peace comes on terms. A small beaten group
+    (5 or fewer, against a winner at least twice its size) is **absorbed**:
+    its survivors join the winner (only grudgingly loyal, at 0.35) and its
+    homes near the winner's village become part of it. A bigger one pays
+    **tribute** — a runner carries 3 food to the victors every season for a
+    year; a missed payment adds 2 to the grievance. Terms settle half the
+    bitterness; a war with no clear winner ends in a plain peace.
+*   Allied and warring villages are joined on the map by a green or red
+    line between their main homes; the HUD counts current alliances and
+    wars, and the Kin Inspector shows its group's.
+
+## Weather
+*   **Good and bad years:** each season rolls its weather. A Winter is
+    **harsh** 20% of the time: food at 0.7× even the usual winter pace,
+    and anyone caught outdoors gets hungry 15% faster. A Summer or Autumn
+    brings a **drought** 15% of the time: berries and bushes grow at half
+    pace, and the lawn turns parched gold. Any season but Winter may be
+    **bountiful** (15%): food at 1.5×. The HUD's year line names the
+    weather, the log announces it, and droughts and harsh winters go into
+    the chronicle.
+*   **Storms:** outside Winter and droughts, a storm blows up about once
+    every 400s and lasts 25s: the sky darkens, rain streaks down, half the
+    loose berries nobody has claimed are blown away, and twigs come down
+    (up to 25 more than usual lying about) — good for builders. Anyone
+    with a home and nothing pressing shelters from it, as in Winter.
+
+## Memory
+*   **Danger:** a Bramblekin stung by a Hornet or bitten by the Spider
+    remembers the spot (up to 4 places), and so does its group; a group
+    also remembers where a member was killed by a predator. For 300s it
+    passes up food within 6m of a remembered danger — unless it's
+    starving, when nothing is too risky — and wanders elsewhere.
+*   **Good places:** where a member last saw food, its group remembers too
+    (up to 6 spots). With no food in sight, a Bramblekin heads for where
+    it last saw some, else the freshest spot its group knows from the last
+    240s (that isn't dangerous); a spot that turns out empty is forgotten.
+
+## Clan Culture
+*   **Traditions:** a clan grows into what it does, a little at each
+    Leader decision: at war, raiding or defending home grows its
+    **Martial** tradition; hunting big game its **Hunting** one; tending
+    bushes (in proportion to how many it keeps) its **Farming** one. Each
+    runs 0–1 and fades if neglected (a half-life of about two years).
+    Once one reaches 0.4 and leads, the clan is *known* for it — "a
+    warlike clan" — and the chronicle notes it; the Kin Inspector and the
+    History screen show it. The name sticks: a clan keeps it until that
+    tradition fades below 0.3 or another overtakes it by 0.1, so two
+    close traditions don't flip its name back and forth.
+*   **Raised in the tradition:** a child is pulled part of the way toward
+    0.8 on the traits its clan prizes — Aggression and Courage in a
+    warlike clan, Courage, Aggression and Sociability in a hunting one,
+    Intelligence and Diligence in a farming one — so a favoured trait
+    settles there over the generations rather than piling up at 1.
+*   **Traditions outlast Leaders:** they sway any Leader's choices — a
+    warlike clan raids more, goes to war up to three times as readily,
+    makes peace more reluctantly and is shunned as an ally; a hunting
+    clan hunts more; a farming clan stockpiles more and keeps more
+    Farmers. Children raised in the clan lean its way (bolder in a
+    warlike or hunting clan, more sociable in a hunting one, sharper in a
+    farming one), and daughter and splinter groups start with their
+    parent's traditions.
+
+## The Chronicle & History
+*   **The chronicle** is the story of the garden's clans: foundings and
+    endings, new Leaders and how old ones died, wars and how they ended,
+    alliances, conquests and tribute, farming learned and taught, new
+    villages and daughter groups, famines, great elders, the traditions
+    clans became known for, and the worst weather. A clan's Wolf Spider
+    hunts make it only as milestones — its first, then every fifth. Each
+    entry is dated (year and season) and filed under the clans it
+    concerns.
+*   **The History screen** (the **History** button beside Map) has three
+    tabs, each showing the selected Bramblekin's clan (or a clan picked by
+    tapping one of its homes), else the whole garden; drag or scroll to
+    read back:
+    *   **Story** — a chart of the population and the number of groups
+        over the whole run (sampled every 30s) and the chronicle, newest
+        first.
+    *   **Stats** — a chart of food stored and berry bushes, the clan at a
+        glance (members, Leader, founding, homes, stores, bushes, spiders
+        slain, traditions, neighbours), and the garden's totals since it
+        began: population, deaths by cause, food, homes, clans and
+        politics, neighbours (alliances, wars, conquests, tribute, aid,
+        trade), farming, hunting and weather.
+    *   **Heroes** — the hall of fame, living or dead: the longest reign,
+        most children, most descendants, the oldest, the top Wolf Spider
+        slayer, the biggest family alive and the oldest clan standing —
+        and the selected Bramblekin's family tree: parents and
+        grandparents (with the year each died), partner, children,
+        grandchildren and all its descendants.
+    Headless runs print the chronicle at the end.
+*   **Every life is kept:** the World keeps a short record of every
+    Bramblekin that has ever lived — name, parents, generation, when it
+    arrived and died, how it died, its clan, children, reign and spider
+    kills — so family trees and the hall of fame reach back through the
+    generations.
+*   **Big moments** — a war, a conquest, a peace or tribute, a famine
+    (4 starving to death in one season), a new village, a clan splitting
+    or ending, a coup, an alliance, farming worked out, a drought or a
+    harsh winter — go up on a **banner** just above the HUD for a few
+    seconds (the urgent ones longer). Tap it to fly the camera there. An
+    urgent one (war, conquest, famine) also drops a fast-forwarded game
+    back to 1x so it can be watched — at most once every 90 seconds.
+
+## Save & Load
+*   **The garden carries on:** the game autosaves every 30s of real time
+    and on the way out, and picks up where it left off at the next start.
+    A save keeps everything lasting — the props, homes and their stores,
+    bushes, loose food and twigs, every Bramblekin (who it is, its family,
+    partner, home, group, job, loyalty, reputation, relationships, what it
+    knows and remembers, its errand), every group (Leader, homes, goal,
+    traditions, memories), the relations and tributes between groups,
+    the weather, the chronicle and history, and every counter and
+    statistic, and the record of every life. What a Bramblekin was doing
+    that very second (and where the Hornets and the Spider were) isn't
+    kept; each picks up again within moments.
+*   **New garden:** the **New** button (shown while the History screen is
+    open) starts over — tap it, then tap **Sure?** within 3s.
+*   The save is JSON (`garden.json` in the app's local data folder),
+    written to a temporary file and moved into place so a crash can't
+    leave half a save. A save that can't be read, or is from an
+    incompatible version, is ignored and a fresh garden begins. Headless
+    runs can `--load` a save and `--save` one at the end.
+
+## A Small World: the Pond and the Giant Oak
+*   **The pond:** water always stands in the lowest 5% of the garden —
+    a pond in the main hollow, and a pool cut by the east edge. Nothing
+    is built, planted, spawned or set down in it (it counts as blocked
+    ground for every site, spawn and wander point), and nothing that
+    walks ever steps into it: Bramblekin, the Wolf Spider, beetles, grubs
+    and ants all find their way round (see Code Layout & Performance);
+    Hornets fly over. A flood rises out of the pond and drains back into
+    it — flood water is shallow, and walkable. The water is drawn only
+    over the ground that dips below it.
+*   **Droughts drink the pond down:** through a drought the water sinks,
+    step by step over some 110s, to 0.92m below its usual level — about
+    a sixth of the pond left, a puddle at the bottom of each hollow —
+    laying bare a ring of mud that anyone can walk across. Drinkers and
+    fishers follow the water out across it (a longer walk for everyone,
+    a crowd at the puddles), a smaller pond holds fewer fish (catch odds
+    ×0.3–1), and watercress stops springing up on the old shore. After
+    the drought the pond fills back over 120s — four times as fast in the
+    rain — and a storm in a drought fills it too. Five levels are worked
+    out once (`WaterMap.Levels`), each with its own wet grid, route grid,
+    distance field and shore; walkers look again at their way round
+    whenever the level changes. Nothing is ever built in the pond's bed.
+*   **What the water gives:** a drink (see Thirst) — the one thing
+    nobody can do without, and the reason the garden's dry south-west is
+    the hardest place to live. Watercress grows wild along the shore
+    (most in spring, and never minding a drought); clans near it can
+    fish and plant cress beds; crops within 8m of it are watered — faster,
+    and drought-proof (see Farming).
+*   **Settling by the water:** a Bramblekin marking out a home takes, of
+    the open spots it tries, the one nearest water; pioneers founding a
+    new village weigh every meter to the water's edge (0.35 per meter, up
+    to 50m) against open ground and berries. How far is measured walking
+    round the pond (`WaterMap.DistanceToWater`); the Kin Inspector shows
+    how far its home is from water.
+*   **The Giant Oak:** the foot of a real tree stands at the garden's back
+    edge — a trunk 12m across, ridged bark and a mossy foot, rising far
+    out of sight, with one great bough overhead and ten great roots
+    arching out from high on its flank and diving into the lawn 7–13m
+    from the trunk (up to 2m thick) — so the garden reads as the small
+    world it is. Trunk and roots are solid: nothing that walks can climb
+    over them (they're obstacles, and in the route grid), so getting
+    round the oak means walking round the root tips, and nothing is built,
+    planted or set down on them. Loading an older garden clears whatever
+    stood where the roots are now. Its shade darkens the lawn around
+    it. In autumn it drops an acorn every 4s (up to 12 lying about at
+    once) up to 16m from the trunk: food like any other, for whoever
+    gathers it. Loading an older garden clears away anything that stood
+    where the trunk is now.
 
 ## Food & Wildlife
-*   **Food:** wild Berries grow passively (one every 0.6s, up to 100 on
+*   **Food:** wild Berries grow passively (one every 0.8s, up to 75 on
     the map, both scaled by the season), about two-thirds in eight Berry
-    Patches around Dandelions.
-    Hunted Grubs, Stag Beetles and a slain Wolf Spider drop meat (same
-    value). Loose Food rots after 60s; stored Food never does. A
+    Patches around Dandelions. Besides them, all at their season's pace
+    (the same curves as the crops): **watercress** springs up on the shore
+    (every 7s, up to 5); **mushrooms** come up in the oak's shade and at
+    the foot of the rocks (every 9s, up to 6, twice as fast for a minute
+    after rain); **grass seed** is shed in twos and threes on the open
+    lawn (every 8s, up to 6, high summer into autumn). The oak drops
+    acorns in autumn, fishers land fish, and hunted Grubs, Stag Beetles
+    and a slain Wolf Spider drop meat. Every kind is worth the same one
+    bite; what differs is where and when it turns up. The headless summary
+    and the Stats tab count how much of each was eaten or stored. Loose Food rots after 60s; stored Food never does. A
     Bramblekin walking to a piece claims it (Dibs) so others look
     elsewhere.
 *   **The Wolf Spider** (50 HP): hunts by vibration — any Bramblekin
@@ -487,8 +984,16 @@ overhead camera:
     (ignoring claims), skitter away from nearby Bramblekin, and drop 1–4
     pieces of meat when hunted down.
 *   **Stag Beetles** (60 HP, up to 2): see Hunting & Defending.
-*   **Garden Props:** Pebbles (solid), Twigs (where fallen twigs gather)
-    and Dandelions (where berries grow).
+*   **Garden Props:** Pebbles (solid rocks), Twigs (big sticks, where
+    fallen twigs gather) and Dandelions (where berries grow).
+*   **Stones and branches:** building material bigger than a twig. Stones
+    work loose at the foot of the rocks (16 to start, one every 12s up to
+    24; they never rot); thorny branches come down off the oak in a storm
+    (one every 6s of it) and off the big sticks now and then (every 90s),
+    up to 10, rotting after 900s or carried off by a flood. A clan with a
+    footing or palisade to finish keeps its most diligent Gatherer as a
+    Builder, fetching them from up to 45m away — a stone carried in front,
+    a branch dragged behind (at three-quarters pace).
 *   **Wandering Arrivals:** every 15s, while fewer than 30 Bramblekin are
     alive, a new solitary one with a freshly rolled Personality wanders
     in from a random edge of the map — so a hard winter never ends the

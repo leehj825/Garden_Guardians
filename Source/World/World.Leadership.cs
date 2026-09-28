@@ -73,17 +73,22 @@ public sealed partial class World
                 continue;
 
             group.DecisionTimer = LeaderDecisionInterval;
+            UpdateFarmingKnowledge(group);
+            UpdateCrafts(group);
+            UpdateCulture(group);
+            ConsiderNeighbours(group, leader);
             DecideGroupGoal(group, leader);
             ReviewLoyalty(group, leader);
             TryBirth(group);
         }
         ProcessRebellions();
+        ProcessConquests();
     }
 
     /// <summary>
     /// A Leader's decision: scores each goal from the group's situation,
     /// weighted by the Leader's own personality, picks the best, and hands
-    /// out jobs to match.
+    /// out jobs to match (and, in a farming group, Farmers — see <see cref="AssignJobs"/>).
     ///   * Defend — a threat near home; always wins, more so for a bold Leader.
     ///   * Settle — something is under construction (see
     ///     <see cref="KinGroup.ConstructionSite"/>): an upgrade or a new home
@@ -94,6 +99,11 @@ public sealed partial class World
     ///     emptier store makes it more urgent.
     ///   * Stockpile — fill the stores (once there are any); the emptier
     ///     they are, the more urgent.
+    ///   * Raid — at war, with an enemy store within reach and at least
+    ///     three fit fighters: send a raiding party to carry it off. Only
+    ///     Aggressive Leaders really go for it; a party, once sent, keeps at
+    ///     it for <see cref="RaidDuration"/> (or until the store is empty),
+    ///     and the next can't set out for <see cref="RaidInterval"/>.
     /// The sharing rule follows the Leader's personality: an unsociable,
     /// Aggressive Leader eats first.
     /// </summary>
@@ -125,11 +135,42 @@ public sealed partial class World
         if (CurrentSeason == Season.Winter && hunt > 0f)
             hunt += 1f;
 
+        // War: a raiding party already out keeps at it; otherwise, once the
+        // last one is long enough ago, an enemy store in reach is a target.
+        bool raiding = group.Goal == GroupGoal.Raid && ElapsedSeconds < group.RaidEndsAt &&
+                       group.WarTarget is { IsCollapsed: false, StoredFood: > 0 };
+        Shelter? warTarget = raiding ? group.WarTarget : ElapsedSeconds >= group.NextRaidAt ? WarRaidTarget(group) : null;
+        int fighters = group.Members.Count(m => !m.IsDead && !m.IsYoung && m.Health > Bramblekin.MaxHealth / 2);
+        float raid = warTarget is null || !hasStore || fighters < 3 ? 0f
+            : 0.5f + 3f * p.Aggression + (1f - storeFill);
+
+        // Clan culture: its traditions sway any Leader's choices.
+        ClanCulture culture = group.Culture;
+        if (hunt > 0f)
+            hunt += 1.5f * culture.Hunting;
+        if (raid > 0f)
+            raid += 2f * culture.Martial;
+        if (stockpile > 0f)
+            stockpile += 0.5f * culture.Farming;
+
         GroupGoal goal = GroupGoal.Stockpile;
         float best = stockpile;
         if (settle > best) { goal = GroupGoal.Settle; best = settle; }
         if (hunt > best) { goal = GroupGoal.Hunt; best = hunt; }
+        if (raid > best) { goal = GroupGoal.Raid; best = raid; }
         if (defend > best) { goal = GroupGoal.Defend; }
+
+        // A raiding party already out sees it through — unless home itself is threatened.
+        if (raiding && defend == 0f)
+            goal = GroupGoal.Raid;
+
+        bool newRaid = goal == GroupGoal.Raid && !raiding;
+        group.WarTarget = goal == GroupGoal.Raid ? warTarget : null;
+        if (newRaid)
+        {
+            group.RaidEndsAt = ElapsedSeconds + RaidDuration;
+            group.NextRaidAt = ElapsedSeconds + RaidInterval;
+        }
 
         SharingRule sharing = p.Sociability < 0.4f && p.Aggression >= 0.5f ? SharingRule.LeaderFirst : SharingRule.Equal;
         if (sharing != group.Sharing)
@@ -143,17 +184,34 @@ public sealed partial class World
         if (goal != group.Goal)
         {
             group.Goal = goal;
-            Game.AddEventLog(goal switch
+            if (goal != GroupGoal.Raid) // A raid is announced below, with its party.
             {
-                GroupGoal.Defend => $"[LEADER] {leader.Name} rallies {group.Title} to defend home",
-                GroupGoal.Hunt => $"[LEADER] {leader.Name} sends {group.Title} after a Stag Beetle",
-                GroupGoal.Settle => $"[LEADER] {leader.Name} puts {group.Title} to building",
-                _ => $"[LEADER] {leader.Name} has {group.Title} stock the stores",
-            });
+                Game.AddEventLog(goal switch
+                {
+                    GroupGoal.Defend => $"[LEADER] {leader.Name} rallies {group.Title} to defend home",
+                    GroupGoal.Hunt => $"[LEADER] {leader.Name} sends {group.Title} after a Stag Beetle",
+                    GroupGoal.Settle => $"[LEADER] {leader.Name} puts {group.Title} to building",
+                    _ => $"[LEADER] {leader.Name} has {group.Title} stock the stores",
+                });
+            }
         }
 
         AssignJobs(group);
+
+        if (newRaid && warTarget!.GroupId is { } enemyId && _groups.TryGetValue(enemyId, out KinGroup? enemy))
+        {
+            int raiders = group.Members.Count(m => m.Job == KinJob.Raider);
+            QueueFloatingText(leader.Position, "Raid!", HostileTextColor);
+            Game.AddEventLog($"[WAR] {leader.Name} sent {raiders} raiders from {group.Title} against {enemy.Title}'s stores");
+        }
     }
+
+    /// <summary>A raiding party keeps at it this long (s)…</summary>
+    private const float RaidDuration = 45f;
+
+    /// <summary>…and the next can't set out until this long (s) after it did.</summary>
+    private const float RaidInterval = 240f;
+
 
     /// <summary>
     /// Hands out jobs for the current goal, by fit: Guards from the
@@ -161,7 +219,7 @@ public sealed partial class World
     /// a first home), Hunters from the Aggressive; everyone else gathers.
     /// The Leader takes a job too.
     /// </summary>
-    private static void AssignJobs(KinGroup group)
+    private void AssignJobs(KinGroup group)
     {
         foreach (Bramblekin young in group.Members.Where(m => m.IsYoung))
             young.AssignJob(KinJob.None);
@@ -176,7 +234,7 @@ public sealed partial class World
             case GroupGoal.Defend:
                 foreach (Bramblekin member in members)
                 {
-                    if (member.Personality.Aggression >= 0.3f && member.Health > Bramblekin.MaxHealth / 2)
+                    if ((member.Personality.Aggression + member.Personality.Courage) / 2f >= 0.3f && member.Health > Bramblekin.MaxHealth / 2)
                         member.AssignJob(KinJob.Guard);
                 }
                 break;
@@ -189,16 +247,40 @@ public sealed partial class World
                 break;
 
             case GroupGoal.Hunt:
-                foreach (Bramblekin member in members.OrderByDescending(m => m.Personality.Aggression).Take(Math.Max(2, (members.Count + 1) / 2)))
+                foreach (Bramblekin member in members.OrderByDescending(m => m.Personality.Courage + 0.5f * m.Personality.Aggression).Take(Math.Max(2, (members.Count + 1) / 2)))
                     member.AssignJob(KinJob.Hunter);
+                break;
+
+            case GroupGoal.Raid:
+                // The boldest healthy half goes; the rest mind home.
+                foreach (Bramblekin member in members.Where(m => m.Health > Bramblekin.MaxHealth / 2)
+                             .OrderByDescending(m => m.Personality.Aggression).Take(Math.Max(2, (members.Count + 1) / 2)))
+                    member.AssignJob(KinJob.Raider);
                 break;
 
             default:
                 if (members.Count >= 4 && group.Home is { IsBuilt: true })
-                    members.MaxBy(m => m.Personality.Aggression)!.AssignJob(KinJob.Guard);
+                    members.MaxBy(m => m.Personality.Courage + 0.5f * m.Personality.Aggression)!.AssignJob(KinJob.Guard);
                 break;
         }
+
+        // A farming group keeps some of its sharpest Gatherers on its crops.
+        if (group.Goal != GroupGoal.Defend && group.Home is { IsBuilt: true } && KnowsFarming(group))
+        {
+            int perFarmer = Math.Max(2, FarmersPerMembers - (int)MathF.Round(2f * group.Culture.Farming)); // A farming clan farms more.
+            int farmers = Math.Max(1, members.Count / perFarmer);
+            foreach (Bramblekin member in members.Where(m => m.Job == KinJob.Gatherer).OrderByDescending(m => m.Personality.Intelligence).Take(farmers))
+                member.AssignJob(KinJob.Farmer);
+        }
+
+        // A clan with a footing or a palisade to finish keeps its most diligent Gatherer fetching stones and branches.
+        if (group.Goal is not (GroupGoal.Defend or GroupGoal.Raid) && members.Count >= 3 && group.Home is { IsBuilt: true } home &&
+            (HomeNeeding(group, MaterialKind.Stone, home.Position) ?? HomeNeeding(group, MaterialKind.Branch, home.Position)) is not null)
+            members.Where(m => m.Job == KinJob.Gatherer).MaxBy(m => m.Personality.Diligence)?.AssignJob(KinJob.Builder);
     }
+
+    /// <summary>A farming group makes one Farmer for every this many grown members (at least one).</summary>
+    private const int FarmersPerMembers = 4;
 
     /// <summary>The nearest threat to the group's home (or to its Leader, while homeless): the Wolf Spider, a chasing Hornet, a raider heading for the store, or an outsider attacking a member.</summary>
     private ICombatant? ThreatNearHome(KinGroup group)
@@ -230,12 +312,24 @@ public sealed partial class World
         {
             if (kin.IsDead || kin.GroupId == group.Id)
                 continue;
-            if ((kin.RaidTarget is { } raided && raided.GroupId == group.Id) ||
-                (kin.CombatTarget is Bramblekin victim && victim.GroupId == group.Id))
+            // An outsider defending its own home isn't a threat to this one —
+            // otherwise two villages next door each "defend" against the other
+            // in an endless brawl. Nor are defenders fighting off this group's
+            // own raiding party.
+            if (kin.RaidTarget is { } raided && raided.GroupId == group.Id)
+                Consider(kin);
+            else if (kin.CombatTarget is Bramblekin victim && victim.GroupId == group.Id &&
+                     !(group.Goal == GroupGoal.Raid && victim.Job == KinJob.Raider) && !IsDefendingOwnHome(kin))
                 Consider(kin);
         }
         return best;
     }
+
+    /// <summary>True while <paramref name="kin"/> is fighting near its own home with its group rallied to defend it.</summary>
+    private bool IsDefendingOwnHome(Bramblekin kin) =>
+        kin.State == BramblekinState.Fighting && GroupOf(kin) is { Goal: GroupGoal.Defend } &&
+        kin.Home is { } home &&
+        GroundMover.HorizontalDistanceSquared(kin.Position, home.Position) <= HomeDefenseRadius * HomeDefenseRadius * 2.25f;
 
     /// <summary>
     /// Whether <paramref name="kin"/> may eat from <paramref name="home"/>'s

@@ -73,10 +73,10 @@ public sealed partial class World
     private const int InitialBerries = 45;
 
     /// <summary>Passive Foraging: seconds between wild Berry spawns in a normal season — divided by the season's abundance (see <see cref="AbundanceOf"/>).</summary>
-    public const float BerrySpawnInterval = 0.6f;
+    public const float BerrySpawnInterval = 0.8f;
 
     /// <summary>Wild Berries stop spawning once this many are on the ground in a normal season — scaled by the season's abundance.</summary>
-    public const int MaxBerries = 100;
+    public const int MaxBerries = 75;
 
     /// <summary>
     /// Berry Patches: how many fixed spots (preferably Dandelions) most
@@ -228,10 +228,29 @@ public sealed partial class World
     /// <summary>Every group with at least two living members, keyed by <see cref="Bramblekin.GroupId"/>.</summary>
     public IReadOnlyCollection<KinGroup> Groups => _groups.Values;
 
-    /// <summary>The Bramblekin shown in the Kin Inspector panel, if any — see <see cref="TrySelectKinAt"/>.</summary>
+    /// <summary>The Bramblekin shown in the Kin Inspector panel, if any — see <see cref="TrySelectAt"/>.</summary>
     public Bramblekin? SelectedKin { get; private set; }
 
     public IReadOnlyList<Obstacle> Obstacles => _obstacles;
+
+    /// <summary>Obstacle cells are this size (m)…</summary>
+    private const float ObstacleCellSize = 5f;
+
+    /// <summary>…and each lists every obstacle within this far (m) of it — room for a walker's look-ahead and body.</summary>
+    private const float ObstacleCellReach = 3f;
+
+    private const int ObstacleCells = 20;
+
+    /// <summary>The obstacles near each 5m cell of the garden (see <see cref="ObstaclesNear"/>).</summary>
+    private readonly List<Obstacle>[] _obstacleCells = Enumerable.Range(0, ObstacleCells * ObstacleCells).Select(_ => new List<Obstacle>()).ToArray();
+
+    /// <summary>The obstacles a walker at <paramref name="point"/> could bump into or need to steer round — the handful near it, not all of them.</summary>
+    public IReadOnlyList<Obstacle> ObstaclesNear(Vector3 point)
+    {
+        int x = Math.Clamp((int)((point.X + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
+        int z = Math.Clamp((int)((point.Z + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
+        return _obstacleCells[x * ObstacleCells + z];
+    }
     public IReadOnlyList<(Vector3 Position, string Text, Color Color, float TimeLeft)> FloatingTexts => _floatingTexts;
 
     /// <summary>Loose (active, uncarried) Food on the map, as of the start of this frame.</summary>
@@ -245,7 +264,7 @@ public sealed partial class World
     public int DeathsByPredator { get; private set; }
     public int DeathsByKin { get; private set; }
     public int DeathsByOldAge { get; private set; }
-    public int Casualties => DeathsByStarvation + DeathsByPredator + DeathsByKin + DeathsByOldAge;
+    public int Casualties => DeathsByStarvation + DeathsByPredator + DeathsByKin + DeathsByOldAge + DeathsBySickness + DeathsByThirst;
     public int FoodEaten { get; private set; }
     public int FoodShared { get; private set; }
     public int Thefts { get; private set; }
@@ -258,6 +277,7 @@ public sealed partial class World
     {
         Terrain = terrain;
         Rng = rng;
+        SyncPondLevel(); // The pond as usual — whatever a garden before this one left it at.
 
         SpawnGardenProps();
         RebuildObstacles();
@@ -271,12 +291,15 @@ public sealed partial class World
         for (int i = 0; i < InitialBerries; i++)
             ActivateFood(RandomBerrySpot(), FoodShardKind.Berry);
         InitializeTwigs();
+        InitializeMaterials(scatterStones: true);
 
         // Every starting Bramblekin is solitary, with its own freshly
         // rolled Personality (see the Bramblekin constructor) — groups only
         // ever form later, out of encounters.
         for (int i = 0; i < initialKinCount; i++)
             Colony.Add(Newcomer(RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin)));
+        foreach (Bramblekin kin in Colony)
+            RegisterLife(kin);
 
         SpawnSpider();
         RebuildSpatialGrids(); // So LooseFoodCount is right before the first Update.
@@ -294,13 +317,15 @@ public sealed partial class World
         for (int i = 0; i < GardenPropCount; i++)
         {
             Vector3 candidate = Terrain.RandomPoint(Rng, margin: 1f);
+            for (int attempt = 0; attempt < 10 && (IsWater(candidate) || GroundMover.HorizontalDistance(candidate, OakCenter) < OakRadius + 1f); attempt++)
+                candidate = Terrain.RandomPoint(Rng, margin: 1f); // Not in the pond, nor where the oak stands.
             var kind = (GardenPropKind)Rng.Next(3);
             float rotation = (float)(Rng.NextDouble() * MathF.Tau);
             GardenProps.Add(new GardenProp(Grounded(candidate), kind, rotation, Rng));
         }
     }
 
-    /// <summary>Large Pebbles are the only solid things on the map; built once, since props never move.</summary>
+    /// <summary>Large Pebbles and the Giant Oak's trunk are the only solid things on the map; built once, since neither moves.</summary>
     private void RebuildObstacles()
     {
         _obstacles.Clear();
@@ -308,6 +333,23 @@ public sealed partial class World
         {
             if (prop.FootprintRadius > 0f)
                 _obstacles.Add(new Obstacle(new Vector2(prop.Position.X, prop.Position.Z), prop.FootprintRadius));
+        }
+        AddOakObstacle();
+
+        foreach (List<Obstacle> cell in _obstacleCells)
+            cell.Clear();
+        foreach (Obstacle obstacle in _obstacles)
+        {
+            float reach = obstacle.Radius + ObstacleCellReach;
+            int x0 = Math.Clamp((int)((obstacle.Center.X - reach + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
+            int x1 = Math.Clamp((int)((obstacle.Center.X + reach + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
+            int z0 = Math.Clamp((int)((obstacle.Center.Y - reach + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
+            int z1 = Math.Clamp((int)((obstacle.Center.Y + reach + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
+            for (int x = x0; x <= x1; x++)
+            {
+                for (int z = z0; z <= z1; z++)
+                    _obstacleCells[x * ObstacleCells + z].Add(obstacle);
+            }
         }
     }
 
@@ -363,12 +405,17 @@ public sealed partial class World
     {
         ElapsedSeconds += deltaTime;
         UpdateSeason();
+        UpdateWeather(deltaTime);
+        UpdateHistory(deltaTime);
         AccumulateExposure(deltaTime);
         UpdateFoodClaimTimeouts(deltaTime);
         RebuildSpatialGrids();
         RebuildGroups();
+        UpdateRelations(deltaTime);
+        UpdateTributes();
         UpdateGroupHomes(deltaTime);
         UpdateGroupDecisions(deltaTime);
+        UpdateReigns(deltaTime);
         CountShelterOccupants();
 
         // Wildlife moves before the colony reacts to it this frame. Reverse
@@ -395,12 +442,19 @@ public sealed partial class World
         ResolveEncounters();
 
         UpdateShelters(deltaTime);
+        UpdateFarming(deltaTime);
         UpdateBerrySpawn(deltaTime);
+        UpdateWildFood(deltaTime);
         UpdateTwigSpawn(deltaTime);
+        UpdateMaterials(deltaTime);
+        UpdateCisterns(deltaTime);
+        UpdatePond(deltaTime);
         UpdateSpiderRespawn(deltaTime);
         UpdateHornetSpawn(deltaTime);
         UpdateGrubSpawn(deltaTime);
         UpdateBeetleSpawn(deltaTime);
+        UpdateAnts(deltaTime);
+        UpdateOak(deltaTime);
         UpdateArrivals(deltaTime);
         UpdateFoodDespawn(deltaTime);
         UpdateEncounterCleanup(deltaTime);
@@ -455,6 +509,8 @@ public sealed partial class World
 
         if (_pendingKinSpawns.Count > 0)
         {
+            foreach (Bramblekin kin in _pendingKinSpawns)
+                RegisterLife(kin);
             Colony.AddRange(_pendingKinSpawns);
             _pendingKinSpawns.Clear();
         }
@@ -465,6 +521,8 @@ public sealed partial class World
                 ActivateFood(position, kind);
             _pendingFoodSpawns.Clear();
         }
+
+        CommitAntRemovals();
 
         if (_pendingHornetRemovals.Count > 0)
         {
@@ -522,9 +580,11 @@ public sealed partial class World
 
     // --- Queries used by the AI ------------------------------------------------------
 
-    /// <summary>True if a round body of <paramref name="clearance"/> radius at <paramref name="point"/> would overlap an obstacle.</summary>
+    /// <summary>True if a round body of <paramref name="clearance"/> radius at <paramref name="point"/> would overlap an obstacle, or the pond.</summary>
     public bool IsBlocked(Vector3 point, float clearance)
     {
+        if (IsWaterNear(point, clearance))
+            return true; // Nothing is built, planted or set down in the pond.
         var p = new Vector2(point.X, point.Z);
         foreach (var obstacle in _obstacles)
         {
@@ -587,12 +647,12 @@ public sealed partial class World
         return best;
     }
 
-    /// <summary>The nearest living Bramblekin within <paramref name="radius"/> (at most <see cref="SpatialGrid{T}.ChunkSize"/>) of <paramref name="from"/>, if any.</summary>
+    /// <summary>The nearest living Bramblekin within <paramref name="radius"/> of <paramref name="from"/>, if any.</summary>
     public Bramblekin? NearestLivingKinWithin(Vector3 from, float radius)
     {
         Bramblekin? best = null;
         float bestDistanceSquared = radius * radius;
-        List<Bramblekin> nearby = QueryNearbyColony(from);
+        List<Bramblekin> nearby = QueryNearbyColony(from, radius);
         for (int i = 0; i < nearby.Count; i++)
         {
             Bramblekin kin = nearby[i];
@@ -610,16 +670,18 @@ public sealed partial class World
     }
 
     /// <summary>
-    /// The Spatial Grid: every living Bramblekin registered within 10m
-    /// chunks of <paramref name="position"/> (its own chunk plus the 8
-    /// neighbors) — used by the Wolf Spider's prey search, a Hornet's aggro
-    /// check and a Grub's skittishness. The returned list is a reused
-    /// scratch buffer: safe to iterate immediately, but don't hold onto it
-    /// past the call that reads it.
+    /// The Spatial Grid: every Bramblekin registered in the chunks
+    /// overlapping <paramref name="radius"/> of <paramref name="position"/>
+    /// (a superset — distance-check the results) — used by the Wolf
+    /// Spider's prey search, a Hornet's aggro check, a Stag Beetle's
+    /// retaliation and a Grub's skittishness. Ask for no more than the
+    /// radius needed: a smaller window is the same answer, found faster.
+    /// The returned list is a reused scratch buffer: safe to iterate
+    /// immediately, but don't hold onto it past the call that reads it.
     /// </summary>
-    public List<Bramblekin> QueryNearbyColony(Vector3 position)
+    public List<Bramblekin> QueryNearbyColony(Vector3 position, float radius)
     {
-        _colonyGrid.QueryNearby(position, _colonyQueryBuffer);
+        _colonyGrid.QueryRadius(position, radius, _colonyQueryBuffer);
         return _colonyQueryBuffer;
     }
 
@@ -670,8 +732,45 @@ public sealed partial class World
         return candidate;
     }
 
-    /// <summary>Kin Inspector: selects the living Bramblekin nearest <paramref name="groundPoint"/> within <see cref="KinSelectionRadius"/>, or clears the selection on a tap at empty ground.</summary>
-    public void TrySelectKinAt(Vector3 groundPoint)
+    /// <summary>
+    /// A tap on the map: a tap right on a home (with nobody standing on the
+    /// spot) selects its clan — or, for a loner's tent, its owner; otherwise
+    /// it selects the living Bramblekin nearest <paramref name="groundPoint"/>
+    /// within <see cref="KinSelectionRadius"/>, or clears the selection on a
+    /// tap at empty ground.
+    /// </summary>
+    public void TrySelectAt(Vector3 groundPoint)
+    {
+        Bramblekin? kin = NearestKinTo(groundPoint);
+        Shelter? home = Shelters
+            .Where(s => !s.IsCollapsed && GroundMover.HorizontalDistance(groundPoint, s.Position) <= s.Radius + 0.3f)
+            .MinBy(s => GroundMover.HorizontalDistanceSquared(groundPoint, s.Position));
+        bool onKin = kin is not null && GroundMover.HorizontalDistance(groundPoint, kin.Position) <= DirectTapRadius;
+        if (home is not null && !onKin)
+        {
+            if (home.GroupId is { } clan && _groups.ContainsKey(clan))
+            {
+                SelectedKin = null;
+                _selectedClanId = clan;
+                return;
+            }
+            if (home.Owner is { IsDead: false } owner)
+                kin = owner;
+        }
+        SelectedKin = kin;
+        _selectedClanId = null;
+    }
+
+    /// <summary>A Bramblekin this close to a tap was tapped on directly, even if it's standing at a home's door.</summary>
+    private const float DirectTapRadius = 0.6f;
+
+    private Guid? _selectedClanId;
+
+    /// <summary>The clan picked by tapping one of its homes (see <see cref="TrySelectAt"/>), while it lasts.</summary>
+    public KinGroup? SelectedClan => _selectedClanId is { } id && _groups.TryGetValue(id, out KinGroup? clan) ? clan : null;
+
+    /// <summary>The living Bramblekin nearest <paramref name="groundPoint"/> within <see cref="KinSelectionRadius"/>, if any.</summary>
+    private Bramblekin? NearestKinTo(Vector3 groundPoint)
     {
         Bramblekin? best = null;
         float bestDistanceSquared = KinSelectionRadius * KinSelectionRadius;
@@ -687,6 +786,6 @@ public sealed partial class World
                 bestDistanceSquared = distanceSquared;
             }
         }
-        SelectedKin = best;
+        return best;
     }
 }

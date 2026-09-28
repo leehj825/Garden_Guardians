@@ -6,8 +6,8 @@
 
 ## Progress Snapshot
 The game is an **Emergent Survival** simulation (Phase 7) that has grown
-a **society** (Phase 8), a **living population** (Phase 9) and **lives
-& lineages** (Phase 10). There are no factions or top-down economy: the
+a **society** (Phase 8), a **living population** (Phase 9), **lives &
+lineages** (Phase 10) and **farming & neighbours** (Phase 11). There are no factions or top-down economy: the
 map is the procedural terrain and loose entities — wild Food, Twigs, a
 Wolf Spider, Hornet swarms, Grubs, Stag Beetles, Garden Props — and the
 Bramblekin. Every Bramblekin is an individual agent with a random
@@ -423,26 +423,229 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     Food stored per member (2 in autumn) — with old age thinning the
     population, food per head was the main thing holding births back.
 
+## Phase 11: Farming, Neighbours & a 13-Year Review
+*   ✅ **Farming:** clever clans work out how to grow berry bushes from
+    seed; the knowledge lives in individuals and spreads through
+    families, splits, budding, marriage and allies. Farmers plant (a berry
+    as seed) and harvest into the stores; bushes fruit at the season's
+    pace, drop overripe berries, and run wild when their group is gone.
+*   ✅ **Villages as neighbours:** per-pair stances (Neutral / Allied /
+    At War) driven by fading grievances (killings, raids, robberies,
+    splits, exiles) and Leader personalities. Allies defend each other,
+    send food to an ally in need, teach farming and marry across; wars
+    bring bold residents out against intruders and send raiding parties
+    after enemy stores; peace comes as grudges fade or war-weariness sets
+    in. Green/red lines on the map, counts on the HUD.
+*   ✅ **Fixes from a 13-year review:** close relatives killed each other
+    in feuds between their groups (now: no killing blow, robbery or raid
+    against parent, child or sibling); winter famine made followers walk
+    out and starve alone (now: shared hardship costs the Leader less
+    loyalty, and a sharp rebel waits for spring); newly joined members
+    churned straight back out (now: a 90s grace); neighbouring villages
+    "defended" against each other in endless brawls (now: an outsider
+    defending its own home isn't a threat, and allies only join when their
+    ally is actually hit); raiding parties were recalled before they
+    arrived (now: a party sees its raid through unless home is threatened).
+*   *Result* (6 seeds × 13 years, against the previous build): population
+    ~52 on average (was ~34), starvation about the same in number on a far
+    bigger population, newcomers ~17 per run (was ~54) — the world now
+    sustains itself — and 0 close-kin killings (was 14). Most worlds stay
+    peaceful with a few lasting alliances; some fall into cycles of war
+    with dozens of kin deaths. Stable over 24 years with 34–69 kin.
+
+## Phase 12: The Wider Garden
+*   ✅ **Rarer wars:** a grievance of 10 (not 6) before a Leader can
+    declare war — 28 wars in 12 × 13-year runs instead of 47.
+*   ✅ **Villages spread out:** budding settlers, splinters and departing
+    couples found new villages on open ground 15–55m away (far from other
+    homes, near berry patches), a budding party taking a dowry of food.
+    *Result* (12 seeds × 13 years): kin-on-kin killings 551 → 159, wars
+    28 → 1, starvation 639 → 494, average population 53 → 64, and twice
+    as much food aid between allies.
+*   ✅ **Aid in person:** food aid between allies is carried by a runner
+    with a sack — visible on the map, robbable, and spilled if the runner
+    dies on the way.
+*   ✅ **Trade between allies:** a group with building under way hires a
+    helper from a hard-up ally, paying in food carried home.
+*   ✅ **War outcomes:** war scores (killings, food carried off); a
+    clearly beaten side sues for peace and either is absorbed (if small)
+    or pays a year of tribute, carried by runners.
+*   ✅ **Weather:** droughts, harsh winters and bountiful seasons; storms
+    that blow away loose berries and bring down twigs.
+*   ✅ **Memory:** kin and their groups remember where danger struck
+    (and keep away from there unless starving) and where food was found.
+*   ✅ **Chronicle & History screen:** a dated story of every clan, with a
+    population/groups chart; per-clan view for the selected Bramblekin.
+*   ✅ **Save & load:** autosave every 30s and on exit, carried on at the
+    next start; a New button (with confirmation) starts over; headless
+    `--save`/`--load`.
+*   ✅ **Clan culture:** Martial, Hunting and Farming traditions that grow
+    from what a clan does, sway its Leaders, nudge its children, and pass
+    to daughter clans.
+*   *Result* (24 seeds × 13 years, no exceptions): the first cut of the
+    weather was too harsh (harsh winters 30% of the time, 0.5× food,
+    1.25× cold): population ~70 → ~58, starvation 52 → 68 a run,
+    old-age deaths 78 → 60, and one winter in ten after a drought
+    killing up to 65%. Ablations put it on the weather (off: 31 starved)
+    and cleared danger memory (off: no better). Softened (20%, 0.7×,
+    1.15×): population ~65, 54 starved, 69 old-age deaths, newcomers 18
+    a run; a harsh winter costs 13% of the garden on average (7% for a
+    fair one), and the worst 38%.
+
+## Phase 13: Watching the Garden
+*   ✅ **Fast-forward plays the same game:** the garden always advances in
+    fixed 1/60s steps, whatever the speed. At a phone's 20x (0.046s
+    steps) the old loop starved half as many again (69 vs 47 a run, 12
+    seeds × 13 years); ablations put the difference in how Bramblekin and
+    creatures act, not in the world's bookkeeping. A device that can't
+    keep up says so ("running 9x"). 50x added.
+*   ✅ **A tidier chronicle:** a clan's tradition name sticks (it used to
+    flip up to 26 times in a run, now at most twice); spider hunts are
+    recorded only as milestones.
+*   ✅ **Stats tab:** the garden's totals and the selected clan at a
+    glance, with a food-and-bushes chart.
+*   ✅ **Clans on the map:** name tags over villages, clan-coloured
+    territory, and a clan card on tapping a home.
+*   ✅ **Big-moment banners:** wars, conquests, famines, new villages and
+    more; tap to fly there; urgent ones slow a fast-forwarded game to 1x.
+*   ✅ **Heroes and dynasties:** a record of every life ever lived, the
+    hall of fame, and family trees reaching back to grandparents and
+    forward to every descendant.
+*   ✅ **Speed:** narrower spatial queries, an array-backed grid, and no
+    allocation on the hot paths — about a quarter less CPU and a tenth of
+    the garbage, with results identical step for step.
+*   ✅ **New pressures:** crafts clans work out and teach (granary, spears,
+    palisade); sickness that spreads by contact; a rival ant colony
+    raiding stores; floods in spring and autumn downpours.
+    *Result* (24 seeds × 13 years, no exceptions): population unchanged
+    (65.5 vs 65.1), starvation 59 vs 54, predators 30 vs 31, kin
+    killings 25 vs 30; sickness takes about 17 a run, mostly elders, so
+    old-age deaths fall from 69 to 58.
+
+## Phase 14: A Small World
+*   ✅ **Acorn village:** homes redrawn at Bramblekin scale — an acorn cap
+    on twig legs for a Tent, a whole acorn for a House, a hazelnut
+    granary, a palisade of rose thorns.
+*   ✅ **The pond:** permanent water in the lowest ground; no building or
+    spawning in it, wading at half pace; floods rise from it.
+*   ✅ **The Giant Oak:** a trunk rising out of sight at the back edge,
+    with roots, shade, and acorns falling in autumn (about 26 a year).
+*   *Result* (24 seeds × 13 years, no exceptions): average population
+    57.5 vs 65.5 before (within the run-to-run spread), starvation 48 vs
+    59, predators 26 vs 30, kin killings 31 vs 25, old age unchanged.
+
+## Phase 15: Richer Natures
+*   ✅ **Four new traits:** rebellious ↔ obedient, persuasive ↔ passive,
+    brave ↔ cautious, diligent ↔ idle — inherited, drawn by clan
+    culture, saved (rolled afresh for a garden saved before them), shown
+    in words in the Kin Inspector and the chronicle, and each wired to
+    behaviour: loyalty and rebellion; leadership, splits, alliances,
+    peace, recruiting and teaching; fight-or-flight, nerve, danger memory
+    and who hunts and guards; the pace of work and rest.
+*   ✅ **Clan culture no longer maxes traits out:** a clan's pull on its
+    children's traits now draws them toward 0.8 rather than adding a
+    fixed push each generation (farming clans' Intelligence used to
+    climb to ~0.96).
+*   **Benchmark (24 seeds × 7800s, vs. the pond-and-oak build):**
+    population 52.2 ± 3.1 vs 57.5 ± 3.4 (within the spread); deaths to
+    predators up from 26.4 to 34.1 — brave Bramblekin stand and fight —
+    and to other Bramblekin down from 31.3 to 25.2; starvation unchanged
+    (48.5 vs 47.9); splits and challenges unchanged (165 vs 163). By the
+    end the living lean diligent (0.73) and a little brave (0.59), with
+    rebellion still at the middle (0.50). No crashes.
+
+## Phase 16: Easier to Watch
+*   ✅ **The log, your way:** a **Log** button under the event console
+    steps it through brief (newest 3 entries, a line each — the default),
+    off (with a count of what's been missed) and full; the choice is
+    remembered in `settings.txt` beside the save.
+*   ✅ **Bars that grow with the zoom:** health and hunger bars scale with
+    how big the creature looks on screen (2.4× its width, 34–150px scaled
+    to the screen), so they're readable up close and unchanged at the
+    whole-map view.
+
+## Phase 17: Water, Harvests, Stone and Branch
+*   ✅ **Brave, not reckless:** however brave, a fighter breaks off while
+    it can survive one more blow, and backs away on guard (safe from the
+    spider's pounce). Benchmark vs Phase 15: deaths to predators 27.3 vs
+    34.1 (back to where they were before the new traits), population 53.6
+    vs 52.2.
+*   ✅ **The whole map:** no draw distance; zooming out stops once the
+    garden fits the screen; the mouse wheel zooms on desktop.
+*   ✅ **Water you can't walk on:** nothing that walks enters the pond;
+    walkers find their way round it (A* on a 1m grid).
+*   ✅ **Food from many places:** grass seed, mushrooms, watercress and
+    fish join the berries, acorns and meat, each with its own place and
+    season.
+*   ✅ **Four crops:** berry bushes, grain patches, mushroom beds and
+    cress beds, each its own craft, season and lifespan; crops by the
+    pond are watered.
+*   ✅ **Fishing** from the shore.
+*   ✅ **Stones and branches:** Builders carry stones home for stone
+    footings (more store, dry in a flood, no ants) and drag branches home
+    for palisades, which now have to be built.
+*   **Benchmark (24 seeds × 7800s, no crashes):** the first cut grew the
+    population from 53.6 to 76.0 — mushrooms, winter fishing and bigger
+    stores carried many more through the winter — so winter mushrooms,
+    winter fishing, the footing's store and the wild berries were
+    trimmed. After that: population 51.2 ± 2.9 (vs 53.6), with a calmer
+    garden — starvation 40.7 vs 60.8, kin killed by kin 15.6 vs 30.8,
+    births 155 vs 202, predators 26.6 vs 27.3. The new foods are about a
+    fifth of what's eaten (per run: berries 9,700, seed 1,100, meat 680,
+    mushrooms 590, cress 560, fish 165, acorns 140). Each run lays about
+    13 stone footings and 10 palisades and finds some 7,700 ways round
+    the pond. Ants steal a little more (52 vs 35 a run) now that
+    palisades take branches to build.
+
+## Phase 18: Thirst
+*   ✅ **Water to drink:** Thirst is a Critical need beside Hunger (it
+    rises 0.4 a second; at 60 a Bramblekin walks to the nearest shore;
+    at 100 it loses 1 HP every 2s), so living far from water costs time,
+    and a drinker at the water's edge draws the Wolf Spider. Rain slakes
+    thirst; juicy food (cress, fish, berries, mushrooms) takes a little off.
+*   ✅ **Cisterns:** clans living more than 25m from water work out
+    acorn-cup cisterns that fill in the rain and with cupfuls carried
+    home from the pond.
+*   ✅ **Settling by the water:** new homes and new villages lean toward
+    water.
+*   **Benchmark (24 seeds × 7800s, no crashes):** at first (thirst 0.3 a
+    second, 8-sip cisterns, 2-sip cupfuls) distance showed only in who
+    settled where, so thirst was made stronger. After that: population
+    53.0 ± 2.9 (vs 51.2 before thirst); some 1,140 drinks at the pond and
+    325 from cisterns a run, an 18m walk on average; almost nobody dies
+    of thirst (0.3 a run) — they walk instead — but lives are shorter:
+    deaths of old age 45.7 vs 52.8, to predators 33.2 vs 26.6, and kin
+    killed by kin 30.6 vs 15.6 as crowds meet at the water. Clans near
+    water are bigger: 7.5 kin within 10m of it, 6.4 at 10–20m, 5.7 at
+    20–30m; only 8 clans in 24 runs ever lived more than 45m out.
+
+## Phase 19: Roots and a Drying Pond
+*   ✅ **The oak's roots:** ten great roots, up to 2m thick, arching 7–13m
+    out from the trunk; trunk and roots are solid, so walkers go round
+    the root tips (obstacles, bucketed by cell so it stays cheap, and in
+    the route grid), and nothing stands on them.
+*   ✅ **Droughts drink the pond down** to about a sixth of its size,
+    laying bare a muddy bed; drinkers and fishers follow the water out,
+    fish get scarcer, and the pond fills again after (faster in rain).
+*   ✅ **New clans without a home yet** say so on their clan card, and
+    their site shows on the map (bare earth, a clan flag, the twigs laid).
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:
-*   ⬜ **Groups as actors.** Groups now have homes, goals, jobs and
-    politics, but they don't raid, trade with or ally with *other groups*;
-    enmity is still strictly between individuals.
-*   ⬜ **Memory beyond the last Food/Twig sighting.** No remembered danger
-    zones (a Bramblekin will happily wander back toward the Hornet nest
-    it just fled) and no reputation shared between groupmates.
+*   ⬜ **Reputation between groups.** Groups remember grievances and
+    places, but not individuals: a notorious raider is no more feared by
+    the next village than anyone else.
 *   ⬜ **Group vs. homestead balance.** Settling alone and living in a group
     now have similar death rates; groups win on food and on numbers, and
     lose some of that edge to risky hunts, defence and politics. Worth
     tuning if groups should be the clearly safer choice.
-*   ⬜ **Villages as neighbours.** Daughter groups start next to their
-    parent village but have no special tie to it (no kinship bonus, no
-    shared defence), and nothing makes villages spread out across the
-    map rather than clustering where they began.
-*   ⬜ **Real pathfinding.** Bramblekin still steer around obstacles with
-    a short sideways detour when stuck, rather than any actual NavMesh/
-    grid pathfinding. Fine at current Pebble density.
+*   ⬜ **More than one garden.** A single autosave slot; no way to keep
+    a favourite world aside and start another.
+*   ⬜ **Real pathfinding round rocks and homes.** Walkers find their way
+    round the pond on a grid (Phase 17), but still steer round rocks,
+    homes and the oak with a short sideways detour when stuck. Fine at
+    current density.
 *   ⬜ **Tuning.** Every rate and threshold is a constant at the top of its
     class (`World`, `Bramblekin`, `Shelter`, the wildlife); the headless
     survival trend is the tool for revisiting them.

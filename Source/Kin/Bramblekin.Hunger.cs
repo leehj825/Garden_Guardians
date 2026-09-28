@@ -66,6 +66,13 @@ public sealed partial class Bramblekin
             return;
         }
 
+        // Farming pays off: a ripe berry on one of its group's bushes.
+        if (world.GroupOf(this) is { } group && world.NearestRipeCrop(this, group, DetectionRadius) is { } bush)
+        {
+            Harvest(bush, deltaTime, world, eat: true);
+            return;
+        }
+
         // An abandoned store it can see is free for the taking.
         if (TryTakeFromStore(deltaTime, world, raid: false))
             return;
@@ -140,21 +147,24 @@ public sealed partial class Bramblekin
 
     /// <summary>
     /// Hungry with nothing in sight: heads back to where it last saw Food
-    /// (Berries keep growing in the same patches), then keeps striking out
-    /// toward random points twice as far as a normal wander.
+    /// (Berries keep growing in the same patches) or where its group has
+    /// lately found some, then keeps striking out toward random points
+    /// twice as far as a normal wander — steering clear of remembered danger.
     /// </summary>
     private void Explore(float deltaTime, World world)
     {
         if (State != BramblekinState.Searching)
         {
-            _wanderTarget = _foodMemory ?? RandomWanderPoint(world, WanderRadius * 2f);
+            _wanderTarget = RememberedFoodSpot(world) ?? SafeWanderPoint(world, WanderRadius * 2f);
             SetState(BramblekinState.Searching);
         }
 
         if (MoveTo(_wanderTarget, WalkSpeed, deltaTime, world))
         {
-            _foodMemory = null; // Been there, nothing left.
-            _wanderTarget = RandomWanderPoint(world, WanderRadius * 2f);
+            // Been there, nothing left: forget it (and tell the group).
+            _foodMemory = null;
+            world.GroupOf(this)?.FoodSpots.Forget(_wanderTarget);
+            _wanderTarget = RememberedFoodSpot(world) ?? SafeWanderPoint(world, WanderRadius * 2f);
         }
     }
 }

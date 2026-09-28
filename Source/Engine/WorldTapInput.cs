@@ -5,9 +5,10 @@ namespace GardenGuardians;
 
 /// <summary>
 /// The player has no lever on the world — no miracles, no factions to
-/// command. The only tap left inspects a single Bramblekin (see
-/// <see cref="World.TrySelectKinAt"/>), whose Personality, needs and
-/// relationships then show in the Kin Inspector panel.
+/// command. The only tap left inspects: a Bramblekin (see
+/// <see cref="World.TrySelectAt"/>), whose Personality, needs and
+/// relationships then show in the Kin Inspector panel, or — tapping one of
+/// its homes — a clan, shown on a clan card.
 /// </summary>
 public sealed class WorldTapInput
 {
@@ -57,7 +58,7 @@ public sealed class WorldTapInput
     public void HandlePress(Vector2 screenPosition, Camera3D camera, World world)
     {
         if (PickGround(camera, world.Terrain, screenPosition) is { } tapGround)
-            world.TrySelectKinAt(tapGround);
+            world.TrySelectAt(tapGround);
     }
 
     /// <summary>
