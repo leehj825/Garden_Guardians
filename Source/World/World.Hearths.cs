@@ -5,13 +5,13 @@ namespace GardenGuardians;
 public sealed partial class World
 {
     /// <summary>Cooked food fills this much more than raw…</summary>
-    public const float CookedNourishmentBonus = 12f;
+    public const float CookedNourishmentBonus = 5f;
 
     /// <summary>…and heals this much more.</summary>
-    public const int CookedHealingBonus = 3;
+    public const int CookedHealingBonus = 2;
 
     /// <summary>Wintering in beside a lit hearth, Hunger rises at this fraction of the usual rate (instead of <see cref="Bramblekin.WinterShelterMetabolism"/>).</summary>
-    public const float HearthWinterMetabolism = 0.35f;
+    public const float HearthWinterMetabolism = 0.42f;
 
     /// <summary>Resting beside a lit hearth heals this many times as fast.</summary>
     public const float HearthRestHealFactor = 1.3f;

@@ -113,5 +113,5 @@ public sealed partial class Bramblekin
     }
 
     /// <summary>At full farming skill, a picking yields a second piece this often.</summary>
-    private const float SkilledHarvestChance = 0.35f;
+    private const float SkilledHarvestChance = 0.2f;
 }
