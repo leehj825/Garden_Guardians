@@ -52,6 +52,7 @@ public sealed partial class World
             }).ToList(),
             Food = FoodShards.Where(f => f is { IsActive: true, IsCarried: false })
                 .Select(f => new LooseSave { Position = f.Position, Kind = f.Kind, DespawnTimer = f.DespawnTimer }).ToList(),
+            Wells = Wells.Select(w => new WellSave { Position = w.Position, GroupId = w.GroupId, StonesNeeded = w.StonesNeeded, StonesLaid = w.StonesLaid }).ToList(),
             Materials = Materials.Where(m => m is { IsActive: true, IsCarried: false })
                 .Select(m => new MaterialSave { Position = m.Position, Kind = m.Kind, DespawnTimer = m.DespawnTimer }).ToList(),
             Twigs = Twigs.Where(t => t is { IsActive: true, IsCarried: false })
@@ -146,6 +147,8 @@ public sealed partial class World
             Shelters.Add(shelter);
             shelters[s.Id] = shelter;
         }
+        foreach (WellSave w in save.Wells)
+            Wells.Add(new Well(w.Position, w.GroupId, w.StonesNeeded) { StonesLaid = w.StonesLaid });
 
         var kin = new Dictionary<int, Bramblekin>();
         foreach (KinSave k in save.Kin)

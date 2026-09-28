@@ -335,6 +335,8 @@ public sealed partial class World
                 _obstacles.Add(new Obstacle(new Vector2(prop.Position.X, prop.Position.Z), prop.FootprintRadius));
         }
         AddOakObstacle();
+        foreach (Well well in Wells)
+            _obstacles.Add(new Obstacle(new Vector2(well.Position.X, well.Position.Z), Well.Radius));
 
         foreach (List<Obstacle> cell in _obstacleCells)
             cell.Clear();
@@ -449,6 +451,7 @@ public sealed partial class World
         UpdateMaterials(deltaTime);
         UpdateCisterns(deltaTime);
         UpdatePond(deltaTime);
+        UpdateWellOwners();
         UpdateSpiderRespawn(deltaTime);
         UpdateHornetSpawn(deltaTime);
         UpdateGrubSpawn(deltaTime);

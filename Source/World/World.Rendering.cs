@@ -77,6 +77,7 @@ public sealed partial class World
                 twig.Draw();
         }
         DrawMaterials(camera);
+        DrawWells(camera);
 
         // Object Pooling: most Food slots sit inactive at any given time, so
         // every loop over the pool must skip anything with IsActive false.

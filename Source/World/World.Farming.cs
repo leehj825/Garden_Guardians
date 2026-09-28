@@ -192,8 +192,8 @@ public sealed partial class World
         return crop;
     }
 
-    /// <summary>True if a <paramref name="kind"/> crop at <paramref name="spot"/> would be watered: cress always is; anything else within <see cref="WateredReach"/> of the pond.</summary>
-    private static bool IsWatered(Vector3 spot, CropKind kind) => kind == CropKind.Cress || IsWaterWithin(spot, WateredReach);
+    /// <summary>True if a <paramref name="kind"/> crop at <paramref name="spot"/> would be watered: cress always is; anything else within <see cref="WateredReach"/> of the pond, or beside a dug well.</summary>
+    private bool IsWatered(Vector3 spot, CropKind kind) => kind == CropKind.Cress || IsWaterWithin(spot, WateredReach) || IsWellNear(spot);
 
     /// <summary>The nearest crop of <paramref name="group"/>'s with something ripe, within <paramref name="range"/> of <paramref name="kin"/>.</summary>
     public Crop? NearestRipeCrop(Bramblekin kin, KinGroup group, float range)

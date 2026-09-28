@@ -19,9 +19,9 @@ public sealed partial class Bramblekin
     public Material? FetchingMaterial => _materialTarget;
 
     /// <summary>
-    /// A Builder with nothing to build: fetches a stone for a House's
-    /// footing, or drags a branch home for a palisade — whichever its clan
-    /// knows how to use, still needs, and can find within
+    /// A Builder with nothing to build: fetches a stone for its clan's well
+    /// or a House's footing, or drags a branch home for a palisade —
+    /// whichever its clan knows how to use, still needs, and can find within
     /// <see cref="World.MaterialSearchRadius"/>. False if there's none to
     /// fetch.
     /// </summary>
@@ -29,42 +29,41 @@ public sealed partial class Bramblekin
     {
         if (_carriedMaterial is { } carried)
         {
-            if (world.HomeNeeding(group, carried.Kind, Position) is not { } home)
+            if (world.MaterialTarget(group, carried.Kind, Position) is not { } target)
             {
                 PutDownMaterial();
                 return false;
             }
             SetState(BramblekinState.Building);
-            float reach = home.Radius + 0.4f;
-            if (GroundMover.HorizontalDistanceSquared(Position, home.Position) <= reach * reach)
+            if (GroundMover.HorizontalDistanceSquared(Position, target.Position) <= target.Reach * target.Reach)
             {
                 _carriedMaterial = null;
-                world.DeliverMaterial(this, home, carried);
+                world.DeliverMaterial(this, target, carried);
                 StartPause();
                 return true;
             }
-            MoveTo(home.Position, WalkSpeed * (carried.Kind == MaterialKind.Branch ? BranchDragPace : StoneCarryPace), deltaTime, world);
+            MoveTo(target.Position, WalkSpeed * (carried.Kind == MaterialKind.Branch ? BranchDragPace : StoneCarryPace), deltaTime, world);
             return true;
         }
 
-        if (_materialTarget is { IsActive: true, IsCarried: false } target && world.HomeNeeding(group, target.Kind, Position) is not null)
+        if (_materialTarget is { IsActive: true, IsCarried: false } wanted && world.MaterialTarget(group, wanted.Kind, Position) is not null)
         {
             SetState(BramblekinState.Collecting);
-            if (GroundMover.HorizontalDistance(Position, target.Position) <= PickupDistance + (target.Kind == MaterialKind.Branch ? 0.4f : 0f))
+            if (GroundMover.HorizontalDistance(Position, wanted.Position) <= PickupDistance + (wanted.Kind == MaterialKind.Branch ? 0.4f : 0f))
             {
-                World.PickUpMaterial(target);
-                _carriedMaterial = target;
+                World.PickUpMaterial(wanted);
+                _carriedMaterial = wanted;
                 _materialTarget = null;
                 return true;
             }
-            MoveTo(target.Position, WalkSpeed, deltaTime, world);
+            MoveTo(wanted.Position, WalkSpeed, deltaTime, world);
             return true;
         }
 
         _materialTarget = null;
         foreach (MaterialKind kind in Enum.GetValues<MaterialKind>())
         {
-            if (world.HomeNeeding(group, kind, Position) is not null &&
+            if (world.MaterialTarget(group, kind, Position) is not null &&
                 world.NearestMaterial(Position, kind, World.MaterialSearchRadius, this) is { } found)
             {
                 _materialTarget = found;

@@ -40,4 +40,7 @@ public enum Craft
 
     /// <summary>An acorn-cup cistern by each House that catches the rain, and the cupfuls its folk carry home from the pond — so they can drink at home (see Bramblekin.Thirst).</summary>
     Cisterns = 512,
+
+    /// <summary>Digging a well by the main home, lined with stones its Builders carry in — water at the door, all year, drought or no (see World.Wells).</summary>
+    Wells = 1024,
 }

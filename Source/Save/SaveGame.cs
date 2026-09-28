@@ -37,6 +37,8 @@ public sealed class SaveGame
 
     /// <summary>Loose stones and branches; null in a save from before they were kept.</summary>
     public List<MaterialSave>? Materials { get; set; }
+
+    public List<WellSave> Wells { get; set; } = new();
     public List<LooseSave> Food { get; set; } = new();
     public List<LooseSave> Twigs { get; set; } = new();
     public List<RelationSave> Relations { get; set; } = new();
@@ -179,6 +181,14 @@ public sealed class BushSave
     public int Fruit { get; set; }
     public float FruitTimer { get; set; }
     public float WildSeconds { get; set; }
+}
+
+public sealed class WellSave
+{
+    public V3 Position { get; set; }
+    public Guid? GroupId { get; set; }
+    public int StonesNeeded { get; set; }
+    public int StonesLaid { get; set; }
 }
 
 public sealed class MaterialSave

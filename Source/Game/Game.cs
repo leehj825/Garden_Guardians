@@ -462,7 +462,8 @@ public static partial class Game
             $"{world.FishCaught} fish caught.");
         Console.WriteLine(
             $"Water: {world.DrinksAtPond} drinks at the pond (a {(world.DrinksAtPond > 0 ? world.WaterTrekMeters / world.DrinksAtPond : 0):0}m walk from home on average), " +
-            $"{world.CisternDrinks} from cisterns ({world.CupfulsCarried} cupfuls carried home); {world.DeathsByThirst} died of thirst; " +
+            $"{world.CisternDrinks} from cisterns ({world.CupfulsCarried} cupfuls carried home), {world.WellDrinks} from wells ({world.WellsDug} dug, " +
+            $"{world.Wells.Count(w => !w.IsDug)} being dug); {world.DeathsByThirst} died of thirst; " +
             $"at the end {world.Groups.Count(g => World.Knows(g, Craft.Cisterns))} clans have cisterns, and the average home is " +
             $"{(world.Shelters.Count(s => s.IsBuilt) > 0 ? world.Shelters.Where(s => s.IsBuilt).Average(s => WaterMap.UsualDistanceToWater(s.Position.X, s.Position.Z)) : 0):0}m from water.");
         Console.WriteLine("  Clans by distance to water: " + string.Join(", ", world.Groups
@@ -879,7 +880,8 @@ public static partial class Game
             ($"Hunger: {(int)kin.Hunger}%{(kin.IsStarving ? " STARVING" : kin.IsHungry ? " (hungry)" : "")}{(kin.HasFood ? "  +food" : "")}{(kin.IsSick ? "  SICK" : "")}",
                 kin.IsStarving || kin.IsSick ? new Color(170, 60, 40, 255) : ink),
             ($"Thirst: {(int)kin.Thirst}%{(kin.Thirst >= Bramblekin.MaxThirst ? " PARCHED" : kin.IsThirsty ? " (thirsty)" : "")}   " +
-             $"water {WaterMap.DistanceToWater((kin.Home?.Position ?? kin.Position).X, (kin.Home?.Position ?? kin.Position).Z):0}m from {(kin.Home is null ? "here" : "home")}",
+             (group is not null && world.WellOf(group) is { IsDug: true } ? "a well at home" :
+              $"water {WaterMap.DistanceToWater((kin.Home?.Position ?? kin.Position).X, (kin.Home?.Position ?? kin.Position).Z):0}m from {(kin.Home is null ? "here" : "home")}"),
                 kin.Thirst >= Bramblekin.MaxThirst ? new Color(170, 60, 40, 255) : kin.IsThirsty ? ThirstBarColor : ink),
             ($"Nature: {kin.Personality.Describe()}", ink),
             ($"Aggression {kin.Personality.Aggression:0.00}   Sociability {kin.Personality.Sociability:0.00}", new Color(185, 60, 45, 255)),

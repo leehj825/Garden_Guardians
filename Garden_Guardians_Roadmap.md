@@ -637,6 +637,13 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     fill the gaps: 33.5 vs 26.3). Walkers find some 24,000 ways round
     the pond and the roots a run (was 12,000), still well under a second.
 
+## Phase 20: Wells
+*   ✅ **Wells:** clans with stonework whose main home is more than 20m
+    from water dig a well beside it, lined with stones their Builders
+    carry in (4, plus one per 1.5m the ground stands above the pond) —
+    water at the door, all year and through droughts, for the clan, its
+    allies, or anyone once the clan is gone; crops beside it are watered.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:

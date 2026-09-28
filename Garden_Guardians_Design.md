@@ -283,9 +283,11 @@ overhead camera:
 *   **Thirst:** rises 0.4 points per second (a quarter faster in summer,
     a quarter slower in winter, faster when sick) from 0 to 100 — a drink
     lasts about two and a half minutes. At 60 a Bramblekin is *thirsty*; at
-    100 it loses 1 HP every 2s until it drinks or dies. It drinks at the
-    pond (the nearest stretch of shore, however far — it slakes its thirst
-    entirely) or from its home's cistern (a sip takes off 70). Out in a
+    100 it loses 1 HP every 2s until it drinks or dies. It drinks from
+    whichever is nearest: the pond (the nearest stretch of shore, however
+    far — it slakes its thirst entirely), a well it may use (its clan's,
+    an ally's, or an abandoned one — drawing water up takes 3.5s and slakes
+    it entirely too), or its home's cistern (a sip takes off 70). Out in a
     storm it drinks the rain (2 points a second). Juicy food helps a
     little: a sprig of cress takes off 15, a fish 5, a berry or a
     mushroom 3; seed, meat and acorns nothing. So **living far from water
@@ -641,7 +643,7 @@ overhead camera:
     The weather scales them too (a drought halves them, a bountiful
     season adds half). A crop within 8m of the pond is **watered**: a
     quarter faster, and a drought doesn't touch it (cress beds always
-    are). A Farmer plants whichever kind the clan knows and has fewest
+    are), and so is one within 6m of a dug well. A Farmer plants whichever kind the clan knows and has fewest
     of, so its fields spread across the year: grain for late summer,
     mushrooms for autumn (and a little in winter), cress in spring. A worn-out crop is simply
     gone, and replanted. Overripe fruit drops for anyone. Each is drawn in
@@ -674,7 +676,7 @@ overhead camera:
     inherited by children (both parents' crafts), carried along by anyone
     who leaves, and taught to allies (odds 0.05 per decision, farming
     first, then granary, spears, palisade, grain, mushrooms, cress,
-    fishing, stonework, cisterns). When a clan is ready for several, the one it
+    fishing, stonework, cisterns, wells). When a clan is ready for several, the one it
     works out is picked at random.
     *   **Granary** (needs farming and a House): each House gets a round
         granary beside it and holds half as much again in store.
@@ -697,6 +699,19 @@ overhead camera:
         (a sip) while it isn't full. A thirsty Bramblekin drinks from it
         if it's nearer than the pond — so a far-off village makes one
         long trip do for two drinks.
+    *   **Wells** (needs stonework and a main home more than 20m from
+        water, walking): the clan marks out a well 1–5m from its main
+        home, on the lowest ground to hand, and its Builders carry stones
+        to line the shaft — 4, plus one for every 1.5m the ground there
+        stands above the pond (the water lies deeper under a hill), so a
+        hilltop well takes some 10. Stones go to a well before any footing.
+        Once dug it's water at the door, all year and through any drought;
+        crops within 6m of it count as watered. It's drawn as a ring of
+        stones rising course by course over a dark shaft (a heap of dug
+        earth beside it), then dark water under a wooden frame with a rope
+        and an acorn-cup bucket, a pennant in its clan's colour. A well
+        outlives its clan — anyone may drink from it then — but a
+        half-dug one nobody's digging any more is filled in.
     *   **Stonework** (needs a House): each House is raised on a stone
         footing, once its Builders have carried in 4 stones (a ring of
         grey stones round its foot): its store holds 2 more, stays dry in
