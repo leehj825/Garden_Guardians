@@ -25,7 +25,7 @@ public sealed partial class Bramblekin
         Season.Spring => 0.55f,
         Season.Summer => 0.45f,
         Season.Autumn => 0.5f,
-        _ => 0.25f,
+        _ => 0.15f,
     };
 
     /// <summary>

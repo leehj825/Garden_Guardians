@@ -12,7 +12,7 @@ public enum CropKind
     /// <summary>A patch of seed grass (<see cref="Craft.Grain"/>): nothing in winter, a big harvest from high summer into autumn.</summary>
     Grain,
 
-    /// <summary>A mushroom bed in the damp shade against a House wall (<see cref="Craft.Mushrooms"/>): best in autumn, and bears on through winter.</summary>
+    /// <summary>A mushroom bed in the damp shade against a House wall (<see cref="Craft.Mushrooms"/>): best in autumn, and bears a little on through winter.</summary>
     Mushroom,
 
     /// <summary>A cress bed on the pond's shore (<see cref="Craft.Cress"/>): best in spring, and never minds a drought.</summary>
@@ -117,12 +117,12 @@ public sealed class Crop
     /// How fast each kind grows and bears through the year, relative to its
     /// normal pace: berries follow the lawn (see World.AbundanceOf), grain
     /// ripens from high summer into autumn, mushrooms like autumn and keep
-    /// on through winter, and cress is best in spring.
+    /// on a little through winter, and cress is best in spring.
     /// </summary>
     public static float SeasonPace(CropKind kind, Season season) => kind switch
     {
         CropKind.Grain => season switch { Season.Spring => 0.5f, Season.Summer => 1.3f, Season.Autumn => 1.3f, _ => 0f },
-        CropKind.Mushroom => season switch { Season.Spring => 0.9f, Season.Summer => 0.5f, Season.Autumn => 1.4f, _ => 0.8f },
+        CropKind.Mushroom => season switch { Season.Spring => 0.9f, Season.Summer => 0.5f, Season.Autumn => 1.4f, _ => 0.4f },
         CropKind.Cress => season switch { Season.Spring => 1.3f, Season.Summer => 1f, Season.Autumn => 0.8f, _ => 0.3f },
         _ => World.AbundanceOf(season),
     };

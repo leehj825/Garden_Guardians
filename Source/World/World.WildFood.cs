@@ -10,7 +10,7 @@ public sealed partial class World
     private const float CressSpawnInterval = 7f;
 
     /// <summary>…until this many sprigs (at its season's pace) lie there.</summary>
-    private const int MaxWildCress = 6;
+    private const int MaxWildCress = 5;
 
     /// <summary>A mushroom springs up in the shade every this many seconds (at its season's pace, twice as fast after rain)…</summary>
     private const float MushroomSpawnInterval = 9f;
@@ -23,7 +23,7 @@ public sealed partial class World
     /// <summary>A seed head sheds on the open lawn every this many seconds (at its season's pace)…</summary>
     private const float SeedSpawnInterval = 8f;
 
-    private const int MaxWildSeeds = 8;
+    private const int MaxWildSeeds = 6;
 
     /// <summary>The shore: this close to the pond…</summary>
     private const float ShoreNear = 0.8f;

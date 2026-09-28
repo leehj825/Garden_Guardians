@@ -608,7 +608,7 @@ overhead camera:
     |---|---|---|---|---|---|---|
     | Berry bush | Farming | 2.5–6m from home | 90s, 40s | 4 | 1.0/1.3/0.8/0.3 | 3 years |
     | Grain patch | Grain | 2.5–6m from home | 60s, 26s | 6 | 0.5/1.3/1.3/0 | 1 year |
-    | Mushroom bed | Mushrooms | against a House wall | 70s, 45s | 3 | 0.9/0.5/1.4/0.8 | 2 years |
+    | Mushroom bed | Mushrooms | against a House wall | 70s, 45s | 3 | 0.9/0.5/1.4/0.4 | 2 years |
     | Cress bed | Cress | on the shore, within 14m | 45s, 32s | 3 | 1.3/1.0/0.8/0.3 | 2 years |
 
     The weather scales them too (a drought halves them, a bountiful
@@ -616,7 +616,7 @@ overhead camera:
     quarter faster, and a drought doesn't touch it (cress beds always
     are). A Farmer plants whichever kind the clan knows and has fewest
     of, so its fields spread across the year: grain for late summer,
-    mushrooms through winter, cress in spring. A worn-out crop is simply
+    mushrooms for autumn (and a little in winter), cress in spring. A worn-out crop is simply
     gone, and replanted. Overripe fruit drops for anyone. Each is drawn in
     its own way — a leafy bush dotted with berries, a tuft of stalks
     nodding under golden seed heads, a mound of dark soil sprouting
@@ -632,7 +632,7 @@ overhead camera:
     ripe and no food in sight, walks to a stretch of shore within 20m of
     home and casts — a rod held out over the water, its line dropping to
     a red float — every 8s (quicker for the diligent), landing a minnow
-    or tadpole at 0.55/0.45/0.5/0.25 odds by season, which it carries to
+    or tadpole at 0.55/0.45/0.5/0.15 odds by season, which it carries to
     the stores. Winter's poor catch still beats an empty lawn.
 *   **Wild crops:** when its group is gone, a crop runs wild — still
     bearing (and dropping food for anyone) — and withers after 600s.
@@ -665,7 +665,7 @@ overhead camera:
     *   **Fishing** (needs a home within 20m of the shore): see Farming.
     *   **Stonework** (needs a House): each House is raised on a stone
         footing, once its Builders have carried in 4 stones (a ring of
-        grey stones round its foot): its store holds 4 more, stays dry in
+        grey stones round its foot): its store holds 2 more, stays dry in
         a flood, and ants can't dig into it.
 *   The Stats tab and the clan card list a clan's crafts; the headless
     summary counts them. Over 13 years a clan works out about six and
@@ -897,14 +897,14 @@ overhead camera:
     where the trunk is now.
 
 ## Food & Wildlife
-*   **Food:** wild Berries grow passively (one every 0.7s, up to 85 on
+*   **Food:** wild Berries grow passively (one every 0.8s, up to 75 on
     the map, both scaled by the season), about two-thirds in eight Berry
     Patches around Dandelions. Besides them, all at their season's pace
     (the same curves as the crops): **watercress** springs up on the shore
-    (every 7s, up to 6); **mushrooms** come up in the oak's shade and at
+    (every 7s, up to 5); **mushrooms** come up in the oak's shade and at
     the foot of the rocks (every 9s, up to 6, twice as fast for a minute
     after rain); **grass seed** is shed in twos and threes on the open
-    lawn (every 8s, up to 8, high summer into autumn). The oak drops
+    lawn (every 8s, up to 6, high summer into autumn). The oak drops
     acorns in autumn, fishers land fish, and hunted Grubs, Stag Beetles
     and a slain Wolf Spider drop meat. Every kind is worth the same one
     bite; what differs is where and when it turns up. The headless summary

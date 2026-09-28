@@ -73,10 +73,10 @@ public sealed partial class World
     private const int InitialBerries = 45;
 
     /// <summary>Passive Foraging: seconds between wild Berry spawns in a normal season — divided by the season's abundance (see <see cref="AbundanceOf"/>).</summary>
-    public const float BerrySpawnInterval = 0.7f;
+    public const float BerrySpawnInterval = 0.8f;
 
     /// <summary>Wild Berries stop spawning once this many are on the ground in a normal season — scaled by the season's abundance.</summary>
-    public const int MaxBerries = 85;
+    public const int MaxBerries = 75;
 
     /// <summary>
     /// Berry Patches: how many fixed spots (preferably Dandelions) most

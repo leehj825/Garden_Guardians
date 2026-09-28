@@ -26,7 +26,7 @@ public enum Craft
     /// <summary>Sowing seed grass: grain patches, a big harvest from high summer into autumn (see <see cref="CropKind.Grain"/>).</summary>
     Grain = 16,
 
-    /// <summary>Mushroom beds in the damp shade against a House wall, bearing on through winter (see <see cref="CropKind.Mushroom"/>).</summary>
+    /// <summary>Mushroom beds in the damp shade against a House wall, best in autumn and bearing a little through winter (see <see cref="CropKind.Mushroom"/>).</summary>
     Mushrooms = 32,
 
     /// <summary>Cress beds on the pond's shore, best in spring and never minding a drought (see <see cref="CropKind.Cress"/>).</summary>

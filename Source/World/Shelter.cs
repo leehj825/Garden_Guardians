@@ -116,7 +116,7 @@ public sealed class Shelter
     /// <summary>…and a House's stone footing this many stones (see <see cref="Craft.Stonework"/>), which gives its store this much more room.</summary>
     public const int FootingStoneCost = 4;
 
-    public const int FootingStoreBonus = 4;
+    public const int FootingStoreBonus = 2;
 
     /// <summary>Branches staked into its palisade so far.</summary>
     public int StakesSet { get; set; }
