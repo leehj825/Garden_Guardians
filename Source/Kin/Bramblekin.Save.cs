@@ -58,7 +58,7 @@ public sealed partial class Bramblekin
             ? new ErrandSave
             {
                 Kind = errand.Kind, From = errand.From, To = errand.To, Destination = errand.Destination.ID, Load = errand.Load,
-                TwigsOwed = errand.TwigsOwed, Payment = errand.Payment, Returning = errand.Returning,
+                TwigsOwed = errand.TwigsOwed, Payment = errand.Payment, Material = errand.Material, Returning = errand.Returning,
             }
             : null,
     };
@@ -121,7 +121,7 @@ public sealed partial class Bramblekin
             _errand = new Errand
             {
                 Kind = errand.Kind, From = errand.From, To = errand.To, Destination = destination, Load = errand.Load,
-                TwigsOwed = errand.TwigsOwed, Payment = errand.Payment, Returning = errand.Returning,
+                TwigsOwed = errand.TwigsOwed, Payment = errand.Payment, Material = errand.Material, Returning = errand.Returning,
             };
         }
     }

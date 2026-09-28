@@ -111,6 +111,8 @@ public sealed partial class Bramblekin
             chance += GroupDefenseBonus;
         if (threat is WolfSpider)
             chance -= SpiderFearPenalty;
+        if (CanSling(threat))
+            chance += SlingNerve;
 
         return _rng.NextDouble() < chance;
     }

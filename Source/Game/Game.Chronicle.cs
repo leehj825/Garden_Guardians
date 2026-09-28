@@ -104,7 +104,7 @@ public static partial class Game
         }
 
         string header = clan is null
-            ? $"The garden, year {world.Year}: {world.Colony.Count(k => !k.IsDead)} Bramblekin in {world.Groups.Count} groups"
+            ? $"Garden {_gardenSlot}, year {world.Year}: {world.Colony.Count(k => !k.IsDead)} Bramblekin in {world.Groups.Count} groups"
             : $"{clan.CapitalTitle}{(clan.Culture.Label is { } label ? $" ({label})" : "")}: {clan.Members.Count} members, led by {clan.Leader?.Name ?? "nobody"}" +
               (world.FoundingOf(clan.Id) is { } founding ? $", founded year {founding.Year}" : "") +
               (world.DescribeRelations(clan) is { } relations ? $", {relations}" : "");

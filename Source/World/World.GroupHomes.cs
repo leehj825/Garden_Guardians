@@ -318,6 +318,9 @@ public sealed partial class World
             int dowry = Math.Min(MaxDowry, StoredFood(parent) / 3);
             TakeFromStores(parent, dowry, preferred: house);
             daughter.Dowry = dowry;
+            int seed = parent.SeedCorn / 2; // Half the seed corn goes with them.
+            parent.SeedCorn -= seed;
+            daughter.SeedCorn = seed;
             SetStance(parent, daughter, GroupStance.Allied); // Kin villages stand together.
 
             Buddings++;

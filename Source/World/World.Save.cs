@@ -40,7 +40,7 @@ public sealed partial class World
                 Annexes = g.Annexes.Where(a => !a.IsCollapsed).Select(a => a.ID).ToList(),
                 HomeSiteRetryTimer = g.HomeSiteRetryTimer, Goal = g.Goal == GroupGoal.Raid ? GroupGoal.Stockpile : g.Goal, Sharing = g.Sharing,
                 BirthCooldown = g.BirthCooldown, DecisionTimer = g.DecisionTimer, SettleTarget = g.SettleTarget is { } target ? target : null,
-                Dowry = g.Dowry, NextRaidAt = g.NextRaidAt,
+                Dowry = g.Dowry, SeedCorn = g.SeedCorn, NextRaidAt = g.NextRaidAt,
                 Martial = g.Culture.Martial, Hunting = g.Culture.Hunting, Farming = g.Culture.Farming, Leading = g.Culture.Leading,
                 SpidersSlain = g.SpidersSlain,
                 Dangers = g.Dangers.Places.Select(p => new PlaceSave(p.Where, p.When)).ToList(),
@@ -186,6 +186,7 @@ public sealed partial class World
                 DecisionTimer = g.DecisionTimer,
                 SettleTarget = g.SettleTarget is { } target ? target : null,
                 Dowry = g.Dowry,
+                SeedCorn = g.SeedCorn ?? FirstSeedCorn, // A save from before seed corn: a first handful.
                 NextRaidAt = g.NextRaidAt,
             };
             foreach (int annexId in g.Annexes)

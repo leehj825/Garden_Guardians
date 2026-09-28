@@ -432,6 +432,8 @@ public sealed partial class World
         for (int i = Beetles.Count - 1; i >= 0; i--)
             Beetles[i].Update(deltaTime, this);
 
+        UpdatePondLife(deltaTime);
+
         // Reverse for-loop: a Bramblekin's own Update() can kill another
         // (combat, robbery) — World.Kill only queues the removal, but
         // walking backwards keeps this loop correct even if that changes.
@@ -461,6 +463,7 @@ public sealed partial class World
         UpdateArrivals(deltaTime);
         UpdateFoodDespawn(deltaTime);
         UpdateEncounterCleanup(deltaTime);
+        UpdatePebbles(deltaTime);
 
         for (int i = _splats.Count - 1; i >= 0; i--)
         {

@@ -144,6 +144,7 @@ public sealed class ErrandSave
     public int Load { get; set; }
     public int TwigsOwed { get; set; }
     public int Payment { get; set; }
+    public MaterialKind Material { get; set; }
     public bool Returning { get; set; }
 }
 
@@ -161,6 +162,7 @@ public sealed class GroupSave
     public float DecisionTimer { get; set; }
     public V3? SettleTarget { get; set; }
     public int Dowry { get; set; }
+    public int? SeedCorn { get; set; }
     public float NextRaidAt { get; set; }
     public float Martial { get; set; }
     public float Hunting { get; set; }

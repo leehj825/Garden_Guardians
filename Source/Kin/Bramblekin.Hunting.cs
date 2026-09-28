@@ -53,12 +53,15 @@ public sealed partial class Bramblekin
         return true;
     }
 
-    /// <summary>Hunts a visible Grub (hungry, or to stock a store).</summary>
-    private void HuntGrub(Grub grub, float deltaTime, World world)
+    /// <summary>The small game it last saw, if it's still there to be caught (a frog that's dived under the water isn't).</summary>
+    private ICombatant? LivePrey => _perceivedPrey is { IsDead: false } prey && prey is not Frog { IsHidden: true } ? prey : null;
+
+    /// <summary>Hunts visible small game — a Grub, or a frog on the bank (hungry, or to stock a store).</summary>
+    private void HuntPrey(ICombatant prey, float deltaTime, World world)
     {
         SetState(BramblekinState.Hunting);
-        CombatTarget = grub;
-        PursueAndStrike(grub, WalkSpeed * 1.2f, deltaTime, world);
+        CombatTarget = prey;
+        PursueAndStrike(prey, WalkSpeed * 1.2f, deltaTime, world);
     }
 
     /// <summary>

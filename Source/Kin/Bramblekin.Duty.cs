@@ -74,7 +74,7 @@ public sealed partial class Bramblekin
         return false;
     }
 
-    /// <summary>Hunter: goes after the Stag Beetle the Leader picked, or else a Grub it can see.</summary>
+    /// <summary>Hunter: goes after the Stag Beetle the Leader picked, or else small game it can see (a Grub, or a frog on the bank).</summary>
     private bool DoHuntDuty(KinGroup group, float deltaTime, World world)
     {
         if (Health <= MaxHealth * DutyStandDownHealthFraction)
@@ -88,9 +88,9 @@ public sealed partial class Bramblekin
             return true;
         }
 
-        if (_perceivedGrub is { IsDead: false } grub)
+        if (LivePrey is { } prey)
         {
-            HuntGrub(grub, deltaTime, world);
+            HuntPrey(prey, deltaTime, world);
             return true;
         }
 

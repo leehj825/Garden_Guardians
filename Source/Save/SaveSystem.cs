@@ -10,7 +10,14 @@ namespace GardenGuardians;
 /// </summary>
 public static class SaveSystem
 {
-    /// <summary>Where the game keeps its one saved garden.</summary>
+    /// <summary>How many gardens can be kept at once (see <see cref="SlotPath"/>).</summary>
+    public const int Slots = 3;
+
+    /// <summary>Where the game keeps garden <paramref name="slot"/> (1 to <see cref="Slots"/>): the first is <see cref="DefaultPath"/>, the others beside it.</summary>
+    public static string SlotPath(int slot) =>
+        slot <= 1 ? DefaultPath : Path.Combine(Path.GetDirectoryName(DefaultPath)!, $"garden{slot}.json");
+
+    /// <summary>Where the game keeps its first saved garden.</summary>
     public static string DefaultPath
     {
         get

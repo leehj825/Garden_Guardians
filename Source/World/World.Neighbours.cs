@@ -224,6 +224,7 @@ public sealed partial class World
                     }
                     TrySendAid(group, other);
                     TryHireHelper(group, other);
+                    TryTradeMaterial(group, other);
                     TryTeachCraft(group, other);
                     break;
             }

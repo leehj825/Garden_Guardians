@@ -1,7 +1,15 @@
 namespace GardenGuardians;
 
+/// <summary>Which of the kept gardens (see <see cref="SaveSystem.Slots"/>) is being played.</summary>
+public enum GardenSlot
+{
+    Garden1 = 1,
+    Garden2 = 2,
+    Garden3 = 3,
+}
+
 /// <summary>
-/// The player's own settings (for now, how much of the event log to show),
+/// The player's own settings (how much of the event log to show, and which garden is open),
 /// kept as <c>key=value</c> lines in a small text file beside the saved
 /// garden, so they survive a restart — and starting a new garden.
 /// </summary>

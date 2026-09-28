@@ -129,10 +129,11 @@ public sealed partial class World
             if (GroundMover.HorizontalDistance(crop.Position, well.Position) <= WellWateringReach)
                 crop.IsWatered = true;
         }
-        string whose = GroupOf(builder)?.CapitalTitle ?? builder.Name;
+        KinGroup? diggers = well.GroupId is { } owner && _groups.TryGetValue(owner, out KinGroup? owners) ? owners : GroupOf(builder);
+        string whose = diggers?.CapitalTitle ?? builder.Name;
         QueueFloatingText(well.Position, "Water!", WellTextColor);
         Game.AddEventLog($"[BUILD] {whose} struck water - their well is dug");
-        Headline("A well", $"{whose} struck water: a well at their door", well.Position, false, GroupOf(builder));
+        Headline("A well", $"{whose} struck water: a well at their door", well.Position, false, diggers);
     }
 
     /// <summary>The nearest dug well <paramref name="kin"/> may drink from — its own clan's, an ally's, or one whose clan is gone — within <paramref name="within"/>.</summary>

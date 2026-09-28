@@ -43,4 +43,7 @@ public enum Craft
 
     /// <summary>Digging a well by the main home, lined with stones its Builders carry in — water at the door, all year, drought or no (see World.Wells).</summary>
     Wells = 1024,
+
+    /// <summary>Slings of twisted grass that loose pebbles: a Hornet, a frog on the bank or the Heron can be hit from a few paces off (see Bramblekin.Slings).</summary>
+    Slings = 2048,
 }

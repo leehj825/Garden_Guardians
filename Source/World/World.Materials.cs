@@ -118,7 +118,7 @@ public sealed partial class World
     }
 
     /// <summary>The nearest loose <paramref name="kind"/> within <paramref name="radius"/> that nobody else is fetching.</summary>
-    public Material? NearestMaterial(Vector3 from, MaterialKind kind, float radius, Bramblekin claimant)
+    public Material? NearestMaterial(Vector3 from, MaterialKind kind, float radius, Bramblekin? claimant)
     {
         Material? best = null;
         float bestDistance = radius * radius;
@@ -182,7 +182,7 @@ public sealed partial class World
     public void DeliverMaterial(Bramblekin builder, Shelter home, Material material)
     {
         material.Deactivate();
-        string whose = GroupOf(builder)?.Title ?? builder.Name;
+        string whose = home.GroupId is { } owner && _groups.TryGetValue(owner, out KinGroup? owners) ? owners.Title : GroupOf(builder)?.Title ?? builder.Name;
         if (material.Kind == MaterialKind.Stone)
         {
             if (!home.LayStone())
