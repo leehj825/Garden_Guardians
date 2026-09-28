@@ -53,6 +53,9 @@ public sealed class KinGroup
     /// <summary>The Leader its council last talked out of eating first — so each is counted once.</summary>
     public Bramblekin? OverruledOnSharing { get; set; }
 
+    /// <summary>A splinter being plotted in the group, if any (see World.Plots). Not saved: a loaded garden's plots start afresh.</summary>
+    public Plot? Plot { get; set; }
+
     /// <summary>The group's shared home (and store), once it has one — see <see cref="World.UpdateGroupHomes"/>.</summary>
     public Shelter? Home { get; set; }
 

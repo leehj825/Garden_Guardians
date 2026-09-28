@@ -523,6 +523,7 @@ public static partial class Game
             $"({world.FailedChallenges} failed challenges), {world.Exiles} exiles; {world.Rejoins} independents later joined another group.");
         Console.WriteLine(
             $"Succession: {world.HeirsNamed} heirs named, {world.Successions} Leaders succeeded by their heir, {world.LeaderlessScrambles} lost with none named. " +
+            $"Plots: {world.PlotsHatched} hatched, {world.PlotsCarried} carried out, {world.PlotsUncovered} uncovered, {world.PlotsAbandoned} given up. " +
             $"Councils: average sway {world.AverageCouncilSway:P0}; talked {world.SharingOverruled} Leaders out of eating first, held {world.WarsHeldBack} back from war.");
         Console.WriteLine(
             $"  {independents.Count} independents alive at the end, {independents.Count(b => b.Home is { IsBuilt: true })} of them with a home of their own.");
@@ -901,7 +902,8 @@ public static partial class Game
     {
         KinGroup? group = world.GroupOf(kin);
         string role = group is null ? "Solitary" : group.Leader == kin ? "Leader"
-            : group.Heir == kin ? "Follower, heir" : world.CouncilOf(group).Contains(kin) ? "Follower, councillor" : "Follower";
+            : group.Heir == kin ? "Follower, heir" : world.CouncilOf(group).Contains(kin) ? "Follower, councillor"
+            : group.Plot is { } plot && (plot.Instigator == kin || plot.Conspirators.Contains(kin)) ? "Follower, plotting" : "Follower";
         int friends = kin.KnownKins.Values.Count(r => r == RelationshipState.Friend);
         int enemies = kin.KnownKins.Values.Count(r => r == RelationshipState.Enemy);
         int neutral = kin.KnownKins.Values.Count(r => r == RelationshipState.Neutral);
