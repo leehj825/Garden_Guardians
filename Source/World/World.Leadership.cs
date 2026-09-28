@@ -78,6 +78,7 @@ public sealed partial class World
             PlaceSnares(group);
             UpdateWells(group);
             UpdateCulture(group);
+            group.Counsel = Counsel(group, leader);
             ConsiderNeighbours(group, leader);
             DecideGroupGoal(group, leader);
             ReviewLoyalty(group, leader);
@@ -113,7 +114,7 @@ public sealed partial class World
     /// </summary>
     private void DecideGroupGoal(KinGroup group, Bramblekin leader)
     {
-        Personality p = leader.Personality;
+        Personality p = group.Counsel;
         Shelter? home = group.Home;
         Vector3 center = home?.Position ?? leader.Position;
         float storeFill = StoreFill(group);
@@ -177,6 +178,13 @@ public sealed partial class World
         }
 
         SharingRule sharing = p.Sociability < 0.4f && p.Aggression >= 0.5f ? SharingRule.LeaderFirst : SharingRule.Equal;
+        Personality own = leader.Personality;
+        if (sharing == SharingRule.Equal && own.Sociability < 0.4f && own.Aggression >= 0.5f && group.OverruledOnSharing != leader)
+        {
+            group.OverruledOnSharing = leader; // Told once per Leader.
+            SharingOverruled++;
+            Game.AddEventLog($"[COUNCIL] {group.CapitalTitle}'s council talked {leader.Name} out of eating first");
+        }
         if (sharing != group.Sharing)
         {
             group.Sharing = sharing;

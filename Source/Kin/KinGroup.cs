@@ -47,6 +47,12 @@ public sealed class KinGroup
     /// <summary>The member an ageing or ailing Leader has named to follow it, if any (see World.Succession).</summary>
     public Bramblekin? Heir { get; set; }
 
+    /// <summary>The temper its decisions are made in this time round: the Leader's, tempered by its council (see World.Council).</summary>
+    public Personality Counsel { get; set; } = new(0.5f, 0.5f, 0.5f);
+
+    /// <summary>The Leader its council last talked out of eating first — so each is counted once.</summary>
+    public Bramblekin? OverruledOnSharing { get; set; }
+
     /// <summary>The group's shared home (and store), once it has one — see <see cref="World.UpdateGroupHomes"/>.</summary>
     public Shelter? Home { get; set; }
 
