@@ -233,6 +233,7 @@ public static partial class Game
         var input = new WorldTapInput();
         var touchCamera = new TouchCameraController();
         var followCamera = new FollowCamera(camera);
+        var director = new Director();
         Camera3D overview = camera;
         float autosaveTimer = AutosaveInterval;
 
@@ -267,6 +268,8 @@ public static partial class Game
                 (int)(190 * uiScale), speedButtonHeight));
             var historyButton = new UiButton(new Rectangle(mapButton.Bounds.X + mapButton.Bounds.Width + speedButtonMargin, speedButtonMargin,
                 (int)(290 * uiScale), speedButtonHeight));
+            UiButton? autoButton = _showChronicle ? null : new UiButton(new Rectangle(historyButton.Bounds.X + historyButton.Bounds.Width + speedButtonMargin, speedButtonMargin,
+                (int)(190 * uiScale), speedButtonHeight));
             UiButton? followButton = _showChronicle ? null : FollowButton(world);
             UiButton? newGardenButton = _showChronicle ? NewGardenButton(historyButton, speedButtonMargin) : null;
             UiButton? gardenSlotButton = newGardenButton is null ? null : GardenSlotButton(newGardenButton, speedButtonMargin);
@@ -282,7 +285,13 @@ public static partial class Game
             Vector2 mousePosition = Raylib.GetMousePosition();
             if (mousePressed && TapBanner(mousePosition, followCamera))
             {
-                // Flew to the banner's big moment.
+                director.Stop(); // Flew to the banner's big moment.
+            }
+            else if (mousePressed && autoButton is not null && autoButton.Contains(mousePosition))
+            {
+                director.Toggle();
+                if (director.IsOn)
+                    followCamera.Release();
             }
             else if (mousePressed && speedDownButton.Contains(mousePosition))
                 DecreaseTimeScale();
@@ -298,6 +307,7 @@ public static partial class Game
                     ClearBanners();
                     camera = overview;
                     followCamera = new FollowCamera(overview);
+                    director.Stop();
                     autosaveTimer = AutosaveInterval;
                 }
             }
@@ -307,6 +317,7 @@ public static partial class Game
                 ClearBanners();
                 camera = overview;
                 followCamera = new FollowCamera(overview);
+                director.Stop();
                 autosaveTimer = AutosaveInterval;
             }
             else if (_showChronicle)
@@ -318,12 +329,16 @@ public static partial class Game
                 // Showed more, less or none of the log.
             }
             else if (mousePressed && mapButton.Contains(mousePosition))
+            {
+                director.Stop();
                 followCamera.ShowWholeMap();
+            }
             else if (mousePressed && followButton is not null && followButton.Contains(mousePosition))
                 followCamera.ToggleFollow(world);
             else
                 input.Update(camera, world);
             followCamera.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture);
+            director.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture || followCamera.IsBusy);
 
             // 2) Simulation, in fixed steps (see StepSimulation).
             StepSimulation(world, rawDeltaTime);
@@ -348,6 +363,7 @@ public static partial class Game
             speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
             mapButton.Draw("Map", highlighted: false);
             historyButton.Draw("History", highlighted: _showChronicle);
+            autoButton?.Draw("Auto", highlighted: director.IsOn);
             newGardenButton?.Draw(_newGardenConfirm > 0f ? "Sure?" : "New", highlighted: _newGardenConfirm > 0f);
             gardenSlotButton?.Draw($"Garden {_gardenSlot}", highlighted: false);
             if (!_showChronicle)
@@ -355,6 +371,8 @@ public static partial class Game
             followButton?.Draw(followCamera.IsFollowing ? "Following" : "Follow", highlighted: followCamera.IsFollowing);
             int hudTop = DrawHud(world);
             DrawBanner(hudTop);
+            if (!_showChronicle)
+                DrawDirectorCaption(director, (int)(speedButtonMargin * 2 + speedButtonHeight));
             if (_showChronicle)
                 DrawChronicle(world, top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
             else
@@ -642,6 +660,20 @@ public static partial class Game
     }
 
     /// <summary>The current speed ("5x"), on a small panel in the gap between the +/- buttons — gold once sped up.</summary>
+    /// <summary>What the Director is showing, in a strip under the top buttons.</summary>
+    private static void DrawDirectorCaption(Director director, int top)
+    {
+        if (director.Caption is not { } caption)
+            return;
+        int size = ScaledFontSize(0.55f);
+        int pad = (int)(10 * UiScale) + 2;
+        string text = Fit(caption, size, (int)(Raylib.GetScreenWidth() * 0.7f));
+        int width = Raylib.MeasureText(text, size) + pad * 2;
+        int x = (Raylib.GetScreenWidth() - width) / 2;
+        Raylib.DrawRectangle(x, top, width, size + pad * 2, BannerFill);
+        Raylib.DrawText(text, x + pad, top + pad, size, PanelInk);
+    }
+
     /// <summary>At its darkest, night lays this much shade over the garden.</summary>
     private const float NightShade = 0.55f;
 

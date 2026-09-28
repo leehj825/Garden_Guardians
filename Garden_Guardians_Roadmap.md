@@ -833,6 +833,14 @@ three fixes:
     age 53.2 vs 56.6. The Owl comes out ~40 nights a run and strikes ~37
     times, killing 1–3; it's driven off ~20 times.
 
+## Phase 27: The Director
+*   ✅ **An automatic camera ("Auto"):** cuts between whatever is most
+    worth watching — duels, fights, raids, the spider pouncing, the owl
+    striking, headlines, births, beetle hunts, else the liveliest village
+    — for a few seconds each, captioned; any pan or tap hands the camera
+    back. Watching only: the simulation is untouched (results identical
+    on fixed seeds).
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:

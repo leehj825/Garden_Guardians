@@ -91,6 +91,18 @@ overhead camera:
     that happens to cross that boundary produces a spurious ~2π jump
     (a "flip").
 
+*   **The Director ("Auto" button):** an automatic camera for watching
+    hands-free, above all at 20x or 50x. Once a second it looks over
+    everything worth watching (`World.DirectorShots`): headlines and
+    births put in its spotlight (fading over 30s), leadership duels,
+    fights between kin, raids, the Wolf Spider hunting or pouncing, the
+    Owl and the Heron at work, beetle hunts — and, when nothing's
+    happening, the liveliest village. It flies to the best, keeps the
+    camera on its subject for 3–8s (cutting in early for anything much
+    bigger), avoids repeating what it showed in the last 40s, and names
+    what it's showing in a strip under the top buttons. A pan, the Map
+    button, a banner tap or picking a Bramblekin hands the camera back.
+
 ## Player Interaction (what's left of it)
 *   **Kin inspection & the follow camera:** tapping a Bramblekin selects
     it: the camera swoops in (to 18m) and follows it as it goes about its
