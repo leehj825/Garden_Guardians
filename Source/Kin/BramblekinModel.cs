@@ -27,16 +27,20 @@ public enum BramblekinClip
 internal static unsafe class BramblekinModel
 {
     /// <summary>
-    /// On Android, raylib's own file loader reads this path straight out of
-    /// the APK via AAssetManager, relative to its "assets/" root, so it must
-    /// stay exactly as packaged. Everywhere else, the process's current
-    /// directory is whatever launched it — not necessarily the app's own
-    /// folder — so the relative path is resolved against
+    /// On Android, the SDK's own "Assets" project-folder convention strips
+    /// that top-level folder name when packaging: a project file at
+    /// Assets/Models/Bramblekin/Walking.glb is exposed to AssetManager (and
+    /// so to raylib's own AAssetManager-backed file loader) as
+    /// "Models/Bramblekin/Walking.glb", not "Assets/Models/...". Everywhere
+    /// else, the process's current directory is whatever launched it — not
+    /// necessarily the app's own folder — so the relative path (this time
+    /// including "Assets", since desktop's CopyToOutputDirectory keeps the
+    /// full project-relative path) is resolved against
     /// <see cref="AppContext.BaseDirectory"/> instead (see
     /// <see cref="SaveSystem.DefaultPath"/> for the same reasoning).
     /// </summary>
     private static readonly string AssetPath = OperatingSystem.IsAndroid()
-        ? "Assets/Models/Bramblekin/"
+        ? "Models/Bramblekin/"
         : Path.Combine(AppContext.BaseDirectory, "Assets", "Models", "Bramblekin") + Path.DirectorySeparatorChar;
 
     /// <summary>The rig's height in its own units (see the FBX/glb bounding box) — divide by this to scale to <see cref="Bramblekin.BodyHeight"/> meters.</summary>
