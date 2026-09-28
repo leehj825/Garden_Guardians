@@ -76,6 +76,8 @@ public sealed partial class Bramblekin
         if (_carriedTwig is not null)
             Twig.DrawCarried(Position + new Vector3(0, BodyHeight * 0.55f, 0), facing);
         _carriedMaterial?.DrawCarried(Position, BodyHeight, facing);
+        if (_carryingWater)
+            DrawWaterCup(facing);
     }
 
     private static Color LerpColor(Color a, Color b, float t)

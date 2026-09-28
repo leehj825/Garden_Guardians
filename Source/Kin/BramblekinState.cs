@@ -85,4 +85,7 @@ public enum BramblekinState
 
     /// <summary>Sitting on the shore with a line in the water (see Bramblekin.Fishing).</summary>
     Fishing,
+
+    /// <summary>Critical: going for a drink, at the pond or its home's cistern (see Bramblekin.Thirst).</summary>
+    Drinking,
 }

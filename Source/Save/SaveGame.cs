@@ -78,6 +78,8 @@ public sealed class ShelterSave
 
     public int Stakes { get; set; }
     public int Stones { get; set; }
+    public bool Cistern { get; set; }
+    public int Water { get; set; }
 }
 
 public sealed class KinSave
@@ -96,6 +98,7 @@ public sealed class KinSave
     public V3 Position { get; set; }
     public int Health { get; set; }
     public float Hunger { get; set; }
+    public float Thirst { get; set; }
     public float Age { get; set; }
     public float Lifespan { get; set; }
     public float TimeHere { get; set; }

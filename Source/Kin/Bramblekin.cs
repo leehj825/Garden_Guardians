@@ -9,11 +9,13 @@ namespace GardenGuardians;
 /// need, in strict priority order (a leadership duel, once started, comes
 /// before all of them):
 ///
-///   1. Critical — Hunger (Bramblekin.Hunger.cs): once <see cref="IsHungry"/>,
-///      it eats what it's carrying, forages visible Food, eats from its
-///      home's store, scavenges, hunts, raids or robs, or searches further
-///      afield. Nothing else matters until it's fed — a hungry Bramblekin
-///      will brave a Hornet swarm for a berry.
+///   1. Critical — Thirst (Bramblekin.Thirst.cs) and Hunger
+///      (Bramblekin.Hunger.cs), whichever is worse: once <see cref="IsThirsty"/>
+///      it walks to the pond (or its home's cistern) and drinks; once
+///      <see cref="IsHungry"/> it eats what it's carrying, forages visible
+///      Food, eats from its home's store, scavenges, hunts, raids or robs,
+///      or searches further afield. Nothing else matters until it's fed
+///      and watered — a hungry Bramblekin will brave a Hornet swarm for a berry.
 ///   2. Safety (Bramblekin.Safety.cs): a predator, a raider, a hostile
 ///      Bramblekin, or anything attacking a groupmate inside its
 ///      Intelligence-scaled <see cref="DetectionRadius"/> triggers one
@@ -311,6 +313,7 @@ public sealed partial class Bramblekin : ICombatant
         Sex = rng.Next(2) == 0 ? Sex.Female : Sex.Male;
         RollLifespan(rng);
         Hunger = (float)rng.NextDouble() * StartingHungerMax;
+        Thirst = (float)rng.NextDouble() * StartingThirstMax;
         _mover = new GroundMover(position, BodyRadius, EdgeMargin, rng);
         _perceptionTimer = (float)rng.NextDouble() * PerceptionInterval;
 
@@ -394,8 +397,8 @@ public sealed partial class Bramblekin : ICombatant
     public bool SeesFood => _perceivedFood is { IsActive: true, IsCarried: false };
 
     /// <summary>The Wolf Spider hunts by vibration: a Bramblekin busy with food (or a fight over it) gives itself away.</summary>
-    public bool IsVibrating => !IsDead && State is BramblekinState.Foraging or BramblekinState.Eating or BramblekinState.Hunting
-        or BramblekinState.Attacking or BramblekinState.Raiding or BramblekinState.Farming;
+    public bool IsVibrating => !IsDead && (State is BramblekinState.Foraging or BramblekinState.Eating or BramblekinState.Hunting
+        or BramblekinState.Attacking or BramblekinState.Raiding or BramblekinState.Farming || IsDrinkingAtPond);
 
     private int StrikeDamage => (int)MathF.Round((BaseStrikeDamage + StrikeDamagePerAggression * Personality.Aggression) * (IsElder ? ElderStrikeFactor : 1f));
 
@@ -608,6 +611,8 @@ public sealed partial class Bramblekin : ICombatant
         {
             _starvationTimer = 0f;
         }
+        if (UpdateThirstMetabolism(deltaTime, world))
+            return;
         if (UpdateSickness(deltaTime, world))
             return;
 
@@ -622,7 +627,13 @@ public sealed partial class Bramblekin : ICombatant
         if (UpdateDuel(deltaTime, world))
             return;
 
-        // 1) Critical: Hunger. A meal already under way is always finished.
+        // 1) Critical: Thirst or Hunger — whichever is worse. A meal already under way is always finished.
+        if (State != BramblekinState.Eating && ThirstComesFirst)
+        {
+            _fleeTimer = 0f; // Whatever it was running from, water comes first now.
+            UpdateThirst(deltaTime, world);
+            return;
+        }
         if (IsHungry || State == BramblekinState.Eating)
         {
             _fleeTimer = 0f; // Whatever it was running from, food comes first now.
@@ -637,6 +648,10 @@ public sealed partial class Bramblekin : ICombatant
 
         // 2b) Ants at its home's store get swatted.
         if (UpdateAntDefense(deltaTime, world))
+            return;
+
+        // 2c) A cupful of pond water goes home to the cistern.
+        if (UpdateWaterCarry(deltaTime, world))
             return;
 
         // 3) Duty: the job its group's Leader gave it.

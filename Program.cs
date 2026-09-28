@@ -12,8 +12,8 @@
 //    * Every Bramblekin is an individual agent with its own randomly rolled
 //      Personality (Aggression, Sociability, Intelligence, Rebelliousness,
 //      Persuasiveness, Courage, Diligence) and a strict
-//      hierarchy of needs: Hunger, then Safety, then its group Duty, then
-//      Settling (its home), then Social.
+//      hierarchy of needs: Thirst or Hunger (whichever is worse), then
+//      Safety, then its group Duty, then Settling (its home), then Social.
 //    * Groups are emergent, not assigned: two Bramblekin that cross paths
 //      resolve the encounter from their situation and traits — a starving,
 //      aggressive one may rob the other; two sociable ones (or two that are

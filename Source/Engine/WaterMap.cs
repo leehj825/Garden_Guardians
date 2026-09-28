@@ -31,6 +31,7 @@ public static class WaterMap
 
     private static readonly bool[] Wet = BuildWet();
     private static readonly bool[] Blocked = BuildBlocked();
+    private static readonly float[] ShoreDistance = BuildShoreDistance();
 
     /// <summary>How many routes have been worked out (for the headless report).</summary>
     public static int RoutesFound { get; private set; }
@@ -59,6 +60,45 @@ public static class WaterMap
         }
         return blocked;
     }
+
+    /// <summary>How far (m) each cell is from the water's edge, walking round the pond — worked out once, outward from the shore.</summary>
+    private static float[] BuildShoreDistance()
+    {
+        var distance = new float[Cells * Cells];
+        var frontier = new PriorityQueue<int, float>();
+        for (int i = 0; i < distance.Length; i++)
+        {
+            distance[i] = Blocked[i] ? 0f : float.MaxValue;
+            if (Blocked[i])
+                frontier.Enqueue(i, 0f);
+        }
+        while (frontier.TryDequeue(out int current, out float reached))
+        {
+            if (reached > distance[current])
+                continue;
+            int cx = current / Cells, cz = current % Cells;
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                for (int dz = -1; dz <= 1; dz++)
+                {
+                    int x = cx + dx, z = cz + dz;
+                    if ((dx == 0 && dz == 0) || x < 0 || z < 0 || x >= Cells || z >= Cells)
+                        continue;
+                    int next = x * Cells + z;
+                    float step = reached + (dx != 0 && dz != 0 ? 1.4142f : 1f) * CellSize;
+                    if (step < distance[next])
+                    {
+                        distance[next] = step;
+                        frontier.Enqueue(next, step);
+                    }
+                }
+            }
+        }
+        return distance;
+    }
+
+    /// <summary>How far (m) (x, z) is from the pond's edge, walking round it — how far a Bramblekin living there walks for a drink.</summary>
+    public static float DistanceToWater(float x, float z) => ShoreDistance[CellOf(x) * Cells + CellOf(z)];
 
     private static float CellCenter(int index) => -HalfSize + (index + 0.5f) * CellSize;
 

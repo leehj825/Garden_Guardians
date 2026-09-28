@@ -240,6 +240,9 @@ public sealed partial class World
     /// </summary>
     public Shelter? TryCreateShelterSite(Vector3 near, Bramblekin? owner, Guid? groupId, float searchRadius = ShelterSiteSearchRadius)
     {
+        // Of the open spots it tries, the one nearest water: nobody wants a long walk for a drink.
+        Vector3? best = null;
+        float bestToWater = float.MaxValue;
         for (int attempt = 0; attempt < 16; attempt++)
         {
             float angle = (float)(Rng.NextDouble() * MathF.Tau);
@@ -249,12 +252,19 @@ public sealed partial class World
                 continue;
             if (Shelters.Any(s => GroundMover.HorizontalDistanceSquared(s.Position, candidate) < MinShelterSpacing * MinShelterSpacing))
                 continue;
-
-            var shelter = new Shelter(candidate) { Owner = owner, GroupId = groupId, StageStartedAt = ElapsedSeconds };
-            Shelters.Add(shelter);
-            return shelter;
+            float toWater = WaterMap.DistanceToWater(candidate.X, candidate.Z);
+            if (toWater < bestToWater)
+            {
+                best = candidate;
+                bestToWater = toWater;
+            }
         }
-        return null;
+        if (best is not { } site)
+            return null;
+
+        var shelter = new Shelter(site) { Owner = owner, GroupId = groupId, StageStartedAt = ElapsedSeconds };
+        Shelters.Add(shelter);
+        return shelter;
     }
 
     /// <summary>The nearest built, abandoned shelter within <paramref name="radius"/> — free for the taking.</summary>

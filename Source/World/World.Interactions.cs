@@ -134,6 +134,10 @@ public sealed partial class World
                 DeathsBySickness++;
                 how = "died of a sickness";
                 break;
+            case DeathCause.Thirst:
+                DeathsByThirst++;
+                how = "died of thirst";
+                break;
             case DeathCause.OldAge:
                 DeathsByOldAge++;
                 how = $"died of old age at {kin.AgeInYears:0.0} years" +

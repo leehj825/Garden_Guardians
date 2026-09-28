@@ -11,8 +11,11 @@ public sealed partial class World
     /// <summary>The crafts a clan can work out after farming, in the order an ally teaches them.</summary>
     private static readonly Craft[] LaterCrafts =
     {
-        Craft.Granary, Craft.Spears, Craft.Palisade, Craft.Grain, Craft.Mushrooms, Craft.Cress, Craft.Fishing, Craft.Stonework,
+        Craft.Granary, Craft.Spears, Craft.Palisade, Craft.Grain, Craft.Mushrooms, Craft.Cress, Craft.Fishing, Craft.Stonework, Craft.Cisterns,
     };
+
+    /// <summary>A clan whose main home is further than this (m) from the water works out cisterns — necessity being the mother of invention.</summary>
+    private const float CisternThirstReach = 25f;
 
     /// <summary>A clan with a home within this far (m) of the shore can work out fishing.</summary>
     private const float FishingSettleReach = 20f;
@@ -60,7 +63,10 @@ public sealed partial class World
         foreach (Bramblekin member in group.Members)
             member.Learn(known);
         foreach (Shelter home in GroupHomes(group))
+        {
             home.HasGranary = (known & Craft.Granary) != 0;
+            home.HasCistern = (known & Craft.Cisterns) != 0;
+        }
 
         Craft[] ready = LaterCrafts.Where(c => (known & c) == 0 && ReadyFor(group, c)).ToArray();
         if (ready.Length == 0)
@@ -86,7 +92,8 @@ public sealed partial class World
     /// Wolf Spider brought down; a palisade, a House and either a martial
     /// tradition or a memory of danger close to home; grain, farming;
     /// mushrooms, farming and a House; cress beds, farming and a home near
-    /// the pond; fishing, just a home near the pond; stonework, a House.
+    /// the pond; fishing, just a home near the pond; stonework, a House;
+    /// cisterns, a House far from the water.
     /// </summary>
     private bool ReadyFor(KinGroup group, Craft craft)
     {
@@ -107,6 +114,7 @@ public sealed partial class World
             Craft.Cress => farms && nearPond,
             Craft.Fishing => nearPond,
             Craft.Stonework => hasHouse,
+            Craft.Cisterns => hasHouse && group.Home is { } main && WaterMap.DistanceToWater(main.Position.X, main.Position.Z) > CisternThirstReach,
             _ => false,
         };
     }
@@ -122,6 +130,7 @@ public sealed partial class World
         Craft.Cress => "grow cress on the shore",
         Craft.Fishing => "fish from the shore",
         Craft.Stonework => "raise a house on a stone footing",
+        Craft.Cisterns => "catch the rain in an acorn-cup cistern",
         _ => craft.ToString().ToLowerInvariant(),
     };
 

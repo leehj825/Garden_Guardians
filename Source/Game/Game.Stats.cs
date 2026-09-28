@@ -39,6 +39,7 @@ public static partial class Game
             $"Predators: {Share(world.DeathsByPredator)}",
             $"Killed by kin: {Share(world.DeathsByKin)}",
             $"Sickness: {Share(world.DeathsBySickness)} ({world.SicknessCases} fell ill)",
+            $"Thirst: {Share(world.DeathsByThirst)}",
         }));
 
         sections.Add(("Food", new List<string>
@@ -91,6 +92,15 @@ public static partial class Game
         sections.Add(("Food eaten or stored", Enum.GetValues<FoodShardKind>()
             .Select(k => $"{k}: {world.FoodTaken(k)}").ToList()));
 
+        sections.Add(("Water", new List<string>
+        {
+            $"Drinks at the pond: {world.DrinksAtPond}",
+            $"  a {(world.DrinksAtPond > 0 ? world.WaterTrekMeters / world.DrinksAtPond : 0):0}m walk on average",
+            $"From cisterns: {world.CisternDrinks}",
+            $"Cupfuls carried home: {world.CupfulsCarried}",
+            $"Died of thirst: {world.DeathsByThirst}",
+        }));
+
         int KnowCraft(Craft craft) => world.Groups.Count(g => World.Knows(g, craft));
         sections.Add(("Crafts", new List<string>
         {
@@ -100,6 +110,7 @@ public static partial class Game
             $"With palisades: {KnowCraft(Craft.Palisade)} ({world.Shelters.Count(s => s.HasPalisade)} up)",
             $"Grain: {KnowCraft(Craft.Grain)}, mushrooms {KnowCraft(Craft.Mushrooms)}, cress {KnowCraft(Craft.Cress)}",
             $"Fishing: {KnowCraft(Craft.Fishing)}, stonework {KnowCraft(Craft.Stonework)} ({world.Shelters.Count(s => s.HasFooting)} footings)",
+            $"Cisterns: {KnowCraft(Craft.Cisterns)}",
         }));
 
         sections.Add(("Pests & plagues", new List<string>

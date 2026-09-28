@@ -37,4 +37,7 @@ public enum Craft
 
     /// <summary>A stone footing under each House (once its Builders have carried in the stones): a dry, stone-floored store that holds more, stays dry in a flood, and ants can't dig into.</summary>
     Stonework = 256,
+
+    /// <summary>An acorn-cup cistern by each House that catches the rain, and the cupfuls its folk carry home from the pond — so they can drink at home (see Bramblekin.Thirst).</summary>
+    Cisterns = 512,
 }

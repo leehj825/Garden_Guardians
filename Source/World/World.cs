@@ -245,7 +245,7 @@ public sealed partial class World
     public int DeathsByPredator { get; private set; }
     public int DeathsByKin { get; private set; }
     public int DeathsByOldAge { get; private set; }
-    public int Casualties => DeathsByStarvation + DeathsByPredator + DeathsByKin + DeathsByOldAge + DeathsBySickness;
+    public int Casualties => DeathsByStarvation + DeathsByPredator + DeathsByKin + DeathsByOldAge + DeathsBySickness + DeathsByThirst;
     public int FoodEaten { get; private set; }
     public int FoodShared { get; private set; }
     public int Thefts { get; private set; }
@@ -411,6 +411,7 @@ public sealed partial class World
         UpdateWildFood(deltaTime);
         UpdateTwigSpawn(deltaTime);
         UpdateMaterials(deltaTime);
+        UpdateCisterns(deltaTime);
         UpdateSpiderRespawn(deltaTime);
         UpdateHornetSpawn(deltaTime);
         UpdateGrubSpawn(deltaTime);

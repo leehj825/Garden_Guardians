@@ -34,7 +34,7 @@ groups. The player is a spectator with a camera, and can tap any single
 Bramblekin to see what makes it tick.
 
 ## The Core Loop (as implemented)
-Hunger rises → each Bramblekin forages loose Food within its own
+Hunger and thirst rise → each Bramblekin walks to the water to drink, and forages loose Food within its own
 Intelligence-scaled senses, or eats from its home's store → threats (the
 Wolf Spider, Hornets, raiders, hostile Bramblekin) are fought or fled on a
 per-individual Aggression roll — or, if wildlife, hidden from at home →
@@ -100,7 +100,7 @@ overhead camera:
     speed controls flies back out to the whole garden. The top-right Kin
     Inspector shows its name, sex and role (Solitary/Leader/Follower,
     young or elder), its age and generation, its mother and father, its
-    partner and how many children it has, State, Health, Hunger, its
+    partner and how many children it has, State, Health, Hunger, Thirst (and how far its home is from water), its
     nature and all seven Personality traits (and the detection radius its
     Intelligence buys it), its group, its home
     (tent or house, construction progress, store), its job and
@@ -113,9 +113,10 @@ overhead camera:
     robbing, raiding, grouping, leading, obeying and rebelling — is the
     Bramblekin's own business.
 *   The HUD shows the year and season (with its food multiplier), homes
-    (tents, houses, sites, food stored, villages and buddings, bushes),
+    (tents, houses, sites, food stored, villages and buddings, crops),
     groups (how many farm) and current alliances and wars, what the
-    colony is doing, deaths by cause, births and the highest generation,
+    colony is doing (foraging, eating, drinking, fleeing, fighting,
+    robbing), deaths by cause (thirst among them), births and the highest generation,
     and the politics so far (walk-outs, splits, coups, exiles, raids).
     The year line names the weather (drought, harsh winter, bountiful,
     storm), and the Kin Inspector shows its clan's tradition and
@@ -142,8 +143,8 @@ overhead camera:
     "Log: off (+4)") and *full* (the last 15 entries, word-wrapped, as
     tall as the screen allows). The choice is remembered
     (`settings.txt`, beside the save) — and kept through a new garden.
-*   **Health and hunger bars** float over any Bramblekin that's hurt or
-    hungry (and a wounded Spider). They grow with the zoom — about 2.4×
+*   **Health, hunger and thirst bars** (green, orange, blue) float over
+    any Bramblekin that's hurt, hungry or thirsty (and a wounded Spider). They grow with the zoom — about 2.4×
     as wide as the creature looks on screen — so zoomed in close they're
     easy to read, while at the whole-map view they shrink back to the
     same small 34px bars (the floor, and 150px the ceiling, both scaled
@@ -270,10 +271,27 @@ overhead camera:
     second until it eats or dies. One piece of Food removes 40 Hunger and
     restores 6 HP. Resting at home heals too (1 HP per 1.5s; faster in a
     House).
+*   **Thirst:** rises 0.3 points per second (a quarter faster in summer,
+    a quarter slower in winter, faster when sick) from 0 to 100 — a drink
+    lasts a little over three minutes. At 60 a Bramblekin is *thirsty*; at
+    100 it loses 1 HP every 2s until it drinks or dies. It drinks at the
+    pond (the nearest stretch of shore, however far — it slakes its thirst
+    entirely) or from its home's cistern (a sip takes off 70). Out in a
+    storm it drinks the rain (2 points a second). Juicy food helps a
+    little: a sprig of cress takes off 15, a fish 5, a berry or a
+    mushroom 3; seed, meat and acorns nothing. So **living far from water
+    costs**: every drink is a walk there and back (from the garden's dry
+    south-west corner, some 70m each way — most of a minute and a half),
+    time not spent foraging, working or resting — and a drinker crouched
+    at the water's edge is busy enough for the Wolf Spider to feel.
 *   **The strict needs hierarchy** — every frame, each Bramblekin serves
     exactly one need, in this order:
     0.  **A leadership duel,** once started, is settled first.
-    1.  **Critical (Hunger):** eat what it's carrying; else keep robbing
+    1.  **Critical (Thirst or Hunger, whichever is worse):** thirsty and
+        no hungrier than it is thirsty, it goes for a drink — its home's
+        cistern if that has water and is nearer, else the nearest shore —
+        and a drink under way is finished unless it's starving and
+        hungrier still. Otherwise, hungry, it eats what it's carrying; else keep robbing
         the neighbour it committed to; else, with a predator about, go
         home to eat from the store; else go for the nearest loose Food it
         can see or eat from its home's store (or a village home's, if the
@@ -647,7 +665,7 @@ overhead camera:
     inherited by children (both parents' crafts), carried along by anyone
     who leaves, and taught to allies (odds 0.05 per decision, farming
     first, then granary, spears, palisade, grain, mushrooms, cress,
-    fishing, stonework). When a clan is ready for several, the one it
+    fishing, stonework, cisterns). When a clan is ready for several, the one it
     works out is picked at random.
     *   **Granary** (needs farming and a House): each House gets a round
         granary beside it and holds half as much again in store.
@@ -663,6 +681,13 @@ overhead camera:
     *   **Grain, Mushrooms, Cress** (need farming; mushrooms a House,
         cress a home within 20m of the shore): new crops (see Farming).
     *   **Fishing** (needs a home within 20m of the shore): see Farming.
+    *   **Cisterns** (needs a House more than 25m from water — necessity
+        is the mother of invention): an acorn-cup cistern out front of
+        each House, holding 8 sips. It fills in the rain (a sip every 2s
+        of a storm), and whoever drinks at the pond carries a cupful home
+        (2 sips) while it isn't full. A thirsty Bramblekin drinks from it
+        if it's nearer than the pond — so a far-off village makes one
+        long trip do for three drinks.
     *   **Stonework** (needs a House): each House is raised on a stone
         footing, once its Builders have carried in 4 stones (a ring of
         grey stones round its foot): its store holds 2 more, stays dry in
@@ -882,10 +907,18 @@ overhead camera:
     Hornets fly over. A flood rises out of the pond and drains back into
     it — flood water is shallow, and walkable. The water is drawn only
     over the ground that dips below it.
-*   **What the water gives:** watercress grows wild along the shore
+*   **What the water gives:** a drink (see Thirst) — the one thing
+    nobody can do without, and the reason the garden's dry south-west is
+    the hardest place to live. Watercress grows wild along the shore
     (most in spring, and never minding a drought); clans near it can
     fish and plant cress beds; crops within 8m of it are watered — faster,
     and drought-proof (see Farming).
+*   **Settling by the water:** a Bramblekin marking out a home takes, of
+    the open spots it tries, the one nearest water; pioneers founding a
+    new village weigh every meter to the water's edge (0.35 per meter, up
+    to 50m) against open ground and berries. How far is measured walking
+    round the pond (`WaterMap.DistanceToWater`); the Kin Inspector shows
+    how far its home is from water.
 *   **The Giant Oak:** the foot of a real tree stands at the garden's back
     edge — a trunk 12m across, ridged bark and a mossy foot, rising far
     out of sight, with one great bough overhead and roots sprawling over

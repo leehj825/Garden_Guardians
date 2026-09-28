@@ -368,6 +368,9 @@ public sealed partial class World
     /// <summary>They mark out their site within this many meters of the spot they picked.</summary>
     private const float PioneerSiteRadius = 10f;
 
+    /// <summary>Pioneers weigh every meter to the water's edge (up to 50) this much against open ground and berries.</summary>
+    private const float WaterPull = 0.35f;
+
     /// <summary>A budding village gives its settlers up to this much of its stores.</summary>
     private const int MaxDowry = 6;
 
@@ -375,8 +378,9 @@ public sealed partial class World
     /// Spreading out: a spot for a new village — the most open ground
     /// (furthest from every home, up to <see cref="PioneerSpacing"/> and
     /// beyond) within <see cref="PioneerMaxTrek"/> of <paramref name="from"/>,
-    /// with a bonus for Berry Patches nearby. Null if the map is too crowded
-    /// to find anywhere clear, in which case they settle wherever they find food.
+    /// with a bonus for Berry Patches nearby and for water within easy reach
+    /// (see <see cref="WaterPull"/>). Null if the map is too crowded to find
+    /// anywhere clear, in which case they settle wherever they find food.
     /// </summary>
     private Vector3? FindOpenGround(Vector3 from)
     {
@@ -401,7 +405,9 @@ public sealed partial class World
 
             float nearestPatch = _berryPatches.Count == 0 ? 30f
                 : _berryPatches.Min(patch => GroundMover.HorizontalDistance(patch, candidate));
-            float score = MathF.Min(nearestHome, PioneerSpacing * 1.4f) - 0.5f * MathF.Min(nearestPatch, 30f) - 0.1f * distance;
+            float toWater = WaterMap.DistanceToWater(candidate.X, candidate.Z);
+            float score = MathF.Min(nearestHome, PioneerSpacing * 1.4f) - 0.5f * MathF.Min(nearestPatch, 30f) - 0.1f * distance -
+                          WaterPull * MathF.Min(toWater, 50f);
             if (score > bestScore)
             {
                 best = candidate;

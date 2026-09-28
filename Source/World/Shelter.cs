@@ -59,6 +59,7 @@ public sealed class Shelter
     private static readonly Color HazelBaseColor = new(205, 180, 135, 255);
     private static readonly Color ThornColor = new(128, 58, 44, 255);
     private static readonly Color FootingColor = new(140, 140, 146, 255);
+    private static readonly Color CisternWaterColor = new(80, 140, 210, 255);
     private static readonly Color StickColor = new(115, 80, 45, 255);
     private static readonly Color StoredFoodColor = new(210, 40, 45, 255);
     private static readonly Color AbandonedTint = new(150, 150, 150, 255);
@@ -109,6 +110,23 @@ public sealed class Shelter
 
     /// <summary>Its clan knows <see cref="Craft.Granary"/> (Houses only): half as much again in store.</summary>
     public bool HasGranary { get; set; }
+
+    /// <summary>A cistern holds this many sips.</summary>
+    public const int CisternSips = 8;
+
+    /// <summary>Its clan knows <see cref="Craft.Cisterns"/>: an acorn-cup cistern by the door (Houses only), filled by the rain and by cupfuls carried home.</summary>
+    public bool HasCistern
+    {
+        get => _hasCistern && Tier == ShelterTier.House;
+        set => _hasCistern = value;
+    }
+
+    private bool _hasCistern;
+
+    public int CisternCapacity => HasCistern ? CisternSips : 0;
+
+    /// <summary>Sips of water in its cistern.</summary>
+    public int Water { get; set; }
 
     /// <summary>A palisade takes this many branches staked round the home (see <see cref="Craft.Palisade"/>)…</summary>
     public const int PalisadeStakeCost = 3;
@@ -315,6 +333,15 @@ public sealed class Shelter
             Raylib.DrawSphere(hazel, 0.33f, Tint(HazelColor));
             DrawEllipsoid(hazel + new Vector3(0f, -0.2f, 0f), 0.27f, 0.12f, Tint(HazelBaseColor));
             Raylib.DrawCylinderEx(hazel + new Vector3(0f, 0.3f, 0f), hazel + new Vector3(0.04f, 0.42f, 0f), 0.04f, 0.02f, 4, Tint(StickColor));
+        }
+
+        if (HasCistern)
+        {
+            // An acorn cup on the ground out front, water showing as it fills.
+            Vector3 cup = basePosition + new Vector3(-radius * 0.35f, 0f, radius + 0.35f);
+            Raylib.DrawCylinder(cup, 0.3f, 0.22f, 0.32f, 10, Tint(CapColor));
+            if (Water > 0)
+                Raylib.DrawCylinder(cup + new Vector3(0f, 0.05f + 0.25f * Water / CisternSips, 0f), 0.2f + 0.08f * Water / CisternSips, 0.2f + 0.08f * Water / CisternSips, 0.02f, 10, CisternWaterColor);
         }
 
         if (StonesLaid > 0 && Tier == ShelterTier.House)

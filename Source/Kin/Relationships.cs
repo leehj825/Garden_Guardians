@@ -21,4 +21,5 @@ public enum DeathCause
     Kin,
     OldAge,
     Sickness,
+    Thirst,
 }

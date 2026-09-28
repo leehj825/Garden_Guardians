@@ -56,6 +56,7 @@ public sealed partial class Bramblekin
             world.ConsumeFood(food);
             _carried = null;
             Hunger = MathF.Max(0f, Hunger - FoodNourishment);
+            QuenchWith(food.Kind);
             Heal(FoodHealing);
         }
         _robTarget = null;
