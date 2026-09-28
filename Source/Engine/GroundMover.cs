@@ -142,6 +142,11 @@ public sealed class GroundMover
         // something — else for the next waypoint round the water, if any.
         bool onRoute = false;
         Vector3 goal = _detour ?? (_walks ? RouteTowards(target, out onRoute) : target);
+        // A goal past MapBoundaryLimit can never be reached — the bounds rule
+        // below turns the walker back before it gets there, and it would pace
+        // back and forth at the limit forever (a prowling spider stuck at the
+        // map's edge). Head for the nearest point inside the limit instead.
+        goal = new Vector3(Math.Clamp(goal.X, -MapBoundaryLimit, MapBoundaryLimit), goal.Y, Math.Clamp(goal.Z, -MapBoundaryLimit, MapBoundaryLimit));
         var position = new Vector2(Position.X, Position.Z);
         var toGoal = new Vector2(goal.X, goal.Z) - position;
         float distance = toGoal.Length();
