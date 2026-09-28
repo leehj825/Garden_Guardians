@@ -629,6 +629,71 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     fish get scarcer, and the pond fills again after (faster in rain).
 *   ✅ **New clans without a home yet** say so on their clan card, and
     their site shows on the map (bare earth, a clan flag, the twigs laid).
+*   **Benchmark (24 seeds × 7800s, no crashes):** the pond all but dries
+    up in almost every drought (3.7 times a run, of 4 droughts), and
+    droughts now bite: starvation 64.5 vs 45.8, deaths of old age 40.0 vs
+    45.7, deaths of thirst 0.8 vs 0.3 a run, fish caught 199 vs 247 —
+    while population holds at 52.3 vs 53.0 (more newcomers wander in to
+    fill the gaps: 33.5 vs 26.3). Walkers find some 24,000 ways round
+    the pond and the roots a run (was 12,000), still well under a second.
+
+## Phase 20: Wells
+*   ✅ **Wells:** clans with stonework whose main home is more than 20m
+    from water dig a well beside it, lined with stones their Builders
+    carry in (3, plus one per 2m the ground stands above the pond) —
+    water at the door, all year and through droughts, for the clan, its
+    allies, or anyone once the clan is gone; crops beside it are watered.
+*   **Benchmark (24 seeds × 7800s, no crashes):** 2.6 wells dug a run
+    (and 1.8 still being dug at the end — stones are scarce, and a
+    hilltop well takes ten), some 105 drinks drawn from them (vs ~990 at
+    the pond and ~370 from cisterns). Population 47.0 ± 3.0 vs 52.3 ± 2.7
+    (within the spread; the stone-fetching Builder is one fewer
+    Gatherer); clans 30–45m from water average 6.1 kin, 45m+ 6.2 (was
+    5.7).
+*   ✅ **Fixed: walkers stopping a pace short.** A route to a target in
+    blocked ground (by a root, a rock or the shore) ended a meter off,
+    and the walker waited there for good — Builders sat for years beside
+    a stone. Routes now always end at the target. With that, clans of two
+    keeping a Builder on their well, a 60m stone search and cheaper wells
+    (3 stones plus one per 2m of height): 3.0 wells dug a run, 126 drinks
+    from them; population 54.8 ± 4.1 (vs 47.0 before the fix, 52.3 before
+    wells); no crashes.
+
+## Phase 21: Slings, the Pond's Wildlife, Seed Corn, Trade and More Gardens
+*   ✅ **Slings** (a craft, after spears): pebbles loosed from 3.5m at a
+    Hornet, a frog on the bank or the Heron; a slinger is likelier to
+    stand and fight a chasing swarm or the Heron.
+*   ✅ **Frogs and the Heron:** frogs sit and hop along the bank from
+    spring to autumn (fewer in a drought), diving when startled — small
+    game worth 2 meat. A heron comes down to the pond every 4–8 minutes,
+    stands stock still (hard to see) or wades, spears frogs and lunges at
+    anyone at the water's edge; driven off when hurt, a feast if brought
+    down.
+*   ✅ **Seed corn:** grain is sown from seed kept back from the harvest
+    (and wild seed), not from the stores; a poor year means fewer patches
+    the next, and the starving eat the seed corn last of all.
+*   ✅ **Trade in stones and branches:** a clan needing stones or branches
+    with none close by buys one from an ally that has them lying near
+    home — a hauler carries it over and takes 2 food home. Clans by the
+    rocks come to supply stone; by the oak, wood.
+*   ✅ **Three gardens:** a Garden button beside New on the History screen
+    keeps the open garden and opens the next of three (fresh if empty).
+*   **Benchmark (48 seeds × 7800s against the Phase 20 build on the same
+    seeds, no crashes):** population 54.9 ± 2.8 vs 54.2 ± 2.7 — no change
+    (24 seeds weren't enough to tell: this build's first 24 averaged 46.1,
+    its next 24 63.8). Starvation 49.4 vs 56.9 a run and kin killed by kin
+    19.4 vs 31.6, with deaths of old age up to 48.8 from 43.8; deaths to
+    predators 32.4 vs 29.6 — the Heron spears 1.9 a run, and the Wolf
+    Spider takes 14.3 (was 12.4) as frog hunters busy themselves near the
+    water, while hornets sting 16.3 to death (was 17.3). A run sees 129
+    pebbles loosed (91 hits, 60 kills; hornets swatted 47, was 33), 67
+    frogs caught, 13 heron visits (27 lunges; driven off 8 times, brought
+    down once), 200 seed corn kept and 93 sown (60 eaten in famine), and
+    12 stones and branches hauled between allies. The first sling build
+    stood slingers off at point-blank range and never went for nests —
+    hornet deaths didn't move until slingers struck close up and Guards
+    cleared nests near home; and until the Heron took a moment to get
+    airborne, nobody could bring it down.
 
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
@@ -640,8 +705,6 @@ matter most:
     now have similar death rates; groups win on food and on numbers, and
     lose some of that edge to risky hunts, defence and politics. Worth
     tuning if groups should be the clearly safer choice.
-*   ⬜ **More than one garden.** A single autosave slot; no way to keep
-    a favourite world aside and start another.
 *   ⬜ **Real pathfinding round rocks and homes.** Walkers find their way
     round the pond on a grid (Phase 17), but still steer round rocks,
     homes and the oak with a short sideways detour when stuck. Fine at

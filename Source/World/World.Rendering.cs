@@ -77,6 +77,7 @@ public sealed partial class World
                 twig.Draw();
         }
         DrawMaterials(camera);
+        DrawWells(camera);
 
         // Object Pooling: most Food slots sit inactive at any given time, so
         // every loop over the pool must skip anything with IsActive false.
@@ -109,6 +110,7 @@ public sealed partial class World
         }
 
         DrawAnts(camera);
+        DrawPondLife(camera);
 
         // Group tethers: a faint line in the group's colour from every
         // follower's head to its Leader's, so who runs with whom reads at a
@@ -137,6 +139,7 @@ public sealed partial class World
 
         if (Spider is { IsDead: false } spider)
             spider.Draw();
+        DrawPebbles();
 
         DrawWater();
 

@@ -117,9 +117,9 @@ public sealed partial class World
 
     /// <summary>
     /// What a clan plants next at <paramref name="home"/>: of the crops it
-    /// knows how to grow and has ground for — mushrooms need a House wall,
-    /// cress a shore within <see cref="CressBedReach"/> — the one it has
-    /// fewest of, so its fields spread across the seasons.
+    /// knows how to grow and has ground (or seed) for — grain its seed corn,
+    /// mushrooms a House wall, cress a shore within <see cref="CressBedReach"/>
+    /// — the one it has fewest of, so its fields spread across the seasons.
     /// </summary>
     public CropKind ChooseCrop(KinGroup group, Shelter home)
     {
@@ -137,7 +137,7 @@ public sealed partial class World
                 fewest = count;
             }
         }
-        Consider(CropKind.Grain, (known & Craft.Grain) != 0);
+        Consider(CropKind.Grain, (known & Craft.Grain) != 0 && group.SeedCorn >= GrainSeedCost);
         Consider(CropKind.Mushroom, (known & Craft.Mushrooms) != 0 && home.Tier == ShelterTier.House);
         Consider(CropKind.Cress, (known & Craft.Cress) != 0 && NearestShoreSpot(home.Position, CressBedReach, usual: true) is not null);
         return best;
@@ -175,14 +175,22 @@ public sealed partial class World
         return null;
     }
 
-    /// <summary>A Farmer plants a <paramref name="kind"/> crop at <paramref name="spot"/> for <paramref name="group"/>, paying a piece of food from the stores as seed. Null if the group can't (or needn't) plant after all.</summary>
+    /// <summary>A Farmer plants a <paramref name="kind"/> crop at <paramref name="spot"/> for <paramref name="group"/>, paying a piece of food from the stores as seed — or, for grain, <see cref="GrainSeedCost"/> of its seed corn. Null if the group can't (or needn't) plant after all.</summary>
     public Crop? PlantCrop(Bramblekin farmer, KinGroup group, Vector3 spot, CropKind kind)
     {
         if (!WantsToPlant(group))
             return null;
 
         bool first = CropsOf(group, kind) == 0;
-        TakeFromStores(group, SeedCost, preferred: farmer.Home);
+        if (kind == CropKind.Grain)
+        {
+            if (!SowSeedCorn(group))
+                return null;
+        }
+        else
+        {
+            TakeFromStores(group, SeedCost, preferred: farmer.Home);
+        }
         var crop = new Crop(spot, group.Id, kind) { IsWatered = IsWatered(spot, kind) };
         Crops.Add(crop);
         BushesPlanted++;
@@ -192,8 +200,8 @@ public sealed partial class World
         return crop;
     }
 
-    /// <summary>True if a <paramref name="kind"/> crop at <paramref name="spot"/> would be watered: cress always is; anything else within <see cref="WateredReach"/> of the pond.</summary>
-    private static bool IsWatered(Vector3 spot, CropKind kind) => kind == CropKind.Cress || IsWaterWithin(spot, WateredReach);
+    /// <summary>True if a <paramref name="kind"/> crop at <paramref name="spot"/> would be watered: cress always is; anything else within <see cref="WateredReach"/> of the pond, or beside a dug well.</summary>
+    private bool IsWatered(Vector3 spot, CropKind kind) => kind == CropKind.Cress || IsWaterWithin(spot, WateredReach) || IsWellNear(spot);
 
     /// <summary>The nearest crop of <paramref name="group"/>'s with something ripe, within <paramref name="range"/> of <paramref name="kin"/>.</summary>
     public Crop? NearestRipeCrop(Bramblekin kin, KinGroup group, float range)

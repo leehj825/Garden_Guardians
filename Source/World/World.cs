@@ -335,6 +335,8 @@ public sealed partial class World
                 _obstacles.Add(new Obstacle(new Vector2(prop.Position.X, prop.Position.Z), prop.FootprintRadius));
         }
         AddOakObstacle();
+        foreach (Well well in Wells)
+            _obstacles.Add(new Obstacle(new Vector2(well.Position.X, well.Position.Z), Well.Radius));
 
         foreach (List<Obstacle> cell in _obstacleCells)
             cell.Clear();
@@ -430,6 +432,8 @@ public sealed partial class World
         for (int i = Beetles.Count - 1; i >= 0; i--)
             Beetles[i].Update(deltaTime, this);
 
+        UpdatePondLife(deltaTime);
+
         // Reverse for-loop: a Bramblekin's own Update() can kill another
         // (combat, robbery) — World.Kill only queues the removal, but
         // walking backwards keeps this loop correct even if that changes.
@@ -449,6 +453,7 @@ public sealed partial class World
         UpdateMaterials(deltaTime);
         UpdateCisterns(deltaTime);
         UpdatePond(deltaTime);
+        UpdateWellOwners();
         UpdateSpiderRespawn(deltaTime);
         UpdateHornetSpawn(deltaTime);
         UpdateGrubSpawn(deltaTime);
@@ -458,6 +463,7 @@ public sealed partial class World
         UpdateArrivals(deltaTime);
         UpdateFoodDespawn(deltaTime);
         UpdateEncounterCleanup(deltaTime);
+        UpdatePebbles(deltaTime);
 
         for (int i = _splats.Count - 1; i >= 0; i--)
         {

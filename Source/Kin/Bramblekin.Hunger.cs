@@ -10,8 +10,9 @@ public sealed partial class Bramblekin
     /// committed to (see <see cref="BeginRobbery"/>); else forage the nearest
     /// visible Food or eat from its home's store, whichever is closer (see
     /// <see cref="PrefersLooseFood"/>); else scavenge an
-    /// abandoned store; else hunt a visible Grub, or a Stag Beetle with its
-    /// pack; else (starving and Aggressive) raid someone's store; else — a
+    /// abandoned store; else hunt small game (a Grub, a frog on the bank), or
+    /// a Stag Beetle with its pack; else (starving) eat the clan's seed corn;
+    /// else (starving and Aggressive) raid someone's store; else — a
     /// follower borrows its
     /// Leader's sharper senses, or tags along if the Leader is searching too
     /// — else it searches further afield.
@@ -77,14 +78,21 @@ public sealed partial class Bramblekin
         if (TryTakeFromStore(deltaTime, world, raid: false))
             return;
 
-        if (!IsYoung && _perceivedGrub is { IsDead: false } grub)
+        if (!IsYoung && LivePrey is { } prey)
         {
-            HuntGrub(grub, deltaTime, world);
+            HuntPrey(prey, deltaTime, world);
             return;
         }
 
         if (TryPackHunt(deltaTime, world, hungry: true))
             return;
+
+        // Starving, and nothing else to hand: the clan's seed corn.
+        if (world.SeedCornLoft(this) is { } loft)
+        {
+            GoHomeAndEat(loft, deltaTime, world);
+            return;
+        }
 
         // Starving and Aggressive: raid someone else's store.
         if (TryTakeFromStore(deltaTime, world, raid: true))

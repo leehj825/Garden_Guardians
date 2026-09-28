@@ -44,8 +44,14 @@ public sealed partial class Bramblekin
     /// <summary>Where it's going for a drink: a stretch of shore…</summary>
     private Vector3? _waterSpot;
 
-    /// <summary>…or its home's cistern.</summary>
+    /// <summary>…or its home's cistern…</summary>
     private Shelter? _drinkFrom;
+
+    /// <summary>…or a well.</summary>
+    private Well? _drinkWell;
+
+    /// <summary>Drawing water up from a well takes a little longer than drinking at the pond.</summary>
+    private const float WellDrinkSeconds = 3.5f;
 
     private float _drinkTimer;
     private float _dehydrationTimer;
@@ -57,7 +63,7 @@ public sealed partial class Bramblekin
     private bool _carryingWater;
 
     /// <summary>Crouched at the water's edge, drinking — busy enough for the Wolf Spider to feel it (see <see cref="IsVibrating"/>).</summary>
-    private bool IsDrinkingAtPond => State == BramblekinState.Drinking && _drinkTimer > 0f && _drinkFrom is null;
+    private bool IsDrinkingAtPond => State == BramblekinState.Drinking && _drinkTimer > 0f && _drinkFrom is null && _drinkWell is null;
 
     /// <summary>Summer heat dries it out faster; winter, slower.</summary>
     private static float SeasonThirst(Season season) => season switch
@@ -108,15 +114,16 @@ public sealed partial class Bramblekin
         IsThirsty && (!IsHungry || Thirst >= Hunger || (State == BramblekinState.Drinking && !(IsStarving && Hunger > Thirst)));
 
     /// <summary>
-    /// Critical need: a drink. From its home's cistern if that has water
-    /// and is nearer than the pond; else it walks to the nearest stretch of
-    /// shore — however far that is — and drinks its fill. A Bramblekin that
-    /// knows <see cref="Craft.Cisterns"/> carries a cupful home afterwards.
+    /// Critical need: a drink. From whichever is nearest: its home's cistern
+    /// (if it has water), a well it may use (see World.NearestUsableWell), or
+    /// the nearest stretch of shore — however far that is. At a well or the
+    /// pond it drinks its fill, and a Bramblekin that knows
+    /// <see cref="Craft.Cisterns"/> carries a cupful home afterwards.
     /// </summary>
     private void UpdateThirst(float deltaTime, World world)
     {
-        if (State != BramblekinState.Drinking || (_waterSpot is null && _drinkFrom is null) || _drinkGeneration != WaterMap.Generation)
-            PlanDrink();
+        if (State != BramblekinState.Drinking || (_waterSpot is null && _drinkFrom is null && _drinkWell is null) || _drinkGeneration != WaterMap.Generation)
+            PlanDrink(world);
         SetState(BramblekinState.Drinking);
 
         if (_drinkFrom is { } cistern)
@@ -143,6 +150,24 @@ public sealed partial class Bramblekin
             return;
         }
 
+        if (_drinkWell is { } well)
+        {
+            float reach = Well.Radius + BodyRadius + 0.3f;
+            if (GroundMover.HorizontalDistanceSquared(Position, well.Position) > reach * reach)
+            {
+                _drinkTimer = 0f;
+                MoveTo(well.Position, WalkSpeed * (Thirst >= 90f ? 1.2f : 1f), deltaTime, world);
+                return;
+            }
+            _drinkTimer += deltaTime;
+            if (_drinkTimer < WellDrinkSeconds)
+                return;
+            Thirst = 0f;
+            world.NoteWellDrink();
+            FinishDrinkingFill();
+            return;
+        }
+
         if (_waterSpot is not { } spot)
         {
             Explore(deltaTime, world); // No water anywhere: can't happen in the garden as it is.
@@ -161,23 +186,37 @@ public sealed partial class Bramblekin
             return;
         Thirst = 0f;
         world.NoteDrinkAtPond(this);
+        FinishDrinkingFill();
+    }
+
+    /// <summary>Drunk its fill at the pond or a well: a cupful for home, if it knows cisterns and home's isn't full.</summary>
+    private void FinishDrinkingFill()
+    {
         if (Knows(Craft.Cisterns) && Home is { HasCistern: true, IsCollapsed: false } home && home.Water < home.CisternCapacity)
             _carryingWater = true;
         _waterSpot = null;
+        _drinkWell = null;
         _drinkTimer = 0f;
         StartPause();
     }
 
-    /// <summary>Where to drink: the nearest stretch of shore — or its home's cistern, if that has water and is nearer.</summary>
-    private void PlanDrink()
+    /// <summary>Where to drink: the nearest of the pond's shore, a well it may use, and its home's cistern (if that has water).</summary>
+    private void PlanDrink(World world)
     {
         _drinkTimer = 0f;
         _drinkGeneration = WaterMap.Generation;
         _waterSpot = World.NearestShoreSpot(Position, 200f);
-        float toPond = _waterSpot is { } shore ? GroundMover.HorizontalDistance(Position, shore) : float.MaxValue;
-        _drinkFrom = Home is { HasCistern: true, Water: > 0, IsCollapsed: false } home && GroundMover.HorizontalDistance(Position, home.Position) < toPond
+        float nearest = _waterSpot is { } shore ? GroundMover.HorizontalDistance(Position, shore) : float.MaxValue;
+
+        _drinkWell = world.NearestUsableWell(this, nearest);
+        if (_drinkWell is { } well)
+            nearest = GroundMover.HorizontalDistance(Position, well.Position);
+
+        _drinkFrom = Home is { HasCistern: true, Water: > 0, IsCollapsed: false } home && GroundMover.HorizontalDistance(Position, home.Position) < nearest
             ? home
             : null;
+        if (_drinkFrom is not null)
+            _drinkWell = null;
     }
 
     /// <summary>Carrying a cupful of pond water home: pours it into the cistern. False when it isn't carrying any.</summary>

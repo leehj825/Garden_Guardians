@@ -77,6 +77,7 @@ public static partial class Game
             $"Conquests: {world.Conquests}, tributes {world.TributesAgreed}",
             $"Aid runners: {world.AidSent} ({world.FoodAided} food)",
             $"Helpers hired: {world.HelpersHired} ({world.LabourFoodPaid} food)",
+            $"Stones and branches traded: {world.MaterialsTraded} ({world.HaulFoodPaid} food)",
             $"Food taken in war raids: {world.WarRaids}",
         }));
 
@@ -87,6 +88,8 @@ public static partial class Game
             $"Crops now: {world.Crops.Count} ({world.Crops.Count(b => b.GroupId is null)} wild, {world.Crops.Count(c => c.IsWatered)} watered)",
             $"  {string.Join(", ", Enum.GetValues<CropKind>().Select(k => $"{world.Crops.Count(c => c.Kind == k)} {Crop.NameOf(k)}"))}",
             $"Picked: {world.FruitHarvested}; fish caught: {world.FishCaught}",
+            $"Seed corn: {world.SeedCornKept} kept, {world.SeedCornSown} sown",
+            $"  {world.SeedCornEaten} eaten in famine, {world.Groups.Sum(g => g.SeedCorn)} held now",
         }));
 
         sections.Add(("Food eaten or stored", Enum.GetValues<FoodShardKind>()
@@ -98,6 +101,7 @@ public static partial class Game
             $"  a {(world.DrinksAtPond > 0 ? world.WaterTrekMeters / world.DrinksAtPond : 0):0}m walk on average",
             $"From cisterns: {world.CisternDrinks}",
             $"Cupfuls carried home: {world.CupfulsCarried}",
+            $"Wells: {world.WellsDug} dug ({world.Wells.Count(w => !w.IsDug)} being dug), {world.WellDrinks} drinks",
             $"Died of thirst: {world.DeathsByThirst}",
         }));
 
@@ -110,7 +114,8 @@ public static partial class Game
             $"With palisades: {KnowCraft(Craft.Palisade)} ({world.Shelters.Count(s => s.HasPalisade)} up)",
             $"Grain: {KnowCraft(Craft.Grain)}, mushrooms {KnowCraft(Craft.Mushrooms)}, cress {KnowCraft(Craft.Cress)}",
             $"Fishing: {KnowCraft(Craft.Fishing)}, stonework {KnowCraft(Craft.Stonework)} ({world.Shelters.Count(s => s.HasFooting)} footings)",
-            $"Cisterns: {KnowCraft(Craft.Cisterns)}",
+            $"Cisterns: {KnowCraft(Craft.Cisterns)}, wells {KnowCraft(Craft.Wells)}",
+            $"Slings: {KnowCraft(Craft.Slings)} ({world.PebblesLoosed} pebbles, {world.PebbleHits} hits)",
         }));
 
         sections.Add(("Pests & plagues", new List<string>
@@ -127,6 +132,15 @@ public static partial class Game
             $"Stag Beetles: {world.BeetlesKilled}",
             $"Grubs: {world.GrubsKilled}",
             $"Hornets swatted: {world.HornetsKilled}",
+            $"Frogs caught: {world.FrogsCaught} (the heron took {world.FrogsTakenByHeron})",
+            $"Sling kills: {world.SlingKills}",
+        }));
+
+        sections.Add(("The heron", new List<string>
+        {
+            world.Heron is { IsLanded: true } ? "At the pond now!" : "Not at the pond",
+            $"Visits: {world.HeronVisits}, lunges {world.HeronStabs}",
+            $"Driven off: {world.HeronsDrivenOff}, brought down {world.HeronsKilled}",
         }));
 
         sections.Add(("Weather", new List<string>
@@ -159,10 +173,13 @@ public static partial class Game
             DescribeClanHomes(clan, homes, houses, tents),
             $"Food stored: {world.StoredFood(clan)}",
             World.KnowsFarming(clan) ? $"Crops: {world.CropsOf(clan)} of {world.CropAllowance(clan)}" : "Doesn't farm yet",
+            World.Knows(clan, Craft.Grain) ? $"Seed corn: {clan.SeedCorn} (keeps {world.SeedCornTarget(clan)})" : "",
+            DescribeClanWater(world, clan),
             $"Wolf Spiders slain: {clan.SpidersSlain}",
             $"Crafts: {CraftList(World.CraftsOf(clan))}",
             $"Martial {Percent(clan.Culture.Martial)}, hunting {Percent(clan.Culture.Hunting)}, farming {Percent(clan.Culture.Farming)}",
         };
+        lines.RemoveAll(string.IsNullOrEmpty);
         if (world.FoundingOf(clan.Id) is { } founding)
             lines.Insert(2, $"Founded: year {founding.Year}");
         if (world.DescribeRelations(clan) is { } relations)
@@ -184,6 +201,15 @@ public static partial class Game
             return $"Homes: none yet - building its first tent ({site.TwigsDelivered}/{site.TwigsNeeded} twigs)";
         return clan.SettleTarget is not null ? "Homes: none yet - setting out for new ground" : "Homes: none - looking for a place to settle";
     }
+
+    /// <summary>"Water: a well at home" / "Water: digging a well (3/7 stones)" / "Water: 32m walk to the pond".</summary>
+    private static string DescribeClanWater(World world, KinGroup clan) => world.WellOf(clan) switch
+    {
+        { IsDug: true } => "Water: a well at home",
+        { } digging => $"Water: digging a well ({digging.StonesLaid}/{digging.StonesNeeded} stones)",
+        _ when clan.Home is { } home => $"Water: {WaterMap.UsualDistanceToWater(home.Position.X, home.Position.Z):0}m walk to the pond",
+        _ => "Water: wherever they wander",
+    };
 
     /// <summary>"farming, granary, spears" — or "none".</summary>
     private static string CraftList(Craft crafts)

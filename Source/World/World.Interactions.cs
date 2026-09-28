@@ -158,6 +158,7 @@ public sealed partial class World
                 {
                     WolfSpider => "was caught by the Wolf Spider",
                     Hornet => "was stung to death by hornets",
+                    GardenGuardians.Heron => "was speared by the heron at the water's edge",
                     Ant => "was bitten to death by ants",
                     _ => "was killed by a predator",
                 };

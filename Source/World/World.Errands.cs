@@ -169,6 +169,79 @@ public sealed partial class World
         Game.AddEventLog($"[TRADE] {helper.Name} of {ally.Title} went to help their allies, {employers.Title}, build - {LabourTwigs} twigs for {LabourPay} food");
     }
 
+    // --- Trade: stones and branches for food ------------------------------------------------
+
+    /// <summary>A stone or branch hauled to an ally costs it this much food.</summary>
+    private const int HaulPrice = 2;
+
+    /// <summary>A clan with no loose stone (or branch) within this far (m) of its main home would sooner buy one…</summary>
+    private const float FarToFetch = 20f;
+
+    /// <summary>…from an ally with one lying within this far (m) of its own.</summary>
+    private const float HaulPickupReach = 18f;
+
+    /// <summary>Stones and branches hauled to an ally, and the food paid for them.</summary>
+    public int MaterialsTraded { get; private set; }
+
+    public int HaulFoodPaid { get; private set; }
+
+    /// <summary>A group by its id, if it still exists.</summary>
+    public KinGroup? GroupWithId(Guid id) => _groups.TryGetValue(id, out KinGroup? group) ? group : null;
+
+    /// <summary>
+    /// Trade between allies — stones and branches for food. A clan that
+    /// needs stones (for its well or a footing) or branches (for a palisade)
+    /// with none lying within <see cref="FarToFetch"/> of home, and food to
+    /// spare, buys one from an ally that doesn't need that kind itself and
+    /// has one lying close to its own home: the ally sends a hauler with it,
+    /// and the hauler carries <see cref="HaulPrice"/> food home. So a clan by
+    /// the rocks comes to supply stone, and one by the oak, wood.
+    /// </summary>
+    private void TryTradeMaterial(KinGroup buyers, KinGroup sellers)
+    {
+        if (buyers.Home is not { IsBuilt: true, IsCollapsed: false } buyersHome || sellers.Home is not { IsBuilt: true, IsCollapsed: false } sellersHome)
+            return;
+        if (StoredFood(buyers) < HaulPrice + 2 || Colony.Any(k => k.Errand is { Kind: ErrandKind.Haul } e && e.To == buyers.Id))
+            return;
+        foreach (MaterialKind kind in Enum.GetValues<MaterialKind>())
+        {
+            if (MaterialTarget(buyers, kind, buyersHome.Position) is null || MaterialTarget(sellers, kind, sellersHome.Position) is not null)
+                continue;
+            if (NearestMaterial(buyersHome.Position, kind, FarToFetch, claimant: null) is not null ||
+                NearestMaterial(sellersHome.Position, kind, HaulPickupReach, claimant: null) is null)
+                continue;
+            if (PickErrandRunner(sellers) is not { } hauler)
+                return;
+
+            hauler.GiveErrand(new Errand
+            {
+                Kind = ErrandKind.Haul, From = sellers.Id, To = buyers.Id, Destination = buyersHome, Material = kind, Payment = HaulPrice,
+            });
+            string what = kind == MaterialKind.Stone ? "a stone" : "a branch";
+            QueueFloatingText(hauler.Position, $"Hauling {what}", AidTextColor);
+            Game.AddEventLog($"[TRADE] {hauler.Name} of {sellers.Title} set out to haul {what} to their allies, {buyers.Title}, for {HaulPrice} food");
+            return;
+        }
+    }
+
+    /// <summary>A hauler's done: delivered, it's paid (as much as its buyers can spare); if not, it just heads home.</summary>
+    public void PayForHaul(Bramblekin hauler, Errand errand, bool delivered)
+    {
+        if (delivered && _groups.TryGetValue(errand.To, out KinGroup? buyers))
+        {
+            int pay = Math.Min(errand.Payment, StoredFood(buyers));
+            TakeFromStores(buyers, pay, preferred: errand.Destination);
+            errand.Load = pay;
+            MaterialsTraded++;
+            HaulFoodPaid += pay;
+            if (MaterialsTraded == 1)
+                Game.AddEventLog($"[TRADE] {hauler.Name} delivered the first {(errand.Material == MaterialKind.Stone ? "stone" : "branch")} traded to {buyers.Title}, for {pay} food");
+            if (pay < errand.Payment)
+                AddGrievance(errand.From, errand.To, 0.5f * (errand.Payment - pay));
+        }
+        errand.Returning = true;
+    }
+
     /// <summary>An errand still makes sense: the runner is still in its group, and (outbound) the allies and the place it's going still exist.</summary>
     public bool IsErrandValid(Bramblekin runner, Errand errand)
     {

@@ -283,9 +283,11 @@ overhead camera:
 *   **Thirst:** rises 0.4 points per second (a quarter faster in summer,
     a quarter slower in winter, faster when sick) from 0 to 100 — a drink
     lasts about two and a half minutes. At 60 a Bramblekin is *thirsty*; at
-    100 it loses 1 HP every 2s until it drinks or dies. It drinks at the
-    pond (the nearest stretch of shore, however far — it slakes its thirst
-    entirely) or from its home's cistern (a sip takes off 70). Out in a
+    100 it loses 1 HP every 2s until it drinks or dies. It drinks from
+    whichever is nearest: the pond (the nearest stretch of shore, however
+    far — it slakes its thirst entirely), a well it may use (its clan's,
+    an ally's, or an abandoned one — drawing water up takes 3.5s and slakes
+    it entirely too), or its home's cistern (a sip takes off 70). Out in a
     storm it drinks the rain (2 points a second). Juicy food helps a
     little: a sprig of cress takes off 15, a fish 5, a berry or a
     mushroom 3; seed, meat and acorns nothing. So **living far from water
@@ -374,8 +376,10 @@ overhead camera:
     down for **8 pieces of meat**. A Bramblekin attacks one only when a
     groupmate is on it or within 8m — or alone when hungry and at least
     0.75 Aggressive — or when its Leader sends it as a Hunter.
-*   **Grubs** are small prey for anyone: a hungry Bramblekin that can't
-    see Food hunts one; a settler with a low store hunts those near home.
+*   **Small game** — Grubs, and frogs on the pond's bank (see Food &
+    Wildlife) — is prey for anyone: a hungry Bramblekin that can't see
+    Food hunts it; a settler with a low store hunts it near home; a
+    Hunter goes after it when there's no Stag Beetle to hunt.
 *   **Defending home:** residents who see a raider heading for their home
     (or any of their village's homes, or an ally's) treat it as a threat
     they're keen to fight; a Leader rallies its group to Defend against
@@ -627,8 +631,8 @@ overhead camera:
     may also teach it (see Neighbours).
 *   **Crops:** a farming group keeps up to 2 crops per House and 1 per
     Tent (at least 1.4m apart, clear of shelters; 60 on the map at most).
-    Planting costs a piece of food from the stores as seed and never
-    happens in winter. Each kind needs its own craft and bears in its own
+    Planting costs a piece of food from the stores as seed — except grain
+    (below) — and never happens in winter. Each kind needs its own craft and bears in its own
     seasons (pace relative to normal, spring/summer/autumn/winter):
 
     | Crop | Craft | Where | Grows, then one every | Holds | Pace | Lasts |
@@ -641,7 +645,7 @@ overhead camera:
     The weather scales them too (a drought halves them, a bountiful
     season adds half). A crop within 8m of the pond is **watered**: a
     quarter faster, and a drought doesn't touch it (cress beds always
-    are). A Farmer plants whichever kind the clan knows and has fewest
+    are), and so is one within 6m of a dug well. A Farmer plants whichever kind the clan knows and has fewest
     of, so its fields spread across the year: grain for late summer,
     mushrooms for autumn (and a little in winter), cress in spring. A worn-out crop is simply
     gone, and replanted. Overripe fruit drops for anyone. Each is drawn in
@@ -649,6 +653,17 @@ overhead camera:
     nodding under golden seed heads, a mound of dark soil sprouting
     russet caps, a mat of round green leaves — with a stake in its
     clan's colour.
+*   **Seed corn:** a grain patch is sown from the clan's **seed corn**
+    (2 a patch), not from its stores. A clan that learns grain starts with
+    4 from the wild grass; after that, grain and wild seed brought home go
+    into the seed corn first while it's short of what the clan keeps (2 a
+    patch for its share of crops, plus a patch spare — the clan card
+    shows "Seed corn: 3 (keeps 8)"), and into the store after. Grain
+    patches last a year, so each spring's sowing is last year's harvest:
+    a drought year leaves little seed and few patches the next. A starving
+    Bramblekin with nothing else to hand eats the seed corn — the log
+    notes when a clan eats the last of it. A budding village takes half
+    the seed corn with it.
 *   **Farmers:** a farming group makes one Farmer per 4 grown members (at
     least one), from its most Intelligent Gatherers, under any goal but
     Defend. A Farmer picks what's ripe into the stores, and plants while
@@ -674,7 +689,7 @@ overhead camera:
     inherited by children (both parents' crafts), carried along by anyone
     who leaves, and taught to allies (odds 0.05 per decision, farming
     first, then granary, spears, palisade, grain, mushrooms, cress,
-    fishing, stonework, cisterns). When a clan is ready for several, the one it
+    fishing, stonework, cisterns, wells, slings). When a clan is ready for several, the one it
     works out is picked at random.
     *   **Granary** (needs farming and a House): each House gets a round
         granary beside it and holds half as much again in store.
@@ -689,6 +704,7 @@ overhead camera:
         first — time for the defenders to come.
     *   **Grain, Mushrooms, Cress** (need farming; mushrooms a House,
         cress a home within 20m of the shore): new crops (see Farming).
+        A clan that learns grain starts with 4 seed corn from the wild.
     *   **Fishing** (needs a home within 20m of the shore): see Farming.
     *   **Cisterns** (needs a House more than 25m from water — necessity
         is the mother of invention): an acorn-cup cistern out front of
@@ -697,10 +713,37 @@ overhead camera:
         (a sip) while it isn't full. A thirsty Bramblekin drinks from it
         if it's nearer than the pond — so a far-off village makes one
         long trip do for two drinks.
+    *   **Wells** (needs stonework and a main home more than 20m from
+        water, walking): the clan marks out a well 1–5m from its main
+        home, on the lowest ground to hand, and its Builders carry stones
+        to line the shaft — 3, plus one for every 2m the ground there
+        stands above the pond (the water lies deeper under a hill), so a
+        hilltop well takes some 8. Stones go to a well before any footing.
+        Once dug it's water at the door, all year and through any drought;
+        crops within 6m of it count as watered. A clan of just two keeps
+        a Builder on it too. While it's being dug it's a dark shaft with a
+        heap of earth beside it and only as many stones round it as have
+        been carried in (the clan card counts them: "digging a well (3/7
+        stones)"); dug, the ring stands three courses high round dark
+        water, under a wooden frame with a rope and an acorn-cup bucket, a
+        pennant in its clan's colour. A well
+        outlives its clan — anyone may drink from it then — but a
+        half-dug one nobody's digging any more is filled in.
     *   **Stonework** (needs a House): each House is raised on a stone
         footing, once its Builders have carried in 4 stones (a ring of
         grey stones round its foot): its store holds 2 more, stays dry in
         a flood, and ants can't dig into it.
+    *   **Slings** (needs spears): slings of twisted grass that loose
+        pebbles at anything too quick to catch or too dangerous to close
+        with — a Hornet, a frog on the bank, the Heron. A slinger in range
+        (3.5m) stands its ground and looses a pebble every 1.4s (hitting a
+        Hornet 60% of the time, a frog 70%, the Heron 85%) for its full
+        blow; the pebble is seen flying. Close enough to strike, it strikes
+        instead (surer, and quicker). Knowing it can hit back from a few
+        paces off, it's 25% likelier to stand and fight a chasing swarm or
+        the Heron rather than run. And a Guard with a sling doesn't give a
+        hornets' nest within 14m of home a wide berth: while it's fit (60%
+        Health or more) it picks the swarm off from just outside its reach.
 *   The Stats tab and the clan card list a clan's crafts; the headless
     summary counts them. Over 13 years a clan works out about six and
     teaches eleven; most clans end up knowing all of them.
@@ -771,6 +814,16 @@ overhead camera:
     helper walks over, fetches 3 twigs for the construction, and carries
     3 food home to its own store as pay. An employer that can't pay in
     full earns a grievance.
+*   **Trade — stones and branches for food:** a clan that needs stones
+    (for its well or a footing) or branches (for a palisade), with none
+    lying within 20m of its main home and 4 food to spare, buys one from
+    an ally that doesn't need that kind itself and has one lying within
+    18m of its own home. The ally sends a **hauler**: it picks up the
+    stone (or branch), carries it to wherever the buyers need it, lays it
+    for them, and carries 2 food home as pay (one haul at a time per
+    buyer). So a clan by the rocks comes to supply stone, and one by the
+    oak, wood. If the buyers no longer need it, or there's none to be
+    found, the hauler goes home unpaid.
 *   **War:** members of warring groups keep their distance when they meet;
     a bold resident (Aggression 0.5+) drives off an enemy that comes within
     6m of home. An Aggressive Leader at war sends a **raiding party**: the
@@ -899,8 +952,15 @@ overhead camera:
     that very second (and where the Hornets and the Spider were) isn't
     kept; each picks up again within moments.
 *   **New garden:** the **New** button (shown while the History screen is
-    open) starts over — tap it, then tap **Sure?** within 3s.
-*   The save is JSON (`garden.json` in the app's local data folder),
+    open) starts over — tap it, then tap **Sure?** within 3s. It only
+    starts the open garden over.
+*   **Three gardens:** beside **New**, the **Garden N** button keeps the
+    open garden (saving it) and opens the next of three — carrying on
+    where it was left, or a fresh garden if that slot's empty — so a
+    favourite garden can be kept aside while another grows. The History
+    header names the garden ("Garden 2, year 5"); which one is open is
+    remembered between runs (`garden=Garden2` in `settings.txt`).
+*   The save is JSON (`garden.json`, `garden2.json`, `garden3.json` in the app's local data folder),
     written to a temporary file and moved into place so a crash can't
     leave half a save. A save that can't be read, or is from an
     incompatible version, is ignored and a fresh garden begins. Headless
@@ -984,6 +1044,29 @@ overhead camera:
     (ignoring claims), skitter away from nearby Bramblekin, and drop 1–4
     pieces of meat when hunted down.
 *   **Stag Beetles** (60 HP, up to 2): see Hunting & Defending.
+*   **Frogs** (6 HP): come up onto the pond's bank from spring to autumn
+    (one every 25s — faster in spring — up to 6 on a full pond, fewer as
+    a drought shrinks it), sit, and hop along the water's edge. Any
+    Bramblekin within 1.8m may startle one (it notices 40% of the time,
+    looking up twice a second; the Heron, always): it leaps into the
+    water and stays under 6–12s, out of reach, then hops back out onto
+    the bank. They're small game like Grubs — hunted by the hungry, by
+    Hunters and to stock a low store — and each drops 2 pieces of meat;
+    a slinger can hit one before it notices. In winter they go down into
+    the mud.
+*   **The Heron** (50 HP): every 4–8 minutes, from spring to autumn and
+    while the pond is at least half full, a great grey heron flies down
+    to a quiet stretch of shore (away from homes) and stays 80–140s. It
+    stands stock still in the shallows, then wades along; it spears frogs
+    within 0.9m, and lunges (10 damage, every 2.2s) at any Bramblekin
+    within 1.7m that's out in the open at the water's edge (not by its
+    door), stalking one within 5m at 0.9 m/s — slower than a walk. Wading,
+    Bramblekin see it within 5m; standing still, only within 2.2m, so a
+    drinker can walk right up to it. Hurt down to 20 HP it takes off —
+    though beating its way up takes 0.8s, and until it's up a band of kin
+    on it can still bring it down, for 6 pieces of meat. It leaves when its time's
+    up, when winter comes, or when a drought shrinks the pond below a
+    third. A killing lunge reads "was speared by the heron".
 *   **Garden Props:** Pebbles (solid rocks), Twigs (big sticks, where
     fallen twigs gather) and Dandelions (where berries grow).
 *   **Stones and branches:** building material bigger than a twig. Stones
@@ -992,8 +1075,9 @@ overhead camera:
     (one every 6s of it) and off the big sticks now and then (every 90s),
     up to 10, rotting after 900s or carried off by a flood. A clan with a
     footing or palisade to finish keeps its most diligent Gatherer as a
-    Builder, fetching them from up to 45m away — a stone carried in front,
-    a branch dragged behind (at three-quarters pace).
+    Builder, fetching them from up to 60m away — a stone carried in front,
+    a branch dragged behind (at three-quarters pace). Allies trade them
+    too (see Neighbours).
 *   **Wandering Arrivals:** every 15s, while fewer than 30 Bramblekin are
     alive, a new solitary one with a freshly rolled Personality wanders
     in from a random edge of the map — so a hard winter never ends the

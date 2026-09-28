@@ -61,6 +61,9 @@ public sealed class KinGroup
     /// <summary>Food a budded group took from its parent village, set aside for its new store once it's built.</summary>
     public int Dowry { get; set; }
 
+    /// <summary>Grain set aside to sow (see <see cref="Craft.Grain"/>), not to eat — unless it's that or starve. See World.SeedCorn.</summary>
+    public int SeedCorn { get; set; }
+
     /// <summary>Wolf Spiders this group has brought down (the chronicle marks its first, then every fifth).</summary>
     public int SpidersSlain { get; set; }
 

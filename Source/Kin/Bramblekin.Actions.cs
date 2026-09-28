@@ -104,10 +104,14 @@ public sealed partial class Bramblekin
     /// cooldown. When robbing, the first blow that lands takes the victim's
     /// food (see <see cref="World.StealFood"/>). Blood is thicker than
     /// water: it never deals a close relative (parent, child, sibling) the
-    /// blow that would kill it.
+    /// blow that would kill it. A slinger stops short of a Hornet, a frog or
+    /// the Heron and looses pebbles instead (see <see cref="TrySling"/>).
     /// </summary>
     private void PursueAndStrike(ICombatant target, float speed, float deltaTime, World world)
     {
+        if (TrySling(target, world))
+            return;
+
         float reach = BodyRadius + target.CollisionRadius + StrikeReach;
         Vector3 targetPosition = target.Position;
         if (GroundMover.HorizontalDistanceSquared(Position, targetPosition) > reach * reach)

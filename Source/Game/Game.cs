@@ -226,10 +226,10 @@ public static partial class Game
             Projection = CameraProjection.Perspective,
         };
         // Save/Load: the garden carries on where it was left (see SaveSystem).
-        string savePath = SaveSystem.DefaultPath;
         Preferences.Load(Preferences.DefaultPath);
         _logView = Preferences.Get(LogViewSetting, LogView.Brief);
-        World world = LoadOrCreateWorld(savePath);
+        _gardenSlot = (int)Preferences.Get(GardenSetting, GardenSlot.Garden1);
+        World world = LoadOrCreateWorld(GardenPath);
         var input = new WorldTapInput();
         var touchCamera = new TouchCameraController();
         var followCamera = new FollowCamera(camera);
@@ -269,6 +269,7 @@ public static partial class Game
                 (int)(290 * uiScale), speedButtonHeight));
             UiButton? followButton = _showChronicle ? null : FollowButton(world);
             UiButton? newGardenButton = _showChronicle ? NewGardenButton(historyButton, speedButtonMargin) : null;
+            UiButton? gardenSlotButton = newGardenButton is null ? null : GardenSlotButton(newGardenButton, speedButtonMargin);
             _newGardenConfirm = MathF.Max(0f, _newGardenConfirm - Raylib.GetFrameTime());
 
             // 1) Input: the player has no lever on the world. The only tap
@@ -293,12 +294,20 @@ public static partial class Game
             {
                 if (ConfirmNewGarden())
                 {
-                    world = StartNewGarden(savePath);
+                    world = StartNewGarden(GardenPath);
                     ClearBanners();
                     camera = overview;
                     followCamera = new FollowCamera(overview);
                     autosaveTimer = AutosaveInterval;
                 }
+            }
+            else if (mousePressed && gardenSlotButton is not null && gardenSlotButton.Contains(mousePosition))
+            {
+                world = SwitchGarden(world);
+                ClearBanners();
+                camera = overview;
+                followCamera = new FollowCamera(overview);
+                autosaveTimer = AutosaveInterval;
             }
             else if (_showChronicle)
             {
@@ -339,6 +348,7 @@ public static partial class Game
             mapButton.Draw("Map", highlighted: false);
             historyButton.Draw("History", highlighted: _showChronicle);
             newGardenButton?.Draw(_newGardenConfirm > 0f ? "Sure?" : "New", highlighted: _newGardenConfirm > 0f);
+            gardenSlotButton?.Draw($"Garden {_gardenSlot}", highlighted: false);
             if (!_showChronicle)
                 DrawKinPanel(world); // The History screen covers it (its header names the selected clan).
             followButton?.Draw(followCamera.IsFollowing ? "Following" : "Follow", highlighted: followCamera.IsFollowing);
@@ -362,11 +372,11 @@ public static partial class Game
             if (autosaveTimer <= 0f)
             {
                 autosaveTimer = AutosaveInterval;
-                SaveSystem.Save(world, savePath);
+                SaveSystem.Save(world, GardenPath);
             }
         }
 
-        SaveSystem.Save(world, savePath);
+        SaveSystem.Save(world, GardenPath);
         Raylib.CloseWindow();
     }
 
@@ -432,7 +442,8 @@ public static partial class Game
         Console.WriteLine(
             $"Neighbours: {world.AlliancesMade} alliances made, {world.WarsDeclared} wars declared, {world.PeacesMade} peaces made; " +
             $"{world.AidSent} aid shipments ({world.FoodAided} food delivered, {world.ErrandsLost} sacks lost on the way), " +
-            $"{world.HelpersHired} helpers hired ({world.LabourFoodPaid} food paid), {world.WarRaids} pieces carried off in war raids; " +
+            $"{world.HelpersHired} helpers hired ({world.LabourFoodPaid} food paid), {world.MaterialsTraded} stones and branches traded ({world.HaulFoodPaid} food paid), " +
+            $"{world.WarRaids} pieces carried off in war raids; " +
             $"at the end {world.CurrentAlliances} alliances and {world.CurrentWars} wars.");
         Console.WriteLine(
             $"Weather: {world.BountifulSeasons} bountiful seasons, {world.Droughts} droughts, {world.HarshWinters} harsh winters, {world.Storms} storms, " +
@@ -445,7 +456,7 @@ public static partial class Game
             $"{world.Groups.Count(g => World.Knows(g, Craft.Spears))} spears, {world.Groups.Count(g => World.Knows(g, Craft.Palisade))} palisades, " +
             $"{world.Groups.Count(g => World.Knows(g, Craft.Grain))} grain, {world.Groups.Count(g => World.Knows(g, Craft.Mushrooms))} mushrooms, " +
             $"{world.Groups.Count(g => World.Knows(g, Craft.Cress))} cress, {world.Groups.Count(g => World.Knows(g, Craft.Fishing))} fishing, " +
-            $"{world.Groups.Count(g => World.Knows(g, Craft.Stonework))} stonework. " +
+            $"{world.Groups.Count(g => World.Knows(g, Craft.Stonework))} stonework, {world.Groups.Count(g => World.Knows(g, Craft.Slings))} slings. " +
             $"Sickness: {world.SicknessCases} fell ill, {world.DeathsBySickness} died of it.");
         Console.WriteLine(
             $"Culture: {world.Groups.Count(g => g.Culture.Leading == Tradition.Warlike)} warlike, {world.Groups.Count(g => g.Culture.Leading == Tradition.Hunting)} hunting and " +
@@ -456,13 +467,16 @@ public static partial class Game
             $"Farming: worked out {world.FarmingDiscoveries} times, taught {world.FarmingTaught} times; {world.BushesPlanted} crops planted, " +
             $"{world.FruitHarvested} pieces picked; at the end {world.Groups.Count(World.KnowsFarming)} groups farm {world.Crops.Count(b => b.GroupId is not null)} crops " +
             $"({string.Join(", ", Enum.GetValues<CropKind>().Select(k => $"{world.Crops.Count(c => c.Kind == k)} {k.ToString().ToLowerInvariant()}"))}; " +
-            $"{world.Crops.Count(b => b.GroupId is null)} wild, {world.Crops.Count(c => c.IsWatered)} watered).");
+            $"{world.Crops.Count(b => b.GroupId is null)} wild, {world.Crops.Count(c => c.IsWatered)} watered). " +
+            $"Seed corn: {world.SeedCornKept} kept, {world.SeedCornSown} sown, {world.SeedCornEaten} eaten in famine; " +
+            $"at the end {world.Groups.Sum(g => g.SeedCorn)} held by {world.Groups.Count(g => g.SeedCorn > 0)} clans.");
         Console.WriteLine(
             $"Food eaten or stored, by kind: {string.Join(", ", Enum.GetValues<FoodShardKind>().Select(k => $"{k.ToString().ToLowerInvariant()} {world.FoodTaken(k)}"))}; " +
             $"{world.FishCaught} fish caught.");
         Console.WriteLine(
             $"Water: {world.DrinksAtPond} drinks at the pond (a {(world.DrinksAtPond > 0 ? world.WaterTrekMeters / world.DrinksAtPond : 0):0}m walk from home on average), " +
-            $"{world.CisternDrinks} from cisterns ({world.CupfulsCarried} cupfuls carried home); {world.DeathsByThirst} died of thirst; " +
+            $"{world.CisternDrinks} from cisterns ({world.CupfulsCarried} cupfuls carried home), {world.WellDrinks} from wells ({world.WellsDug} dug, " +
+            $"{world.Wells.Count(w => !w.IsDug)} being dug); {world.DeathsByThirst} died of thirst; " +
             $"at the end {world.Groups.Count(g => World.Knows(g, Craft.Cisterns))} clans have cisterns, and the average home is " +
             $"{(world.Shelters.Count(s => s.IsBuilt) > 0 ? world.Shelters.Where(s => s.IsBuilt).Average(s => WaterMap.UsualDistanceToWater(s.Position.X, s.Position.Z)) : 0):0}m from water.");
         Console.WriteLine("  Clans by distance to water: " + string.Join(", ", world.Groups
@@ -475,6 +489,11 @@ public static partial class Game
             $"({world.PalisadesRaised} palisades raised); at the end {world.Shelters.Count(s => s.HasFooting)} homes on footings, " +
             $"{world.Shelters.Count(s => s.HasPalisade)} palisaded; {world.Materials.Count(m => m is { IsActive: true, Kind: MaterialKind.Stone })} stones and " +
             $"{world.Materials.Count(m => m is { IsActive: true, Kind: MaterialKind.Branch })} branches lying about.");
+        Console.WriteLine(
+            $"Slings: {world.PebblesLoosed} pebbles loosed, {world.PebbleHits} hits, {world.SlingKills} kills; {world.HornetsKilled} hornets swatted or slung in all.");
+        Console.WriteLine(
+            $"Pond life: {world.FrogsCaught} frogs caught by kin, {world.FrogsTakenByHeron} by the heron; the heron came {world.HeronVisits} times, " +
+            $"lunged {world.HeronStabs} times, was driven off {world.HeronsDrivenOff} times and brought down {world.HeronsKilled} times.");
         Console.WriteLine(
             $"Building: a Tent takes {world.AverageTentBuildSeconds:0}s on average, a House upgrade {world.AverageHouseUpgradeSeconds:0}s; " +
             $"{world.StagesOlderThan(600f)} of {world.Shelters.Count(s => !s.IsBuilt || s.IsUpgrading)} construction stages under way have stalled over 10 min.");
@@ -879,7 +898,8 @@ public static partial class Game
             ($"Hunger: {(int)kin.Hunger}%{(kin.IsStarving ? " STARVING" : kin.IsHungry ? " (hungry)" : "")}{(kin.HasFood ? "  +food" : "")}{(kin.IsSick ? "  SICK" : "")}",
                 kin.IsStarving || kin.IsSick ? new Color(170, 60, 40, 255) : ink),
             ($"Thirst: {(int)kin.Thirst}%{(kin.Thirst >= Bramblekin.MaxThirst ? " PARCHED" : kin.IsThirsty ? " (thirsty)" : "")}   " +
-             $"water {WaterMap.DistanceToWater((kin.Home?.Position ?? kin.Position).X, (kin.Home?.Position ?? kin.Position).Z):0}m from {(kin.Home is null ? "here" : "home")}",
+             (group is not null && world.WellOf(group) is { IsDug: true } ? "a well at home" :
+              $"water {WaterMap.DistanceToWater((kin.Home?.Position ?? kin.Position).X, (kin.Home?.Position ?? kin.Position).Z):0}m from {(kin.Home is null ? "here" : "home")}"),
                 kin.Thirst >= Bramblekin.MaxThirst ? new Color(170, 60, 40, 255) : kin.IsThirsty ? ThirstBarColor : ink),
             ($"Nature: {kin.Personality.Describe()}", ink),
             ($"Aggression {kin.Personality.Aggression:0.00}   Sociability {kin.Personality.Sociability:0.00}", new Color(185, 60, 45, 255)),

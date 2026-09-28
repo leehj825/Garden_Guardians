@@ -27,7 +27,7 @@ public sealed partial class World
     private const float BranchSpawnInterval = 90f;
 
     /// <summary>A Builder looks for stones and branches this far (m) from where it stands.</summary>
-    public const float MaterialSearchRadius = 45f;
+    public const float MaterialSearchRadius = 60f;
 
     private static readonly Color MaterialTextColor = new(110, 110, 120, 255);
 
@@ -118,7 +118,7 @@ public sealed partial class World
     }
 
     /// <summary>The nearest loose <paramref name="kind"/> within <paramref name="radius"/> that nobody else is fetching.</summary>
-    public Material? NearestMaterial(Vector3 from, MaterialKind kind, float radius, Bramblekin claimant)
+    public Material? NearestMaterial(Vector3 from, MaterialKind kind, float radius, Bramblekin? claimant)
     {
         Material? best = null;
         float bestDistance = radius * radius;
@@ -182,7 +182,7 @@ public sealed partial class World
     public void DeliverMaterial(Bramblekin builder, Shelter home, Material material)
     {
         material.Deactivate();
-        string whose = GroupOf(builder)?.Title ?? builder.Name;
+        string whose = home.GroupId is { } owner && _groups.TryGetValue(owner, out KinGroup? owners) ? owners.Title : GroupOf(builder)?.Title ?? builder.Name;
         if (material.Kind == MaterialKind.Stone)
         {
             if (!home.LayStone())

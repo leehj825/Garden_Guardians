@@ -341,9 +341,11 @@ public sealed partial class World
 
     // --- The food store ---------------------------------------------------------------------
 
-    /// <summary>Puts <paramref name="kin"/>'s carried food into <paramref name="shelter"/>'s store, where it never rots. Returns false if the store is full.</summary>
+    /// <summary>Puts <paramref name="kin"/>'s carried food into <paramref name="shelter"/>'s store, where it never rots — or, seed, into the clan's seed corn while it's short (see <see cref="TryKeepSeedCorn"/>). Returns false if the store is full.</summary>
     public bool DepositFood(Shelter shelter, FoodShard food)
     {
+        if (TryKeepSeedCorn(shelter, food))
+            return true;
         if (!shelter.TryDeposit())
             return false;
         _foodByKind[(int)food.Kind]++;

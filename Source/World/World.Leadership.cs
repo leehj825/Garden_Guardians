@@ -75,6 +75,7 @@ public sealed partial class World
             group.DecisionTimer = LeaderDecisionInterval;
             UpdateFarmingKnowledge(group);
             UpdateCrafts(group);
+            UpdateWells(group);
             UpdateCulture(group);
             ConsiderNeighbours(group, leader);
             DecideGroupGoal(group, leader);
@@ -273,9 +274,11 @@ public sealed partial class World
                 member.AssignJob(KinJob.Farmer);
         }
 
-        // A clan with a footing or a palisade to finish keeps its most diligent Gatherer fetching stones and branches.
-        if (group.Goal is not (GroupGoal.Defend or GroupGoal.Raid) && members.Count >= 3 && group.Home is { IsBuilt: true } home &&
-            (HomeNeeding(group, MaterialKind.Stone, home.Position) ?? HomeNeeding(group, MaterialKind.Branch, home.Position)) is not null)
+        // A clan with a well, a footing or a palisade to finish keeps its most diligent Gatherer fetching stones and branches
+        // (a well — water — even in a clan of two).
+        if (group.Goal is not (GroupGoal.Defend or GroupGoal.Raid) && group.Home is { IsBuilt: true } home &&
+            (members.Count >= 3 || (members.Count >= 2 && WellBeingDug(group) is not null)) &&
+            (MaterialTarget(group, MaterialKind.Stone, home.Position) ?? MaterialTarget(group, MaterialKind.Branch, home.Position)) is not null)
             members.Where(m => m.Job == KinJob.Gatherer).MaxBy(m => m.Personality.Diligence)?.AssignJob(KinJob.Builder);
     }
 

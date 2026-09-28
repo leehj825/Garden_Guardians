@@ -296,7 +296,8 @@ public sealed partial class Bramblekin : ICombatant
 
     // Perception results, refreshed every PerceptionInterval.
     private FoodShard? _perceivedFood;
-    private Grub? _perceivedGrub;
+    /// <summary>Small game in sight: a Grub, or a frog out on the bank.</summary>
+    private ICombatant? _perceivedPrey;
     private Twig? _perceivedTwig;
     private ICombatant? _perceivedThreat;
     private bool _threatIsAllyDefense;
@@ -668,10 +669,12 @@ public sealed partial class Bramblekin : ICombatant
 
     /// <summary>
     /// Perception, scaled by Intelligence: the nearest available Food and
-    /// Grub within <see cref="DetectionRadius"/>, and the most pressing
-    /// threat — whoever just hit it, else the nearest of: the Wolf Spider,
-    /// any Hornet, any Bramblekin attacking it, or (Group Dynamics) whatever
-    /// is attacking or fighting one of its groupmates.
+    /// small game (a Grub, or a frog out on the bank) within
+    /// <see cref="DetectionRadius"/>, and the most pressing threat — whoever
+    /// just hit it, else the nearest of: the Wolf Spider, any Hornet, the
+    /// Heron (wading, or standing still close by), any Bramblekin attacking
+    /// it, or (Group Dynamics) whatever is attacking or fighting one of its
+    /// groupmates.
     /// </summary>
     private void Perceive(World world)
     {
@@ -685,7 +688,7 @@ public sealed partial class Bramblekin : ICombatant
             _foodMemory = _perceivedFood.Position;
             world.GroupOf(this)?.FoodSpots.Remember(_perceivedFood.Position, world.ElapsedSeconds);
         }
-        _perceivedGrub = world.NearestLiveGrub(Position, radius);
+        _perceivedPrey = world.NearestPrey(Position, radius);
         _perceivedAnt = world.Ants.Count > 0 ? world.NearestLiveAnt(Position, radius) : null;
         _perceivedBeetle = world.NearestLiveBeetle(Position, radius);
         _perceivedTwig = NeedsTwig ? world.NearestAvailableTwig(Position, radius, this) : null;
@@ -723,6 +726,10 @@ public sealed partial class Bramblekin : ICombatant
             if (!hornet.IsDead)
                 Consider(hornet, allyDefense: false);
         }
+        // The Heron: wading, it's plain to see; standing stock still, only close up.
+        if (world.Heron is { IsLanded: true } heron &&
+            GroundMover.HorizontalDistance(Position, heron.Position) <= (heron.IsStill ? Heron.StillSightRadius : Heron.ThreatRadius))
+            Consider(heron, allyDefense: false);
 
         List<Bramblekin> nearby = world.QueryColonyWithin(Position, radius);
         for (int i = 0; i < nearby.Count; i++)

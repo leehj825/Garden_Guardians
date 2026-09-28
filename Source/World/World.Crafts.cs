@@ -12,6 +12,7 @@ public sealed partial class World
     private static readonly Craft[] LaterCrafts =
     {
         Craft.Granary, Craft.Spears, Craft.Palisade, Craft.Grain, Craft.Mushrooms, Craft.Cress, Craft.Fishing, Craft.Stonework, Craft.Cisterns,
+        Craft.Wells, Craft.Slings,
     };
 
     /// <summary>A clan whose main home is further than this (m) from the water works out cisterns — necessity being the mother of invention.</summary>
@@ -79,6 +80,8 @@ public sealed partial class World
         Craft craft = ready[Rng.Next(ready.Length)];
         foreach (Bramblekin member in group.Members)
             member.Learn(craft);
+        if (craft == Craft.Grain)
+            LearnedGrain(group);
         CraftsDiscovered++;
         string what = Describe(craft);
         QueueFloatingText(thinker.Position, $"Idea: {craft.ToString().ToLowerInvariant()}!", CraftTextColor);
@@ -93,7 +96,8 @@ public sealed partial class World
     /// tradition or a memory of danger close to home; grain, farming;
     /// mushrooms, farming and a House; cress beds, farming and a home near
     /// the pond; fishing, just a home near the pond; stonework, a House;
-    /// cisterns, a House far from the water.
+    /// cisterns, a House far from the water; wells, stonework and a House
+    /// far from the water; slings, spears.
     /// </summary>
     private bool ReadyFor(KinGroup group, Craft craft)
     {
@@ -115,6 +119,9 @@ public sealed partial class World
             Craft.Fishing => nearPond,
             Craft.Stonework => hasHouse,
             Craft.Cisterns => hasHouse && group.Home is { } main && WaterMap.UsualDistanceToWater(main.Position.X, main.Position.Z) > CisternThirstReach,
+            Craft.Wells => hasHouse && Knows(group, Craft.Stonework) && group.Home is { } home &&
+                           WaterMap.UsualDistanceToWater(home.Position.X, home.Position.Z) > WellNeedReach,
+            Craft.Slings => Knows(group, Craft.Spears),
             _ => false,
         };
     }
@@ -131,6 +138,8 @@ public sealed partial class World
         Craft.Fishing => "fish from the shore",
         Craft.Stonework => "raise a house on a stone footing",
         Craft.Cisterns => "catch the rain in an acorn-cup cistern",
+        Craft.Wells => "dig a well",
+        Craft.Slings => "make slings and loose pebbles",
         _ => craft.ToString().ToLowerInvariant(),
     };
 
@@ -152,6 +161,8 @@ public sealed partial class World
             return;
         }
         CraftsTaught++;
+        if (craft == Craft.Grain)
+            LearnedGrain(ally);
         Game.AddEventLog($"[CRAFT] {teacher.CapitalTitle} taught their allies, {ally.Title}, how to {Describe(craft)}");
         Chronicle($"{teacher.CapitalTitle} taught {ally.Title} how to {Describe(craft)}", teacher, ally);
     }
