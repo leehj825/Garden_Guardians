@@ -4,13 +4,24 @@ using Raylib_cs;
 namespace GardenGuardians;
 
 /// <summary>One line of the garden's history — see World.Chronicle.</summary>
-public sealed record ChronicleEntry(float Time, int Year, Season Season, Guid[] Clans, string Text);
+public sealed record ChronicleEntry(float Time, int Year, Season Season, Guid[] Clans, string Text)
+{
+    /// <summary>The banner title, for a headline ("War", "Harvest feast"…) — a marker on the history chart's timeline. Null for a plain entry.</summary>
+    public string? Title { get; init; }
+}
+
+/// <summary>How many members a clan had at a history snapshot.</summary>
+public readonly record struct ClanCount(Guid Id, int Members);
 
 /// <summary>A headline: a chronicle entry big enough for a banner (see Game.Banners); <see cref="Urgent"/> ones also slow a fast-forwarded game down to watch.</summary>
 public readonly record struct Moment(string Title, string Text, Vector3? Where, bool Urgent);
 
 /// <summary>A snapshot of the garden, taken every <see cref="World.HistoryInterval"/> seconds for the history chart.</summary>
-public readonly record struct HistorySample(float Time, int Population, int Groups, int FarmingGroups, int Bushes, int Alliances, int Wars, int Stored);
+public readonly record struct HistorySample(float Time, int Population, int Groups, int FarmingGroups, int Bushes, int Alliances, int Wars, int Stored)
+{
+    /// <summary>Every clan's size at the time (null in a save from before they were kept).</summary>
+    public ClanCount[]? Clans { get; init; }
+}
 
 public sealed partial class World
 {
@@ -34,10 +45,12 @@ public sealed partial class World
     public List<HistorySample> History { get; } = new();
 
     /// <summary>Adds <paramref name="text"/> to the chronicle, filed under each of <paramref name="clans"/> (none for garden-wide news).</summary>
-    public void Chronicle(string text, params KinGroup?[] clans)
+    public void Chronicle(string text, params KinGroup?[] clans) => Chronicle(null, text, clans);
+
+    private void Chronicle(string? title, string text, KinGroup?[] clans)
     {
         Guid[] ids = clans.Where(c => c is not null).Select(c => c!.Id).Distinct().ToArray();
-        ChronicleEntries.Add(new ChronicleEntry(ElapsedSeconds, Year, CurrentSeason, ids, text));
+        ChronicleEntries.Add(new ChronicleEntry(ElapsedSeconds, Year, CurrentSeason, ids, text) { Title = title });
         if (ChronicleEntries.Count > ChronicleCapacity)
             ChronicleEntries.RemoveAt(0);
     }
@@ -50,7 +63,7 @@ public sealed partial class World
     /// <summary>A big moment: into the chronicle, and up on a banner headed <paramref name="title"/> — at <paramref name="where"/>, if it happened somewhere in particular.</summary>
     public void Headline(string title, string text, Vector3? where, bool urgent, params KinGroup?[] clans)
     {
-        Chronicle(text, clans);
+        Chronicle(title, text, clans);
         _moments.Add(new Moment(title, text, where, urgent));
         if (where is { } spot)
             Spotlight(text, urgent ? 10f : 8f, spot);
@@ -93,6 +106,9 @@ public sealed partial class World
             Crops.Count,
             CurrentAlliances,
             CurrentWars,
-            Shelters.Sum(s => s.StoredFood)));
+            Shelters.Sum(s => s.StoredFood))
+        {
+            Clans = _groups.Values.Select(g => new ClanCount(g.Id, g.Members.Count)).ToArray(),
+        });
     }
 }

@@ -1142,9 +1142,15 @@ overhead camera:
     tabs, each showing the selected Bramblekin's clan (or a clan picked by
     tapping one of its homes), else the whole garden; drag or scroll to
     read back:
-    *   **Story** — a chart of the population and the number of groups
-        over the whole run (sampled every 30s) and the chronicle, newest
-        first.
+    *   **Story** — the garden's timeline: the population and the number
+        of groups over the whole run (sampled every 30s, with every clan's
+        size), the six biggest clans' sizes as thin lines in their colours
+        (with a clan selected, just its own), year marks, and every
+        headline as a diamond along the top, coloured by kind — wars red,
+        peace and alliances green, feasts orange, beliefs purple,
+        champions and coups gold, splits and endings slate, hard times
+        blue-grey. Tapping a diamond scrolls the chronicle below to that
+        entry and highlights it. Then the chronicle, newest first.
     *   **Stats** — a chart of food stored and berry bushes, the clan at a
         glance (members, Leader, founding, homes, stores, bushes, spiders
         slain, traditions, neighbours), and the garden's totals since it

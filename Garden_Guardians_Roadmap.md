@@ -921,6 +921,14 @@ three fixes:
     starvation 31.3 vs 35.0; kin killed by kin 23.9 vs 20.8; wars 0.4 a
     run as before.
 
+## Phase 33: The Garden Timeline
+*   ✅ **The History chart as a timeline:** every clan's size is kept with
+    each 30s snapshot; the Story chart draws the six biggest clans' lines
+    in their colours (or the selected clan's alone), year marks, and every
+    headline as a coloured diamond along the top — tap one to jump the
+    chronicle to it. Older saves load as before (their clan lines start
+    from the load).
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:

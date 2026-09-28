@@ -148,10 +148,13 @@ public sealed class KinGroup
         : leader.Personality.Intelligence >= 0.6f ? LeaderStyle.Planner
         : LeaderStyle.Moderate;
 
+    /// <summary>The colour a clan with <paramref name="id"/> flies — worked out from the id, so it's known even after the clan is gone.</summary>
+    public static Color ColorOf(Guid id) => Palette[(int)((uint)id.GetHashCode() % (uint)Palette.Length)];
+
     public KinGroup(Guid id)
     {
         Id = id;
-        Color = Palette[(int)((uint)id.GetHashCode() % (uint)Palette.Length)];
+        Color = ColorOf(id);
     }
 
     /// <summary>
