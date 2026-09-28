@@ -19,6 +19,9 @@ public sealed partial class Bramblekin
 
     private float _fishingTimer;
 
+    /// <summary>The water level (see <see cref="WaterMap.Generation"/>) its fishing spot was picked at.</summary>
+    private int _fishingGeneration;
+
     /// <summary>Odds a cast lands a minnow or tadpole: good in spring and autumn, poor in winter.</summary>
     private static float CatchChance(Season season) => season switch
     {
@@ -38,8 +41,9 @@ public sealed partial class Bramblekin
     {
         if (!Knows(Craft.Fishing))
             return false;
-        if (_fishingSpot is { } old && GroundMover.HorizontalDistance(old, home.Position) > FishingReach)
-            _fishingSpot = null; // Moved house since: fish nearer the new one.
+        if ((_fishingSpot is { } old && GroundMover.HorizontalDistance(old, home.Position) > FishingReach) || _fishingGeneration != WaterMap.Generation)
+            _fishingSpot = null; // Moved house since (fish nearer the new one), or the water's gone down or come back.
+        _fishingGeneration = WaterMap.Generation;
         _fishingSpot ??= world.RandomShoreSpot(home.Position, FishingReach);
         if (_fishingSpot is not { } spot)
             return false;
@@ -57,7 +61,7 @@ public sealed partial class Bramblekin
         if (_fishingTimer < FishingSeconds)
             return true;
         _fishingTimer = 0f;
-        if (_rng.NextDouble() >= CatchChance(world.CurrentSeason))
+        if (_rng.NextDouble() >= CatchChance(world.CurrentSeason) * (0.3f + 0.7f * WaterMap.Fullness)) // A shrunken pond holds fewer fish.
             return true;
 
         if (world.CatchFish(this) is { } fish)
@@ -75,7 +79,8 @@ public sealed partial class Bramblekin
         {
             float angle = i * MathF.Tau / 16f;
             var direction = new Vector2(MathF.Cos(angle), MathF.Sin(angle));
-            if (World.IsWater(spot + new Vector3(direction.X, 0f, direction.Y) * 2f))
+            Vector3 ahead = spot + new Vector3(direction.X, 0f, direction.Y) * 2f;
+            if (WaterMap.IsWet(ahead.X, ahead.Z))
                 return direction;
         }
         return Vector2.UnitX;
@@ -87,7 +92,7 @@ public sealed partial class Bramblekin
         var grip = Position + new Vector3(0f, BodyHeight * 0.6f, 0f);
         var tip = grip + new Vector3(facing.X * 0.9f, 0.45f, facing.Y * 0.9f);
         Raylib.DrawCylinderEx(grip, tip, 0.02f, 0.01f, 4, RodColor);
-        var bob = new Vector3(tip.X + facing.X * 0.2f, World.PondLevel + 0.02f, tip.Z + facing.Y * 0.2f);
+        var bob = new Vector3(tip.X + facing.X * 0.2f, WaterMap.SurfaceHeight + 0.02f, tip.Z + facing.Y * 0.2f);
         Raylib.DrawLine3D(tip, bob, LineColor);
         Raylib.DrawSphere(bob, 0.04f, new Color(220, 60, 50, 255));
     }

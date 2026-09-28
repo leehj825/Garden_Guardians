@@ -25,31 +25,7 @@ public sealed partial class World
 
     private const int MaxWildSeeds = 6;
 
-    /// <summary>The shore: this close to the pond…</summary>
-    private const float ShoreNear = 0.8f;
-
-    /// <summary>…but no further than this.</summary>
-    private const float ShoreFar = 1.8f;
-
-    /// <summary>Spots on the pond's shore, a meter or so from the water: where watercress grows, cress beds go, and fishers stand.</summary>
-    public static readonly Vector3[] ShoreSpots = FindShoreSpots();
-
     private float _cressTimer, _mushroomTimer, _seedTimer, _sinceRain = AfterRainSeconds;
-
-    private static Vector3[] FindShoreSpots()
-    {
-        var spots = new List<Vector3>();
-        for (float x = -48f; x <= 48f; x += 1f)
-        {
-            for (float z = -48f; z <= 48f; z += 1f)
-            {
-                var point = new Vector3(x, 0f, z);
-                if (!IsWaterNear(point, ShoreNear) && IsWaterWithin(point, ShoreFar))
-                    spots.Add(Grounded(point));
-            }
-        }
-        return spots.ToArray();
-    }
 
     /// <summary>True if the pond lies within <paramref name="reach"/> of <paramref name="point"/> (looking out in twelve directions, near and far).</summary>
     public static bool IsWaterWithin(Vector3 point, float reach)
@@ -66,12 +42,12 @@ public sealed partial class World
         return false;
     }
 
-    /// <summary>The shore spot nearest <paramref name="from"/>, if one lies within <paramref name="reach"/>.</summary>
-    public static Vector3? NearestShoreSpot(Vector3 from, float reach)
+    /// <summary>The shore spot nearest <paramref name="from"/>, if one lies within <paramref name="reach"/> — on the water's edge now, or (<paramref name="usual"/>) at the pond's usual level.</summary>
+    public static Vector3? NearestShoreSpot(Vector3 from, float reach, bool usual = false)
     {
         Vector3? best = null;
         float bestDistance = reach * reach;
-        foreach (Vector3 spot in ShoreSpots)
+        foreach (Vector3 spot in usual ? WaterMap.UsualShore : WaterMap.Shore)
         {
             float distance = GroundMover.HorizontalDistanceSquared(from, spot);
             if (distance <= bestDistance)
@@ -83,11 +59,12 @@ public sealed partial class World
         return best;
     }
 
-    /// <summary>A random shore spot within <paramref name="reach"/> of <paramref name="from"/>, if there's any.</summary>
-    public Vector3? RandomShoreSpot(Vector3 from, float reach)
+    /// <summary>A random shore spot within <paramref name="reach"/> of <paramref name="from"/>, if there's any — on the water's edge now, or (<paramref name="usual"/>) at the pond's usual level.</summary>
+    public Vector3? RandomShoreSpot(Vector3 from, float reach, bool usual = false)
     {
+        Vector3[] shore = usual ? WaterMap.UsualShore : WaterMap.Shore;
         int count = 0;
-        foreach (Vector3 spot in ShoreSpots)
+        foreach (Vector3 spot in shore)
         {
             if (GroundMover.HorizontalDistanceSquared(from, spot) <= reach * reach)
                 count++;
@@ -95,7 +72,7 @@ public sealed partial class World
         if (count == 0)
             return null;
         int pick = Rng.Next(count);
-        foreach (Vector3 spot in ShoreSpots)
+        foreach (Vector3 spot in shore)
         {
             if (GroundMover.HorizontalDistanceSquared(from, spot) <= reach * reach && pick-- == 0)
                 return spot;
@@ -146,10 +123,11 @@ public sealed partial class World
         _sinceRain = IsStorming ? 0f : _sinceRain + deltaTime;
 
         float cressPace = Crop.SeasonPace(CropKind.Cress, CurrentSeason);
+        Vector3[] shore = WaterMap.Shore;
         if (Tick(ref _cressTimer, CressSpawnInterval, cressPace, deltaTime) && LooseFood(FoodShardKind.Cress) < MaxWildCress * cressPace &&
-            ShoreSpots.Length > 0)
+            shore.Length > 0)
         {
-            Vector3 spot = ShoreSpots[Rng.Next(ShoreSpots.Length)];
+            Vector3 spot = shore[Rng.Next(shore.Length)];
             if (!IsBlocked(spot, FoodShard.Radius + 0.1f))
                 _pendingFoodSpawns.Add((spot, FoodShardKind.Cress));
         }

@@ -101,7 +101,7 @@ public sealed partial class World
         foreach (Shelter home in GroupHomes(group))
         {
             hasHouse |= home is { IsBuilt: true, Tier: ShelterTier.House };
-            nearPond |= home.IsBuilt && NearestShoreSpot(home.Position, FishingSettleReach) is not null;
+            nearPond |= home.IsBuilt && NearestShoreSpot(home.Position, FishingSettleReach, usual: true) is not null;
         }
         bool farms = Knows(group, Craft.Farming);
         return craft switch
@@ -114,7 +114,7 @@ public sealed partial class World
             Craft.Cress => farms && nearPond,
             Craft.Fishing => nearPond,
             Craft.Stonework => hasHouse,
-            Craft.Cisterns => hasHouse && group.Home is { } main && WaterMap.DistanceToWater(main.Position.X, main.Position.Z) > CisternThirstReach,
+            Craft.Cisterns => hasHouse && group.Home is { } main && WaterMap.UsualDistanceToWater(main.Position.X, main.Position.Z) > CisternThirstReach,
             _ => false,
         };
     }

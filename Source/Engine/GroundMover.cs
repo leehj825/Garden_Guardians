@@ -86,6 +86,9 @@ public sealed class GroundMover
     private int _routeIndex;
     private Vector2 _routeGoal = new(float.NaN, float.NaN);
 
+    /// <summary>The water level (see <see cref="WaterMap.Generation"/>) the way round was worked out at.</summary>
+    private int _routeGeneration;
+
     /// <summary>A target that moves this far (m) since the way to it was worked out gets a fresh look.</summary>
     private const float RouteGoalDrift = 1f;
 
@@ -116,7 +119,7 @@ public sealed class GroundMover
     {
         Vector3 before = Position;
         Position += offset;
-        PushOutOfObstacles(world.Obstacles);
+        PushOutOfObstacles(world.ObstaclesNear(Position));
         ClampToTerrain(world.Terrain);
         KeepOutOfWater(before);
     }
@@ -131,7 +134,7 @@ public sealed class GroundMover
     /// </summary>
     public bool MoveTowards(Vector3 target, float speed, float deltaTime, World world, Func<World, Vector3, bool> isSafeSpot)
     {
-        IReadOnlyList<Obstacle> obstacles = world.Obstacles;
+        IReadOnlyList<Obstacle> obstacles = world.ObstaclesNear(Position);
         float step = speed * deltaTime;
         CheckIfStuck(target, step, deltaTime, world, isSafeSpot);
 
@@ -211,9 +214,10 @@ public sealed class GroundMover
         onRoute = false;
         var here = new Vector2(Position.X, Position.Z);
         var goal = new Vector2(target.X, target.Z);
-        if (!(Vector2.DistanceSquared(goal, _routeGoal) <= RouteGoalDrift * RouteGoalDrift)) // (NaN-safe: a fresh mover always looks.)
+        if (!(Vector2.DistanceSquared(goal, _routeGoal) <= RouteGoalDrift * RouteGoalDrift) || _routeGeneration != WaterMap.Generation) // (NaN-safe: a fresh mover always looks.)
         {
             _routeGoal = goal;
+            _routeGeneration = WaterMap.Generation;
             _routeIndex = 0;
             _route = WaterMap.IsClearWay(here, goal) ? null : WaterMap.FindRoute(here, goal);
         }

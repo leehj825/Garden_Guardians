@@ -252,6 +252,7 @@ public sealed partial class World
             SpawnSpider(); // A live Wolf Spider turns up somewhere new; a slain one comes back when its timer runs out.
         RebuildSpatialGrids();
         RebuildGroups();
+        SyncPondLevel();
     }
 
     // --- The numbers, by reflection ----------------------------------------------------------

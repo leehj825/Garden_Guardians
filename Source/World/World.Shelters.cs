@@ -252,7 +252,7 @@ public sealed partial class World
                 continue;
             if (Shelters.Any(s => GroundMover.HorizontalDistanceSquared(s.Position, candidate) < MinShelterSpacing * MinShelterSpacing))
                 continue;
-            float toWater = WaterMap.DistanceToWater(candidate.X, candidate.Z);
+            float toWater = WaterMap.UsualDistanceToWater(candidate.X, candidate.Z);
             if (toWater < bestToWater)
             {
                 best = candidate;

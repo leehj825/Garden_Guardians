@@ -59,6 +59,7 @@ public sealed class Shelter
     private static readonly Color HazelBaseColor = new(205, 180, 135, 255);
     private static readonly Color ThornColor = new(128, 58, 44, 255);
     private static readonly Color FootingColor = new(140, 140, 146, 255);
+    private static readonly Color SiteColor = new(125, 95, 62, 255);
     private static readonly Color CisternWaterColor = new(80, 140, 210, 255);
     private static readonly Color StickColor = new(115, 80, 45, 255);
     private static readonly Color StoredFoodColor = new(210, 40, 45, 255);
@@ -281,7 +282,15 @@ public sealed class Shelter
 
         if (!IsBuilt)
         {
+            // A site marked out: a patch of bare earth, a stake flying its clan's colour, and the twigs laid so far.
+            Raylib.DrawCylinder(Position - new Vector3(0f, 0.05f, 0f), TentRadius + 0.25f, TentRadius + 0.3f, 0.1f, 16, SiteColor);
             DrawSticks(basePosition, TentRadius, TwigsDelivered, TentTwigCost);
+            if (groupColor is { } siteFlag)
+            {
+                Vector3 stake = basePosition + new Vector3(TentRadius + 0.15f, 0f, 0f);
+                Raylib.DrawCylinderEx(stake, stake + new Vector3(0f, 0.8f, 0f), 0.03f, 0.025f, 5, StickColor);
+                Raylib.DrawCube(stake + new Vector3(0.12f, 0.7f, 0f), 0.22f, 0.15f, 0.02f, siteFlag);
+            }
             return;
         }
 

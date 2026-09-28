@@ -405,7 +405,7 @@ public sealed partial class World
 
             float nearestPatch = _berryPatches.Count == 0 ? 30f
                 : _berryPatches.Min(patch => GroundMover.HorizontalDistance(patch, candidate));
-            float toWater = WaterMap.DistanceToWater(candidate.X, candidate.Z);
+            float toWater = WaterMap.UsualDistanceToWater(candidate.X, candidate.Z);
             float score = MathF.Min(nearestHome, PioneerSpacing * 1.4f) - 0.5f * MathF.Min(nearestPatch, 30f) - 0.1f * distance -
                           WaterPull * MathF.Min(toWater, 50f);
             if (score > bestScore)

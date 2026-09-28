@@ -126,8 +126,13 @@ overhead camera:
     with a stronger rim (reaching 4m past its outermost home). Tapping a
     home — rather than a Bramblekin standing at its door — picks its clan:
     a clan card takes the Kin Inspector's place (tradition, members,
-    Leader, founding, homes, stores, bushes, neighbours), and the History
-    screen then shows that clan. A loner's tent picks its owner.
+    Leader, founding, homes, stores, crops, neighbours), and the History
+    screen then shows that clan. A loner's tent picks its owner. A clan
+    with nothing built yet — a new one, budded off or split away, whose
+    first tent is still a site — says so ("Homes: none yet - building its
+    first tent (1/3 twigs)", or "setting out for new ground"), and a
+    site shows on the map as a patch of bare earth with a stake flying
+    the clan's colour, the twigs laid so far standing on it.
 *   **Speed:** 1x, 2x, 5x, 10x, 20x and 50x. However fast, the garden
     always advances in the same fixed 1/60s steps as the headless tuning
     runs — bigger steps played a different game (about half as much
@@ -191,8 +196,12 @@ overhead camera:
 *   **Raylib culling** skips anything off-screen; there's no draw
     distance. The lawn's 2,500 cells are worked out once (corners and
     grass colour) and only tinted for the season each frame.
+*   **Obstacles by cell:** the rocks, the oak's trunk and the circles
+    along its roots (some 150 in all) are bucketed into 5m cells, each
+    listing every obstacle within 3m of it, so a walker only ever checks
+    the handful near it.
 *   **Walking round the water** (`WaterMap`): a 1m grid of the garden
-    marks the pond with room to spare; a walker whose straight way is cut
+    marks the pond (at each of its drought levels) and the oak with room to spare; a walker whose straight way is cut
     by it runs A* (eight ways, no cutting corners) and pulls the path
     tight into a few waypoints — worked out again only when its target
     moves a meter. A fine 0.25m grid answers "is this spot wet?" for every
@@ -907,6 +916,18 @@ overhead camera:
     Hornets fly over. A flood rises out of the pond and drains back into
     it — flood water is shallow, and walkable. The water is drawn only
     over the ground that dips below it.
+*   **Droughts drink the pond down:** through a drought the water sinks,
+    step by step over some 110s, to 0.92m below its usual level — about
+    a sixth of the pond left, a puddle at the bottom of each hollow —
+    laying bare a ring of mud that anyone can walk across. Drinkers and
+    fishers follow the water out across it (a longer walk for everyone,
+    a crowd at the puddles), a smaller pond holds fewer fish (catch odds
+    ×0.3–1), and watercress stops springing up on the old shore. After
+    the drought the pond fills back over 120s — four times as fast in the
+    rain — and a storm in a drought fills it too. Five levels are worked
+    out once (`WaterMap.Levels`), each with its own wet grid, route grid,
+    distance field and shore; walkers look again at their way round
+    whenever the level changes. Nothing is ever built in the pond's bed.
 *   **What the water gives:** a drink (see Thirst) — the one thing
     nobody can do without, and the reason the garden's dry south-west is
     the hardest place to live. Watercress grows wild along the shore
@@ -921,9 +942,14 @@ overhead camera:
     how far its home is from water.
 *   **The Giant Oak:** the foot of a real tree stands at the garden's back
     edge — a trunk 12m across, ridged bark and a mossy foot, rising far
-    out of sight, with one great bough overhead and roots sprawling over
-    the lawn — so the garden reads as the small world it is. Its trunk is
-    solid (walkers steer round it) and its shade darkens the lawn around
+    out of sight, with one great bough overhead and ten great roots
+    arching out from high on its flank and diving into the lawn 7–13m
+    from the trunk (up to 2m thick) — so the garden reads as the small
+    world it is. Trunk and roots are solid: nothing that walks can climb
+    over them (they're obstacles, and in the route grid), so getting
+    round the oak means walking round the root tips, and nothing is built,
+    planted or set down on them. Loading an older garden clears whatever
+    stood where the roots are now. Its shade darkens the lawn around
     it. In autumn it drops an acorn every 4s (up to 12 lying about at
     once) up to 16m from the trunk: food like any other, for whoever
     gathers it. Loading an older garden clears away anything that stood

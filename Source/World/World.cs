@@ -232,6 +232,25 @@ public sealed partial class World
     public Bramblekin? SelectedKin { get; private set; }
 
     public IReadOnlyList<Obstacle> Obstacles => _obstacles;
+
+    /// <summary>Obstacle cells are this size (m)…</summary>
+    private const float ObstacleCellSize = 5f;
+
+    /// <summary>…and each lists every obstacle within this far (m) of it — room for a walker's look-ahead and body.</summary>
+    private const float ObstacleCellReach = 3f;
+
+    private const int ObstacleCells = 20;
+
+    /// <summary>The obstacles near each 5m cell of the garden (see <see cref="ObstaclesNear"/>).</summary>
+    private readonly List<Obstacle>[] _obstacleCells = Enumerable.Range(0, ObstacleCells * ObstacleCells).Select(_ => new List<Obstacle>()).ToArray();
+
+    /// <summary>The obstacles a walker at <paramref name="point"/> could bump into or need to steer round — the handful near it, not all of them.</summary>
+    public IReadOnlyList<Obstacle> ObstaclesNear(Vector3 point)
+    {
+        int x = Math.Clamp((int)((point.X + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
+        int z = Math.Clamp((int)((point.Z + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
+        return _obstacleCells[x * ObstacleCells + z];
+    }
     public IReadOnlyList<(Vector3 Position, string Text, Color Color, float TimeLeft)> FloatingTexts => _floatingTexts;
 
     /// <summary>Loose (active, uncarried) Food on the map, as of the start of this frame.</summary>
@@ -258,6 +277,7 @@ public sealed partial class World
     {
         Terrain = terrain;
         Rng = rng;
+        SyncPondLevel(); // The pond as usual — whatever a garden before this one left it at.
 
         SpawnGardenProps();
         RebuildObstacles();
@@ -315,6 +335,22 @@ public sealed partial class World
                 _obstacles.Add(new Obstacle(new Vector2(prop.Position.X, prop.Position.Z), prop.FootprintRadius));
         }
         AddOakObstacle();
+
+        foreach (List<Obstacle> cell in _obstacleCells)
+            cell.Clear();
+        foreach (Obstacle obstacle in _obstacles)
+        {
+            float reach = obstacle.Radius + ObstacleCellReach;
+            int x0 = Math.Clamp((int)((obstacle.Center.X - reach + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
+            int x1 = Math.Clamp((int)((obstacle.Center.X + reach + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
+            int z0 = Math.Clamp((int)((obstacle.Center.Y - reach + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
+            int z1 = Math.Clamp((int)((obstacle.Center.Y + reach + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
+            for (int x = x0; x <= x1; x++)
+            {
+                for (int z = z0; z <= z1; z++)
+                    _obstacleCells[x * ObstacleCells + z].Add(obstacle);
+            }
+        }
     }
 
     /// <summary>Berry Patches: anchors on Dandelions first (a flowerbed reads naturally as a berry patch), then random open ground.</summary>
@@ -412,6 +448,7 @@ public sealed partial class World
         UpdateTwigSpawn(deltaTime);
         UpdateMaterials(deltaTime);
         UpdateCisterns(deltaTime);
+        UpdatePond(deltaTime);
         UpdateSpiderRespawn(deltaTime);
         UpdateHornetSpawn(deltaTime);
         UpdateGrubSpawn(deltaTime);

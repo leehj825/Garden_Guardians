@@ -50,6 +50,9 @@ public sealed partial class Bramblekin
     private float _drinkTimer;
     private float _dehydrationTimer;
 
+    /// <summary>The water level (see <see cref="WaterMap.Generation"/>) its drink was planned at — the shore moves when the pond shrinks or fills.</summary>
+    private int _drinkGeneration;
+
     /// <summary>Carrying a cupful of pond water home to its cistern.</summary>
     private bool _carryingWater;
 
@@ -112,7 +115,7 @@ public sealed partial class Bramblekin
     /// </summary>
     private void UpdateThirst(float deltaTime, World world)
     {
-        if (State != BramblekinState.Drinking || (_waterSpot is null && _drinkFrom is null))
+        if (State != BramblekinState.Drinking || (_waterSpot is null && _drinkFrom is null) || _drinkGeneration != WaterMap.Generation)
             PlanDrink();
         SetState(BramblekinState.Drinking);
 
@@ -169,6 +172,7 @@ public sealed partial class Bramblekin
     private void PlanDrink()
     {
         _drinkTimer = 0f;
+        _drinkGeneration = WaterMap.Generation;
         _waterSpot = World.NearestShoreSpot(Position, 200f);
         float toPond = _waterSpot is { } shore ? GroundMover.HorizontalDistance(Position, shore) : float.MaxValue;
         _drinkFrom = Home is { HasCistern: true, Water: > 0, IsCollapsed: false } home && GroundMover.HorizontalDistance(Position, home.Position) < toPond

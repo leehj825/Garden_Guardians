@@ -56,8 +56,8 @@ public sealed partial class World
 
     public bool IsFlooded => _flood > 0f;
 
-    /// <summary>The water's surface (world Y) while a flood is on.</summary>
-    public float WaterLevel => FloodHeights.Lowest + (FloodHeights.Peak - FloodHeights.Lowest) * _flood;
+    /// <summary>The water's surface (world Y): the pond's, sunk in a drought (see World.Drought) or risen in a flood.</summary>
+    public float WaterLevel => WaterMap.SurfaceHeight + (FloodHeights.Peak - WaterMap.SurfaceHeight) * _flood;
 
     private static (float Lowest, float Peak) MeasureFloodHeights()
     {
@@ -167,7 +167,7 @@ public sealed partial class World
     }
 
     /// <summary>Size (m) of the squares the water surface is drawn in.</summary>
-    private const float WaterCell = 1f;
+    private const float WaterCell = 0.5f;
 
     /// <summary>The squares of the garden the water covers at <see cref="_waterCellsLevel"/> — worked out again only when the level moves.</summary>
     private readonly List<Vector2> _waterCells = new();
@@ -181,6 +181,7 @@ public sealed partial class World
     /// </summary>
     private void DrawWater()
     {
+        DrawPondBed();
         float level = WaterLevel;
         if (MathF.Abs(level - _waterCellsLevel) > 0.02f || float.IsNaN(_waterCellsLevel))
         {

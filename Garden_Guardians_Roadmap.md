@@ -619,6 +619,17 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     water are bigger: 7.5 kin within 10m of it, 6.4 at 10–20m, 5.7 at
     20–30m; only 8 clans in 24 runs ever lived more than 45m out.
 
+## Phase 19: Roots and a Drying Pond
+*   ✅ **The oak's roots:** ten great roots, up to 2m thick, arching 7–13m
+    out from the trunk; trunk and roots are solid, so walkers go round
+    the root tips (obstacles, bucketed by cell so it stays cheap, and in
+    the route grid), and nothing stands on them.
+*   ✅ **Droughts drink the pond down** to about a sixth of its size,
+    laying bare a muddy bed; drinkers and fishers follow the water out,
+    fish get scarcer, and the pond fills again after (faster in rain).
+*   ✅ **New clans without a home yet** say so on their clan card, and
+    their site shows on the map (bare earth, a clan flag, the twigs laid).
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:

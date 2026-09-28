@@ -3,11 +3,14 @@ using System.Numerics;
 namespace GardenGuardians;
 
 /// <summary>
-/// Walking round the water: nothing that walks may set foot in the pond
-/// (see World.PondLevel), so a walker whose straight way is cut by it finds
-/// a way round — A* over a 1m grid of the garden, eight ways, pulled tight
-/// into a few waypoints (see <see cref="FindRoute"/>). The pond never moves,
-/// so the grids are worked out once. Floods are shallow: they don't count.
+/// Walking round the water: nothing that walks may set foot in the pond,
+/// or climb the Giant Oak's trunk and roots, so a walker whose straight way
+/// is cut by them finds a way round — A* over a 1m grid of the garden,
+/// eight ways, pulled tight into a few waypoints (see <see cref="FindRoute"/>).
+/// The pond's level drops in a drought (see World.Drought), so every grid is
+/// worked out once for each of <see cref="Levels"/> water levels, from its
+/// usual one down to the dregs, and <see cref="Level"/> picks the one in
+/// force. Floods are shallow: they don't count.
 /// </summary>
 public static class WaterMap
 {
@@ -18,8 +21,11 @@ public static class WaterMap
 
     private const int Cells = (int)(2 * HalfSize / CellSize);
 
-    /// <summary>…and a route keeps this far off the water's edge.</summary>
+    /// <summary>…and a route keeps this far off the water's edge…</summary>
     private const float ShoreClearance = 0.6f;
+
+    /// <summary>…and off the oak's trunk and roots.</summary>
+    private const float OakClearance = 0.35f;
 
     /// <summary>The fine grid (m) that says exactly where the water is, for <see cref="IsWet"/>.</summary>
     private const float WetCellSize = 0.25f;
@@ -29,47 +35,112 @@ public static class WaterMap
     /// <summary>A route search gives up after looking at this many cells (the garden has 10,000).</summary>
     private const int MaxSearch = 6000;
 
-    private static readonly bool[] Wet = BuildWet();
-    private static readonly bool[] Blocked = BuildBlocked();
-    private static readonly float[] ShoreDistance = BuildShoreDistance();
+    /// <summary>How many water levels are worked out: 0 is the pond as usual, the last its lowest in a drought.</summary>
+    public const int Levels = 5;
+
+    /// <summary>At its lowest, the water stands this far (m) below its usual level — a sixth or so of the pond left, in the bottom of each hollow.</summary>
+    private const float DroughtDrop = 0.92f;
+
+    /// <summary>The surface (world Y) at each level.</summary>
+    public static readonly float[] LevelHeights = Enumerable.Range(0, Levels).Select(i => World.PondLevel - DroughtDrop * i / (Levels - 1)).ToArray();
+
+    private static readonly float[] Ground = BuildGround();
+    private static readonly bool[] Oak = BuildOak();
+    private static readonly bool[][] Wet = Enumerable.Range(0, Levels).Select(BuildWet).ToArray();
+    private static readonly bool[][] WaterBlocked = Enumerable.Range(0, Levels).Select(BuildWaterBlocked).ToArray();
+    private static readonly bool[][] Blocked = Enumerable.Range(0, Levels).Select(l => WaterBlocked[l].Select((water, i) => water || Oak[i]).ToArray()).ToArray();
+    private static readonly float[][] ShoreDistance = Enumerable.Range(0, Levels).Select(BuildShoreDistance).ToArray();
+    private static readonly Vector3[][] Shores = Enumerable.Range(0, Levels).Select(BuildShore).ToArray();
+    private static readonly int[] WetCount = Wet.Select(w => w.Count(c => c)).ToArray();
+
+    /// <summary>The water level in force (0 = usual; see <see cref="Levels"/>).</summary>
+    public static int Level { get; private set; }
+
+    /// <summary>Goes up whenever the level changes, so walkers know to look again at their way round.</summary>
+    public static int Generation { get; private set; }
+
+    /// <summary>How much of the pond is left: 1 as usual, about a sixth at its lowest.</summary>
+    public static float Fullness => WetCount[Level] / (float)Math.Max(1, WetCount[0]);
+
+    /// <summary>The water's surface (world Y) now.</summary>
+    public static float SurfaceHeight => LevelHeights[Level];
 
     /// <summary>How many routes have been worked out (for the headless report).</summary>
     public static int RoutesFound { get; private set; }
 
-    private static bool[] BuildWet()
+    /// <summary>Sets the water level in force (see World.Drought).</summary>
+    public static void SetLevel(int level)
     {
-        var wet = new bool[WetCells * WetCells];
+        level = Math.Clamp(level, 0, Levels - 1);
+        if (level == Level)
+            return;
+        Level = level;
+        Generation++;
+    }
+
+    /// <summary>Stretches of shore, a meter or so from the water at the level in force: where watercress grows, drinkers drink and fishers fish.</summary>
+    public static Vector3[] Shore => Shores[Level];
+
+    /// <summary>The shore at the pond's usual level: where cress beds go, and what counts as living by the pond.</summary>
+    public static Vector3[] UsualShore => Shores[0];
+
+    private static float[] BuildGround()
+    {
+        var ground = new float[WetCells * WetCells];
         for (int x = 0; x < WetCells; x++)
         {
             for (int z = 0; z < WetCells; z++)
-            {
-                float wx = -HalfSize + (x + 0.5f) * WetCellSize, wz = -HalfSize + (z + 0.5f) * WetCellSize;
-                wet[x * WetCells + z] = World.GetHeightAt(wx, wz) < World.PondLevel;
-            }
+                ground[x * WetCells + z] = World.GetHeightAt(-HalfSize + (x + 0.5f) * WetCellSize, -HalfSize + (z + 0.5f) * WetCellSize);
         }
-        return wet;
+        return ground;
     }
 
-    private static bool[] BuildBlocked()
+    private static bool[] BuildWet(int level)
+    {
+        float surface = LevelHeights[level];
+        return Ground.Select(height => height < surface).ToArray();
+    }
+
+    /// <summary>True if (x, z) is under water at <paramref name="level"/>.</summary>
+    private static bool IsWetAt(float x, float z, int level) => World.GetHeightAt(x, z) < LevelHeights[level];
+
+    /// <summary>True if water at <paramref name="level"/> reaches within <paramref name="clearance"/> of (x, z) — at its centre or four points round it.</summary>
+    private static bool IsWetNear(float x, float z, float clearance, int level) =>
+        IsWetAt(x, z, level) || IsWetAt(x + clearance, z, level) || IsWetAt(x - clearance, z, level) ||
+        IsWetAt(x, z + clearance, level) || IsWetAt(x, z - clearance, level);
+
+    private static bool[] BuildWaterBlocked(int level)
     {
         var blocked = new bool[Cells * Cells];
         for (int x = 0; x < Cells; x++)
         {
             for (int z = 0; z < Cells; z++)
-                blocked[x * Cells + z] = World.IsWaterNear(new Vector3(CellCenter(x), 0f, CellCenter(z)), ShoreClearance);
+                blocked[x * Cells + z] = IsWetNear(CellCenter(x), CellCenter(z), ShoreClearance, level);
         }
         return blocked;
     }
 
-    /// <summary>How far (m) each cell is from the water's edge, walking round the pond — worked out once, outward from the shore.</summary>
-    private static float[] BuildShoreDistance()
+    private static bool[] BuildOak()
     {
+        var oak = new bool[Cells * Cells];
+        for (int x = 0; x < Cells; x++)
+        {
+            for (int z = 0; z < Cells; z++)
+                oak[x * Cells + z] = World.IsOnOak(new Vector3(CellCenter(x), 0f, CellCenter(z)), OakClearance);
+        }
+        return oak;
+    }
+
+    /// <summary>How far (m) each cell is from the water's edge at <paramref name="level"/>, walking round the pond and the oak — worked out outward from the shore.</summary>
+    private static float[] BuildShoreDistance(int level)
+    {
+        bool[] water = WaterBlocked[level];
         var distance = new float[Cells * Cells];
         var frontier = new PriorityQueue<int, float>();
         for (int i = 0; i < distance.Length; i++)
         {
-            distance[i] = Blocked[i] ? 0f : float.MaxValue;
-            if (Blocked[i])
+            distance[i] = water[i] ? 0f : float.MaxValue;
+            if (water[i])
                 frontier.Enqueue(i, 0f);
         }
         while (frontier.TryDequeue(out int current, out float reached))
@@ -85,6 +156,8 @@ public static class WaterMap
                     if ((dx == 0 && dz == 0) || x < 0 || z < 0 || x >= Cells || z >= Cells)
                         continue;
                     int next = x * Cells + z;
+                    if (Oak[next])
+                        continue;
                     float step = reached + (dx != 0 && dz != 0 ? 1.4142f : 1f) * CellSize;
                     if (step < distance[next])
                     {
@@ -97,21 +170,48 @@ public static class WaterMap
         return distance;
     }
 
-    /// <summary>How far (m) (x, z) is from the pond's edge, walking round it — how far a Bramblekin living there walks for a drink.</summary>
-    public static float DistanceToWater(float x, float z) => ShoreDistance[CellOf(x) * Cells + CellOf(z)];
+    /// <summary>The shore at <paramref name="level"/>: points 0.8–1.8m from the water, off the oak.</summary>
+    private static Vector3[] BuildShore(int level)
+    {
+        var spots = new List<Vector3>();
+        for (float x = -48f; x <= 48f; x += 1f)
+        {
+            for (float z = -48f; z <= 48f; z += 1f)
+            {
+                if (IsWetNear(x, z, 0.8f, level) || World.IsOnOak(new Vector3(x, 0f, z), 0.5f))
+                    continue;
+                bool near = false;
+                for (int i = 0; i < 12 && !near; i++)
+                {
+                    float angle = i * MathF.Tau / 12f;
+                    near = IsWetAt(x + MathF.Cos(angle) * 1.8f, z + MathF.Sin(angle) * 1.8f, level) ||
+                           IsWetAt(x + MathF.Cos(angle) * 1.2f, z + MathF.Sin(angle) * 1.2f, level);
+                }
+                if (near)
+                    spots.Add(World.Grounded(new Vector3(x, 0f, z)));
+            }
+        }
+        return spots.ToArray();
+    }
+
+    /// <summary>How far (m) (x, z) is from the water's edge now, walking round the pond and the oak — how far a Bramblekin there walks for a drink.</summary>
+    public static float DistanceToWater(float x, float z) => ShoreDistance[Level][CellOf(x) * Cells + CellOf(z)];
+
+    /// <summary>How far (m) (x, z) is from the water's edge at the pond's usual level — what settlers weigh up.</summary>
+    public static float UsualDistanceToWater(float x, float z) => ShoreDistance[0][CellOf(x) * Cells + CellOf(z)];
 
     private static float CellCenter(int index) => -HalfSize + (index + 0.5f) * CellSize;
 
     private static int CellOf(float coordinate) => Math.Clamp((int)MathF.Floor((coordinate + HalfSize) / CellSize), 0, Cells - 1);
 
-    private static bool IsOpen(int x, int z) => x >= 0 && z >= 0 && x < Cells && z < Cells && !Blocked[x * Cells + z];
+    private static bool IsOpen(int x, int z) => x >= 0 && z >= 0 && x < Cells && z < Cells && !Blocked[Level][x * Cells + z];
 
-    /// <summary>True if (x, z) is under the pond — a quick lookup, for every step a walker takes.</summary>
+    /// <summary>True if (x, z) is under water now — a quick lookup, for every step a walker takes.</summary>
     public static bool IsWet(float x, float z)
     {
         int cx = Math.Clamp((int)MathF.Floor((x + HalfSize) / WetCellSize), 0, WetCells - 1);
         int cz = Math.Clamp((int)MathF.Floor((z + HalfSize) / WetCellSize), 0, WetCells - 1);
-        return Wet[cx * WetCells + cz];
+        return Wet[Level][cx * WetCells + cz];
     }
 
     /// <summary>
@@ -145,7 +245,8 @@ public static class WaterMap
         }
         return true;
 
-        static bool IsShore(Vector2 point) => !IsOpen(CellOf(point.X), CellOf(point.Y)) && !IsWet(point.X, point.Y);
+        static bool IsShore(Vector2 point) =>
+            WaterBlocked[Level][CellOf(point.X) * Cells + CellOf(point.Y)] && !Oak[CellOf(point.X) * Cells + CellOf(point.Y)] && !IsWet(point.X, point.Y);
     }
 
     // Search scratch space, reused by every search (the simulation runs on one thread).

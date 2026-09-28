@@ -156,7 +156,7 @@ public static partial class Game
         {
             $"Members: {clan.Members.Count} ({clan.Members.Count(m => m.IsYoung)} young, {clan.Members.Count(m => m.IsElder)} elders)",
             $"Leader: {clan.Leader?.Name ?? "nobody"}",
-            $"Homes: {houses} {(houses == 1 ? "house" : "houses")}, {tents} {(tents == 1 ? "tent" : "tents")}",
+            DescribeClanHomes(clan, homes, houses, tents),
             $"Food stored: {world.StoredFood(clan)}",
             World.KnowsFarming(clan) ? $"Crops: {world.CropsOf(clan)} of {world.CropAllowance(clan)}" : "Doesn't farm yet",
             $"Wolf Spiders slain: {clan.SpidersSlain}",
@@ -168,6 +168,21 @@ public static partial class Game
         if (world.DescribeRelations(clan) is { } relations)
             lines.Add(char.ToUpperInvariant(relations[0]) + relations[1..]);
         return lines;
+    }
+
+    /// <summary>"Homes: 2 houses, 1 tent (1 being built)" — or, for a clan with nothing built yet, what it's doing about it.</summary>
+    private static string DescribeClanHomes(KinGroup clan, List<Shelter> homes, int houses, int tents)
+    {
+        Shelter? site = homes.FirstOrDefault(h => !h.IsBuilt);
+        int upgrading = homes.Count(h => h.IsUpgrading);
+        if (houses + tents > 0)
+        {
+            string building = site is not null ? " (1 being built)" : upgrading > 0 ? $" ({upgrading} becoming a house)" : "";
+            return $"Homes: {houses} {(houses == 1 ? "house" : "houses")}, {tents} {(tents == 1 ? "tent" : "tents")}{building}";
+        }
+        if (site is not null)
+            return $"Homes: none yet - building its first tent ({site.TwigsDelivered}/{site.TwigsNeeded} twigs)";
+        return clan.SettleTarget is not null ? "Homes: none yet - setting out for new ground" : "Homes: none - looking for a place to settle";
     }
 
     /// <summary>"farming, granary, spears" — or "none".</summary>

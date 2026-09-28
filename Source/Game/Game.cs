@@ -464,10 +464,10 @@ public static partial class Game
             $"Water: {world.DrinksAtPond} drinks at the pond (a {(world.DrinksAtPond > 0 ? world.WaterTrekMeters / world.DrinksAtPond : 0):0}m walk from home on average), " +
             $"{world.CisternDrinks} from cisterns ({world.CupfulsCarried} cupfuls carried home); {world.DeathsByThirst} died of thirst; " +
             $"at the end {world.Groups.Count(g => World.Knows(g, Craft.Cisterns))} clans have cisterns, and the average home is " +
-            $"{(world.Shelters.Count(s => s.IsBuilt) > 0 ? world.Shelters.Where(s => s.IsBuilt).Average(s => WaterMap.DistanceToWater(s.Position.X, s.Position.Z)) : 0):0}m from water.");
+            $"{(world.Shelters.Count(s => s.IsBuilt) > 0 ? world.Shelters.Where(s => s.IsBuilt).Average(s => WaterMap.UsualDistanceToWater(s.Position.X, s.Position.Z)) : 0):0}m from water.");
         Console.WriteLine("  Clans by distance to water: " + string.Join(", ", world.Groups
             .Where(g => g.Home is not null)
-            .Select(g => (Group: g, Water: WaterMap.DistanceToWater(g.Home!.Position.X, g.Home.Position.Z)))
+            .Select(g => (Group: g, Water: WaterMap.UsualDistanceToWater(g.Home!.Position.X, g.Home.Position.Z)))
             .OrderBy(c => c.Water)
             .Select(c => $"{c.Group.Members.Count} kin at {c.Water:0}m")));
         Console.WriteLine(

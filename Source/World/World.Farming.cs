@@ -139,7 +139,7 @@ public sealed partial class World
         }
         Consider(CropKind.Grain, (known & Craft.Grain) != 0);
         Consider(CropKind.Mushroom, (known & Craft.Mushrooms) != 0 && home.Tier == ShelterTier.House);
-        Consider(CropKind.Cress, (known & Craft.Cress) != 0 && NearestShoreSpot(home.Position, CressBedReach) is not null);
+        Consider(CropKind.Cress, (known & Craft.Cress) != 0 && NearestShoreSpot(home.Position, CressBedReach, usual: true) is not null);
         return best;
     }
 
@@ -151,7 +151,7 @@ public sealed partial class World
             Vector3 spot;
             if (kind == CropKind.Cress)
             {
-                if (RandomShoreSpot(home.Position, CressBedReach) is not { } shore)
+                if (RandomShoreSpot(home.Position, CressBedReach, usual: true) is not { } shore)
                     return null;
                 spot = shore;
             }
