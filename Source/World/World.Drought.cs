@@ -62,6 +62,7 @@ public sealed partial class World
     /// <summary>The garden's mud: the pond's bed, laid bare as the water sinks — squares that follow the ground, drawn only while it's down.</summary>
     private readonly List<(Vector3, Vector3, Vector3, Vector3)> _mudCells = new();
 
+    [NonSerialized] // A render cache, like the water's (see _waterCellsLevel).
     private int _mudCellsLevel = -1;
 
     private void DrawPondBed()

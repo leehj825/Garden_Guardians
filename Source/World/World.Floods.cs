@@ -171,6 +171,9 @@ public sealed partial class World
 
     /// <summary>The squares of the garden the water covers at <see cref="_waterCellsLevel"/> — worked out again only when the level moves.</summary>
     private readonly List<Vector2> _waterCells = new();
+
+    // A render cache, not garden state: saving it would tell a loaded garden its (unsaved, empty) squares were already worked out.
+    [NonSerialized]
     private float _waterCellsLevel = float.NaN;
 
     /// <summary>

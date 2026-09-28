@@ -270,10 +270,10 @@ public sealed partial class World
         typeof(World).GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
             .Where(p => p.CanRead && p.SetMethod is not null && p.GetIndexParameters().Length == 0 && IsSavedNumber(p.PropertyType));
 
-    /// <summary>World fields worth saving: every number, flag or enum (timers, running totals) and array of numbers (statistics) — but not a property's own backing field.</summary>
+    /// <summary>World fields worth saving: every number, flag or enum (timers, running totals) and array of numbers (statistics) — but not a property's own backing field, nor anything marked [NonSerialized] (render caches).</summary>
     private static IEnumerable<FieldInfo> SavedFields =>
         typeof(World).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            .Where(f => !f.Name.Contains("k__BackingField") &&
+            .Where(f => !f.Name.Contains("k__BackingField") && !f.IsNotSerialized &&
                         (IsSavedNumber(f.FieldType) || (f.FieldType.IsArray && IsSavedNumber(f.FieldType.GetElementType()!))));
 
     private static bool IsSavedNumber(Type type) =>
