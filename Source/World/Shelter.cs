@@ -11,6 +11,9 @@ public enum ShelterTier
 
     /// <summary>A walled house with a roof — a group's upgrade of its Tent: room for a whole group and a big store.</summary>
     House,
+
+    /// <summary>Dug into a hillside by a loner: cheap, warm in winter, its store hidden from raiders and ants — but only room for two, and it can't be built up (see <see cref="Shelter.MakeBurrow"/>).</summary>
+    Burrow,
 }
 
 /// <summary>
@@ -32,6 +35,11 @@ public sealed class Shelter
     private static int _nextId;
 
     public const int TentTwigCost = 3;
+
+    /// <summary>A burrow only needs a couple of twigs to shore up its doorway — the digging is the work.</summary>
+    public const int BurrowTwigCost = 2;
+
+    public const float BurrowRadius = 0.65f;
     public const int HouseUpgradeTwigCost = 6;
     public const int TentStoreCapacity = 4;
     public const int HouseStoreCapacity = 12;
@@ -64,6 +72,8 @@ public sealed class Shelter
     private static readonly Color StickColor = new(115, 80, 45, 255);
     private static readonly Color StoredFoodColor = new(210, 40, 45, 255);
     private static readonly Color AbandonedTint = new(150, 150, 150, 255);
+    private static readonly Color EarthColor = new(118, 88, 58, 255);
+    private static readonly Color TurfColor = new(92, 140, 60, 255);
     private static readonly Color FlameColor = new(235, 120, 30, 255);
     private static readonly Color EmberColor = new(255, 215, 90, 255);
     private static readonly Color AshColor = new(95, 90, 88, 255);
@@ -101,7 +111,16 @@ public sealed class Shelter
     public int TwigsDelivered { get; private set; }
 
     /// <summary>Twigs the current stage needs in total — 0 once there's nothing left to build.</summary>
-    public int TwigsNeeded => !IsBuilt ? TentTwigCost : IsUpgrading ? HouseUpgradeTwigCost : 0;
+    public int TwigsNeeded => !IsBuilt ? (IsBurrow ? BurrowTwigCost : TentTwigCost) : IsUpgrading ? HouseUpgradeTwigCost : 0;
+
+    public bool IsBurrow => Tier == ShelterTier.Burrow;
+
+    /// <summary>Marks a fresh site out as a burrow rather than a Tent.</summary>
+    public void MakeBurrow()
+    {
+        if (!IsBuilt)
+            Tier = ShelterTier.Burrow;
+    }
 
     /// <summary>True while a construction stage is under way and still short of twigs.</summary>
     public bool NeedsTwigs => TwigsDelivered < TwigsNeeded;
@@ -213,7 +232,7 @@ public sealed class Shelter
 
     public bool StoreIsFull => StoredFood >= StoreCapacity;
 
-    public float Radius => Tier == ShelterTier.House ? HouseRadius : TentRadius;
+    public float Radius => Tier switch { ShelterTier.House => HouseRadius, ShelterTier.Burrow => BurrowRadius, _ => TentRadius };
 
     /// <summary>The one Bramblekin it belongs to, for a personal home.</summary>
     public Bramblekin? Owner { get; set; }
@@ -312,6 +331,12 @@ public sealed class Shelter
     {
         Vector3 basePosition = Position + new Vector3(0f, 0.02f, 0f);
         Color Tint(Color c) => IsAbandoned ? Blend(c, AbandonedTint, 0.6f) : c;
+
+        if (IsBurrow)
+        {
+            DrawBurrow(basePosition, groupColor, Tint);
+            return;
+        }
 
         if (!IsBuilt)
         {
@@ -443,6 +468,34 @@ public sealed class Shelter
             Vector3 berry = basePosition + new Vector3(radius + 0.2f + 0.12f * MathF.Cos(angle), 0.08f + 0.1f * (i / 4), 0.12f * MathF.Sin(angle));
             Raylib.DrawSphere(berry, 0.08f, StoredFoodColor);
         }
+    }
+
+    /// <summary>A burrow: a low mound of earth capped with turf and a dark round doorway, shored with twigs; while it's being dug, a raw heap beside an open hole.</summary>
+    private void DrawBurrow(Vector3 basePosition, Color? groupColor, Func<Color, Color> tint)
+    {
+        float radius = BurrowRadius;
+        var door = basePosition + new Vector3(radius * 0.9f, 0.18f, 0f);
+        if (!IsBuilt)
+        {
+            DrawEllipsoid(basePosition + new Vector3(-radius * 0.4f, 0.05f, 0.3f), radius * 0.6f, 0.25f, tint(EarthColor));
+            Raylib.DrawCylinder(basePosition + new Vector3(radius * 0.3f, 0.01f, 0f), 0.28f, 0.28f, 0.02f, 12, DoorColor);
+            DrawSticks(basePosition, radius, TwigsDelivered, BurrowTwigCost);
+            return;
+        }
+        DrawEllipsoid(basePosition + new Vector3(0f, 0.05f, 0f), radius * 1.3f, 0.5f, tint(EarthColor));
+        DrawEllipsoid(basePosition + new Vector3(-0.08f, 0.3f, 0f), radius * 1.05f, 0.28f, tint(TurfColor));
+        Raylib.DrawCylinderEx(door, door + new Vector3(0.08f, 0f, 0f), 0.2f, 0.2f, 12, DoorColor);
+        for (int side = -1; side <= 1; side += 2)
+            Raylib.DrawCylinderEx(door + new Vector3(0.05f, -0.18f, side * 0.22f), door + new Vector3(0.05f, 0.2f, side * 0.1f), 0.03f, 0.025f, 5, tint(StickColor));
+        if (groupColor is { } color)
+        {
+            Vector3 pole = basePosition + new Vector3(-0.1f, 0.5f, 0f);
+            Raylib.DrawLine3D(pole, pole + new Vector3(0f, 0.4f, 0f), StickColor);
+            Raylib.DrawCube(pole + new Vector3(0.12f, 0.32f, 0f), 0.22f, 0.15f, 0.02f, color);
+        }
+        int shown = Math.Min(StoredFood, 4);
+        for (int i = 0; i < shown; i++)
+            Raylib.DrawSphere(door + new Vector3(0.25f, -0.1f, (i - 1.5f) * 0.1f), 0.07f, StoredFoodColor);
     }
 
     /// <summary>An acorn cap: a low scaly dome with a stalk, sitting on <paramref name="rim"/>. Returns the height of its top.</summary>

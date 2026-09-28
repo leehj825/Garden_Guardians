@@ -97,7 +97,7 @@ public sealed partial class World
         float bestDistanceSquared = float.MaxValue;
         foreach (Shelter shelter in Shelters)
         {
-            if (!shelter.IsBuilt || shelter.IsCollapsed || shelter.HasPalisade || shelter.HasFooting || shelter.StoredFood <= 0)
+            if (!shelter.IsBuilt || shelter.IsCollapsed || shelter.HasPalisade || shelter.HasFooting || shelter.IsBurrow || shelter.StoredFood <= 0)
                 continue;
             if (GroundMover.HorizontalDistanceSquared(shelter.Position, hill.Position) > Anthill.ForageRadius * Anthill.ForageRadius)
                 continue;

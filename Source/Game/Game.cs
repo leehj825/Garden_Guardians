@@ -436,7 +436,7 @@ public static partial class Game
             $"Food eaten {world.FoodEaten}, shared {world.FoodShared}, stolen {world.Thefts}; " +
             $"alliances {world.AlliancesFormed}; grubs hunted {world.GrubsKilled}, beetles {world.BeetlesKilled}, hornets swatted {world.HornetsKilled}, spiders slain {world.SpidersKilled}.");
         Console.WriteLine(
-            $"Homes: {world.TentsBuilt} tents and {world.HousesBuilt} houses built, {world.SheltersCollapsed} collapsed; " +
+            $"Homes: {world.TentsBuilt} tents and {world.HousesBuilt} houses built, {world.BurrowsDug} burrows dug ({world.Shelters.Count(s => s.IsBuilt && s.IsBurrow)} lived in at the end), {world.SheltersCollapsed} collapsed; " +
             $"{world.StoreMeals} meals eaten from stores, {world.StoreRaids} store raids; " +
             $"{world.VillagesFounded} villages founded, {world.Buddings} daughter groups budded off.");
         Console.WriteLine(
@@ -1010,7 +1010,7 @@ public static partial class Game
         {
             $"Year {world.Year} {world.CurrentSeason}{(world.WeatherLabel is { } weather ? $" - {weather}" : "")} (food x{world.FoodAbundance:0.0})   Speed {_timeScale}x{(_achievedSpeed < _timeScale * 0.85f ? $" (running {_achievedSpeed:0}x)" : "")}   FPS {Raylib.GetFPS()}   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
             $"Homes: {world.Shelters.Count(s => s.IsBuilt && s.Tier == ShelterTier.Tent)} tents, {world.Shelters.Count(s => s.Tier == ShelterTier.House)} houses, " +
-            $"{world.Shelters.Count(s => !s.IsBuilt)} being built   Food stored {world.Shelters.Sum(s => s.StoredFood)}   " +
+            $"{world.Shelters.Count(s => s.IsBuilt && s.IsBurrow)} burrows, {world.Shelters.Count(s => !s.IsBuilt)} being built   Food stored {world.Shelters.Sum(s => s.StoredFood)}   " +
             $"Villages {world.Groups.Count(g => g.Annexes.Count > 0)} (budded {world.Buddings})   Crops {world.Crops.Count}",
             $"Bramblekin {living}: {solitary} solitary, {world.Groups.Count} groups (largest {largestGroup}, {world.Groups.Count(World.KnowsFarming)} farming)   " +
             $"Alliances {world.CurrentAlliances}   Wars {world.CurrentWars}",

@@ -263,8 +263,32 @@ public sealed partial class World
             return null;
 
         var shelter = new Shelter(site) { Owner = owner, GroupId = groupId, StageStartedAt = ElapsedSeconds };
+        // A loner on a hillside may dig in instead — an introvert most likely.
+        if (groupId is null && owner is not null && IsBurrowGround(site) && Rng.NextDouble() < BurrowChance * (1f - owner.Personality.Sociability))
+        {
+            shelter.MakeBurrow();
+            BurrowsDug++;
+        }
         Shelters.Add(shelter);
         return shelter;
+    }
+
+    /// <summary>Ground this steep (rise per meter) is a hillside a burrow can be dug into…</summary>
+    private const float BurrowSlope = 0.15f;
+
+    /// <summary>…and a loner settling there digs one with odds this × (1 − its Sociability).</summary>
+    private const float BurrowChance = 0.8f;
+
+    /// <summary>Burrows marked out.</summary>
+    public int BurrowsDug { get; private set; }
+
+    /// <summary>A hillside above the reach of any flood — somewhere to dig in.</summary>
+    private static bool IsBurrowGround(Vector3 site)
+    {
+        const float step = 0.5f;
+        float dx = (GetHeightAt(site.X + step, site.Z) - GetHeightAt(site.X - step, site.Z)) / (2f * step);
+        float dz = (GetHeightAt(site.X, site.Z + step) - GetHeightAt(site.X, site.Z - step)) / (2f * step);
+        return MathF.Sqrt(dx * dx + dz * dz) >= BurrowSlope && GetHeightAt(site.X, site.Z) > FloodHeights.Peak + 0.3f;
     }
 
     /// <summary>The nearest built, abandoned shelter within <paramref name="radius"/> — free for the taking.</summary>
@@ -409,6 +433,8 @@ public sealed partial class World
                 continue;
             if (abandonedOnly && !shelter.IsAbandoned)
                 continue;
+            if (shelter.IsBurrow && !shelter.IsAbandoned)
+                continue; // A lived-in burrow's store is tucked away where a raider won't find it.
             float distanceSquared = GroundMover.HorizontalDistanceSquared(kin.Position, shelter.Position);
             if (distanceSquared > bestDistanceSquared)
                 continue;

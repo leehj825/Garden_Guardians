@@ -101,6 +101,9 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>Huddled inside its home in winter (see <see cref="IsSheltered"/>), Hunger rises at this fraction of the usual rate.</summary>
     public const float WinterShelterMetabolism = 0.5f;
 
+    /// <summary>A burrow's earthen walls keep in more warmth: wintering in one, Hunger rises at this fraction.</summary>
+    public const float BurrowWinterMetabolism = 0.4f;
+
     /// <summary>At or above this, Hunger is Critical and overrides every other need.</summary>
     public const float HungryThreshold = 60f;
 
@@ -593,7 +596,7 @@ public sealed partial class Bramblekin : ICombatant
 
         // Metabolism: Hunger always rises (slower huddled at home in winter); at the very top it starts costing Health.
         float metabolism = world.CurrentSeason == Season.Winter && IsSheltered
-            ? Home!.IsHearthLit ? World.HearthWinterMetabolism : WinterShelterMetabolism
+            ? Home!.IsHearthLit ? World.HearthWinterMetabolism : Home.IsBurrow ? BurrowWinterMetabolism : WinterShelterMetabolism
             : 1f;
         if (!IsSheltered)
             metabolism *= world.ColdFactor; // A harsh winter bites anyone caught outdoors.
