@@ -154,14 +154,14 @@ public sealed class StagBeetle : ICombatant
         Rlgl.PushMatrix();
         Rlgl.Translatef(-0.05f, 0.28f, 0f);
         Rlgl.Scalef(1.4f, 0.55f, 0.9f);
-        Raylib.DrawSphere(Vector3.Zero, BodyRadius, ShellColor);
+        Detail.Sphere(Vector3.Zero, BodyRadius, ShellColor, Position);
         Rlgl.PopMatrix();
 
         // The seam down the middle of its wing cases.
         Raylib.DrawLine3D(new Vector3(-0.6f, 0.53f, 0f), new Vector3(0.3f, 0.53f, 0f), ShellHighlight);
 
         // Head and mandibles.
-        Raylib.DrawSphere(new Vector3(0.55f, 0.25f, 0f), 0.16f, ShellColor);
+        Detail.Sphere(new Vector3(0.55f, 0.25f, 0f), 0.16f, ShellColor, Position);
         for (int side = -1; side <= 1; side += 2)
         {
             var root = new Vector3(0.65f, 0.25f, side * 0.08f);

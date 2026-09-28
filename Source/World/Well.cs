@@ -67,7 +67,7 @@ public sealed class Well
             Rlgl.PushMatrix();
             Rlgl.Translatef(Position.X + Radius + 0.45f, Position.Y, Position.Z);
             Rlgl.Scalef(1f, 0.45f, 1f);
-            Raylib.DrawSphere(Vector3.Zero, 0.35f, DirtColor);
+            Detail.Sphere(Vector3.Zero, 0.35f, DirtColor, Position);
             Rlgl.PopMatrix();
             return;
         }

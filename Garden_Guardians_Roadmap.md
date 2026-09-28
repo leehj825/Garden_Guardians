@@ -796,6 +796,25 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     kin-hour vs 1.79, Homesteaders at 2.06 vs 2.31. Before tuning:
     population 56.6, kin killings 34.2.
 
+## Phase 25: Fast-Forward You Can Watch
+At 50x a phone (debug APK) managed only 8–11x with 70 kin. Three causes,
+three fixes:
+*   ✅ **Android builds are optimized even in Debug:** the branch APKs CI
+    builds are Debug, and an unoptimized build runs the simulation 2.7x
+    slower (42x vs 115x real time on the same busy garden, desktop).
+*   ✅ **Simulation profiling (perf):** a cached grounded position per
+    walker, a per-group index of ripe crops, cached group lookups, the
+    threats near a home gathered once per decision round instead of per
+    group, and plain loops in the hot crop queries. The busy garden runs
+    ~140–150x real time on desktop, up from ~106x, with byte-identical
+    results on fixed seeds.
+*   ✅ **Level of detail in drawing:** raylib builds every sphere's
+    vertices on the CPU each frame (16×16 segments by default). Spheres
+    now take segments by their size on screen (`Detail`), and a home only
+    a few pixels across skips its cap scales, footing stones, thorn tips
+    and hearth pebbles. Drawing the whole busy garden fell from 52–66ms a
+    frame to ~18ms (software GL); close up, everything looks as before.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:
@@ -803,12 +822,10 @@ matter most:
     round the pond on a grid (Phase 17), but still steer round rocks,
     homes and the oak with a short sideways detour when stuck. Fine at
     current density.
-*   ⬜ **Speed on phones.** At 50x a phone manages 8–21x with 50–70 kin;
-    the simulation needs a profiling pass before the garden grows.
 *   ⬜ **A bigger garden.** The terrain takes its size as a parameter, but
     a dozen places (water and route grids, the obstacle grid, flood
     heights, the edge limit, drawing, the camera) assume ±50m, and spawn
-    amounts would need to scale with area. Best after the speed work.
+    amounts would need to scale with area.
 *   ⬜ **Tuning.** Every rate and threshold is a constant at the top of its
     class (`World`, `Bramblekin`, `Shelter`, the wildlife); the headless
     survival trend is the tool for revisiting them.

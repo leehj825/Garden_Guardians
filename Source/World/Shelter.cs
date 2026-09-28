@@ -320,6 +320,12 @@ public sealed class Shelter
         return spilled;
     }
 
+    /// <summary>A home looking at least this many pixels across (see <see cref="Detail"/>) is drawn in full: cap scales, footing stones, thorn tips, hearth pebbles.</summary>
+    private const float FineDetailPixels = 25f;
+
+    /// <summary>Whether the home being drawn right now is close enough for its fine detail.</summary>
+    private static bool _fineDetail = true;
+
     /// <summary>
     /// A construction site shows the twigs laid so far; a Tent is an acorn
     /// cap propped on twig legs; a House is a whole hollowed acorn under its
@@ -331,6 +337,7 @@ public sealed class Shelter
     {
         Vector3 basePosition = Position + new Vector3(0f, 0.02f, 0f);
         Color Tint(Color c) => IsAbandoned ? Blend(c, AbandonedTint, 0.6f) : c;
+        _fineDetail = Detail.Pixels(Position, Radius) >= FineDetailPixels;
 
         if (IsBurrow)
         {
@@ -397,7 +404,7 @@ public sealed class Shelter
         {
             // A hazelnut on the far side from the door, its pale base to the ground.
             Vector3 hazel = basePosition + new Vector3(-radius - 0.3f, 0.32f, 0.3f);
-            Raylib.DrawSphere(hazel, 0.33f, Tint(HazelColor));
+            Detail.Sphere(hazel, 0.33f, Tint(HazelColor));
             DrawEllipsoid(hazel + new Vector3(0f, -0.2f, 0f), 0.27f, 0.12f, Tint(HazelBaseColor));
             Raylib.DrawCylinderEx(hazel + new Vector3(0f, 0.3f, 0f), hazel + new Vector3(0.04f, 0.42f, 0f), 0.04f, 0.02f, 4, Tint(StickColor));
         }
@@ -415,10 +422,17 @@ public sealed class Shelter
         {
             // A ring of pebbles; lit, a little fire of orange and yellow tongues that shrinks as the fuel burns down.
             Vector3 hearth = World.Grounded(HearthPosition) + new Vector3(0f, 0.03f, 0f);
-            for (int i = 0; i < 7; i++)
+            if (_fineDetail)
             {
-                float angle = i * MathF.Tau / 7f;
-                Raylib.DrawSphereEx(hearth + new Vector3(MathF.Cos(angle) * 0.24f, 0.03f, MathF.Sin(angle) * 0.24f), 0.07f, 4, 6, Tint(FootingColor));
+                for (int i = 0; i < 7; i++)
+                {
+                    float angle = i * MathF.Tau / 7f;
+                    Raylib.DrawSphereEx(hearth + new Vector3(MathF.Cos(angle) * 0.24f, 0.03f, MathF.Sin(angle) * 0.24f), 0.07f, 4, 6, Tint(FootingColor));
+                }
+            }
+            else
+            {
+                Raylib.DrawCylinder(hearth, 0.3f, 0.3f, 0.06f, 7, Tint(FootingColor));
             }
             if (IsHearthLit)
             {
@@ -436,6 +450,12 @@ public sealed class Shelter
         {
             // The stone footing: grey stones set round the foot of the nut, filling in as they're laid.
             int stones = 16 * Math.Min(StonesLaid, FootingStoneCost) / FootingStoneCost;
+            if (!_fineDetail && stones > 0)
+            {
+                // Seen from afar, the stones are just a grey band round the foot.
+                Raylib.DrawCylinder(basePosition, radius * 0.95f + 0.12f, radius * 0.95f + 0.1f, 0.18f, 10, Tint(FootingColor));
+                stones = 0;
+            }
             for (int i = 0; i < stones; i++)
             {
                 float angle = i * MathF.Tau / 16f + 0.2f;
@@ -456,7 +476,8 @@ public sealed class Shelter
                 Vector3 foot = World.Grounded(Position + outward * ring);
                 Vector3 bend = foot + new Vector3(0f, 0.28f, 0f) + outward * 0.05f;
                 Raylib.DrawCylinderEx(foot, bend, 0.09f, 0.05f, 5, Tint(ThornColor));
-                Raylib.DrawCylinderEx(bend, bend + new Vector3(0f, 0.14f, 0f) + outward * 0.16f, 0.05f, 0f, 5, Tint(ThornColor));
+                if (_fineDetail)
+                    Raylib.DrawCylinderEx(bend, bend + new Vector3(0f, 0.14f, 0f) + outward * 0.16f, 0.05f, 0f, 5, Tint(ThornColor));
             }
         }
 
@@ -466,7 +487,7 @@ public sealed class Shelter
         {
             float angle = i * 0.8f;
             Vector3 berry = basePosition + new Vector3(radius + 0.2f + 0.12f * MathF.Cos(angle), 0.08f + 0.1f * (i / 4), 0.12f * MathF.Sin(angle));
-            Raylib.DrawSphere(berry, 0.08f, StoredFoodColor);
+            Detail.Sphere(berry, 0.08f, StoredFoodColor);
         }
     }
 
@@ -495,7 +516,7 @@ public sealed class Shelter
         }
         int shown = Math.Min(StoredFood, 4);
         for (int i = 0; i < shown; i++)
-            Raylib.DrawSphere(door + new Vector3(0.25f, -0.1f, (i - 1.5f) * 0.1f), 0.07f, StoredFoodColor);
+            Detail.Sphere(door + new Vector3(0.25f, -0.1f, (i - 1.5f) * 0.1f), 0.07f, StoredFoodColor);
     }
 
     /// <summary>An acorn cap: a low scaly dome with a stalk, sitting on <paramref name="rim"/>. Returns the height of its top.</summary>
@@ -504,8 +525,8 @@ public sealed class Shelter
         float height = radius * 0.5f;
         Vector3 center = rim + new Vector3(0f, height * 0.15f, 0f);
         DrawEllipsoid(center, radius, height, tint(CapColor));
-        // The scales: rings of small, low-poly bumps round the dome, staggered like a woven cup.
-        for (int ring = 0; ring < 3; ring++)
+        // The scales: rings of small, low-poly bumps round the dome, staggered like a woven cup — too small to see from afar.
+        for (int ring = 0; ring < (_fineDetail ? 3 : 0); ring++)
         {
             float lift = (0.08f + ring * 0.3f) * height;
             float across = radius * MathF.Sqrt(MathF.Max(0f, 1f - (lift / height) * (lift / height))) * 1.005f;
@@ -527,7 +548,10 @@ public sealed class Shelter
         Rlgl.PushMatrix();
         Rlgl.Translatef(center.X, center.Y, center.Z);
         Rlgl.Scalef(radius, height, radius);
-        Raylib.DrawSphereEx(Vector3.Zero, 1f, 8, 12, color);
+        if (_fineDetail)
+            Raylib.DrawSphereEx(Vector3.Zero, 1f, 8, 12, color);
+        else
+            Raylib.DrawSphereEx(Vector3.Zero, 1f, 5, 8, color);
         Rlgl.PopMatrix();
     }
 

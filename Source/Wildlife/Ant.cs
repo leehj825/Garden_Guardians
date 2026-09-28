@@ -150,11 +150,11 @@ public sealed class Ant : ICombatant
         Vector2 heading = _mover.Heading;
         var forward = new Vector3(heading.X, 0f, heading.Y) * 0.11f;
         Vector3 center = Position + new Vector3(0f, 0.07f, 0f);
-        Raylib.DrawSphere(center + forward, 0.05f, BodyColor);
-        Raylib.DrawSphere(center, 0.04f, BodyColor);
-        Raylib.DrawSphere(center - forward * 1.1f, 0.065f, BodyColor);
+        Detail.Sphere(center + forward, 0.05f, BodyColor);
+        Detail.Sphere(center, 0.04f, BodyColor);
+        Detail.Sphere(center - forward * 1.1f, 0.065f, BodyColor);
         if (IsLaden)
-            Raylib.DrawSphere(center + new Vector3(0f, 0.09f, 0f), 0.06f, LoadColor);
+            Detail.Sphere(center + new Vector3(0f, 0.09f, 0f), 0.06f, LoadColor);
     }
 }
 
@@ -190,6 +190,6 @@ public sealed class Anthill
     {
         float size = Radius * (1f + Math.Min(Stock, 60) / 120f);
         Raylib.DrawCylinder(Position, 0f, size, size * 0.8f, 10, MoundColor);
-        Raylib.DrawSphere(Position + new Vector3(0f, size * 0.78f, 0f), 0.09f, HoleColor);
+        Detail.Sphere(Position + new Vector3(0f, size * 0.78f, 0f), 0.09f, HoleColor);
     }
 }

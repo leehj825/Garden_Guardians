@@ -123,7 +123,7 @@ public sealed class GardenProp
         // Squash a full sphere into a rock-like dome via Rlgl scaling.
         Rlgl.PushMatrix();
         Rlgl.Scalef(1f, 0.6f, 1f);
-        Raylib.DrawSphere(Vector3.Zero, radius, stone);
+        Detail.Sphere(Vector3.Zero, radius, stone, Position);
         Raylib.DrawSphereWires(Vector3.Zero, radius, 8, 8, stoneEdge);
         Rlgl.PopMatrix();
 
@@ -161,7 +161,7 @@ public sealed class GardenProp
         var stemBase = new Vector3(0, -stemHeight / 2f, 0);
         var stemTop = new Vector3(0, stemHeight / 2f, 0);
         Raylib.DrawCylinder(stemBase, stemRadius, stemRadius, stemHeight, 8, stemColor);
-        Raylib.DrawSphere(stemTop + new Vector3(0, puffRadius * 0.6f, 0), puffRadius, puffColor);
+        Detail.Sphere(stemTop + new Vector3(0, puffRadius * 0.6f, 0), puffRadius, puffColor, Position);
 
         Rlgl.PopMatrix();
     }

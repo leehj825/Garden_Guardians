@@ -97,6 +97,6 @@ public sealed partial class Bramblekin
         Raylib.DrawCylinderEx(grip, tip, 0.02f, 0.01f, 4, RodColor);
         var bob = new Vector3(tip.X + facing.X * 0.2f, WaterMap.SurfaceHeight + 0.02f, tip.Z + facing.Y * 0.2f);
         Raylib.DrawLine3D(tip, bob, LineColor);
-        Raylib.DrawSphere(bob, 0.04f, new Color(220, 60, 50, 255));
+        Detail.Sphere(bob, 0.04f, new Color(220, 60, 50, 255));
     }
 }

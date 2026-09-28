@@ -33,6 +33,7 @@ public sealed partial class World
 
     public void Draw(Camera3D camera)
     {
+        Detail.BeginFrame(camera);
         var (seasonTint, seasonAmount) = SeasonTint;
         Terrain.Draw(seasonTint, seasonAmount);
         DrawTerritories(camera);

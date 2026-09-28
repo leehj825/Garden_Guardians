@@ -101,6 +101,6 @@ public sealed partial class Bramblekin
     private void DrawPoultice(Vector2 facing)
     {
         var hand = Position + new Vector3(facing.X * 0.25f, BodyHeight * 0.55f, facing.Y * 0.25f);
-        Raylib.DrawSphere(hand, 0.07f, PoulticeColor);
+        Detail.Sphere(hand, 0.07f, PoulticeColor);
     }
 }

@@ -46,7 +46,7 @@ public sealed class Snare
         {
             Raylib.DrawLine3D(bend, Position + new Vector3(0f, 0.08f, 0f), NooseColor);
             Raylib.DrawCircle3D(Position + new Vector3(0f, 0.04f, 0f), 0.12f, new Vector3(1, 0, 0), 90f, NooseColor);
-            Raylib.DrawSphere(Position + new Vector3(0f, 0.03f, 0f), 0.035f, BaitColor);
+            Detail.Sphere(Position + new Vector3(0f, 0.03f, 0f), 0.035f, BaitColor);
         }
         else
         {

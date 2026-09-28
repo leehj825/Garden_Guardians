@@ -155,6 +155,6 @@ public sealed class Grub : ICombatant
 
         Vector2 heading = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;
         Vector3 snout = Position + new Vector3(heading.X, radius * 0.6f, heading.Y) * radius;
-        Raylib.DrawSphere(snout, radius * 0.4f, SnoutColor);
+        Detail.Sphere(snout, radius * 0.4f, SnoutColor);
     }
 }
