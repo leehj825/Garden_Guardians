@@ -93,6 +93,7 @@ public sealed partial class World
             UpdateCrafts(group);
             PlaceSnares(group);
             TendHerd(group);
+            SendForHoney(group);
             UpdateWells(group);
             UpdateCulture(group);
             group.Counsel = Counsel(group, leader);

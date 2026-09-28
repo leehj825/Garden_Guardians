@@ -857,6 +857,23 @@ three fixes:
     old age 61.2 vs 53.2. Clans fence ~20 pens a run and collect ~600
     drops of honeydew; ants take ~12 aphids, the spider ~1.
 
+## Phase 29: The Beehive in the Oak
+*   ✅ **Honey:** a hive on the oak fills with combs spring to autumn; bold
+    kin climb for them, and Leaders in reach send their boldest. A comb
+    is the richest food (fills 20 more, stores as two, never spoils) and
+    the best courtship gift (twice the sway).
+*   ✅ **Bees:** more than half the time the bees rouse and chase the taker,
+    stinging, until it gets indoors or swats them.
+*   ✅ **Smoking** (a craft, after a hearth and a first comb): the bees
+    seldom rouse.
+*   **Tuning:** at first only idle kin went, and a run saw ~8 combs; now
+    Leaders send their boldest (15% a decision), and a run sees ~85, with
+    ~30 swarms roused and ~70 stings.
+*   **Benchmark (24 seeds × 7800s against Phase 28 on the same seeds):**
+    population 59.9 vs 56.4 time-averaged (the difference is within the
+    spread between seeds); starvation 37.7 vs 31.4; predators 34.2 vs
+    31.8; kin killed by kin 22.9 vs 24.6; old age 67.8 vs 63.5.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:

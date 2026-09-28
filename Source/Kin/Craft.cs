@@ -58,4 +58,7 @@ public enum Craft
 
     /// <summary>Herding aphids in a pen by the main home for their honeydew — steady food that keeps (see World.Herding).</summary>
     Herding = 32768,
+
+    /// <summary>Smoking out the bees with a brand from the hearth before taking their honey: they seldom rouse (see World.Beehive).</summary>
+    Smoking = 65536,
 }

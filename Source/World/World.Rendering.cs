@@ -115,6 +115,7 @@ public sealed partial class World
         DrawAnts(camera);
         DrawPondLife(camera);
         DrawOwl(camera);
+        DrawBeehive(camera);
 
         // Group tethers: a faint line in the group's colour from every
         // follower's head to its Leader's, so who runs with whom reads at a

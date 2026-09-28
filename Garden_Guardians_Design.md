@@ -785,7 +785,7 @@ overhead camera:
     inherited by children (both parents' crafts), carried along by anyone
     who leaves, and taught to allies (odds 0.05 per decision, farming
     first, then granary, spears, palisade, grain, mushrooms, cress,
-    fishing, stonework, cisterns, wells, slings, hearth, snares, herb-lore, herding). When a clan is ready for several, the one it
+    fishing, stonework, cisterns, wells, slings, hearth, snares, herb-lore, herding, smoking). When a clan is ready for several, the one it
     works out is picked at random.
     *   **Granary** (needs farming and a House): each House gets a round
         granary beside it and holds half as much again in store.
@@ -877,6 +877,10 @@ overhead camera:
         herd dies out gathers a new pair in time; one that moves house
         drives its herd along; a pen whose clan is gone empties as the herd
         strays.
+    *   **Smoking the bees** (needs a hearth, and a comb of honey already
+        taken — stings and all): with a lit hearth at home to take a brand
+        from, the clan's honey-takers rouse the bees one time in ten
+        instead of more than half.
 *   The Stats tab and the clan card list a clan's crafts; the headless
     summary counts them. Over 13 years a clan works out about six and
     teaches eleven; most clans end up knowing all of them.
@@ -1191,6 +1195,19 @@ overhead camera:
     where the trunk is now.
 
 ## Food & Wildlife
+*   **The beehive in the oak:** a papery hive hangs on the trunk, facing
+    the garden. From spring to autumn the bees make a comb of honey about
+    every 45s (faster in summer), up to eight. By day, a bold Bramblekin
+    (Courage 0.45 or more, fed and fit) within 45m may go for one on its
+    own account after a rest, and a Leader living in reach sends its
+    boldest free member now and then. It climbs up from the foot of the
+    trunk (2.5s) and comes down with a comb — the richest food there is:
+    eaten, it fills 20 more than anything else; stored, it counts as two;
+    given as a courtship gift, it sways the odds twice as much; and it
+    never spoils. More than half the time the bees rouse: a swarm of five
+    chases the taker for 14s, stinging for 2 Health, until it gets
+    indoors; kin can swat them (one bee a blow) or run. A clan that knows
+    to smoke them out seldom rouses them (see Crafts).
 *   **Food:** wild Berries grow passively (one every 0.8s, up to 75 on
     the map, both scaled by the season), about two-thirds in eight Berry
     Patches around Dandelions. Besides them, all at their season's pace

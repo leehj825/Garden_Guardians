@@ -29,6 +29,9 @@ public enum FoodShardKind
 
     /// <summary>A drop of honeydew from a clan's aphids (see <see cref="Craft.Herding"/>): sweet, and slow to spoil. Amber.</summary>
     Honeydew,
+
+    /// <summary>A comb of honey from the hive in the oak (see World.Beehive): the richest food there is, and it never spoils.</summary>
+    Honey,
 }
 
 /// <summary>
@@ -89,7 +92,12 @@ public sealed class FoodShard
         IsCarried = false;
         ClaimedBy = null;
         ClaimTimer = 0f;
-        DespawnTimer = kind == FoodShardKind.Honeydew ? DespawnLifespan * 4f : DespawnLifespan;
+        DespawnTimer = kind switch
+        {
+            FoodShardKind.Honeydew => DespawnLifespan * 4f,
+            FoodShardKind.Honey => DespawnLifespan * 20f,
+            _ => DespawnLifespan,
+        };
         IsActive = true;
     }
 
@@ -135,6 +143,11 @@ public sealed class FoodShard
                 Detail.Sphere(groundPoint + new Vector3(0.05f, 0.08f, 0), 0.08f, new Color(180, 195, 205, 255));
                 Detail.Sphere(groundPoint + new Vector3(-0.06f, 0.07f, 0), 0.06f, new Color(160, 175, 190, 255));
                 Raylib.DrawCylinderEx(groundPoint + new Vector3(-0.1f, 0.07f, 0), groundPoint + new Vector3(-0.22f, 0.07f, 0), 0.02f, 0.07f, 4, new Color(140, 155, 170, 255));
+                return;
+            case FoodShardKind.Honey:
+                // A golden comb: a little hexagonal slab.
+                Raylib.DrawCylinder(groundPoint + new Vector3(0, 0.02f, 0), 0.16f, 0.16f, 0.1f, 6, new Color(230, 165, 35, 255));
+                Raylib.DrawCylinder(groundPoint + new Vector3(0, 0.12f, 0), 0.1f, 0.1f, 0.02f, 6, new Color(250, 210, 90, 255));
                 return;
             case FoodShardKind.Honeydew:
                 // A glossy amber drop.

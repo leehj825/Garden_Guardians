@@ -35,6 +35,9 @@ public sealed class KinGroup
     /// <summary>Until when (game seconds) the clan is awake after an alarm.</summary>
     public float AlarmUntil { get; set; }
 
+    /// <summary>Combs of honey its members have taken from the hive (see World.Beehive).</summary>
+    public int HoneyTaken { get; set; }
+
     public string ShortId => Id.ToString("N")[..4];
 
     /// <summary>The group's name — "Thornwood clan", after the family of the Leader it was founded under (see World.NameGroup). Null for a moment while it's being founded.</summary>

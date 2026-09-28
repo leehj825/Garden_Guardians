@@ -666,6 +666,10 @@ public sealed partial class Bramblekin : ICombatant
         if (UpdateWaterCarry(deltaTime, world))
             return;
 
+        // 2c') A honey foray under way is seen through.
+        if (UpdateHoneyForay(deltaTime, world))
+            return;
+
         // 2d) Night: bed — for all but the watch, raiders and anyone on an errand.
         if (UpdateNight(deltaTime, world))
             return;
@@ -752,6 +756,9 @@ public sealed partial class Bramblekin : ICombatant
         if (world.Heron is { IsLanded: true } heron &&
             GroundMover.HorizontalDistance(Position, heron.Position) <= (heron.IsStill ? Heron.StillSightRadius : Heron.ThreatRadius))
             Consider(heron, allyDefense: false);
+        // Bees roused from the hive.
+        if (world.Swarms.Count > 0 && world.NearestSwarm(Position, 4f) is { } swarm)
+            Consider(swarm, allyDefense: false);
         // The Owl, down on the ground over its catch.
         if (world.Owl is { IsLanded: true } owl && GroundMover.HorizontalDistance(Position, owl.Position) <= Owl.ThreatRadius)
             Consider(owl, allyDefense: true);

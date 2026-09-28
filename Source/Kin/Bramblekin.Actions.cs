@@ -59,7 +59,8 @@ public sealed partial class Bramblekin
         {
             world.ConsumeFood(food);
             _carried = null;
-            Hunger = MathF.Max(0f, Hunger - FoodNourishment - (_mealCooked ? World.CookedNourishmentBonus : 0f));
+            Hunger = MathF.Max(0f, Hunger - FoodNourishment - (_mealCooked ? World.CookedNourishmentBonus : 0f) -
+                                   (food.Kind == FoodShardKind.Honey ? World.HoneyNourishmentBonus : 0f));
             QuenchWith(food.Kind);
             Heal(FoodHealing + (_mealCooked ? World.CookedHealingBonus : 0));
             if (_mealCooked)

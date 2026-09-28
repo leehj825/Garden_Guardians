@@ -139,7 +139,9 @@ public sealed partial class World
 
         taker.ReceiveFood(food);
         CourtshipGifts++;
-        odds += CourtshipGiftChance * (0.5f + giver.Personality.Persuasiveness);
+        odds += CourtshipGiftChance * (0.5f + giver.Personality.Persuasiveness) * (food.Kind == FoodShardKind.Honey ? 2f : 1f);
+        if (food.Kind == FoodShardKind.Honey)
+            NoteHoneyGift(); // The sweetest gift there is.
         SetMutualRelationship(giver, taker, RelationshipState.Friend);
         QueueFloatingText(taker.Position, "Gift", CoupleTextColor);
         return true;

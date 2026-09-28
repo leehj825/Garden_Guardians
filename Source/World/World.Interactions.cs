@@ -161,6 +161,7 @@ public sealed partial class World
                     Hornet => "was stung to death by hornets",
                     GardenGuardians.Heron => "was speared by the heron at the water's edge",
                     GardenGuardians.Owl => "was taken by the owl in the night",
+                    BeeSwarm => "was stung to death by bees",
                     Ant => "was bitten to death by ants",
                     _ => "was killed by a predator",
                 };

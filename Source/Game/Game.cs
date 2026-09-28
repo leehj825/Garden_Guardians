@@ -525,6 +525,9 @@ public static partial class Game
             $"{world.AphidsLostToSpider} to the spider, {world.AphidsRustled} rustled in raids; at the end {world.Groups.Count(g => World.Knows(g, Craft.Herding))} clans herd, " +
             $"{world.Pens.Sum(p => p.Aphids)} aphids in {world.Pens.Count(p => p.Aphids > 0)} pens.");
         Console.WriteLine(
+            $"Honey: {world.HoneyTaken} combs taken from the hive ({world.HiveHoney} left in it), {world.SwarmsRoused} swarms roused, {world.BeeStings} stings, " +
+            $"{world.BeesSwatted} bees swatted; {world.HoneyGifts} combs given as courtship gifts; {world.Groups.Count(g => World.Knows(g, Craft.Smoking))} clans smoke the bees out.");
+        Console.WriteLine(
             $"Nights: {world.NightsPassed} nights; {world.WatchesPosted} watches posted, {world.AlarmsRaised} alarms raised, {world.NightRaids} raids set out in the dark. " +
             $"The owl came out {world.OwlVisits} nights, struck {world.OwlStrikes} times ({world.OwlKills} killed), was driven off {world.OwlsDrivenOff} times and brought down {world.OwlsKilled} times.");
         Console.WriteLine(
