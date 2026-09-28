@@ -564,6 +564,27 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     to the screen), so they're readable up close and unchanged at the
     whole-map view.
 
+## Phase 17: Water, Harvests, Stone and Branch
+*   ✅ **Brave, not reckless:** however brave, a fighter breaks off while
+    it can survive one more blow, and backs away on guard (safe from the
+    spider's pounce). Benchmark vs Phase 15: deaths to predators 27.3 vs
+    34.1 (back to where they were before the new traits), population 53.6
+    vs 52.2.
+*   ✅ **The whole map:** no draw distance; zooming out stops once the
+    garden fits the screen; the mouse wheel zooms on desktop.
+*   ✅ **Water you can't walk on:** nothing that walks enters the pond;
+    walkers find their way round it (A* on a 1m grid).
+*   ✅ **Food from many places:** grass seed, mushrooms, watercress and
+    fish join the berries, acorns and meat, each with its own place and
+    season.
+*   ✅ **Four crops:** berry bushes, grain patches, mushroom beds and
+    cress beds, each its own craft, season and lifespan; crops by the
+    pond are watered.
+*   ✅ **Fishing** from the shore.
+*   ✅ **Stones and branches:** Builders carry stones home for stone
+    footings (more store, dry in a flood, no ants) and drag branches home
+    for palisades, which now have to be built.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:
