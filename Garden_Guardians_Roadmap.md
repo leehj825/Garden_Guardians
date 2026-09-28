@@ -529,7 +529,10 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
 *   ✅ **The pond:** permanent water in the lowest ground; no building or
     spawning in it, wading at half pace; floods rise from it.
 *   ✅ **The Giant Oak:** a trunk rising out of sight at the back edge,
-    with roots, shade, and acorns falling in autumn.
+    with roots, shade, and acorns falling in autumn (about 26 a year).
+*   *Result* (24 seeds × 13 years, no exceptions): average population
+    57.5 vs 65.5 before (within the run-to-run spread), starvation 48 vs
+    59, predators 26 vs 30, kin killings 31 vs 25, old age unchanged.
 
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
