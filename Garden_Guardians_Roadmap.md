@@ -678,6 +678,22 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     rocks come to supply stone; by the oak, wood.
 *   ✅ **Three gardens:** a Garden button beside New on the History screen
     keeps the open garden and opens the next of three (fresh if empty).
+*   **Benchmark (48 seeds × 7800s against the Phase 20 build on the same
+    seeds, no crashes):** population 54.9 ± 2.8 vs 54.2 ± 2.7 — no change
+    (24 seeds weren't enough to tell: this build's first 24 averaged 46.1,
+    its next 24 63.8). Starvation 49.4 vs 56.9 a run and kin killed by kin
+    19.4 vs 31.6, with deaths of old age up to 48.8 from 43.8; deaths to
+    predators 32.4 vs 29.6 — the Heron spears 1.9 a run, and the Wolf
+    Spider takes 14.3 (was 12.4) as frog hunters busy themselves near the
+    water, while hornets sting 16.3 to death (was 17.3). A run sees 129
+    pebbles loosed (91 hits, 60 kills; hornets swatted 47, was 33), 67
+    frogs caught, 13 heron visits (27 lunges; driven off 8 times, brought
+    down once), 200 seed corn kept and 93 sown (60 eaten in famine), and
+    12 stones and branches hauled between allies. The first sling build
+    stood slingers off at point-blank range and never went for nests —
+    hornet deaths didn't move until slingers struck close up and Guards
+    cleared nests near home; and until the Heron took a moment to get
+    airborne, nobody could bring it down.
 
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
