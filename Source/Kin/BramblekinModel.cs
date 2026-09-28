@@ -26,7 +26,18 @@ public enum BramblekinClip
 /// </summary>
 internal static unsafe class BramblekinModel
 {
-    private const string AssetPath = "Assets/Models/Bramblekin/";
+    /// <summary>
+    /// On Android, raylib's own file loader reads this path straight out of
+    /// the APK via AAssetManager, relative to its "assets/" root, so it must
+    /// stay exactly as packaged. Everywhere else, the process's current
+    /// directory is whatever launched it — not necessarily the app's own
+    /// folder — so the relative path is resolved against
+    /// <see cref="AppContext.BaseDirectory"/> instead (see
+    /// <see cref="SaveSystem.DefaultPath"/> for the same reasoning).
+    /// </summary>
+    private static readonly string AssetPath = OperatingSystem.IsAndroid()
+        ? "Assets/Models/Bramblekin/"
+        : Path.Combine(AppContext.BaseDirectory, "Assets", "Models", "Bramblekin") + Path.DirectorySeparatorChar;
 
     /// <summary>The rig's height in its own units (see the FBX/glb bounding box) — divide by this to scale to <see cref="Bramblekin.BodyHeight"/> meters.</summary>
     public const float RawHeightUnits = 99.98168f;
@@ -69,6 +80,8 @@ internal static unsafe class BramblekinModel
     private static ModelAnimation LoadClip(string fileName)
     {
         Span<ModelAnimation> animations = Raylib.LoadModelAnimations(AssetPath + fileName);
+        if (animations.Length == 0)
+            throw new InvalidOperationException($"No animation found in '{AssetPath + fileName}' — is the Assets folder missing or not copied next to the app?");
         return animations[0];
     }
 
