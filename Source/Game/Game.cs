@@ -528,6 +528,9 @@ public static partial class Game
             $"Honey: {world.HoneyTaken} combs taken from the hive ({world.HiveHoney} left in it), {world.SwarmsRoused} swarms roused, {world.BeeStings} stings, " +
             $"{world.BeesSwatted} bees swatted; {world.HoneyGifts} combs given as courtship gifts; {world.Groups.Count(g => World.Knows(g, Craft.Smoking))} clans smoke the bees out.");
         Console.WriteLine(
+            $"Feasts: {world.FeastsHeld} harvest feasts held, {world.FeastGuests} guests from other clans came, {world.FeastCouples} couples met across clans at one, " +
+            $"{world.FeastAlliances} alliances made over one.");
+        Console.WriteLine(
             $"Nights: {world.NightsPassed} nights; {world.WatchesPosted} watches posted, {world.AlarmsRaised} alarms raised, {world.NightRaids} raids set out in the dark. " +
             $"The owl came out {world.OwlVisits} nights, struck {world.OwlStrikes} times ({world.OwlKills} killed), was driven off {world.OwlsDrivenOff} times and brought down {world.OwlsKilled} times.");
         Console.WriteLine(
@@ -1073,7 +1076,7 @@ public static partial class Game
             $"Bramblekin {living}: {solitary} solitary, {world.Groups.Count} groups (largest {largestGroup}, {world.Groups.Count(World.KnowsFarming)} farming)   " +
             $"Alliances {world.CurrentAlliances}   Wars {world.CurrentWars}",
             $"Foraging {Count(BramblekinState.Foraging) + Count(BramblekinState.Hunting)}   Eating {Count(BramblekinState.Eating)}   Drinking {Count(BramblekinState.Drinking)}   " +
-            $"Fleeing {Count(BramblekinState.Fleeing)}   Fighting {Count(BramblekinState.Fighting)}   Robbing {Count(BramblekinState.Attacking)}   Asleep {Count(BramblekinState.Sleeping)}{(world.Owl is { IsLeaving: false } ? "   Owl out!" : "")}",
+            $"Fleeing {Count(BramblekinState.Fleeing)}   Fighting {Count(BramblekinState.Fighting)}   Robbing {Count(BramblekinState.Attacking)}   Asleep {Count(BramblekinState.Sleeping)}{(world.Feasts.Count > 0 ? $"   Feasting {Count(BramblekinState.Feasting)}" : "")}{(world.Owl is { IsLeaving: false } ? "   Owl out!" : "")}",
             $"Arrived {world.Arrivals}   Died: starved {world.DeathsByStarvation}, thirst {world.DeathsByThirst}, old age {world.DeathsByOldAge}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}, sickness {world.DeathsBySickness}   Sick {world.SickCount}",
             $"Born {world.Births} (gen {world.MaxGeneration})   Couples {world.LivingCouples}   Politics: {world.Departures} left, {world.Splinters} splits, {world.Coups} coups, {world.Exiles} exiles   Raids {world.StoreRaids}",
         };

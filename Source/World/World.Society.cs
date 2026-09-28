@@ -210,7 +210,7 @@ public sealed partial class World
             return TryCourt(a, b);
         }
 
-        if (TryStartRobbery(a, b) || TryStartRobbery(b, a))
+        if (!AtSameFeast(a, b) && (TryStartRobbery(a, b) || TryStartRobbery(b, a)))
             return false;
 
         RelationshipState? relationship = a.RelationshipTo(b);

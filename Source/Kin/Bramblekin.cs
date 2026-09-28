@@ -670,6 +670,10 @@ public sealed partial class Bramblekin : ICombatant
         if (UpdateHoneyForay(deltaTime, world))
             return;
 
+        // 2c'') A harvest feast within reach.
+        if (UpdateFeast(deltaTime, world))
+            return;
+
         // 2d) Night: bed — for all but the watch, raiders and anyone on an errand.
         if (UpdateNight(deltaTime, world))
             return;

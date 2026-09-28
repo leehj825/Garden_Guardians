@@ -90,6 +90,8 @@ public sealed partial class World
         }
         if (Owl is { IsSlain: false, IsLeaving: false } owl)
             shots.Add(new Shot(owl.IsLanded ? "The owl has struck" : "The owl is out hunting", owl.IsLanded ? 8f : 4f, null, Grounded(owl.Position)));
+        foreach (Feast feast in _feasts)
+            shots.Add(new Shot($"A harvest feast in {feast.Host.Title}", 5f + 0.2f * Math.Min(feast.Attended.Count, 15), null, feast.Site));
         if (Heron is { IsLanded: true } heron)
             shots.Add(new Shot("The heron stalks the shallows", 3.5f, heron, heron.Position));
 

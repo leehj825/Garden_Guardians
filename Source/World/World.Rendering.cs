@@ -73,6 +73,7 @@ public sealed partial class World
         }
         DrawSnares(camera);
         DrawPens(camera);
+        DrawFeasts(camera);
 
         foreach (Twig twig in Twigs)
         {

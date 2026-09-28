@@ -983,6 +983,24 @@ overhead camera:
     line between their main homes; the HUD counts current alliances and
     wars, and the Kin Inspector shows its group's.
 
+## Festivals: Harvest Feasts
+*   **Holding one:** at an autumn decision, by day, a clan with a good
+    harvest in store (at least 12, and 3 a member) that isn't defending
+    or raiding holds a feast, with odds 0.25 × (0.5 + its Leader's
+    Sociability) — once a year. It lays out 3 pieces from its stores and
+    sets up tables by its main home, ringed with bunting in its colours
+    (lanterns glow after dark), for 40s. The Leader gains standing, and
+    the Director puts the feast in its spotlight.
+*   **Who comes:** the clan, its allies, and neighbours at peace within
+    40m whose grievance is low — any grown member within 45m, unless on
+    the night watch, a raid or an errand. A peckish guest is fed from the
+    host's stores on arrival; everyone mills about the tables.
+*   **What comes of it:** at a feast, kin of different clans can court
+    even if their clans aren't allies (and nobody robs anybody). When it
+    ends, each clan that came has 4 less grievance with the host, and a
+    neutral clan that came two or more strong becomes an ally with odds
+    0.3. The chronicle records the feast and its guests.
+
 ## Weather
 *   **Good and bad years:** each season rolls its weather. A Winter is
     **harsh** 20% of the time: food at 0.7× even the usual winter pace,

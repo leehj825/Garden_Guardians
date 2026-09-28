@@ -303,6 +303,7 @@ public sealed partial class World
 
         if (CurrentSeason != Season.Winter)
             DrawFireflies(camera, darkness);
+        DrawFeastLanterns(darkness);
 
         Owl?.DrawEyes(darkness);
 

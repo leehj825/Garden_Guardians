@@ -94,6 +94,7 @@ public sealed partial class World
             PlaceSnares(group);
             TendHerd(group);
             SendForHoney(group);
+            TryHoldFeast(group, leader);
             UpdateWells(group);
             UpdateCulture(group);
             group.Counsel = Counsel(group, leader);

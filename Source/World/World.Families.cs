@@ -45,7 +45,8 @@ public sealed partial class World
 
         KinGroup? groupA = GroupOf(a);
         KinGroup? groupB = GroupOf(b);
-        if (groupA is not null && groupB is not null && groupA != groupB && !AreAllied(groupA.Id, groupB.Id))
+        bool feastMatch = groupA is not null && groupB is not null && groupA != groupB && AtSameFeast(a, b);
+        if (groupA is not null && groupB is not null && groupA != groupB && !AreAllied(groupA.Id, groupB.Id) && !feastMatch)
             return false;
 
         float sociability = (a.Personality.Sociability + b.Personality.Sociability) / 2f;
@@ -105,6 +106,8 @@ public sealed partial class World
             MoveInTogether(groupA!, a, b);
         }
 
+        if (feastMatch)
+            NoteFeastCourtship();
         Bramblekin.Pair(a, b);
         SetMutualRelationship(a, b, RelationshipState.Friend);
         CouplesFormed++;

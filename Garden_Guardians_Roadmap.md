@@ -874,6 +874,20 @@ three fixes:
     spread between seeds); starvation 37.7 vs 31.4; predators 34.2 vs
     31.8; kin killed by kin 22.9 vs 24.6; old age 67.8 vs 63.5.
 
+## Phase 30: Harvest Feasts
+*   ✅ **Feasts:** a clan with a good autumn harvest holds a feast by its
+    home and invites its allies and friendly neighbours; guests are fed
+    from its stores, kin from different clans court there, and grudges
+    cool — a neutral clan that came in numbers may become an ally.
+*   **Tuning:** first cut, clans needed 2 stored a member and fed any
+    guest with a little hunger; starvation rose by 4 a run, so now it
+    takes 3 a member and only the properly peckish are fed.
+*   **Benchmark (24 seeds × 7800s against Phase 29):** ~21 feasts a run
+    with ~280 guests from other clans, ~20 couples meeting across clans
+    and ~6 alliances made over one. Population 57.0 vs 59.9; starvation
+    38.9 vs 37.7; kin killed by kin 21.4 vs 22.9; predators 36.6 vs 34.2;
+    old age 64.2 vs 67.8.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:
