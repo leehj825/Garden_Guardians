@@ -888,6 +888,26 @@ three fixes:
     38.9 vs 37.7; kin killed by kin 21.4 vs 22.9; predators 36.6 vs 34.2;
     old age 64.2 vs 67.8.
 
+## Phase 31: Shrines and Beliefs
+*   ✅ **Beliefs:** clans come to revere the Oak, the Pond, the Spider or
+    the Moon from what they've lived through, and raise a shrine to it
+    that binds them closer (steadier loyalty).
+*   ✅ **Between clans:** shared beliefs soothe grievances and help
+    alliances; rival ones slowly sour neighbours; a feast can convert.
+*   ✅ **Prophets:** a persuasive rebel with a vision leads a schism.
+*   **Fixed on the way:** a schism split a clan while the Leaders' round
+    was still going through the clans (a crash); visions are now acted on
+    once every clan has decided, like plots.
+*   **Tuning:** at first a prophet needed followers already set to leave
+    and a run saw 0.1 schisms; with the restless following, 0.008 a
+    decision gave 7 a run — now 0.0015 gives about 1.7.
+*   **Benchmark (24 seeds × 7800s against Phase 30):** ~7.5 beliefs taken
+    up a run, ~27 shrines raised (daughter villages raise their own),
+    1.7 schisms. Departures 6.7 vs 7.4 and coups 1.2 vs 1.4 (shrines
+    steady loyalty); splinters 4.0 vs 2.6 (schisms among them); wars 0.4
+    vs 0.3 a run. Population 51.5 vs 57.0; starvation 35.0 vs 38.9;
+    kin killed by kin 20.8 vs 21.4.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:

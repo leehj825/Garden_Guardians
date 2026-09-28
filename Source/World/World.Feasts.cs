@@ -187,6 +187,7 @@ public sealed partial class World
                     continue;
                 GroupRelation relation = RelationBetween(feast.Host.Id, clan);
                 relation.Grievance = MathF.Max(0f, relation.Grievance - FeastGrudgeRelief);
+                MaybeConvertAtFeast(feast.Host, guests);
                 int came = 0;
                 foreach (Bramblekin member in guests.Members)
                 {

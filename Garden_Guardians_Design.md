@@ -1001,6 +1001,31 @@ overhead camera:
     neutral clan that came two or more strong becomes an ally with odds
     0.3. The chronicle records the feast and its guests.
 
+## Shrines and Beliefs
+*   **Coming to a belief:** at each decision, a settled clan with no belief
+    may come to revere something it has lived close to, with odds 0.006 ×
+    (0.5 + half its Leader's Intelligence and Persuasiveness): **the Great
+    Oak** (living within 35m of it, or having tasted its honey), **the
+    Still Water** (living within 12m of the pond), **the Spider** (having
+    brought it down, or lost kin to danger near home), or **the Moon**
+    (keeping a hearth through the nights). A guest clan with no belief of
+    its own may take up its host's at a feast (odds 0.2). Daughter
+    villages and splinters keep their parent's belief.
+*   **The shrine:** the clan raises a shrine by its main home over a few
+    decisions — a small cairn in a ring of pebbles, topped with its token
+    (a carved acorn, a blue pebble, an eight-legged figure, a pale disc)
+    and a pennant in its colours, with a candle that glows after dark.
+    Once raised, it binds the clan: every member's loyalty settles about
+    0.08 higher, so fewer rebel.
+*   **Between clans:** neighbours who share a belief let grievances fade
+    twice as fast and are twice as likely to ally; neighbours with rival
+    beliefs slowly build up grievance (about one point a year).
+*   **Prophets and schisms:** now and then (0.0015 a decision) a
+    persuasive, rebellious member of a clan with a shrine has a vision of
+    another belief, and leads the restless (the rebellious, or the less
+    loyal) out to found a new clan and raise a shrine to it — a splinter
+    with some bad blood.
+
 ## Weather
 *   **Good and bad years:** each season rolls its weather. A Winter is
     **harsh** 20% of the time: food at 0.7× even the usual winter pace,

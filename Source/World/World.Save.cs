@@ -45,6 +45,7 @@ public sealed partial class World
                 Dowry = g.Dowry, SeedCorn = g.SeedCorn, NextRaidAt = g.NextRaidAt,
                 Martial = g.Culture.Martial, Hunting = g.Culture.Hunting, Farming = g.Culture.Farming, Leading = g.Culture.Leading,
                 SpidersSlain = g.SpidersSlain,
+                Belief = g.Belief, Shrine = g.Shrine is { } shrine ? shrine : null, ShrineRaised = g.ShrineRaised,
                 Dangers = g.Dangers.Places.Select(p => new PlaceSave(p.Where, p.When)).ToList(),
                 FoodSpots = g.FoodSpots.Places.Select(p => new PlaceSave(p.Where, p.When)).ToList(),
             }).ToList(),
@@ -209,6 +210,9 @@ public sealed partial class World
             if (g.Leading == Tradition.None)
                 group.Culture.UpdateLeading(); // An older save, from before the name was kept.
             group.SpidersSlain = g.SpidersSlain;
+            group.Belief = g.Belief;
+            group.Shrine = g.Shrine is { } shrine ? shrine : null;
+            group.ShrineRaised = g.ShrineRaised;
             group.Dangers.Load(g.Dangers.Select(p => ((Vector3)p.Where, p.When)));
             group.FoodSpots.Load(g.FoodSpots.Select(p => ((Vector3)p.Where, p.When)));
             if (g.Leader is { } leaderId && kin.TryGetValue(leaderId, out Bramblekin? leader))

@@ -531,6 +531,10 @@ public static partial class Game
             $"Feasts: {world.FeastsHeld} harvest feasts held, {world.FeastGuests} guests from other clans came, {world.FeastCouples} couples met across clans at one, " +
             $"{world.FeastAlliances} alliances made over one.");
         Console.WriteLine(
+            $"Beliefs: {world.BeliefsFound} taken up ({world.Conversions} at a feast), {world.ShrinesRaised} shrines raised, {world.Schisms} schisms; at the end " +
+            string.Join(", ", Enum.GetValues<Belief>().Where(b => b != Belief.None).Select(b => $"{world.Groups.Count(g => g.Belief == b)} revere {World.Describe(b)}")) +
+            $", {world.Groups.Count(g => g.Belief == Belief.None)} nothing.");
+        Console.WriteLine(
             $"Nights: {world.NightsPassed} nights; {world.WatchesPosted} watches posted, {world.AlarmsRaised} alarms raised, {world.NightRaids} raids set out in the dark. " +
             $"The owl came out {world.OwlVisits} nights, struck {world.OwlStrikes} times ({world.OwlKills} killed), was driven off {world.OwlsDrivenOff} times and brought down {world.OwlsKilled} times.");
         Console.WriteLine(

@@ -41,6 +41,15 @@ public sealed class KinGroup
     /// <summary>The year it last held a harvest feast (see World.Feasts).</summary>
     public int LastFeastYear { get; set; }
 
+    /// <summary>What the clan reveres (see World.Beliefs).</summary>
+    public Belief Belief { get; set; }
+
+    /// <summary>Where its shrine stands (or is going up), if it has one.</summary>
+    public Vector3? Shrine { get; set; }
+
+    /// <summary>How far its shrine is raised, 0..1.</summary>
+    public float ShrineRaised { get; set; }
+
     public string ShortId => Id.ToString("N")[..4];
 
     /// <summary>The group's name — "Thornwood clan", after the family of the Leader it was founded under (see World.NameGroup). Null for a moment while it's being founded.</summary>

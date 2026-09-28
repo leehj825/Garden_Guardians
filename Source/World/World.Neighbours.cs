@@ -150,7 +150,7 @@ public sealed partial class World
                 (stale ??= new()).Add(key);
                 continue;
             }
-            relation.Grievance = MathF.Max(0f, relation.Grievance - GrievanceFadePerSecond * deltaTime);
+            relation.Grievance = MathF.Max(0f, relation.Grievance + (BeliefGrievanceDrift(key.Item1, key.Item2) - GrievanceFadePerSecond) * deltaTime);
         }
         if (stale is not null)
         {
@@ -252,6 +252,8 @@ public sealed partial class World
                      leader.RelationshipTo(otherLeader) == RelationshipState.Friend;
         if (close)
             chance *= 3f;
+        if (ShareBelief(group, other))
+            chance *= SharedBeliefAllianceFactor;
         if (Rng.NextDouble() >= chance)
             return false;
 

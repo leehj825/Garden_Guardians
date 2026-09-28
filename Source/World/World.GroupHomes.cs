@@ -324,6 +324,7 @@ public sealed partial class World
             NameGroup(daughter);
             daughter.SettleTarget = FindOpenGround(house.Position);
             daughter.Culture.CopyFrom(parent.Culture);
+            daughter.Belief = parent.Belief; // A daughter village keeps its parent's faith (and raises its own shrine to it).
             int dowry = Math.Min(MaxDowry, StoredFood(parent) / 3);
             TakeFromStores(parent, dowry, preferred: house);
             daughter.Dowry = dowry;
