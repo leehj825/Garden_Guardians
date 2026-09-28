@@ -37,6 +37,7 @@ public sealed partial class World
             Groups = _groups.Values.Select(g => new GroupSave
             {
                 Id = g.Id, Name = g.Name, Leader = g.Leader is { IsDead: false } leader ? leader.ID : null,
+                Heir = g.Heir is { IsDead: false } heir ? heir.ID : null,
                 Home = g.Home is { IsCollapsed: false } home ? home.ID : null,
                 Annexes = g.Annexes.Where(a => !a.IsCollapsed).Select(a => a.ID).ToList(),
                 HomeSiteRetryTimer = g.HomeSiteRetryTimer, Goal = g.Goal == GroupGoal.Raid ? GroupGoal.Stockpile : g.Goal, Sharing = g.Sharing,
@@ -209,6 +210,8 @@ public sealed partial class World
             group.FoodSpots.Load(g.FoodSpots.Select(p => ((Vector3)p.Where, p.When)));
             if (g.Leader is { } leaderId && kin.TryGetValue(leaderId, out Bramblekin? leader))
                 group.SetLeader(leader);
+            if (g.Heir is { } heirId && kin.TryGetValue(heirId, out Bramblekin? heir))
+                group.Heir = heir;
             _groups[group.Id] = group;
         }
 

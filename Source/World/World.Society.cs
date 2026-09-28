@@ -71,12 +71,13 @@ public sealed partial class World
                     continue;
 
                 Bramblekin? previousLeader = group.Leader;
-                group.ElectLeader();
+                bool heir = Succeed(group, previousLeader);
                 NameGroup(group);
                 if (previousLeader is not null && previousLeader != group.Leader)
                 {
-                    Game.AddEventLog($"[GROUP] {group.Leader!.Name} now leads {group.Title}");
-                    Chronicle($"{group.Leader.Name} became Leader of {group.Title}", group);
+                    Game.AddEventLog($"[GROUP] {group.Leader!.Name} now leads {group.Title}{(heir ? ", as its named heir" : "")}");
+                    Chronicle(heir ? $"{group.Leader.Name} succeeded {previousLeader.Name} as Leader of {group.Title}"
+                                   : $"{group.Leader.Name} became Leader of {group.Title}", group);
                 }
                 continue;
             }

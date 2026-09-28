@@ -232,6 +232,7 @@ public sealed partial class World
         if (group.Leader == loser)
         {
             group.SetLeader(winner);
+            group.Heir = null; // A usurper names its own.
             winner.SetLoyalty(1f);
             loser.SetLoyalty(0.35f);
             Coups++;

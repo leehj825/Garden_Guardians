@@ -44,6 +44,9 @@ public sealed class KinGroup
 
     public Bramblekin? Leader { get; private set; }
 
+    /// <summary>The member an ageing or ailing Leader has named to follow it, if any (see World.Succession).</summary>
+    public Bramblekin? Heir { get; set; }
+
     /// <summary>The group's shared home (and store), once it has one — see <see cref="World.UpdateGroupHomes"/>.</summary>
     public Shelter? Home { get; set; }
 

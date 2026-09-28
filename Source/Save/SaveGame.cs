@@ -164,6 +164,7 @@ public sealed class GroupSave
     public Guid Id { get; set; }
     public string? Name { get; set; }
     public int? Leader { get; set; }
+    public int? Heir { get; set; }
     public int? Home { get; set; }
     public List<int> Annexes { get; set; } = new();
     public float HomeSiteRetryTimer { get; set; }
