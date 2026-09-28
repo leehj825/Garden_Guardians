@@ -605,6 +605,8 @@ public sealed partial class Bramblekin : ICombatant
             metabolism *= world.ColdFactor; // A harsh winter bites anyone caught outdoors.
         if (IsSick)
             metabolism *= SickHungerFactor;
+        if (IsAsleep)
+            metabolism *= SleepMetabolism;
         Hunger = MathF.Min(MaxHunger, Hunger + HungerPerSecond * metabolism * deltaTime);
         if (Hunger >= MaxHunger)
         {
@@ -664,6 +666,10 @@ public sealed partial class Bramblekin : ICombatant
         if (UpdateWaterCarry(deltaTime, world))
             return;
 
+        // 2d) Night: bed — for all but the watch, raiders and anyone on an errand.
+        if (UpdateNight(deltaTime, world))
+            return;
+
         // 3) Duty: the job its group's Leader gave it.
         if (UpdateDuty(deltaTime, world))
             return;
@@ -710,8 +716,15 @@ public sealed partial class Bramblekin : ICombatant
         {
             _perceivedThreat = attacker;
             _threatIsAllyDefense = false;
+            if (IsAsleep && world.GroupOf(this) is { } woken)
+                world.RaiseAlarm(woken, Position); // Attacked in its sleep: its cry wakes the clan.
             return;
         }
+
+        // Asleep, only something right on top of it wakes it — and a raider creeping in, not even that.
+        bool sleeping = IsAsleep && !world.IsAlarmed(world.GroupOf(this));
+        if (sleeping)
+            radius = MathF.Min(radius, SleepSenseRadius);
 
         ICombatant? best = null;
         bool bestIsAllyDefense = false;
@@ -739,6 +752,9 @@ public sealed partial class Bramblekin : ICombatant
         if (world.Heron is { IsLanded: true } heron &&
             GroundMover.HorizontalDistance(Position, heron.Position) <= (heron.IsStill ? Heron.StillSightRadius : Heron.ThreatRadius))
             Consider(heron, allyDefense: false);
+        // The Owl, down on the ground over its catch.
+        if (world.Owl is { IsLanded: true } owl && GroundMover.HorizontalDistance(Position, owl.Position) <= Owl.ThreatRadius)
+            Consider(owl, allyDefense: true);
 
         List<Bramblekin> nearby = world.QueryColonyWithin(Position, radius);
         for (int i = 0; i < nearby.Count; i++)
@@ -754,7 +770,7 @@ public sealed partial class Bramblekin : ICombatant
             }
 
             // Fight to protect: a raider heading for its home (or any of its group's, or its allies').
-            if (other.RaidTarget is { } raided &&
+            if (!sleeping && other.RaidTarget is { } raided &&
                 (raided == Home || (GroupId is not null && (raided.GroupId == GroupId || world.AreAllied(raided.GroupId, GroupId)))))
             {
                 Consider(other, allyDefense: true);
@@ -788,5 +804,9 @@ public sealed partial class Bramblekin : ICombatant
 
         _perceivedThreat = best;
         _threatIsAllyDefense = bestIsAllyDefense;
+
+        // The night watch cries out at anything it sees coming.
+        if (best is not null && world.IsNight && world.GroupOf(this) is { } clan && clan.NightWatch == this)
+            world.RaiseAlarm(clan, Position);
     }
 }

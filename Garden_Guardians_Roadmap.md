@@ -815,6 +815,24 @@ three fixes:
     and hearth pebbles. Drawing the whole busy garden fell from 52–66ms a
     frame to ~18ms (software GL); close up, everything looks as before.
 
+## Phase 26: Day and Night
+*   ✅ **Day and night:** a 75s day (two to a season) with dusk, night
+    and dawn; nights are longer in winter. The sky deepens, the garden
+    darkens, and hearths, windows, fireflies and the Owl's eyes shine.
+*   ✅ **Sleep:** kin sleep at home (or in the open without one), at half
+    the hunger and thirst, and barely notice anything asleep.
+*   ✅ **The night watch:** settled clans post a watch who raises the
+    alarm and wakes everyone; raids are likelier after dark.
+*   ✅ **The Owl:** a night hunter from the oak that drops on kin in the
+    open — sleepers first — but never near a lit hearth; it can be fought
+    on the ground and driven off or brought down.
+*   **Benchmark (12 seeds × 7800s against Phase 25):** population 43.0
+    time-averaged vs 50.8; births 147 vs 198 a run (a quarter less daylight
+    to gather in); starvation 28.8 vs 45.0; kin killed by kin 8.0 vs 25.7 —
+    far fewer robberies with everyone abed; predators 33.2 vs 33.8; old
+    age 53.2 vs 56.6. The Owl comes out ~40 nights a run and strikes ~37
+    times, killing 1–3; it's driven off ~20 times.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:

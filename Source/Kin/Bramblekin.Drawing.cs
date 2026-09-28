@@ -72,6 +72,8 @@ public sealed partial class Bramblekin
             DrawFishingRod(facing);
         if (State == BramblekinState.Healing)
             DrawPoultice(facing);
+        if (State == BramblekinState.Sleeping)
+            DrawSleep(world);
 
         _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
         DrawSack(facing);

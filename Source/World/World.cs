@@ -418,6 +418,7 @@ public sealed partial class World
         UpdateGroupHomes(deltaTime);
         UpdateHearths(deltaTime);
         UpdateSnares();
+        UpdateNight(deltaTime);
         UpdateGroupDecisions(deltaTime);
         UpdateReigns(deltaTime);
         CountShelterOccupants();

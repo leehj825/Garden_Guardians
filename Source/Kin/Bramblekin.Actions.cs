@@ -214,7 +214,7 @@ public sealed partial class Bramblekin
             ReleaseTwigClaim();
         if (State == BramblekinState.Socializing)
             _companion = null;
-        if (state == BramblekinState.Resting)
+        if (state is BramblekinState.Resting or BramblekinState.Sleeping)
             _restTimer = 0f;
 
         State = state;

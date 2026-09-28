@@ -29,6 +29,12 @@ public sealed class KinGroup
     public Color Color { get; }
 
     /// <summary>First few hex digits of <see cref="Id"/>.</summary>
+    /// <summary>Who keeps watch by home tonight (see World.UpdateNight); null by day.</summary>
+    public Bramblekin? NightWatch { get; set; }
+
+    /// <summary>Until when (game seconds) the clan is awake after an alarm.</summary>
+    public float AlarmUntil { get; set; }
+
     public string ShortId => Id.ToString("N")[..4];
 
     /// <summary>The group's name — "Thornwood clan", after the family of the Leader it was founded under (see World.NameGroup). Null for a moment while it's being founded.</summary>

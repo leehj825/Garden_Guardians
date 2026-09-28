@@ -967,6 +967,37 @@ overhead camera:
     (up to 25 more than usual lying about) — good for builders. Anyone
     with a home and nothing pressing shelters from it, as in Winter.
 
+## Day and Night
+*   **The day:** 75s from dawn to dawn — two days to a season. Night falls
+    about two-thirds of the way through (earlier in winter, later in
+    summer), with a short dusk and dawn; the sky deepens to blue and the
+    garden darkens, and the HUD's year line names the time of day.
+*   **Sleep:** fed and safe, a Bramblekin goes to bed at night — home and
+    inside if it has one (healing as if resting there), else where it
+    stands, near its Leader if it follows one. Asleep, Hunger and Thirst
+    rise at half the usual rate, and it only notices a threat within 2m;
+    a raider creeping in doesn't wake it at all. Hunger or thirst still get
+    it up for a bite or a drink. Sleepers out of doors show a drift of
+    pale "z"s.
+*   **Who stays up:** a settled clan of three or more posts a **night
+    watch** by home — a Guard if it has one, else its bravest — who cries
+    the alarm at anything it sees coming; so does a sleeper that's
+    attacked. An alarm wakes the whole clan for 8s. Raiding parties keep
+    going (and a shrewd Leader waits for dark to send one), and errands
+    are seen through.
+*   **The Owl:** on about two nights in five (never in the first few
+    days) it glides out of the Giant Oak, circles high over the garden and
+    drops on a Bramblekin out in the open — a sleeper or a youngster
+    first. Nobody indoors is in reach, nor anyone within 6m of a lit
+    hearth. Its talons take 12 Health from someone awake, 24 from a
+    sleeper. After a strike it mantles over its catch for a moment, the
+    only time it can be fought; hurt to half it flies back to the oak for
+    the night, and brought down it's 4 meat. At most three strikes a
+    night; it goes home at dawn.
+*   **Lights in the dark:** lit hearths throw a warm glow, Houses' windows
+    shine, fireflies blink over the grass (not in winter), and the Owl's
+    eyes gleam — drawn after the darkness, so they stand out.
+
 ## Memory
 *   **Danger:** a Bramblekin stung by a Hornet or bitten by the Spider
     remembers the spot (up to 4 places), and so does its group; a group

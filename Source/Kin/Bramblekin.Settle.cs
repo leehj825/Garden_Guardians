@@ -273,15 +273,7 @@ public sealed partial class Bramblekin
         }
 
         SetState(BramblekinState.Resting);
-        _restTimer += deltaTime;
-        float healInterval = home.Tier == ShelterTier.House ? RestHealInterval / 1.5f : RestHealInterval;
-        if (home.IsHearthLit)
-            healInterval /= World.HearthRestHealFactor;
-        if (_restTimer >= healInterval)
-        {
-            _restTimer -= healInterval;
-            Heal(1);
-        }
+        HealWhileResting(home, deltaTime);
     }
 
     /// <summary>

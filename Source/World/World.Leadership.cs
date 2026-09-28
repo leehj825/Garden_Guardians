@@ -173,6 +173,10 @@ public sealed partial class World
             hunt += 1.5f * culture.Hunting;
         if (raid > 0f)
             raid += 2f * culture.Martial;
+        // Night: the enemy is asleep, and a raid is likelier to get in unseen —
+        // so a shrewd Leader waits for dark before sending one.
+        if (raid > 0f && !raiding)
+            raid += IsNight ? 1f : -1.5f * p.Intelligence;
         if (stockpile > 0f)
             stockpile += 0.5f * culture.Farming;
 
@@ -191,6 +195,8 @@ public sealed partial class World
         group.WarTarget = goal == GroupGoal.Raid ? warTarget : null;
         if (newRaid)
         {
+            if (IsNight)
+                NoteNightRaid();
             group.RaidEndsAt = ElapsedSeconds + RaidDuration;
             group.NextRaidAt = ElapsedSeconds + RaidInterval;
         }

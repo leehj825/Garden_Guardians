@@ -90,4 +90,9 @@ public enum BramblekinState
     Drinking,
 
     Healing,
+
+    // --- Night ---
+
+    /// <summary>Asleep for the night — at home if it has one (see Bramblekin.Night).</summary>
+    Sleeping,
 }

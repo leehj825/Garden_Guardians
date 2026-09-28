@@ -83,7 +83,7 @@ public sealed partial class Bramblekin
         if (world.IsStorming && !IsSheltered)
             Thirst = MathF.Max(0f, Thirst - RainDrinkPerSecond * deltaTime);
         else
-            Thirst = MathF.Min(MaxThirst, Thirst + ThirstPerSecond * SeasonThirst(world.CurrentSeason) * (IsSick ? SickHungerFactor : 1f) * deltaTime);
+            Thirst = MathF.Min(MaxThirst, Thirst + ThirstPerSecond * SeasonThirst(world.CurrentSeason) * (IsSick ? SickHungerFactor : 1f) * (IsAsleep ? SleepMetabolism : 1f) * deltaTime);
 
         if (Thirst < MaxThirst)
         {

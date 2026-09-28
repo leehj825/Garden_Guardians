@@ -176,6 +176,11 @@ public sealed class Shelter
     public void AddFuel() => HearthFuel = MathF.Min(HearthSecondsPerTwig * HearthTwigCapacity, HearthFuel + HearthSecondsPerTwig);
 
     /// <summary>Where the hearth sits: out front, off to the side away from the cistern.</summary>
+    /// <summary>Where a lived-in House's window is (lit at night — see World.DrawNightLights); null for anything else.</summary>
+    public Vector3? WindowPosition => IsBuilt && !IsBurrow && !IsAbandoned && Tier == ShelterTier.House
+        ? Position + new Vector3(0f, 0.02f, 0f) + new Vector3(Radius * 0.6f + 0.03f, Radius * 1.25f * 1.12f, Radius * 0.55f + 0.03f)
+        : null;
+
     public Vector3 HearthPosition => Position + new Vector3(Radius * 0.2f, 0f, -(Radius + 0.5f));
 
     /// <summary>Sips of water in its cistern.</summary>
