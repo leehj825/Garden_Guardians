@@ -585,6 +585,7 @@ public static partial class Game
         Console.WriteLine(
             $"Families: {world.CouplesFormed} couples formed, {world.LivingCouples} together now, {world.Separations} separated; " +
             $"{world.Adoptions} orphans adopted, {world.OrphansTakenIn} lone young taken in; " +
+            $"{world.CourtshipGifts} courtship gifts ({world.GiftsWon} won a partner); " +
             $"{world.DeathsByOldAge} died of old age" +
             (living.Count > 0 ? $"; the oldest alive is {living.Max(b => b.AgeInYears):0.0} years." : "."));
         if (living.Count > 0)

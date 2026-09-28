@@ -49,8 +49,12 @@ public sealed partial class World
             return false;
 
         float sociability = (a.Personality.Sociability + b.Personality.Sociability) / 2f;
-        if (Rng.NextDouble() >= CourtshipBaseChance + CourtshipSociabilityChance * sociability)
+        float odds = CourtshipBaseChance + CourtshipSociabilityChance * sociability;
+        bool gifted = TryCourtshipGift(a, b, ref odds);
+        if (Rng.NextDouble() >= odds)
             return false;
+        if (gifted)
+            GiftsWon++;
 
         string how;
         bool groupsChanged = false;
@@ -107,6 +111,38 @@ public sealed partial class World
         QueueFloatingText(a.Position, "Couple!", CoupleTextColor);
         Game.AddEventLog($"[COUPLE] {a.Name} and {b.Name} became a couple{how}");
         return groupsChanged;
+    }
+
+    /// <summary>A courtship gift adds this much to the odds, times (0.5 + the giver's Persuasiveness).</summary>
+    private const float CourtshipGiftChance = 0.25f;
+
+    /// <summary>Food given as courtship gifts.</summary>
+    public int CourtshipGifts { get; private set; }
+
+    /// <summary>Courtships a gift helped win.</summary>
+    public int GiftsWon { get; private set; }
+
+    /// <summary>
+    /// Courting with a gift: a fed suitor with food in hand offers it to an
+    /// empty-handed one. The gift is given whatever comes of it (the two
+    /// part as Friends at least), and sways the odds — more so from a
+    /// persuasive giver.
+    /// </summary>
+    private bool TryCourtshipGift(Bramblekin a, Bramblekin b, ref float odds)
+    {
+        (Bramblekin? giver, Bramblekin? taker) =
+            a.HasFood && !a.IsHungry && !b.HasFood ? (a, b)
+            : b.HasFood && !b.IsHungry && !a.HasFood ? (b, a)
+            : (null, null);
+        if (giver is null || taker is null || giver.SurrenderFood() is not { } food)
+            return false;
+
+        taker.ReceiveFood(food);
+        CourtshipGifts++;
+        odds += CourtshipGiftChance * (0.5f + giver.Personality.Persuasiveness);
+        SetMutualRelationship(giver, taker, RelationshipState.Friend);
+        QueueFloatingText(taker.Position, "Gift", CoupleTextColor);
+        return true;
     }
 
     /// <summary>A couple in the same group shares a home: one moves into the other's if there's room.</summary>
