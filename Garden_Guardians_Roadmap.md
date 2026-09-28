@@ -650,6 +650,14 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     (within the spread; the stone-fetching Builder is one fewer
     Gatherer); clans 30–45m from water average 6.1 kin, 45m+ 6.2 (was
     5.7).
+*   ✅ **Fixed: walkers stopping a pace short.** A route to a target in
+    blocked ground (by a root, a rock or the shore) ended a meter off,
+    and the walker waited there for good — Builders sat for years beside
+    a stone. Routes now always end at the target. With that, clans of two
+    keeping a Builder on their well, a 60m stone search and cheaper wells
+    (3 stones plus one per 2m of height): 3.0 wells dug a run, 126 drinks
+    from them; population 54.8 ± 4.1 (vs 47.0 before the fix, 52.3 before
+    wells); no crashes.
 
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
