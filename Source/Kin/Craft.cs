@@ -46,4 +46,7 @@ public enum Craft
 
     /// <summary>Slings of twisted grass that loose pebbles: a Hornet, a frog on the bank or the Heron can be hit from a few paces off (see Bramblekin.Slings).</summary>
     Slings = 2048,
+
+    /// <summary>A hearth out front of each House, kept burning with twigs: food eaten there is cooked (more filling, more healing), and folk wintering in beside it stay warmer (see World.Hearths).</summary>
+    Hearth = 4096,
 }

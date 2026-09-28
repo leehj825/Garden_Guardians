@@ -47,7 +47,11 @@ public sealed partial class Bramblekin
     {
         SetState(BramblekinState.Eating);
         _eatTimer = EatDuration;
+        _mealCooked = false;
     }
+
+    /// <summary>The meal under way was taken from a store with a lit hearth: it's cooked (see <see cref="Craft.Hearth"/>).</summary>
+    private bool _mealCooked;
 
     private void FinishEating(World world)
     {
@@ -55,10 +59,13 @@ public sealed partial class Bramblekin
         {
             world.ConsumeFood(food);
             _carried = null;
-            Hunger = MathF.Max(0f, Hunger - FoodNourishment);
+            Hunger = MathF.Max(0f, Hunger - FoodNourishment - (_mealCooked ? World.CookedNourishmentBonus : 0f));
             QuenchWith(food.Kind);
-            Heal(FoodHealing);
+            Heal(FoodHealing + (_mealCooked ? World.CookedHealingBonus : 0));
+            if (_mealCooked)
+                world.NoteCookedMeal();
         }
+        _mealCooked = false;
         _robTarget = null;
         StartPause();
     }

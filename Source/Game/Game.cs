@@ -492,6 +492,9 @@ public static partial class Game
         Console.WriteLine(
             $"Slings: {world.PebblesLoosed} pebbles loosed, {world.PebbleHits} hits, {world.SlingKills} kills; {world.HornetsKilled} hornets swatted or slung in all.");
         Console.WriteLine(
+            $"Hearths: {world.CookedMeals} meals eaten cooked, {world.TwigsBurned} twigs burned; at the end {world.Groups.Count(g => World.Knows(g, Craft.Hearth))} clans keep a hearth, " +
+            $"{world.Shelters.Count(s => s.IsHearthLit)} lit.");
+        Console.WriteLine(
             $"Pond life: {world.FrogsCaught} frogs caught by kin, {world.FrogsTakenByHeron} by the heron; the heron came {world.HeronVisits} times, " +
             $"lunged {world.HeronStabs} times, was driven off {world.HeronsDrivenOff} times and brought down {world.HeronsKilled} times.");
         Console.WriteLine(
@@ -603,7 +606,8 @@ public static partial class Game
     /// <summary>", stone footing, palisade 2/3" — what's been built onto a home beyond its walls.</summary>
     private static string HomeWorks(Shelter home) =>
         (home.HasFooting ? ", stone footing" : home.StonesLaid > 0 ? $", footing {home.StonesLaid}/{Shelter.FootingStoneCost}" : "") +
-        (home.HasPalisade ? ", palisade" : home.StakesSet > 0 ? $", palisade {home.StakesSet}/{Shelter.PalisadeStakeCost}" : "");
+        (home.HasPalisade ? ", palisade" : home.StakesSet > 0 ? $", palisade {home.StakesSet}/{Shelter.PalisadeStakeCost}" : "") +
+        (home.HasHearth ? home.IsHearthLit ? ", hearth lit" : ", hearth cold" : "");
 
     /// <summary>Debug Time Scale: steps down to the previous speed in <see cref="TimeScaleSteps"/>, clamped at 1x.</summary>
     private static void DecreaseTimeScale()

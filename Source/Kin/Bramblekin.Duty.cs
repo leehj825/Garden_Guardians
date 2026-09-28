@@ -33,6 +33,8 @@ public sealed partial class Bramblekin
 
         if (Job != KinJob.Builder && (_carriedMaterial is not null || _materialTarget is not null))
             PutDownMaterial(); // Moved off building: leaves the stone (or branch) where it is.
+        if (Job != KinJob.Builder)
+            _hearthToFeed = null;
         if (GroupId is null || IsYoung || !IsObedient || world.GroupOf(this) is not { } group)
             return false;
 
@@ -159,14 +161,22 @@ public sealed partial class Bramblekin
     private bool IsOnWarRaid(World world) =>
         Job == KinJob.Raider && IsObedient && world.GroupOf(this) is { Goal: GroupGoal.Raid, WarTarget: not null };
 
-    /// <summary>Builder: fetches twigs for whichever group home is under construction; else stones and branches for footings and palisades (see <see cref="TryFetchMaterial"/>); with nothing to build, gathers.</summary>
+    /// <summary>Builder: fetches twigs for whichever group home is under construction; else a twig for a hearth burning low (see <see cref="Craft.Hearth"/>); else stones and branches for footings and palisades (see <see cref="TryFetchMaterial"/>); with nothing to build, gathers.</summary>
     private bool DoBuilderDuty(KinGroup group, float deltaTime, World world)
     {
         if (BuildSite is { } site)
         {
+            _hearthToFeed = null;
             DoBuildWork(site, deltaTime, world);
             return true;
         }
+        if (_carriedMaterial is null && (_hearthToFeed is { NeedsFuel: true, IsCollapsed: false } ? _hearthToFeed : world.HearthToFeed(group, Position)) is { } hearth)
+        {
+            _hearthToFeed = hearth;
+            DoBuildWork(hearth, deltaTime, world);
+            return true;
+        }
+        _hearthToFeed = null;
         return TryFetchMaterial(group, deltaTime, world) || DoGatherDuty(deltaTime, world);
     }
 

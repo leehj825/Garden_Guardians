@@ -280,6 +280,11 @@ public sealed partial class World
             (members.Count >= 3 || (members.Count >= 2 && WellBeingDug(group) is not null)) &&
             (MaterialTarget(group, MaterialKind.Stone, home.Position) ?? MaterialTarget(group, MaterialKind.Branch, home.Position)) is not null)
             members.Where(m => m.Job == KinJob.Gatherer).MaxBy(m => m.Personality.Diligence)?.AssignJob(KinJob.Builder);
+
+        // A hearth burning low: someone keeps the fire fed.
+        if (group.Goal is not (GroupGoal.Defend or GroupGoal.Raid) && members.Count >= 2 && !members.Any(m => m.Job == KinJob.Builder) &&
+            AnyHearthNeedsFuel(group))
+            members.Where(m => m.Job == KinJob.Gatherer).MaxBy(m => m.Personality.Diligence)?.AssignJob(KinJob.Builder);
     }
 
     /// <summary>A farming group makes one Farmer for every this many grown members (at least one).</summary>

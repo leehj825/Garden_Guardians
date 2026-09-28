@@ -82,6 +82,8 @@ public sealed class ShelterSave
     public int Stones { get; set; }
     public bool Cistern { get; set; }
     public int Water { get; set; }
+    public bool Hearth { get; set; }
+    public float HearthFuel { get; set; }
 }
 
 public sealed class KinSave

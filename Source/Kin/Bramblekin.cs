@@ -591,7 +591,9 @@ public sealed partial class Bramblekin : ICombatant
             Home = null;
 
         // Metabolism: Hunger always rises (slower huddled at home in winter); at the very top it starts costing Health.
-        float metabolism = world.CurrentSeason == Season.Winter && IsSheltered ? WinterShelterMetabolism : 1f;
+        float metabolism = world.CurrentSeason == Season.Winter && IsSheltered
+            ? Home!.IsHearthLit ? World.HearthWinterMetabolism : WinterShelterMetabolism
+            : 1f;
         if (!IsSheltered)
             metabolism *= world.ColdFactor; // A harsh winter bites anyone caught outdoors.
         if (IsSick)

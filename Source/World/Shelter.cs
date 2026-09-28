@@ -64,6 +64,9 @@ public sealed class Shelter
     private static readonly Color StickColor = new(115, 80, 45, 255);
     private static readonly Color StoredFoodColor = new(210, 40, 45, 255);
     private static readonly Color AbandonedTint = new(150, 150, 150, 255);
+    private static readonly Color FlameColor = new(235, 120, 30, 255);
+    private static readonly Color EmberColor = new(255, 215, 90, 255);
+    private static readonly Color AshColor = new(95, 90, 88, 255);
 
     public Shelter(Vector3 groundPoint)
     {
@@ -125,6 +128,36 @@ public sealed class Shelter
     private bool _hasCistern;
 
     public int CisternCapacity => HasCistern ? CisternSips : 0;
+
+    /// <summary>Its clan knows <see cref="Craft.Hearth"/>: a ring of stones out front of the House where a fire burns while it's fed twigs.</summary>
+    public bool HasHearth
+    {
+        get => _hasHearth && Tier == ShelterTier.House;
+        set => _hasHearth = value;
+    }
+
+    private bool _hasHearth;
+
+    /// <summary>One twig keeps a hearth burning this long (s)…</summary>
+    public const float HearthSecondsPerTwig = 120f;
+
+    /// <summary>…and it holds at most this many twigs' worth at once.</summary>
+    public const int HearthTwigCapacity = 3;
+
+    /// <summary>Seconds of burning left in its hearth.</summary>
+    public float HearthFuel { get; set; }
+
+    /// <summary>A fire is burning in its hearth (and someone still lives here to tend it).</summary>
+    public bool IsHearthLit => HasHearth && HearthFuel > 0f && !IsAbandoned;
+
+    /// <summary>True while its hearth has room for another twig — its folk keep it topped up.</summary>
+    public bool NeedsFuel => HasHearth && IsBuilt && !IsAbandoned && HearthFuel <= HearthSecondsPerTwig * (HearthTwigCapacity - 1);
+
+    /// <summary>A twig on the fire.</summary>
+    public void AddFuel() => HearthFuel = MathF.Min(HearthSecondsPerTwig * HearthTwigCapacity, HearthFuel + HearthSecondsPerTwig);
+
+    /// <summary>Where the hearth sits: out front, off to the side away from the cistern.</summary>
+    public Vector3 HearthPosition => Position + new Vector3(Radius * 0.2f, 0f, -(Radius + 0.5f));
 
     /// <summary>Sips of water in its cistern.</summary>
     public int Water { get; set; }
@@ -351,6 +384,27 @@ public sealed class Shelter
             Raylib.DrawCylinder(cup, 0.3f, 0.22f, 0.32f, 10, Tint(CapColor));
             if (Water > 0)
                 Raylib.DrawCylinder(cup + new Vector3(0f, 0.05f + 0.25f * Water / CisternSips, 0f), 0.2f + 0.08f * Water / CisternSips, 0.2f + 0.08f * Water / CisternSips, 0.02f, 10, CisternWaterColor);
+        }
+
+        if (HasHearth)
+        {
+            // A ring of pebbles; lit, a little fire of orange and yellow tongues that shrinks as the fuel burns down.
+            Vector3 hearth = World.Grounded(HearthPosition) + new Vector3(0f, 0.03f, 0f);
+            for (int i = 0; i < 7; i++)
+            {
+                float angle = i * MathF.Tau / 7f;
+                Raylib.DrawSphereEx(hearth + new Vector3(MathF.Cos(angle) * 0.24f, 0.03f, MathF.Sin(angle) * 0.24f), 0.07f, 4, 6, Tint(FootingColor));
+            }
+            if (IsHearthLit)
+            {
+                float flame = 0.18f + 0.22f * HearthFuel / (HearthSecondsPerTwig * HearthTwigCapacity);
+                Raylib.DrawCylinder(hearth, 0.15f, 0f, flame, 6, FlameColor);
+                Raylib.DrawCylinder(hearth + new Vector3(0f, 0.02f, 0f), 0.08f, 0f, flame * 0.7f, 6, EmberColor);
+            }
+            else
+            {
+                Raylib.DrawCylinder(hearth, 0.14f, 0.14f, 0.02f, 6, AshColor);
+            }
         }
 
         if (StonesLaid > 0 && Tier == ShelterTier.House)

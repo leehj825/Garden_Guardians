@@ -31,6 +31,7 @@ public sealed partial class World
                 Stored = s.StoredFood, Owner = s.Owner is { IsDead: false } owner ? owner.ID : null, GroupId = s.GroupId,
                 AbandonedSeconds = s.AbandonedSeconds, StageStartedAt = s.StageStartedAt,
                 Granary = s.HasGranary, Stakes = s.StakesSet, Stones = s.StonesLaid, Cistern = s.HasCistern, Water = s.Water,
+                Hearth = s.HasHearth, HearthFuel = s.HearthFuel,
             }).ToList(),
             Kin = Colony.Where(k => !k.IsDead).Select(k => k.ToSave()).ToList(),
             Groups = _groups.Values.Select(g => new GroupSave
@@ -141,7 +142,7 @@ public sealed partial class World
             {
                 GroupId = s.GroupId, AbandonedSeconds = s.AbandonedSeconds, StageStartedAt = s.StageStartedAt,
                 HasGranary = s.Granary, StakesSet = s.Palisade ? Shelter.PalisadeStakeCost : s.Stakes, StonesLaid = s.Stones,
-                HasCistern = s.Cistern, Water = s.Water,
+                HasCistern = s.Cistern, Water = s.Water, HasHearth = s.Hearth, HearthFuel = s.HearthFuel,
             };
             shelter.Restore(s.Id, s.Tier, s.Built, s.Upgrading, s.Twigs, s.Stored);
             Shelters.Add(shelter);
