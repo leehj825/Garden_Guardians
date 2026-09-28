@@ -119,6 +119,18 @@ public sealed class Grub : ICombatant
             return;
         }
 
+        // The bait in a set snare smells like food too — and that's the end of it.
+        if (world.Snares.Count > 0 && world.NearestSetSnare(Position, SmellRadius) is { } snare)
+        {
+            if (GroundMover.HorizontalDistance(Position, snare.Position) <= Snare.CatchRadius)
+            {
+                world.SpringSnare(snare, this);
+                return;
+            }
+            _mover.MoveTowards(snare.Position, CrawlSpeed, deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius));
+            return;
+        }
+
         // Nothing to smell: a slow random wander.
         if (_pauseTimer > 0f)
         {

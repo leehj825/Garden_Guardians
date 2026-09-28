@@ -12,7 +12,7 @@ public sealed partial class World
     private static readonly Craft[] LaterCrafts =
     {
         Craft.Granary, Craft.Spears, Craft.Palisade, Craft.Grain, Craft.Mushrooms, Craft.Cress, Craft.Fishing, Craft.Stonework, Craft.Cisterns,
-        Craft.Wells, Craft.Slings, Craft.Hearth,
+        Craft.Wells, Craft.Slings, Craft.Hearth, Craft.Snares,
     };
 
     /// <summary>A clan whose main home is further than this (m) from the water works out cisterns — necessity being the mother of invention.</summary>
@@ -99,7 +99,7 @@ public sealed partial class World
     /// the pond; fishing, just a home near the pond; stonework, a House;
     /// cisterns, a House far from the water; wells, stonework and a House
     /// far from the water; slings, spears; a hearth, a House and the cold
-    /// of autumn or winter to set them thinking about fire.
+    /// of autumn or winter to set them thinking about fire; snares, a House.
     /// </summary>
     private bool ReadyFor(KinGroup group, Craft craft)
     {
@@ -125,6 +125,7 @@ public sealed partial class World
                            WaterMap.UsualDistanceToWater(home.Position.X, home.Position.Z) > WellNeedReach,
             Craft.Slings => Knows(group, Craft.Spears),
             Craft.Hearth => hasHouse && CurrentSeason is Season.Autumn or Season.Winter,
+            Craft.Snares => hasHouse,
             _ => false,
         };
     }
@@ -144,6 +145,7 @@ public sealed partial class World
         Craft.Wells => "dig a well",
         Craft.Slings => "make slings and loose pebbles",
         Craft.Hearth => "keep a fire burning in a hearth",
+        Craft.Snares => "set baited snares for grubs",
         _ => craft.ToString().ToLowerInvariant(),
     };
 

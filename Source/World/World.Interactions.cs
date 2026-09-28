@@ -227,8 +227,8 @@ public sealed partial class World
         HornetsKilled++;
     }
 
-    /// <summary>A hunted Grub: drops a bit of Food, plus some of whatever it had eaten. Removal from <see cref="Grubs"/> is deferred to the end of the frame.</summary>
-    public void KillGrub(Grub grub, Bramblekin killer)
+    /// <summary>A hunted (or snared) Grub: drops a bit of Food, plus some of whatever it had eaten. Removal from <see cref="Grubs"/> is deferred to the end of the frame.</summary>
+    public void KillGrub(Grub grub, Bramblekin? killer)
     {
         if (grub.IsDead)
             return;

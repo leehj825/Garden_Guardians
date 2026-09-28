@@ -493,7 +493,9 @@ public static partial class Game
             $"Slings: {world.PebblesLoosed} pebbles loosed, {world.PebbleHits} hits, {world.SlingKills} kills; {world.HornetsKilled} hornets swatted or slung in all.");
         Console.WriteLine(
             $"Hearths: {world.CookedMeals} meals eaten cooked, {world.TwigsBurned} twigs burned; at the end {world.Groups.Count(g => World.Knows(g, Craft.Hearth))} clans keep a hearth, " +
-            $"{world.Shelters.Count(s => s.IsHearthLit)} lit.");
+            $"{world.Shelters.Count(s => s.IsHearthLit)} lit. " +
+            $"Snares: {world.SnareCatches} grubs caught, {world.SnaresReset} snares set again; at the end {world.Groups.Count(g => World.Knows(g, Craft.Snares))} clans snare, " +
+            $"{world.Snares.Count(s => s.IsSet)} of {world.Snares.Count} snares set.");
         Console.WriteLine(
             $"Pond life: {world.FrogsCaught} frogs caught by kin, {world.FrogsTakenByHeron} by the heron; the heron came {world.HeronVisits} times, " +
             $"lunged {world.HeronStabs} times, was driven off {world.HeronsDrivenOff} times and brought down {world.HeronsKilled} times.");

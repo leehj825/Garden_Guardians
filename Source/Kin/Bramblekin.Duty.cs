@@ -204,6 +204,31 @@ public sealed partial class Bramblekin
             ApproachFood(food, WalkSpeed, deltaTime, world, eatOnArrival: false);
             return true;
         }
+
+        if (world.Snares.Count > 0 && world.GroupOf(this) is { } clan && world.SprungSnareNear(clan, home.Position, GatherRange) is { } snare)
+        {
+            ResetSnare(snare, deltaTime, world);
+            return true;
+        }
         return TryFishing(home, deltaTime, world);
+    }
+
+    private float _snareTimer;
+
+    /// <summary>Walks to a sprung snare and sets it again (see <see cref="Snare.ResetSeconds"/>).</summary>
+    private void ResetSnare(Snare snare, float deltaTime, World world)
+    {
+        SetState(BramblekinState.Farming);
+        if (GroundMover.HorizontalDistance(Position, snare.Position) > 0.5f)
+        {
+            _snareTimer = 0f;
+            MoveTo(snare.Position, WalkSpeed, deltaTime, world);
+            return;
+        }
+        _snareTimer += deltaTime * WorkPace;
+        if (_snareTimer < Snare.ResetSeconds)
+            return;
+        _snareTimer = 0f;
+        world.ResetSnare(snare);
     }
 }

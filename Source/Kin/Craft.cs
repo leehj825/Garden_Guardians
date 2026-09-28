@@ -49,4 +49,7 @@ public enum Craft
 
     /// <summary>A hearth out front of each House, kept burning with twigs: food eaten there is cooked (more filling, more healing), and folk wintering in beside it stay warmer (see World.Hearths).</summary>
     Hearth = 4096,
+
+    /// <summary>Baited grass snares set near each House that catch Grubs without a hunt; a Gatherer sets a sprung one again (see World.Snares).</summary>
+    Snares = 8192,
 }

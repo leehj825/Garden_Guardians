@@ -39,6 +39,7 @@ public sealed class SaveGame
     public List<MaterialSave>? Materials { get; set; }
 
     public List<WellSave> Wells { get; set; } = new();
+    public List<SnareSave> Snares { get; set; } = new();
     public List<LooseSave> Food { get; set; } = new();
     public List<LooseSave> Twigs { get; set; } = new();
     public List<RelationSave> Relations { get; set; } = new();
@@ -194,6 +195,13 @@ public sealed class WellSave
     public Guid? GroupId { get; set; }
     public int StonesNeeded { get; set; }
     public int StonesLaid { get; set; }
+}
+
+public sealed class SnareSave
+{
+    public V3 Position { get; set; }
+    public Guid? GroupId { get; set; }
+    public bool IsSet { get; set; }
 }
 
 public sealed class MaterialSave

@@ -70,6 +70,7 @@ public sealed partial class World
             Color? stake = bush.GroupId is { } bushGroup && _groups.TryGetValue(bushGroup, out KinGroup? farmer) ? farmer.Color : null;
             bush.Draw(winter, stake);
         }
+        DrawSnares(camera);
 
         foreach (Twig twig in Twigs)
         {

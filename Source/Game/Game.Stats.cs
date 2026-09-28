@@ -117,6 +117,7 @@ public static partial class Game
             $"Cisterns: {KnowCraft(Craft.Cisterns)}, wells {KnowCraft(Craft.Wells)}",
             $"Slings: {KnowCraft(Craft.Slings)} ({world.PebblesLoosed} pebbles, {world.PebbleHits} hits)",
             $"Hearths: {KnowCraft(Craft.Hearth)} ({world.Shelters.Count(s => s.IsHearthLit)} lit, {world.CookedMeals} meals cooked)",
+            $"Snares: {KnowCraft(Craft.Snares)} ({world.SnareCatches} grubs caught)",
         }));
 
         sections.Add(("Pests & plagues", new List<string>
