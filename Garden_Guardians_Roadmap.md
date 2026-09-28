@@ -724,6 +724,71 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     across the same seeds with no sign of destabilizing alliance-forming
     or population.
 
+## Phase 23: Fixes from Play on a Phone
+*   ✅ **The pond vanished after a saved garden was loaded:** the save
+    writes every numeric World field by reflection, which swept up two
+    render caches (the water level the pond's squares were worked out
+    for, and the drought mud's). A loaded garden restored the markers but
+    not the squares, so the pond was never drawn again — the water was
+    there, kin walked round it and drank from it, but it was invisible
+    from the second session on (only a New garden showed it). Render
+    caches are now `[NonSerialized]` and the save skips them, which also
+    mends gardens already saved.
+*   ✅ **The Wolf Spider got stuck at the map's edge:** walkers turn back
+    once 48m from the centre, but destinations were picked up to 49m out,
+    so about one prowl target in 25 could never be reached — the spider
+    paced on the spot at the limit for good (45 minutes in one place in a
+    13-year run). Goals past the limit are now clamped to it, for every
+    walker.
+
+## Phase 24: Hearth and Home, Kin and Clan
+*   ✅ **Hearths:** a craft (a House, worked out in autumn or winter): a
+    fire out front of each House, kept fed with twigs; food from its
+    store is cooked (a little more filling and healing), and wintering
+    beside it keeps folk warmer.
+*   ✅ **Snares:** a craft (a House): baited snares round each House catch
+    Grubs without a hunt; Gatherers set sprung ones again.
+*   ✅ **Adoption:** an orphaned child is taken in by a couple in its clan
+    (a grown sibling first), who are close kin from then on; a lone young
+    one is taken in by a settled clan it meets.
+*   ✅ **Courtship gifts:** a fed suitor with food in hand offers it — a
+    friend at least, and better odds of a partner (more from the
+    persuasive).
+*   ✅ **Skill mastery:** hunting, farming, building, fishing and healing
+    grow with practice (and rust slowly); skill makes work faster and
+    blows harder, Leaders give jobs to whoever's best, children start with
+    a quarter of their handier parent's skill, and masters make the
+    chronicle.
+*   ✅ **Healers:** herb-lore (farming, a House, and someone sick): a
+    Healer tends the sick and wounded near home.
+*   ✅ **Named succession:** an elder, sick or badly hurt Leader names an
+    heir, leaning toward its kin — dynasties — who takes over smoothly; a
+    Leader lost with none leaves a scramble that costs everyone loyalty.
+*   ✅ **The council:** a Leader's three most respected members temper its
+    goals, sharing rule, and war and peace (about 16% of the way).
+*   ✅ **Quiet plotting:** a would-be splinter plots first, recruiting the
+    unhappy over several decisions, and may be found out — exiled by a
+    harsh Leader, talked round by a mild one.
+*   ✅ **Burrows:** a loner on a hillside may dig in — cheap, warm in
+    winter, its store hidden from raiders and ants, but only room for two
+    and no way to build it up.
+*   ✅ **The creek:** a spring in the driest corner feeds a brook running
+    ~28m downhill into a pool; it never dries, blocks no one, and counts
+    as water for drinking, cress, settling and watered crops. About a
+    third of all trips for water end there.
+*   **Tuning:** with every new food in, the population ran two-thirds
+    higher and kin killings nearly tripled from the crowding, so cooked
+    meals were cut from +12 to +5 of a meal's 40 (+2 health, was +3),
+    wintering by a hearth to 0.42 of the usual hunger (was 0.35), and a
+    skilled farmer's bonus piece to at most 20% of pickings (was 35%).
+*   **Benchmark (12 seeds × 7800s against the Phase 22 build on the same
+    seeds, no crashes):** population 50.8 time-averaged vs 40.7; births
+    198 vs 149 a run; starvation 45.0 vs 46.2; deaths to predators 33.8 vs
+    34.6; kin killed by kin 25.7 vs 19.8; old age 56.6 vs 44.0 — more live
+    out their years; sickness 18.0 vs 18.0. Members die at 1.61 per
+    kin-hour vs 1.79, Homesteaders at 2.06 vs 2.31. Before tuning:
+    population 56.6, kin killings 34.2.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:
@@ -731,6 +796,12 @@ matter most:
     round the pond on a grid (Phase 17), but still steer round rocks,
     homes and the oak with a short sideways detour when stuck. Fine at
     current density.
+*   ⬜ **Speed on phones.** At 50x a phone manages 8–21x with 50–70 kin;
+    the simulation needs a profiling pass before the garden grows.
+*   ⬜ **A bigger garden.** The terrain takes its size as a parameter, but
+    a dozen places (water and route grids, the obstacle grid, flood
+    heights, the edge limit, drawing, the camera) assume ±50m, and spawn
+    amounts would need to scale with area. Best after the speed work.
 *   ⬜ **Tuning.** Every rate and threshold is a constant at the top of its
     class (`World`, `Bramblekin`, `Shelter`, the wildlife); the headless
     survival trend is the tool for revisiting them.
