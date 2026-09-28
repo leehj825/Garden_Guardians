@@ -351,6 +351,9 @@ public sealed partial class Bramblekin : ICombatant
 
     /// <summary>True while it's holding a twig for building.</summary>
     public bool HasTwig => _carriedTwig is not null;
+
+    /// <summary>Its group as World.GroupOf last found it — a lookup cache, not state (never saved).</summary>
+    internal KinGroup? CachedGroup { get; set; }
     /// <summary>Every Bramblekin it has met (by <see cref="ID"/>) and how it regards them.</summary>
     public IReadOnlyDictionary<int, RelationshipState> KnownKins => _knownKins;
 

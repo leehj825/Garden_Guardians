@@ -44,6 +44,9 @@ public sealed class KinGroup
 
     public Bramblekin? Leader { get; private set; }
 
+    /// <summary>Taken off the World's books (dissolved, merged or conquered) — see World.Disband.</summary>
+    public bool IsDisbanded { get; set; }
+
     /// <summary>The member an ageing or ailing Leader has named to follow it, if any (see World.Succession).</summary>
     public Bramblekin? Heir { get; set; }
 

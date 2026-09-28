@@ -32,9 +32,21 @@ public sealed partial class World
 
     // --- Groups ------------------------------------------------------------------
 
-    /// <summary>The group <paramref name="kin"/> currently belongs to, if any.</summary>
-    public KinGroup? GroupOf(Bramblekin kin) =>
-        kin.GroupId is { } id && _groups.TryGetValue(id, out KinGroup? group) ? group : null;
+    /// <summary>
+    /// The group <paramref name="kin"/> currently belongs to, if any. Asked
+    /// constantly, so each Bramblekin remembers the answer, trusted while its
+    /// GroupId still matches and the group hasn't been disbanded (see <see cref="Disband"/>).
+    /// </summary>
+    public KinGroup? GroupOf(Bramblekin kin)
+    {
+        if (kin.GroupId is not { } id)
+            return null;
+        if (kin.CachedGroup is { IsDisbanded: false } cached && cached.Id == id)
+            return cached;
+        KinGroup? group = _groups.TryGetValue(id, out KinGroup? found) ? found : null;
+        kin.CachedGroup = group;
+        return group;
+    }
 
     /// <summary>
     /// Group Dynamics bookkeeping: rebuilds every group's member list from
@@ -100,7 +112,14 @@ public sealed partial class World
         }
 
         foreach (Guid id in _groupRemovalBuffer)
-            _groups.Remove(id);
+            Disband(id);
+    }
+
+    /// <summary>Takes a group off the books, marking it so no Bramblekin's cached reference to it is trusted again (see <see cref="GroupOf"/>).</summary>
+    private void Disband(Guid id)
+    {
+        if (_groups.Remove(id, out KinGroup? gone))
+            gone.IsDisbanded = true;
     }
 
     // --- Encounters ----------------------------------------------------------------
@@ -329,7 +348,7 @@ public sealed partial class World
             }
             smaller.Members.Clear();
             AbsorbHomes(larger, smaller);
-            _groups.Remove(smaller.Id);
+            Disband(smaller.Id);
             group = larger;
         }
         else

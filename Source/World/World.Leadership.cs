@@ -56,8 +56,24 @@ public sealed partial class World
     }
 
     /// <summary>Every group's Leader decides again every <see cref="LeaderDecisionInterval"/> seconds — at once, if a threat turns up near home.</summary>
+    /// <summary>
+    /// The only Bramblekin that can be a threat to anyone's home (see
+    /// <see cref="ThreatNearHome"/>): those raiding a store or fighting
+    /// another Bramblekin, in Colony order. Gathered once a step, rather
+    /// than every clan checking every Bramblekin — nothing in the Leaders'
+    /// decisions changes who is raiding or fighting whom.
+    /// </summary>
+    private readonly List<Bramblekin> _possibleThreats = new();
+
     private void UpdateGroupDecisions(float deltaTime)
     {
+        _possibleThreats.Clear();
+        foreach (Bramblekin kin in Colony)
+        {
+            if (!kin.IsDead && (kin.RaidTarget is not null || kin.CombatTarget is Bramblekin))
+                _possibleThreats.Add(kin);
+        }
+
         foreach (KinGroup group in _groups.Values)
         {
             if (!group.HasSittingLeader || group.Leader is not { } leader)
@@ -335,7 +351,7 @@ public sealed partial class World
             if (!hornet.IsDead && hornet.IsChasing)
                 Consider(hornet);
         }
-        foreach (Bramblekin kin in Colony)
+        foreach (Bramblekin kin in _possibleThreats)
         {
             if (kin.IsDead || kin.GroupId == group.Id)
                 continue;
