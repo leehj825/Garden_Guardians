@@ -276,6 +276,22 @@ overhead camera:
     usurper by its most striking trait ("The rebellious Pip Thornwood led
     four unhappy members out…"). The headless lineage report tracks the
     living's average of every trait, so the garden's evolution shows.
+*   **Skills:** besides its fixed nature, every Bramblekin gets better at
+    what it does. Hunting (each blow struck at a creature, twice for big
+    game), farming (planting, and a little for each picking), building
+    (every twig, stone and branch delivered), fishing (every cast and
+    catch) and healing (every patient tended) each run 0..1: every act of
+    practice closes a fortieth of the gap to perfect (faster for a sharp
+    mind), and skills rust very slowly without use. Skill pays: a skilled
+    hunter hits creatures up to half as hard again; a skilled builder,
+    farmer, fisher or healer works up to 30% faster; a fisher lands up to
+    half as many again; and a skilled farmer now and then coaxes a second
+    piece out of a crop, straight into the store. Leaders hand jobs to
+    whoever is best at them, so veterans keep their trades. A newborn
+    starts with a quarter of its handier parent's skill in each — a family
+    trade. Reaching 0.75 makes it a **master**, and the chronicle says so.
+    The Kin Inspector lists its skills and names its trade ("skilled
+    farmer").
 *   **Hunger:** rises 1 point per second from 0 to 100. At 60 a
     Bramblekin is *hungry*; at 80 *starving*; at 100 it loses 1 HP a
     second until it eats or dies. One piece of Food removes 40 Hunger and
@@ -355,6 +371,16 @@ overhead camera:
     from the cap's stalk. A granary is a hazelnut beside it; a palisade a
     ring of rose thorns curving outward, with a gap at the door. (An
     acorn village: the Bramblekin are tiny, and live like it.)
+*   **Burrow:** a loner settling on sloping ground above any flood's reach
+    may dig in instead of pitching a Tent — odds 0.8 × (1 − its
+    Sociability), so mostly introverts. It needs only 2 twigs to shore up
+    its doorway, houses 2 and stores 4, like a Tent; its earthen walls
+    keep folk warmer through the winter (hunger at 0.4 of the usual rate
+    wintering in, against 0.5), and a lived-in burrow's store is tucked
+    away where raiders and ants won't find it. But it can't be built up:
+    a clan that outgrows one puts up a Tent beside it, and a clan choosing
+    a home prefers a Tent or a House. Drawn as a turfed mound of earth
+    with a dark round doorway shored with twigs.
 *   A built home hides whoever is inside it from the Wolf Spider's pounce
     and from Hornets — unless more residents are crammed inside than it
     has room for, in which case it protects nobody.
@@ -453,6 +479,25 @@ overhead camera:
     Stag Beetle or the Wolf Spider (+1), finishing a home (+0.5) and
     winning a leadership duel (+1). A sitting Leader stays until it dies,
     leaves, or loses a challenge.
+*   **Heirs:** a Leader who is an elder, sick or below half Health names
+    an **heir** at its next decision, if it has none — the member with the
+    best claim to lead, leaning toward its own close kin (+0.3) and
+    friends (+0.15), so dynasties form. When the Leader dies or leaves, a
+    named heir still in the group takes over (with +0.5 Reputation), and
+    the chronicle records the succession. A Leader lost with no heir
+    leaves a scramble: the group elects as before, but every follower's
+    loyalty drops by 0.08. A usurper names its own heir. The Kin Inspector
+    marks the heir.
+*   **The council:** up to three of the group's most respected members
+    (Reputation 0.5 or more) sit on the Leader's council. At each
+    decision the Leader's Aggression, Sociability, Intelligence and
+    Courage are drawn part of the way toward the council's average — 0.6
+    × (0.5 + the council's persuasiveness − the Leader's) × how full the
+    council is, at most half the gap — and that tempered nature scores
+    the goals, sets the sharing rule, and weighs war and peace. A council
+    can talk a Leader out of eating first, or hold a hot head back from
+    war. In headless runs it sways decisions about 16% of the way. The
+    Kin Inspector marks councillors.
 *   **Decisions:** every 5s (at once if a threat turns up near home) the
     Leader scores four **goals** from the group's situation, weighted by
     its own personality, and picks the best:
@@ -512,9 +557,21 @@ overhead camera:
         groupmates stay out of it. A winning challenger becomes Leader; a
         Leader who wins exiles the challenger if at all Aggressive (≥ 0.4),
         otherwise keeps it on, humbled.
-    *   **Splinter** — Sociability ≥ 0.4, with at least one other follower
-        below 0.4 loyalty: the unhappy members leave together as a new,
-        homeless group with a Leader of their own.
+    *   **Plot, then splinter** — Sociability ≥ 0.4 (or persuasive): it
+        hatches a **plot** rather than leaving on the spot (a rebel who
+        rebels while a plot is afoot joins it). At each decision the plot
+        quietly recruits the unhappiest member not yet in on it (odds 0.4 +
+        0.5 × the plotter's Persuasiveness), and plotters keep their heads
+        down — they neither rebel nor get thrown out in the usual way. But
+        the Leader may get wind of it: odds 0.05 × (0.5 + its Intelligence)
+        × (1 + conspirators) per decision, so a big plot is hard to hide.
+        Uncovered, an Aggressive Leader exiles the plotter (and cows the
+        rest); a milder one talks them round. A plot that goes three
+        decisions unnoticed with at least one conspirator leads them out as
+        a new, homeless group with a Leader of their own (never into the
+        snow); one nobody will join is given up, and its plotter walks out
+        alone. An instigator whose loyalty recovers gives it up. The Kin
+        Inspector marks plotters.
     *   **Leave** — otherwise: it walks out and goes it alone as an
         **Independent**, losing the group's home, store and defenders.
     *   In winter a rebel who'd leave or split off waits for spring
@@ -574,6 +631,11 @@ overhead camera:
     set up as a household of their own — otherwise the couple separates.
     When a village buds, a settler's partner goes with it. A death leaves
     its partner widowed, and it mourns 90s before it looks for another.
+*   **Courtship gifts:** when two singles who could pair up meet and one
+    is fed with food in hand while the other is empty-handed, the suitor
+    offers it. The gift is given whatever comes of it — they part as
+    Friends at least — and adds 0.25 × (0.5 + the giver's Persuasiveness)
+    to the odds of pairing up.
 *   **Births:** a thriving group raises young — checked at each Leader
     decision. It takes a couple in the group, both fit to be parents
     (grown but not elders, fed, at least 70% Health), living in one of
@@ -599,6 +661,14 @@ overhead camera:
     elected while there's an adult to lead). Over many generations the
     traits of the living drift away from a newcomer's 0.5 average — in
     whichever direction the garden rewards.
+*   **Adoption:** a single child under a year old whose parents have both
+    died is taken in at the next Leader decision by a couple in its clan —
+    a grown brother or sister first, else the most sociable pair — who
+    count it among their children and take it into their home. From then
+    on they're close kin: never robbed, courted or struck down by one
+    another. A young one left with no clan at all is taken in by a
+    settled clan it meets (and adopted there). The Kin Inspector shows who
+    raised it.
 *   **Villages:** a group's size limit follows its housing — whatever its
     finished homes have room for (Tent 2, House 6), never below 6 or
     above 18 — and it may raise young up to 2 past that. A group that has
@@ -703,7 +773,7 @@ overhead camera:
     inherited by children (both parents' crafts), carried along by anyone
     who leaves, and taught to allies (odds 0.05 per decision, farming
     first, then granary, spears, palisade, grain, mushrooms, cress,
-    fishing, stonework, cisterns, wells, slings). When a clan is ready for several, the one it
+    fishing, stonework, cisterns, wells, slings, hearth, snares, herb-lore). When a clan is ready for several, the one it
     works out is picked at random.
     *   **Granary** (needs farming and a House): each House gets a round
         granary beside it and holds half as much again in store.
@@ -758,6 +828,28 @@ overhead camera:
         the Heron rather than run. And a Guard with a sling doesn't give a
         hornets' nest within 14m of home a wide berth: while it's fit (60%
         Health or more) it picks the swarm off from just outside its reach.
+    *   **Hearth** (needs a House, and worked out in autumn or winter,
+        when the cold sets a clan thinking about fire): a ring of stones out
+        front of each House where a fire burns while it's fed — one twig
+        keeps it going 120s, and it holds three. A clan's Builder (or, with
+        nothing to build, its most diligent Gatherer) keeps it topped up.
+        Food taken from a store beside a lit hearth is **cooked**: it fills
+        a little more and heals a little more. Folk wintering in beside a
+        lit hearth get hungry more slowly than in an unheated home, and
+        heal faster resting there. Drawn as a ring of pebbles with a fire
+        that shrinks as the fuel burns down (ash when it's out).
+    *   **Snares** (needs a House): two baited grass snares set 3–7m from
+        each House. A Grub smells the bait from 12m, crawls in and is
+        caught, its meat left on the spot for the Gatherers to bring home.
+        A Gatherer with nothing better to do sets a sprung snare again.
+        Snares rot away with their clan.
+    *   **Herb-lore** (needs farming, a House, and someone sick to try it
+        on): the Leader keeps a clever, kindly member as **Healer** while
+        anyone is sick or below 60% Health. The Healer goes to the patient
+        near home most in need — the sick before the hurt — and tends it
+        for a few seconds: the sickness passes 20–40s sooner, and the
+        wounds close by 3–6 Health, even on the sick (who can't otherwise
+        mend). A Healer at work holds out a green poultice.
 *   The Stats tab and the clan card list a clan's crafts; the headless
     summary counts them. Over 13 years a clan works out about six and
     teaches eleven; most clans end up knowing all of them.
@@ -1014,6 +1106,17 @@ overhead camera:
     to 50m) against open ground and berries. How far is measured walking
     round the pond (`WaterMap.DistanceToWater`); the Kin Inspector shows
     how far its home is from water.
+*   **The creek:** a spring rises in the garden's driest corner, some 70m
+    from either pond, and its brook runs about 28m downhill (worked out
+    from the ground, a meter a step) into a small pool in the next hollow.
+    It's narrow enough to step across, so it blocks no one, and
+    spring-fed, so a drought doesn't touch it. Its banks are somewhere to
+    drink and to grow cress; it counts as water for anyone weighing up how
+    far they live from some (settling, cisterns, wells, watered crops,
+    the Kin Inspector); and nothing is built or planted on it. Fishing,
+    frogs and the heron stay at the ponds. About a third of all trips for
+    water end at the creek. Drawn as a ribbon of water with the spring's
+    stone at its head and the pool at its foot.
 *   **The Giant Oak:** the foot of a real tree stands at the garden's back
     edge — a trunk 12m across, ridged bark and a mossy foot, rising far
     out of sight, with one great bough overhead and ten great roots
