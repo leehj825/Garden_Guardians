@@ -40,6 +40,9 @@ public sealed class SaveGame
 
     public List<WellSave> Wells { get; set; } = new();
     public List<SnareSave> Snares { get; set; } = new();
+
+    /// <summary>Aphid pens; null in a save from before herding.</summary>
+    public List<PenSave>? Pens { get; set; }
     public List<LooseSave> Food { get; set; } = new();
     public List<LooseSave> Twigs { get; set; } = new();
     public List<RelationSave> Relations { get; set; } = new();
@@ -210,6 +213,15 @@ public sealed class SnareSave
     public V3 Position { get; set; }
     public Guid? GroupId { get; set; }
     public bool IsSet { get; set; }
+}
+
+public sealed class PenSave
+{
+    public V3 Position { get; set; }
+    public Guid? GroupId { get; set; }
+    public int Aphids { get; set; }
+    public float HoneydewTimer { get; set; }
+    public float BreedTimer { get; set; }
 }
 
 public sealed class MaterialSave

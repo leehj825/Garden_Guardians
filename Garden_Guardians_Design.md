@@ -785,7 +785,7 @@ overhead camera:
     inherited by children (both parents' crafts), carried along by anyone
     who leaves, and taught to allies (odds 0.05 per decision, farming
     first, then granary, spears, palisade, grain, mushrooms, cress,
-    fishing, stonework, cisterns, wells, slings, hearth, snares, herb-lore). When a clan is ready for several, the one it
+    fishing, stonework, cisterns, wells, slings, hearth, snares, herb-lore, herding). When a clan is ready for several, the one it
     works out is picked at random.
     *   **Granary** (needs farming and a House): each House gets a round
         granary beside it and holds half as much again in store.
@@ -862,6 +862,21 @@ overhead camera:
         for a few seconds: the sickness passes 20–40s sooner, and the
         wounds close by 3–6 Health, even on the sick (who can't otherwise
         mend). A Healer at work holds out a green poultice.
+    *   **Herding** (needs farming, a House, and the aphids of spring or
+        summer): the clan fences a pen of grass stems by its main home and
+        gathers a pair of aphids off the stems. Each aphid gives a drop of
+        **honeydew** about every 150s (a third as fast in winter) — food
+        that lies four times as long as a berry before it spoils, and a
+        little thirst-quenching — which Gatherers bring in like any food
+        near home; a pen stops giving with three drops lying uncollected.
+        A pair or more breeds up by one every 240s outside winter, to five.
+        The ants go after pens as well as stores (two in five ants try a pen
+        first) and carry aphids off to their hill; the Wolf Spider takes one
+        when it passes close (at most one every 40s); a war raider may drive
+        one off to its own clan's pen (35%, adding grievance). A clan whose
+        herd dies out gathers a new pair in time; one that moves house
+        drives its herd along; a pen whose clan is gone empties as the herd
+        strays.
 *   The Stats tab and the clan card list a clan's crafts; the headless
     summary counts them. Over 13 years a clan works out about six and
     teaches eleven; most clans end up knowing all of them.

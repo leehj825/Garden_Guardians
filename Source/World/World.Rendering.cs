@@ -72,6 +72,7 @@ public sealed partial class World
             bush.Draw(winter, stake);
         }
         DrawSnares(camera);
+        DrawPens(camera);
 
         foreach (Twig twig in Twigs)
         {

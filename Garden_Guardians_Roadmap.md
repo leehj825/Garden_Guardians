@@ -841,6 +841,22 @@ three fixes:
     back. Watching only: the simulation is untouched (results identical
     on fixed seeds).
 
+## Phase 28: Aphid Herding
+*   ✅ **Herding** (a craft): a pen of aphids by the main home gives
+    honeydew — steady, slow-to-spoil food — and the herd breeds up
+    outside winter. Ants carry aphids off, the Wolf Spider picks them
+    off, and war raiders rustle them.
+*   **Tuning:** first cut, a full pen gave a drop every 10s and the
+    population ran to 58.6; honeydew now comes every 150s per aphid
+    (was 60), breeding every 240s (was 150), five to a pen (was six), and
+    two in five ants go for pens first.
+*   **Benchmark (12 seeds × 7800s against Phase 26):** population 52.9
+    vs 43.0 — herding gives back what shorter working days took; births
+    196 vs 147; starvation 34.4 vs 28.8; predators 30.7 vs 33.2; kin
+    killed by kin 23.8 vs 8.0 (back to the crowded Phase 25 level);
+    old age 61.2 vs 53.2. Clans fence ~20 pens a run and collect ~600
+    drops of honeydew; ants take ~12 aphids, the spider ~1.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:

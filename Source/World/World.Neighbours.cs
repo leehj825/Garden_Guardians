@@ -314,6 +314,7 @@ public sealed partial class World
         WarRaids++;
         AddWarScore(raider.GroupId, store.GroupId, RaidWarScore);
         raider.AddInfamy(RaidInfamy);
+        TryRustle(raider, store);
     }
 
     /// <summary>Lines between allied (green) and warring (red) groups' main homes.</summary>

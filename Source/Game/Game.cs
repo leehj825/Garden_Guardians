@@ -521,6 +521,10 @@ public static partial class Game
             $"Pond life: {world.FrogsCaught} frogs caught by kin, {world.FrogsTakenByHeron} by the heron; the heron came {world.HeronVisits} times, " +
             $"lunged {world.HeronStabs} times, was driven off {world.HeronsDrivenOff} times and brought down {world.HeronsKilled} times.");
         Console.WriteLine(
+            $"Herding: {world.PensFenced} pens fenced, {world.HoneydewDrops} drops of honeydew, {world.AphidsBred} aphids bred; lost {world.AphidsLostToAnts} to ants, " +
+            $"{world.AphidsLostToSpider} to the spider, {world.AphidsRustled} rustled in raids; at the end {world.Groups.Count(g => World.Knows(g, Craft.Herding))} clans herd, " +
+            $"{world.Pens.Sum(p => p.Aphids)} aphids in {world.Pens.Count(p => p.Aphids > 0)} pens.");
+        Console.WriteLine(
             $"Nights: {world.NightsPassed} nights; {world.WatchesPosted} watches posted, {world.AlarmsRaised} alarms raised, {world.NightRaids} raids set out in the dark. " +
             $"The owl came out {world.OwlVisits} nights, struck {world.OwlStrikes} times ({world.OwlKills} killed), was driven off {world.OwlsDrivenOff} times and brought down {world.OwlsKilled} times.");
         Console.WriteLine(

@@ -26,6 +26,9 @@ public enum FoodShardKind
 
     /// <summary>A minnow or tadpole caught from the shore (see <see cref="Craft.Fishing"/>). Silver.</summary>
     Fish,
+
+    /// <summary>A drop of honeydew from a clan's aphids (see <see cref="Craft.Herding"/>): sweet, and slow to spoil. Amber.</summary>
+    Honeydew,
 }
 
 /// <summary>
@@ -86,7 +89,7 @@ public sealed class FoodShard
         IsCarried = false;
         ClaimedBy = null;
         ClaimTimer = 0f;
-        DespawnTimer = DespawnLifespan;
+        DespawnTimer = kind == FoodShardKind.Honeydew ? DespawnLifespan * 4f : DespawnLifespan;
         IsActive = true;
     }
 
@@ -132,6 +135,11 @@ public sealed class FoodShard
                 Detail.Sphere(groundPoint + new Vector3(0.05f, 0.08f, 0), 0.08f, new Color(180, 195, 205, 255));
                 Detail.Sphere(groundPoint + new Vector3(-0.06f, 0.07f, 0), 0.06f, new Color(160, 175, 190, 255));
                 Raylib.DrawCylinderEx(groundPoint + new Vector3(-0.1f, 0.07f, 0), groundPoint + new Vector3(-0.22f, 0.07f, 0), 0.02f, 0.07f, 4, new Color(140, 155, 170, 255));
+                return;
+            case FoodShardKind.Honeydew:
+                // A glossy amber drop.
+                Detail.Sphere(groundPoint + new Vector3(0, 0.1f, 0), 0.12f, new Color(235, 180, 60, 255));
+                Detail.Sphere(groundPoint + new Vector3(0.03f, 0.15f, 0.03f), 0.04f, new Color(255, 235, 170, 255));
                 return;
         }
         Color color = Kind == FoodShardKind.Berry ? new Color(210, 40, 45, 255) : new Color(245, 150, 45, 255);

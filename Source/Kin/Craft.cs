@@ -55,4 +55,7 @@ public enum Craft
 
     /// <summary>Herb-lore: a Healer tends the clan's sick (shortening the illness) and wounded (see Bramblekin.Healing).</summary>
     Herbalism = 16384,
+
+    /// <summary>Herding aphids in a pen by the main home for their honeydew — steady food that keeps (see World.Herding).</summary>
+    Herding = 32768,
 }

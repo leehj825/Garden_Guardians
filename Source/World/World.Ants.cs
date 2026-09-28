@@ -130,7 +130,7 @@ public sealed partial class World
         ant.MarkDead();
         _pendingAntRemovals.Add(ant);
         AntsKilled++;
-        if (ant.IsLaden)
+        if (ant.IsLaden && !ant.CarriesAphid)
             _pendingFoodSpawns.Add((ant.Position, FoodShardKind.Berry));
     }
 

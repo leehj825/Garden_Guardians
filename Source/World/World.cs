@@ -451,6 +451,7 @@ public sealed partial class World
 
         UpdateShelters(deltaTime);
         UpdateFarming(deltaTime);
+        UpdatePens(deltaTime);
         UpdateBerrySpawn(deltaTime);
         UpdateWildFood(deltaTime);
         UpdateTwigSpawn(deltaTime);

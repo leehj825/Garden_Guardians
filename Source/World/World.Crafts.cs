@@ -12,7 +12,7 @@ public sealed partial class World
     private static readonly Craft[] LaterCrafts =
     {
         Craft.Granary, Craft.Spears, Craft.Palisade, Craft.Grain, Craft.Mushrooms, Craft.Cress, Craft.Fishing, Craft.Stonework, Craft.Cisterns,
-        Craft.Wells, Craft.Slings, Craft.Hearth, Craft.Snares, Craft.Herbalism,
+        Craft.Wells, Craft.Slings, Craft.Hearth, Craft.Snares, Craft.Herbalism, Craft.Herding,
     };
 
     /// <summary>A clan whose main home is further than this (m) from the water works out cisterns — necessity being the mother of invention.</summary>
@@ -100,7 +100,8 @@ public sealed partial class World
     /// cisterns, a House far from the water; wells, stonework and a House
     /// far from the water; slings, spears; a hearth, a House and the cold
     /// of autumn or winter to set them thinking about fire; snares, a House; herb-lore, farming,
-    /// a House and someone sick to try it on.
+    /// a House and someone sick to try it on; herding, farming, a House and
+    /// the aphids of spring or summer thick on the stems.
     /// </summary>
     private bool ReadyFor(KinGroup group, Craft craft)
     {
@@ -128,6 +129,7 @@ public sealed partial class World
             Craft.Hearth => hasHouse && CurrentSeason is Season.Autumn or Season.Winter,
             Craft.Snares => hasHouse,
             Craft.Herbalism => hasHouse && farms && group.Members.Any(m => !m.IsDead && m.IsSick),
+            Craft.Herding => hasHouse && farms && CurrentSeason is Season.Spring or Season.Summer,
             _ => false,
         };
     }
@@ -149,6 +151,7 @@ public sealed partial class World
         Craft.Hearth => "keep a fire burning in a hearth",
         Craft.Snares => "set baited snares for grubs",
         Craft.Herbalism => "tend the sick with herbs",
+        Craft.Herding => "herd aphids for their honeydew",
         _ => craft.ToString().ToLowerInvariant(),
     };
 
