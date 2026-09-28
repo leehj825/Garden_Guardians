@@ -90,9 +90,10 @@ public sealed partial class Bramblekin
             return false;
 
         // Nobody picks a fight with a Hornet nest: an idle swarm is just
-        // avoided; only a chasing one gets swatted back.
-        if (threat is Hornet { IsChasing: false })
-            return false;
+        // avoided; only a chasing one gets swatted back — unless it's a
+        // Guard with a sling, and the nest is near home.
+        if (threat is Hornet { IsChasing: false } idle)
+            return IsClearingNest(idle);
 
         // Standing up to another Bramblekin is mostly a matter of temper; to a predator, of nerve.
         float chance = threat is Bramblekin

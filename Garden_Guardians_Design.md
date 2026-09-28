@@ -738,9 +738,12 @@ overhead camera:
         with — a Hornet, a frog on the bank, the Heron. A slinger in range
         (3.5m) stands its ground and looses a pebble every 1.4s (hitting a
         Hornet 60% of the time, a frog 70%, the Heron 85%) for its full
-        blow; the pebble is seen flying. Knowing it can hit back from a few
+        blow; the pebble is seen flying. Close enough to strike, it strikes
+        instead (surer, and quicker). Knowing it can hit back from a few
         paces off, it's 25% likelier to stand and fight a chasing swarm or
-        the Heron rather than run.
+        the Heron rather than run. And a Guard with a sling doesn't give a
+        hornets' nest within 14m of home a wide berth: while it's fit (60%
+        Health or more) it picks the swarm off from just outside its reach.
 *   The Stats tab and the clan card list a clan's crafts; the headless
     summary counts them. Over 13 years a clan works out about six and
     teaches eleven; most clans end up knowing all of them.
@@ -1059,8 +1062,9 @@ overhead camera:
     within 1.7m that's out in the open at the water's edge (not by its
     door), stalking one within 5m at 0.9 m/s — slower than a walk. Wading,
     Bramblekin see it within 5m; standing still, only within 2.2m, so a
-    drinker can walk right up to it. Hurt down to 20 HP it flies off;
-    brought down, it drops 6 pieces of meat. It leaves when its time's
+    drinker can walk right up to it. Hurt down to 20 HP it takes off —
+    though beating its way up takes 0.8s, and until it's up a band of kin
+    on it can still bring it down, for 6 pieces of meat. It leaves when its time's
     up, when winter comes, or when a drought shrinks the pond below a
     third. A killing lunge reads "was speared by the heron".
 *   **Garden Props:** Pebbles (solid rocks), Twigs (big sticks, where

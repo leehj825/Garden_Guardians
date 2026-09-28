@@ -15,6 +15,12 @@ public sealed partial class Bramblekin
     /// <summary>Knowing it can hit back from a few paces off, it's this much likelier to stand up to a Hornet or the Heron.</summary>
     private const float SlingNerve = 0.25f;
 
+    /// <summary>A Guard with a sling clears any hornets' nest it sees within this far (m) of home…</summary>
+    private const float NestClearingRadius = 14f;
+
+    /// <summary>…while it's at least this fit.</summary>
+    private const float NestClearingHealthFraction = 0.6f;
+
     /// <summary>
     /// What a sling is for (see <see cref="Craft.Slings"/>): things too quick
     /// to catch, or too dangerous to close with — a Hornet, a frog on the
@@ -31,16 +37,28 @@ public sealed partial class Bramblekin
     };
 
     /// <summary>
+    /// A Guard with a sling doesn't give a hornets' nest near home a wide
+    /// berth: it picks the swarm off a pebble at a time, from just outside
+    /// the reach of the Hornet it's aiming at (see <see cref="SlingRange"/>).
+    /// </summary>
+    private bool IsClearingNest(Hornet hornet) =>
+        Job == KinJob.Guard && CanSling(hornet) && Health >= MaxHealth * NestClearingHealthFraction && Home is { IsBuilt: true } home &&
+        GroundMover.HorizontalDistanceSquared(hornet.Position, home.Position) <= NestClearingRadius * NestClearingRadius;
+
+    /// <summary>
     /// A slinger in range of <paramref name="target"/> stands its ground,
     /// faces it and looses a pebble (once its sling's ready again). False if
-    /// it has no sling for this, or the target's out of range.
+    /// it has no sling for this, or the target's out of range — or close
+    /// enough to strike, which is surer and quicker.
     /// </summary>
     private bool TrySling(ICombatant target, World world)
     {
         if (!CanSling(target))
             return false;
         Vector3 targetPosition = target.Position;
-        if (GroundMover.HorizontalDistanceSquared(Position, targetPosition) > SlingRange * SlingRange)
+        float distanceSquared = GroundMover.HorizontalDistanceSquared(Position, targetPosition);
+        float strikeReach = BodyRadius + target.CollisionRadius + StrikeReach;
+        if (distanceSquared > SlingRange * SlingRange || distanceSquared <= strikeReach * strikeReach)
             return false;
 
         var toTarget = new Vector2(targetPosition.X - Position.X, targetPosition.Z - Position.Z);

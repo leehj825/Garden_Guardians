@@ -195,9 +195,10 @@ public sealed partial class World
         KinGroup? clan = GroupOf(killer);
         string who = clan is null ? killer.Name : $"{clan.CapitalTitle} (final blow by {killer.Name})";
         Game.AddEventLog($"[HUNT] {who} brought down the heron!");
+        if (HeronsKilled != 1 && HeronsKilled % 5 != 0)
+            return; // Only the milestones make the headlines and the chronicle: the first heron, then every fifth.
         Headline("The heron", $"{who} brought down the heron", at, false, clan);
-        if (clan is not null)
-            Chronicle($"{clan.CapitalTitle} brought down a heron at the pond (final blow by {killer.Name})", clan);
+        Chronicle($"{who} brought down {(HeronsKilled == 1 ? "a" : $"the {Ordinal(HeronsKilled)}")} heron at the pond", clan);
     }
 
     private void DrawPondLife(Camera3D camera)

@@ -122,19 +122,33 @@ public sealed class Heron : ICombatant
 
     public void MarkSlain() => _slain = true;
 
-    /// <summary>Hurt down to this much Health, it's had enough and flies off.</summary>
+    /// <summary>Hurt down to this much Health, it's had enough and flies off…</summary>
     private const int FleeHealth = MaxHealth * 2 / 5;
 
-    /// <summary>A blow or a pebble: brought down at 0 Health (see <see cref="World.KillHeron"/>); hurt to <see cref="FleeHealth"/>, it's had enough and flies off.</summary>
+    /// <summary>…though beating its way up takes this long (s), and until it's up it can still be struck — a band of kin on it may bring it down.</summary>
+    private const float TakeOffSeconds = 0.8f;
+
+    /// <summary>Seconds left beating its way up; below 0 when it isn't taking off.</summary>
+    private float _takeOff = -1f;
+
+    /// <summary>Whoever struck the blow that sent it off.</summary>
+    private Bramblekin? _driver;
+
+    /// <summary>A blow or a pebble: brought down at 0 Health (see <see cref="World.KillHeron"/>); hurt to <see cref="FleeHealth"/>, it's had enough and takes off.</summary>
     public void TakeHit(int damage, Bramblekin attacker, World world)
     {
         if (!IsLanded)
             return;
         Health = Math.Max(0, Health - damage);
         if (Health <= 0)
+        {
             world.KillHeron(this, attacker);
-        else if (Health <= FleeHealth)
-            Leave(world, attacker);
+        }
+        else if (Health <= FleeHealth && _takeOff < 0f)
+        {
+            _takeOff = TakeOffSeconds;
+            _driver = attacker;
+        }
     }
 
     /// <summary>Flies in, stalks the shallows, flies off. Returns false once it has gone.</summary>
@@ -152,6 +166,15 @@ public sealed class Heron : ICombatant
             if (_phase == Phase.Leaving)
                 return false;
             _phase = Phase.Stalking;
+            return true;
+        }
+
+        if (_takeOff >= 0f)
+        {
+            // Beating its way up: no more hunting.
+            _takeOff -= deltaTime;
+            if (_takeOff < 0f)
+                Leave(world, _driver);
             return true;
         }
 
@@ -258,7 +281,7 @@ public sealed class Heron : ICombatant
     /// <summary>
     /// A tall grey heron: long yellow legs, a grey body with darker wings, a
     /// white S-curved neck, a black crest and a yellow dagger of a beak —
-    /// thrust out when it lunges. On the wing, broad grey wings beating slowly.
+    /// thrust out when it lunges. On the wing (or taking off), broad grey wings beating.
     /// </summary>
     public void Draw()
     {
@@ -291,10 +314,10 @@ public sealed class Heron : ICombatant
             Raylib.DrawSphereEx(new Vector3(-0.04f, 0.06f, 0f), 0.24f, 6, 10, WingColor);
         Rlgl.PopMatrix();
 
-        if (flying)
+        if (flying || _takeOff >= 0f)
         {
-            // Broad wings, beating slowly.
-            float beat = MathF.Sin(_flightTime * 5f) * 0.35f;
+            // Broad wings, beating slowly (beating hard, taking off).
+            float beat = MathF.Sin((flying ? _flightTime : _takeOff) * (flying ? 5f : 14f)) * 0.35f;
             foreach (float s in stackalloc[] { -1f, 1f })
             {
                 Vector3 root = Local(0f, bodyHeight + 0.15f, 0.12f * s);
