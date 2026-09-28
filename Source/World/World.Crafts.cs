@@ -12,7 +12,7 @@ public sealed partial class World
     private static readonly Craft[] LaterCrafts =
     {
         Craft.Granary, Craft.Spears, Craft.Palisade, Craft.Grain, Craft.Mushrooms, Craft.Cress, Craft.Fishing, Craft.Stonework, Craft.Cisterns,
-        Craft.Wells, Craft.Slings, Craft.Hearth, Craft.Snares, Craft.Herbalism, Craft.Herding, Craft.Smoking,
+        Craft.Wells, Craft.Slings, Craft.Hearth, Craft.Snares, Craft.Herbalism, Craft.Herding, Craft.Smoking, Craft.Shields,
     };
 
     /// <summary>A clan whose main home is further than this (m) from the water works out cisterns — necessity being the mother of invention.</summary>
@@ -102,7 +102,8 @@ public sealed partial class World
     /// of autumn or winter to set them thinking about fire; snares, a House; herb-lore, farming,
     /// a House and someone sick to try it on; herding, farming, a House and
     /// the aphids of spring or summer thick on the stems; smoking the bees,
-    /// a hearth and a comb of honey taken already (and the stings to go with it).
+    /// a hearth and a comb of honey taken already (and the stings to go with it);
+    /// shields, spears and a hunting or martial tradition (beetle shells to hand).
     /// </summary>
     private bool ReadyFor(KinGroup group, Craft craft)
     {
@@ -132,6 +133,7 @@ public sealed partial class World
             Craft.Herbalism => hasHouse && farms && group.Members.Any(m => !m.IsDead && m.IsSick),
             Craft.Herding => hasHouse && farms && CurrentSeason is Season.Spring or Season.Summer,
             Craft.Smoking => Knows(group, Craft.Hearth) && group.HoneyTaken > 0,
+            Craft.Shields => Knows(group, Craft.Spears) && (group.Culture.Hunting >= 0.2f || group.Culture.Martial >= 0.2f),
             _ => false,
         };
     }
@@ -155,6 +157,7 @@ public sealed partial class World
         Craft.Herbalism => "tend the sick with herbs",
         Craft.Herding => "herd aphids for their honeydew",
         Craft.Smoking => "smoke out the bees before taking their honey",
+        Craft.Shields => "make shields of beetle shell",
         _ => craft.ToString().ToLowerInvariant(),
     };
 

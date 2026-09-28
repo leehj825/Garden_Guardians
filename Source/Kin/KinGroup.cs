@@ -38,6 +38,18 @@ public sealed class KinGroup
     /// <summary>Combs of honey its members have taken from the hive (see World.Beehive).</summary>
     public int HoneyTaken { get; set; }
 
+    /// <summary>The year it last held a harvest feast (see World.Feasts).</summary>
+    public int LastFeastYear { get; set; }
+
+    /// <summary>What the clan reveres (see World.Beliefs).</summary>
+    public Belief Belief { get; set; }
+
+    /// <summary>Where its shrine stands (or is going up), if it has one.</summary>
+    public Vector3? Shrine { get; set; }
+
+    /// <summary>How far its shrine is raised, 0..1.</summary>
+    public float ShrineRaised { get; set; }
+
     public string ShortId => Id.ToString("N")[..4];
 
     /// <summary>The group's name — "Thornwood clan", after the family of the Leader it was founded under (see World.NameGroup). Null for a moment while it's being founded.</summary>
@@ -136,10 +148,13 @@ public sealed class KinGroup
         : leader.Personality.Intelligence >= 0.6f ? LeaderStyle.Planner
         : LeaderStyle.Moderate;
 
+    /// <summary>The colour a clan with <paramref name="id"/> flies — worked out from the id, so it's known even after the clan is gone.</summary>
+    public static Color ColorOf(Guid id) => Palette[(int)((uint)id.GetHashCode() % (uint)Palette.Length)];
+
     public KinGroup(Guid id)
     {
         Id = id;
-        Color = Palette[(int)((uint)id.GetHashCode() % (uint)Palette.Length)];
+        Color = ColorOf(id);
     }
 
     /// <summary>

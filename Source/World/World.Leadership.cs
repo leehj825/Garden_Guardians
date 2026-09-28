@@ -94,6 +94,8 @@ public sealed partial class World
             PlaceSnares(group);
             TendHerd(group);
             SendForHoney(group);
+            TryHoldFeast(group, leader);
+            UpdateBelief(group, leader);
             UpdateWells(group);
             UpdateCulture(group);
             group.Counsel = Counsel(group, leader);
@@ -107,6 +109,7 @@ public sealed partial class World
         }
         ProcessRebellions();
         ProcessPlots();
+        ProcessProphecies();
         ProcessConquests();
     }
 

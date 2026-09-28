@@ -153,6 +153,7 @@ public sealed partial class World
         NameGroup(splinter);
         splinter.SettleTarget = FindOpenGround(instigator.Position); // Well away from the group they left.
         splinter.Culture.CopyFrom(group.Culture);
+        splinter.Belief = group.Belief;
         AddGrievance(group.Id, splinter.Id, SplinterGrievance);
 
         Splinters++;
@@ -219,6 +220,11 @@ public sealed partial class World
     {
         if (!winner.IsDueling && !loser.IsDueling)
             return; // Already resolved from the other side.
+        if (BoutOf(winner) is { } bout)
+        {
+            ResolveBout(bout, winner, loser, timedOut); // Champions, not a leadership duel.
+            return;
+        }
         winner.EndDuel();
         loser.EndDuel();
 

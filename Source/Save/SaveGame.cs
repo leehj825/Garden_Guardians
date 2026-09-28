@@ -142,6 +142,7 @@ public sealed class KinSave
     public ErrandSave? Errand { get; set; }
     public float LeaderSeconds { get; set; }
     public int SpiderKills { get; set; }
+    public int ChampionWins { get; set; }
     public float Sickness { get; set; }
     public float Immunity { get; set; }
 
@@ -184,6 +185,9 @@ public sealed class GroupSave
     public float Farming { get; set; }
     public Tradition Leading { get; set; }
     public int SpidersSlain { get; set; }
+    public Belief Belief { get; set; }
+    public V3? Shrine { get; set; }
+    public float ShrineRaised { get; set; }
     public List<PlaceSave> Dangers { get; set; } = new();
     public List<PlaceSave> FoodSpots { get; set; } = new();
 }

@@ -23,6 +23,10 @@ scarcity; named Bramblekin pair up as couples, thriving groups raise
 young who inherit their parents' traits and family names, grow into
 villages of up to three homes, and bud off daughter groups; the old grow
 grey and die. A follow camera keeps any one of them in view.
+Since Phase 26 the garden has **day and night** (sleep, a night watch, the
+Owl), **aphid herding**, a **beehive** in the oak, **harvest feasts**,
+**shrines and beliefs**, **shields and champions**, an automatic
+**Director** camera and a **timeline** on the History screen.
 Code lives under `Source/` (one type per file; see the
 Design doc's Code Layout). The player is a spectator with a
 Google-Maps-style camera whose only action is tapping a Bramblekin to
@@ -873,6 +877,70 @@ three fixes:
     population 59.9 vs 56.4 time-averaged (the difference is within the
     spread between seeds); starvation 37.7 vs 31.4; predators 34.2 vs
     31.8; kin killed by kin 22.9 vs 24.6; old age 67.8 vs 63.5.
+
+## Phase 30: Harvest Feasts
+*   ✅ **Feasts:** a clan with a good autumn harvest holds a feast by its
+    home and invites its allies and friendly neighbours; guests are fed
+    from its stores, kin from different clans court there, and grudges
+    cool — a neutral clan that came in numbers may become an ally.
+*   **Tuning:** first cut, clans needed 2 stored a member and fed any
+    guest with a little hunger; starvation rose by 4 a run, so now it
+    takes 3 a member and only the properly peckish are fed.
+*   **Benchmark (24 seeds × 7800s against Phase 29):** ~21 feasts a run
+    with ~280 guests from other clans, ~20 couples meeting across clans
+    and ~6 alliances made over one. Population 57.0 vs 59.9; starvation
+    38.9 vs 37.7; kin killed by kin 21.4 vs 22.9; predators 36.6 vs 34.2;
+    old age 64.2 vs 67.8.
+
+## Phase 31: Shrines and Beliefs
+*   ✅ **Beliefs:** clans come to revere the Oak, the Pond, the Spider or
+    the Moon from what they've lived through, and raise a shrine to it
+    that binds them closer (steadier loyalty).
+*   ✅ **Between clans:** shared beliefs soothe grievances and help
+    alliances; rival ones slowly sour neighbours; a feast can convert.
+*   ✅ **Prophets:** a persuasive rebel with a vision leads a schism.
+*   **Fixed on the way:** a schism split a clan while the Leaders' round
+    was still going through the clans (a crash); visions are now acted on
+    once every clan has decided, like plots.
+*   **Tuning:** at first a prophet needed followers already set to leave
+    and a run saw 0.1 schisms; with the restless following, 0.008 a
+    decision gave 7 a run — now 0.0015 gives about 1.7.
+*   **Benchmark (24 seeds × 7800s against Phase 30):** ~7.5 beliefs taken
+    up a run, ~27 shrines raised (daughter villages raise their own),
+    1.7 schisms. Departures 6.7 vs 7.4 and coups 1.2 vs 1.4 (shrines
+    steady loyalty); splinters 4.0 vs 2.6 (schisms among them); wars 0.4
+    vs 0.3 a run. Population 51.5 vs 57.0; starvation 35.0 vs 38.9;
+    kin killed by kin 20.8 vs 21.4.
+
+## Phase 32: Armour and Champions
+*   ✅ **Shields** (a craft, after spears and a hunting or martial
+    tradition): beetle-shell shields take a third off every blow and bite.
+*   ✅ **Champions:** feuding neighbours — and clans at war — may settle it
+    by single combat between their best fighters; the loser pays a
+    forfeit (or tribute, ending a war), the grievance is forgotten, and
+    the winner goes in the chronicle.
+*   **Benchmark (24 seeds × 7800s against Phase 31):** ~2 contests a run,
+    settling ~1.8 feuds and ~0.2 wars; ~10 clans carry shields by the
+    end. Population 51.1 vs 51.5; predators 30.9 vs 33.9 (shields);
+    starvation 31.3 vs 35.0; kin killed by kin 23.9 vs 20.8; wars 0.4 a
+    run as before.
+
+## Phase 33: The Garden Timeline
+*   ✅ **The History chart as a timeline:** every clan's size is kept with
+    each 30s snapshot; the Story chart draws the six biggest clans' lines
+    in their colours (or the selected clan's alone), year marks, and every
+    headline as a coloured diamond along the top — tap one to jump the
+    chronicle to it. Older saves load as before (their clan lines start
+    from the load).
+
+## Phases 26–33 Together
+*   **Benchmark (24 seeds × 7800s, the Phase 33 build against Phase 25 on
+    the same seeds):** population 51.1 time-averaged vs 50.4 — about the
+    same, but a healthier garden: starvation 31.3 a run vs 45.0; kin
+    killed by kin 23.9 vs 27.7; predators 30.9 vs 34.9; old age 59.6 vs
+    56.3; sickness 16.3 vs 16.8; births 195 vs 198. No crashes.
+*   **Speed:** the busy garden (112 kin) keeps up at 50x on desktop with
+    software rendering (37 FPS), with the Director on.
 
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd

@@ -785,7 +785,7 @@ overhead camera:
     inherited by children (both parents' crafts), carried along by anyone
     who leaves, and taught to allies (odds 0.05 per decision, farming
     first, then granary, spears, palisade, grain, mushrooms, cress,
-    fishing, stonework, cisterns, wells, slings, hearth, snares, herb-lore, herding, smoking). When a clan is ready for several, the one it
+    fishing, stonework, cisterns, wells, slings, hearth, snares, herb-lore, herding, smoking, shields). When a clan is ready for several, the one it
     works out is picked at random.
     *   **Granary** (needs farming and a House): each House gets a round
         granary beside it and holds half as much again in store.
@@ -881,6 +881,11 @@ overhead camera:
         taken — stings and all): with a lit hearth at home to take a brand
         from, the clan's honey-takers rouse the bees one time in ten
         instead of more than half.
+    *   **Shields** (needs spears, and a hunting or martial tradition):
+        round shields of stag-beetle shell — every blow and bite on a grown
+        member does two-thirds of its damage (at least 1). Carried on the
+        arm when fighting, guarding, raiding or duelling, with a boss in
+        the clan's colour.
 *   The Stats tab and the clan card list a clan's crafts; the headless
     summary counts them. Over 13 years a clan works out about six and
     teaches eleven; most clans end up knowing all of them.
@@ -983,6 +988,65 @@ overhead camera:
     line between their main homes; the HUD counts current alliances and
     wars, and the Kin Inspector shows its group's.
 
+## Festivals: Harvest Feasts
+*   **Holding one:** at an autumn decision, by day, a clan with a good
+    harvest in store (at least 12, and 3 a member) that isn't defending
+    or raiding holds a feast, with odds 0.25 × (0.5 + its Leader's
+    Sociability) — once a year. It lays out 3 pieces from its stores and
+    sets up tables by its main home, ringed with bunting in its colours
+    (lanterns glow after dark), for 40s. The Leader gains standing, and
+    the Director puts the feast in its spotlight.
+*   **Who comes:** the clan, its allies, and neighbours at peace within
+    40m whose grievance is low — any grown member within 45m, unless on
+    the night watch, a raid or an errand. A peckish guest is fed from the
+    host's stores on arrival; everyone mills about the tables.
+*   **What comes of it:** at a feast, kin of different clans can court
+    even if their clans aren't allies (and nobody robs anybody). When it
+    ends, each clan that came has 4 less grievance with the host, and a
+    neutral clan that came two or more strong becomes an ally with odds
+    0.3. The chronicle records the feast and its guests.
+
+## Shrines and Beliefs
+*   **Coming to a belief:** at each decision, a settled clan with no belief
+    may come to revere something it has lived close to, with odds 0.006 ×
+    (0.5 + half its Leader's Intelligence and Persuasiveness): **the Great
+    Oak** (living within 35m of it, or having tasted its honey), **the
+    Still Water** (living within 12m of the pond), **the Spider** (having
+    brought it down, or lost kin to danger near home), or **the Moon**
+    (keeping a hearth through the nights). A guest clan with no belief of
+    its own may take up its host's at a feast (odds 0.2). Daughter
+    villages and splinters keep their parent's belief.
+*   **The shrine:** the clan raises a shrine by its main home over a few
+    decisions — a small cairn in a ring of pebbles, topped with its token
+    (a carved acorn, a blue pebble, an eight-legged figure, a pale disc)
+    and a pennant in its colours, with a candle that glows after dark.
+    Once raised, it binds the clan: every member's loyalty settles about
+    0.08 higher, so fewer rebel.
+*   **Between clans:** neighbours who share a belief let grievances fade
+    twice as fast and are twice as likely to ally; neighbours with rival
+    beliefs slowly build up grievance (about one point a year).
+*   **Prophets and schisms:** now and then (0.0015 a decision) a
+    persuasive, rebellious member of a clan with a shrine has a vision of
+    another belief, and leads the restless (the rebellious, or the less
+    loyal) out to found a new clan and raise a shrine to it — a splinter
+    with some bad blood.
+
+## Champions
+*   **Settling it by single combat:** a Leader with a feud (a grievance of
+    5 or more) with neutral neighbours may, instead of letting it fester
+    toward war, call for champions — odds 0.04 × (0.5 + its
+    Persuasiveness) a decision; at war, 0.05 × the same, to end the war.
+    Each clan sends its best fighter (fit, grown, not old; healthiest,
+    fiercest, bravest, handiest, better with a shield), and the two fight
+    it out between the villages as a duel (up to 70s) until one yields at
+    half Health.
+*   **What it settles:** the grievance is forgotten. A feud's loser pays
+    3 food from its stores to the winner; a war's loser sues for peace
+    and pays tribute, as if beaten in the war. The winner gains standing,
+    counts a champion's win, and goes in the chronicle; the Director
+    cuts to any contest under way. A contest that times out (or loses a
+    clan) settles nothing.
+
 ## Weather
 *   **Good and bad years:** each season rolls its weather. A Winter is
     **harsh** 20% of the time: food at 0.7× even the usual winter pace,
@@ -1078,9 +1142,15 @@ overhead camera:
     tabs, each showing the selected Bramblekin's clan (or a clan picked by
     tapping one of its homes), else the whole garden; drag or scroll to
     read back:
-    *   **Story** — a chart of the population and the number of groups
-        over the whole run (sampled every 30s) and the chronicle, newest
-        first.
+    *   **Story** — the garden's timeline: the population and the number
+        of groups over the whole run (sampled every 30s, with every clan's
+        size), the six biggest clans' sizes as thin lines in their colours
+        (with a clan selected, just its own), year marks, and every
+        headline as a diamond along the top, coloured by kind — wars red,
+        peace and alliances green, feasts orange, beliefs purple,
+        champions and coups gold, splits and endings slate, hard times
+        blue-grey. Tapping a diamond scrolls the chronicle below to that
+        entry and highlights it. Then the chronicle, newest first.
     *   **Stats** — a chart of food stored and berry bushes, the clan at a
         glance (members, Leader, founding, homes, stores, bushes, spiders
         slain, traditions, neighbours), and the garden's totals since it

@@ -58,7 +58,9 @@ public sealed partial class World
                 continue;
             if (kin.DuelOpponent is { IsDead: false } rival && kin.ID < rival.ID)
             {
-                shots.Add(new Shot($"{kin.Name} and {rival.Name} fight to lead {GroupOf(kin)?.Title ?? "their clan"}", 9f, kin, kin.Position));
+                shots.Add(BoutOf(kin) is { } bout
+                    ? new Shot($"Champions: {bout.FirstChampion.Name} of {bout.First.Title} against {bout.SecondChampion.Name} of {bout.Second.Title}", 9.5f, kin, kin.Position)
+                    : new Shot($"{kin.Name} and {rival.Name} fight to lead {GroupOf(kin)?.Title ?? "their clan"}", 9f, kin, kin.Position));
                 continue;
             }
             if (kin.State == BramblekinState.Fighting && kin.CombatTarget is Bramblekin foe && !foe.IsDead)
@@ -71,11 +73,11 @@ public sealed partial class World
             }
             if (kin.State == BramblekinState.Raiding && kin.RaidTarget is { } raided && fights.Add((kin.GroupId, raided.GroupId)))
             {
-                shots.Add(new Shot($"{Side(kin)} raid {(raided.GroupId is { } id && _groups.TryGetValue(id, out KinGroup? victim) ? victim.Title : "a store")}", 7.5f, kin, kin.Position));
+                shots.Add(new Shot($"{Capitalized(Side(kin))} raid {(raided.GroupId is { } id && _groups.TryGetValue(id, out KinGroup? victim) ? victim.Title : "a store")}", 7.5f, kin, kin.Position));
                 continue;
             }
             if (kin.State == BramblekinState.Hunting && kin.CombatTarget is StagBeetle beetle && !beetle.IsDead && fights.Add((kin.GroupId, null)))
-                shots.Add(new Shot($"{Side(kin)} hunt a stag beetle", 5f, beetle, beetle.Position));
+                shots.Add(new Shot($"{Capitalized(Side(kin))} hunt a stag beetle", 5f, beetle, beetle.Position));
         }
 
         if (Spider is { IsDead: false } spider && spider.State is SpiderState.Hunting or SpiderState.Pouncing or SpiderState.Feeding)
@@ -90,6 +92,8 @@ public sealed partial class World
         }
         if (Owl is { IsSlain: false, IsLeaving: false } owl)
             shots.Add(new Shot(owl.IsLanded ? "The owl has struck" : "The owl is out hunting", owl.IsLanded ? 8f : 4f, null, Grounded(owl.Position)));
+        foreach (Feast feast in _feasts)
+            shots.Add(new Shot($"A harvest feast in {feast.Host.Title}", 5f + 0.2f * Math.Min(feast.Attended.Count, 15), null, feast.Site));
         if (Heron is { IsLanded: true } heron)
             shots.Add(new Shot("The heron stalks the shallows", 3.5f, heron, heron.Position));
 
@@ -105,5 +109,6 @@ public sealed partial class World
         return shots;
 
         string Side(Bramblekin who) => GroupOf(who)?.Title ?? who.Name;
+        static string Capitalized(string text) => char.ToUpperInvariant(text[0]) + text[1..];
     }
 }

@@ -98,4 +98,7 @@ public enum BramblekinState
 
     /// <summary>Off to the hive in the oak for a comb of honey (see Bramblekin.Honey).</summary>
     GatheringHoney,
+
+    /// <summary>At a harvest feast — its own clan's, or one it was invited to (see Bramblekin.Feast).</summary>
+    Feasting,
 }
