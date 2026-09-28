@@ -1041,9 +1041,9 @@ overhead camera:
     (4 starving to death in one season), a new village, a clan splitting
     or ending, a coup, an alliance, farming worked out, a drought or a
     harsh winter — go up on a **banner** just above the HUD for a few
-    seconds (the urgent ones longer). Tap it to fly the camera there. An
-    urgent one (war, conquest, famine) also drops a fast-forwarded game
-    back to 1x so it can be watched — at most once every 90 seconds.
+    seconds (the urgent ones — war, conquest, famine — longer, in red).
+    Tap it to fly the camera there. The speed is the player's alone: no
+    banner ever changes it.
 
 ## Save & Load
 *   **The garden carries on:** the game autosaves every 30s of real time

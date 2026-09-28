@@ -732,7 +732,7 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     not the squares, so the pond was never drawn again — the water was
     there, kin walked round it and drank from it, but it was invisible
     from the second session on (only a New garden showed it). Render
-    caches are now `[NonSerialized]` and the save skips them, which also
+    caches are now marked `[NotSaved]` and the save skips them, which also
     mends gardens already saved.
 *   ✅ **The Wolf Spider got stuck at the map's edge:** walkers turn back
     once 48m from the centre, but destinations were picked up to 49m out,
@@ -740,6 +740,13 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     paced on the spot at the limit for good (45 minutes in one place in a
     13-year run). Goals past the limit are now clamped to it, for every
     walker.
+
+*   ✅ **The speed kept dropping to 1x:** urgent headlines (a famine — 4
+    starved in a season, most winters — a drought drying the pond, a war)
+    reset a fast-forwarded game to 1x so they could be watched, at most
+    every 90s; at 50x that was every game-year or so, and read as the
+    setting resetting itself. Banners no longer touch the speed; urgent
+    ones still stay up longer, in red.
 
 ## Phase 24: Hearth and Home, Kin and Clan
 *   ✅ **Hearths:** a craft (a House, worked out in autumn or winter): a

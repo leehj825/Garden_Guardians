@@ -197,7 +197,7 @@ public sealed partial class World
     private readonly List<Vector2> _waterCells = new();
 
     // A render cache, not garden state: saving it would tell a loaded garden its (unsaved, empty) squares were already worked out.
-    [NonSerialized]
+    [NotSaved]
     private float _waterCellsLevel = float.NaN;
 
     /// <summary>
