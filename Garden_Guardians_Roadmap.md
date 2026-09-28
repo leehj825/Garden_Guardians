@@ -597,6 +597,28 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     the pond. Ants steal a little more (52 vs 35 a run) now that
     palisades take branches to build.
 
+## Phase 18: Thirst
+*   ✅ **Water to drink:** Thirst is a Critical need beside Hunger (it
+    rises 0.4 a second; at 60 a Bramblekin walks to the nearest shore;
+    at 100 it loses 1 HP every 2s), so living far from water costs time,
+    and a drinker at the water's edge draws the Wolf Spider. Rain slakes
+    thirst; juicy food (cress, fish, berries, mushrooms) takes a little off.
+*   ✅ **Cisterns:** clans living more than 25m from water work out
+    acorn-cup cisterns that fill in the rain and with cupfuls carried
+    home from the pond.
+*   ✅ **Settling by the water:** new homes and new villages lean toward
+    water.
+*   **Benchmark (24 seeds × 7800s, no crashes):** at first (thirst 0.3 a
+    second, 8-sip cisterns, 2-sip cupfuls) distance showed only in who
+    settled where, so thirst was made stronger. After that: population
+    53.0 ± 2.9 (vs 51.2 before thirst); some 1,140 drinks at the pond and
+    325 from cisterns a run, an 18m walk on average; almost nobody dies
+    of thirst (0.3 a run) — they walk instead — but lives are shorter:
+    deaths of old age 45.7 vs 52.8, to predators 33.2 vs 26.6, and kin
+    killed by kin 30.6 vs 15.6 as crowds meet at the water. Clans near
+    water are bigger: 7.5 kin within 10m of it, 6.4 at 10–20m, 5.7 at
+    20–30m; only 8 clans in 24 runs ever lived more than 45m out.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:
