@@ -477,7 +477,7 @@ public static partial class Game
             $"{world.FishCaught} fish caught.");
         Console.WriteLine(
             $"Water: {world.DrinksAtPond} drinks at the pond (a {(world.DrinksAtPond > 0 ? world.WaterTrekMeters / world.DrinksAtPond : 0):0}m walk from home on average), " +
-            $"{world.CisternDrinks} from cisterns ({world.CupfulsCarried} cupfuls carried home), {world.WellDrinks} from wells ({world.WellsDug} dug, " +
+            $"{world.CreekDrinks} of them at the creek, {world.CisternDrinks} from cisterns ({world.CupfulsCarried} cupfuls carried home), {world.WellDrinks} from wells ({world.WellsDug} dug, " +
             $"{world.Wells.Count(w => !w.IsDug)} being dug); {world.DeathsByThirst} died of thirst; " +
             $"at the end {world.Groups.Count(g => World.Knows(g, Craft.Cisterns))} clans have cisterns, and the average home is " +
             $"{(world.Shelters.Count(s => s.IsBuilt) > 0 ? world.Shelters.Where(s => s.IsBuilt).Average(s => WaterMap.UsualDistanceToWater(s.Position.X, s.Position.Z)) : 0):0}m from water.");
