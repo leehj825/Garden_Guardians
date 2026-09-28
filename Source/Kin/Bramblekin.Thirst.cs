@@ -9,8 +9,8 @@ public sealed partial class Bramblekin
 
     public const float MaxThirst = 100f;
 
-    /// <summary>Thirst gained per second — a drink lasts a little over three minutes before it's thirsty again.</summary>
-    public const float ThirstPerSecond = 0.3f;
+    /// <summary>Thirst gained per second — a drink lasts two and a half minutes before it's thirsty again.</summary>
+    public const float ThirstPerSecond = 0.4f;
 
     /// <summary>At or above this, Thirst is Critical: it goes for a drink (before food, unless it's hungrier than it is thirsty).</summary>
     public const float ThirstyThreshold = 60f;
@@ -28,7 +28,7 @@ public sealed partial class Bramblekin
     private const float RainDrinkPerSecond = 2f;
 
     /// <summary>A cupful carried home from the pond fills this many sips of a cistern (see <see cref="Craft.Cisterns"/>).</summary>
-    public const int CupfulSips = 2;
+    public const int CupfulSips = 1;
 
     /// <summary>New Bramblekin arrive with a random Thirst between 0 and this.</summary>
     private const float StartingThirstMax = 40f;

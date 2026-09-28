@@ -112,7 +112,7 @@ public sealed class Shelter
     public bool HasGranary { get; set; }
 
     /// <summary>A cistern holds this many sips.</summary>
-    public const int CisternSips = 8;
+    public const int CisternSips = 6;
 
     /// <summary>Its clan knows <see cref="Craft.Cisterns"/>: an acorn-cup cistern by the door (Houses only), filled by the rain and by cupfuls carried home.</summary>
     public bool HasCistern

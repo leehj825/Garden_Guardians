@@ -271,9 +271,9 @@ overhead camera:
     second until it eats or dies. One piece of Food removes 40 Hunger and
     restores 6 HP. Resting at home heals too (1 HP per 1.5s; faster in a
     House).
-*   **Thirst:** rises 0.3 points per second (a quarter faster in summer,
+*   **Thirst:** rises 0.4 points per second (a quarter faster in summer,
     a quarter slower in winter, faster when sick) from 0 to 100 — a drink
-    lasts a little over three minutes. At 60 a Bramblekin is *thirsty*; at
+    lasts about two and a half minutes. At 60 a Bramblekin is *thirsty*; at
     100 it loses 1 HP every 2s until it drinks or dies. It drinks at the
     pond (the nearest stretch of shore, however far — it slakes its thirst
     entirely) or from its home's cistern (a sip takes off 70). Out in a
@@ -683,11 +683,11 @@ overhead camera:
     *   **Fishing** (needs a home within 20m of the shore): see Farming.
     *   **Cisterns** (needs a House more than 25m from water — necessity
         is the mother of invention): an acorn-cup cistern out front of
-        each House, holding 8 sips. It fills in the rain (a sip every 2s
+        each House, holding 6 sips. It fills in the rain (a sip every 2s
         of a storm), and whoever drinks at the pond carries a cupful home
-        (2 sips) while it isn't full. A thirsty Bramblekin drinks from it
+        (a sip) while it isn't full. A thirsty Bramblekin drinks from it
         if it's nearer than the pond — so a far-off village makes one
-        long trip do for three drinks.
+        long trip do for two drinks.
     *   **Stonework** (needs a House): each House is raised on a stone
         footing, once its Builders have carried in 4 stones (a ring of
         grey stones round its foot): its store holds 2 more, stays dry in
