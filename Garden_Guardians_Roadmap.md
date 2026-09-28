@@ -584,6 +584,18 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
 *   ✅ **Stones and branches:** Builders carry stones home for stone
     footings (more store, dry in a flood, no ants) and drag branches home
     for palisades, which now have to be built.
+*   **Benchmark (24 seeds × 7800s, no crashes):** the first cut grew the
+    population from 53.6 to 76.0 — mushrooms, winter fishing and bigger
+    stores carried many more through the winter — so winter mushrooms,
+    winter fishing, the footing's store and the wild berries were
+    trimmed. After that: population 51.2 ± 2.9 (vs 53.6), with a calmer
+    garden — starvation 40.7 vs 60.8, kin killed by kin 15.6 vs 30.8,
+    births 155 vs 202, predators 26.6 vs 27.3. The new foods are about a
+    fifth of what's eaten (per run: berries 9,700, seed 1,100, meat 680,
+    mushrooms 590, cress 560, fish 165, acorns 140). Each run lays about
+    13 stone footings and 10 palisades and finds some 7,700 ways round
+    the pond. Ants steal a little more (52 vs 35 a run) now that
+    palisades take branches to build.
 
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
