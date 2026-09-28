@@ -41,6 +41,9 @@ public enum KinJob
 
     /// <summary>Goes with a raiding party to carry food home from an enemy group's store.</summary>
     Raider,
+
+    /// <summary>Tends the clan's sick and wounded with herbs (once the clan knows <see cref="Craft.Herbalism"/>).</summary>
+    Healer,
 }
 
 /// <summary>Who may eat from a group's shared store — set by its Leader's personality.</summary>

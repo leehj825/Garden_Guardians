@@ -46,6 +46,7 @@ public sealed partial class Bramblekin
             KinJob.Gatherer => DoGatherDuty(deltaTime, world),
             KinJob.Farmer => DoFarmDuty(group, deltaTime, world),
             KinJob.Raider => DoRaidDuty(group, deltaTime, world),
+            KinJob.Healer => DoHealerDuty(group, deltaTime, world),
             _ => false,
         };
     }

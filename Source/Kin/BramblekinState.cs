@@ -88,4 +88,6 @@ public enum BramblekinState
 
     /// <summary>Critical: going for a drink, at the pond or its home's cistern (see Bramblekin.Thirst).</summary>
     Drinking,
+
+    Healing,
 }

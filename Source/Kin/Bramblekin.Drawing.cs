@@ -70,6 +70,8 @@ public sealed partial class Bramblekin
 
         if (State == BramblekinState.Fishing && _fishingSpot is { } spot && GroundMover.HorizontalDistanceSquared(Position, spot) < 1f)
             DrawFishingRod(facing);
+        if (State == BramblekinState.Healing)
+            DrawPoultice(facing);
 
         _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
         DrawSack(facing);

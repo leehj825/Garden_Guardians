@@ -168,7 +168,7 @@ public sealed partial class Bramblekin : ICombatant
 
     /// <summary>At work — gathering, building, stocking, farming, carrying for its group — the diligent go briskly and the idle slowly.</summary>
     private float WorkPace => State is BramblekinState.Collecting or BramblekinState.Building or BramblekinState.Stockpiling or
-        BramblekinState.Farming or BramblekinState.Traveling or BramblekinState.Fishing
+        BramblekinState.Farming or BramblekinState.Traveling or BramblekinState.Fishing or BramblekinState.Healing
         ? (0.85f + 0.3f * Personality.Diligence) * SkillPace
         : 1f;
 

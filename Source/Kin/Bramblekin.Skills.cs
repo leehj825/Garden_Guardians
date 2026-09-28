@@ -7,6 +7,7 @@ public enum Skill
     Farming,
     Building,
     Fishing,
+    Healing,
 }
 
 public sealed partial class Bramblekin
@@ -76,6 +77,7 @@ public sealed partial class Bramblekin
         BramblekinState.Building or BramblekinState.Collecting => 1f + 0.3f * SkillAt(Skill.Building),
         BramblekinState.Farming => 1f + 0.3f * SkillAt(Skill.Farming),
         BramblekinState.Fishing => 1f + 0.3f * SkillAt(Skill.Fishing),
+        BramblekinState.Healing => 1f + 0.3f * SkillAt(Skill.Healing),
         _ => 1f,
     };
 
@@ -98,6 +100,7 @@ public sealed partial class Bramblekin
         Skill.Hunting => "hunter",
         Skill.Farming => "farmer",
         Skill.Building => "builder",
+        Skill.Healing => "healer",
         _ => "fisher",
     };
 

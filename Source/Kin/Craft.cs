@@ -52,4 +52,7 @@ public enum Craft
 
     /// <summary>Baited grass snares set near each House that catch Grubs without a hunt; a Gatherer sets a sprung one again (see World.Snares).</summary>
     Snares = 8192,
+
+    /// <summary>Herb-lore: a Healer tends the clan's sick (shortening the illness) and wounded (see Bramblekin.Healing).</summary>
+    Herbalism = 16384,
 }

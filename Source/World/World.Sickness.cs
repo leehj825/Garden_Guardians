@@ -51,6 +51,25 @@ public sealed partial class World
         Headline("Sickness", $"A sickness is spreading through {group.Title}", PlaceOf(group), false, group);
     }
 
+    /// <summary>Times a Healer tended someone.</summary>
+    public int Tendings { get; private set; }
+
+    /// <summary>Health restored by Healers.</summary>
+    public int HealthTended { get; private set; }
+
+    /// <summary>Seconds of sickness Healers eased away.</summary>
+    public float SicknessEased { get; private set; }
+
+    /// <summary>A Healer tends <paramref name="patient"/> (see <see cref="Bramblekin.ReceiveCare"/>).</summary>
+    public void Tend(Bramblekin healer, Bramblekin patient)
+    {
+        var (healed, eased) = patient.ReceiveCare(healer.SkillAt(Skill.Healing));
+        Tendings++;
+        HealthTended += healed;
+        SicknessEased += eased;
+        QueueFloatingText(patient.Position, "Tended", new Raylib_cs.Color(90, 150, 70, 255));
+    }
+
     /// <summary>How many are ill right now.</summary>
     public int SickCount => Colony.Count(k => !k.IsDead && k.IsSick);
 }

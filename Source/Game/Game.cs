@@ -457,7 +457,9 @@ public static partial class Game
             $"{world.Groups.Count(g => World.Knows(g, Craft.Grain))} grain, {world.Groups.Count(g => World.Knows(g, Craft.Mushrooms))} mushrooms, " +
             $"{world.Groups.Count(g => World.Knows(g, Craft.Cress))} cress, {world.Groups.Count(g => World.Knows(g, Craft.Fishing))} fishing, " +
             $"{world.Groups.Count(g => World.Knows(g, Craft.Stonework))} stonework, {world.Groups.Count(g => World.Knows(g, Craft.Slings))} slings. " +
-            $"Sickness: {world.SicknessCases} fell ill, {world.DeathsBySickness} died of it.");
+            $"Sickness: {world.SicknessCases} fell ill, {world.DeathsBySickness} died of it; " +
+            $"healers tended {world.Tendings} times ({world.HealthTended} health restored, {world.SicknessEased:0}s of sickness eased), " +
+            $"{world.Groups.Count(g => World.Knows(g, Craft.Herbalism))} clans know herb-lore.");
         Console.WriteLine(
             $"Culture: {world.Groups.Count(g => g.Culture.Leading == Tradition.Warlike)} warlike, {world.Groups.Count(g => g.Culture.Leading == Tradition.Hunting)} hunting and " +
             $"{world.Groups.Count(g => g.Culture.Leading == Tradition.Farming)} farming clans of {world.Groups.Count} at the end.");

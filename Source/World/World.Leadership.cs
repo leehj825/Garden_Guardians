@@ -277,6 +277,11 @@ public sealed partial class World
                 member.AssignJob(KinJob.Farmer);
         }
 
+        // A clan with herb-lore keeps someone kind and clever tending its sick and wounded.
+        if (group.Goal != GroupGoal.Raid && World.Knows(group, Craft.Herbalism) && members.Count >= 2 && members.Any(m => m.NeedsCare))
+            members.Where(m => m.Job == KinJob.Gatherer && !m.NeedsCare)
+                .MaxBy(m => m.Personality.Intelligence + m.Personality.Sociability + m.SkillAt(Skill.Healing))?.AssignJob(KinJob.Healer);
+
         // A clan with a well, a footing or a palisade to finish keeps its most diligent Gatherer fetching stones and branches
         // (a well — water — even in a clan of two).
         if (group.Goal is not (GroupGoal.Defend or GroupGoal.Raid) && group.Home is { IsBuilt: true } home &&
