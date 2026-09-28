@@ -643,6 +643,13 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     carry in (4, plus one per 1.5m the ground stands above the pond) —
     water at the door, all year and through droughts, for the clan, its
     allies, or anyone once the clan is gone; crops beside it are watered.
+*   **Benchmark (24 seeds × 7800s, no crashes):** 2.6 wells dug a run
+    (and 1.8 still being dug at the end — stones are scarce, and a
+    hilltop well takes ten), some 105 drinks drawn from them (vs ~990 at
+    the pond and ~370 from cisterns). Population 47.0 ± 3.0 vs 52.3 ± 2.7
+    (within the spread; the stone-fetching Builder is one fewer
+    Gatherer); clans 30–45m from water average 6.1 kin, 45m+ 6.2 (was
+    5.7).
 
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
