@@ -908,6 +908,19 @@ three fixes:
     vs 0.3 a run. Population 51.5 vs 57.0; starvation 35.0 vs 38.9;
     kin killed by kin 20.8 vs 21.4.
 
+## Phase 32: Armour and Champions
+*   ✅ **Shields** (a craft, after spears and a hunting or martial
+    tradition): beetle-shell shields take a third off every blow and bite.
+*   ✅ **Champions:** feuding neighbours — and clans at war — may settle it
+    by single combat between their best fighters; the loser pays a
+    forfeit (or tribute, ending a war), the grievance is forgotten, and
+    the winner goes in the chronicle.
+*   **Benchmark (24 seeds × 7800s against Phase 31):** ~2 contests a run,
+    settling ~1.8 feuds and ~0.2 wars; ~10 clans carry shields by the
+    end. Population 51.1 vs 51.5; predators 30.9 vs 33.9 (shields);
+    starvation 31.3 vs 35.0; kin killed by kin 23.9 vs 20.8; wars 0.4 a
+    run as before.
+
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:

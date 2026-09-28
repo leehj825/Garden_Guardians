@@ -196,6 +196,8 @@ public sealed partial class World
                         Rng.NextDouble() < (PeaceChance + PeaceChancePerCalm * (1f - p.Aggression)) * (1f - 0.5f * group.Culture.Martial) *
                         (0.6f + 0.8f * p.Persuasiveness) + (beaten ? SurrenderChance : 0f))
                         EndWar(group, other, leader);
+                    else if (StanceBetween(group.Id, other.Id) == GroupStance.AtWar)
+                        TryCallChampions(group, leader, other, atWar: true);
                     break;
 
                 case GroupStance.Neutral:
@@ -213,6 +215,10 @@ public sealed partial class World
                     else if (neighbours && grievance < AllianceMaxGrievance && TryAlly(group, leader, other))
                     {
                         AlliancesMade++;
+                    }
+                    else if (neighbours && grievance >= FeudGrievance)
+                    {
+                        TryCallChampions(group, leader, other, atWar: false);
                     }
                     break;
 

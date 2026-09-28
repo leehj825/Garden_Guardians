@@ -61,4 +61,7 @@ public enum Craft
 
     /// <summary>Smoking out the bees with a brand from the hearth before taking their honey: they seldom rouse (see World.Beehive).</summary>
     Smoking = 65536,
+
+    /// <summary>Shields of stag-beetle shell: a third less from every blow and bite (see Bramblekin.TakeDamage).</summary>
+    Shields = 131072,
 }

@@ -535,6 +535,10 @@ public static partial class Game
             string.Join(", ", Enum.GetValues<Belief>().Where(b => b != Belief.None).Select(b => $"{world.Groups.Count(g => g.Belief == b)} revere {World.Describe(b)}")) +
             $", {world.Groups.Count(g => g.Belief == Belief.None)} nothing.");
         Console.WriteLine(
+            $"Champions: {world.ChampionBouts} contests, {world.FeudsSettled} feuds and {world.WarsSettledByChampions} wars settled by them; " +
+            $"{world.Groups.Count(g => World.Knows(g, Craft.Shields))} clans carry shields at the end; the greatest champion alive has won " +
+            $"{(world.Colony.Count(k => !k.IsDead) > 0 ? world.Colony.Where(k => !k.IsDead).Max(k => k.ChampionWins) : 0)}.");
+        Console.WriteLine(
             $"Nights: {world.NightsPassed} nights; {world.WatchesPosted} watches posted, {world.AlarmsRaised} alarms raised, {world.NightRaids} raids set out in the dark. " +
             $"The owl came out {world.OwlVisits} nights, struck {world.OwlStrikes} times ({world.OwlKills} killed), was driven off {world.OwlsDrivenOff} times and brought down {world.OwlsKilled} times.");
         Console.WriteLine(

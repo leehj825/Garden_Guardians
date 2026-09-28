@@ -142,6 +142,7 @@ public sealed class KinSave
     public ErrandSave? Errand { get; set; }
     public float LeaderSeconds { get; set; }
     public int SpiderKills { get; set; }
+    public int ChampionWins { get; set; }
     public float Sickness { get; set; }
     public float Immunity { get; set; }
 

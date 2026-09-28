@@ -59,7 +59,11 @@ public sealed partial class Bramblekin
             Raylib.DrawCube(flagCenter, 0.2f, 0.14f, 0.02f, group.Color);
         }
 
-        if (State is BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting)
+        if (State is BramblekinState.Fighting or BramblekinState.Dueling or BramblekinState.Guarding or BramblekinState.Raiding &&
+            !IsYoung && Knows(Craft.Shields))
+            DrawShield(facing, group);
+
+        if (State is BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or BramblekinState.Dueling)
         {
             Color thornColor = State == BramblekinState.Attacking ? BloodyThornColor : ThornColor;
             var grip = Position + new Vector3(0, BodyHeight * 0.6f, 0);
@@ -92,5 +96,16 @@ public sealed partial class Bramblekin
             (byte)(a.G + (b.G - a.G) * t),
             (byte)(a.B + (b.B - a.B) * t),
             (byte)255);
+    }
+
+    private static readonly Color ShieldColor = new(95, 55, 35, 255);
+
+    /// <summary>A round shield of glossy beetle shell on its arm, with a boss in its clan's colour.</summary>
+    private void DrawShield(Vector2 facing, KinGroup? group)
+    {
+        var side = new Vector3(-facing.Y, 0f, facing.X);
+        Vector3 at = Position + new Vector3(0f, BodyHeight * 0.5f, 0f) + side * 0.22f + new Vector3(facing.X, 0f, facing.Y) * 0.08f;
+        Raylib.DrawCylinderEx(at, at + side * 0.04f, 0.17f, 0.17f, 10, ShieldColor);
+        Detail.Sphere(at + side * 0.05f, 0.05f, group?.Color ?? ShieldColor);
     }
 }

@@ -57,6 +57,7 @@ public sealed partial class Bramblekin
         CarryingFood = _carried is not null,
         LeaderSeconds = LeaderSeconds,
         SpiderKills = SpiderKills,
+        ChampionWins = ChampionWins,
         Sickness = SicknessState.Sickness,
         Immunity = SicknessState.Immunity,
         Skills = SkillsForSave,
@@ -102,6 +103,7 @@ public sealed partial class Bramblekin
             _foodMemory = save.FoodMemory is { } memory ? memory : null,
             LeaderSeconds = save.LeaderSeconds,
             SpiderKills = save.SpiderKills,
+            ChampionWins = save.ChampionWins,
         };
         _nextId = Math.Max(_nextId, save.Id + 1);
         kin.Christen(save.GivenName, save.FamilyName);

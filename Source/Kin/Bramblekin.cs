@@ -515,11 +515,17 @@ public sealed partial class Bramblekin : ICombatant
     /// <see cref="Perceive"/>); a hit from another Bramblekin also makes the
     /// two Enemies for good.
     /// </summary>
+    /// <summary>With a shield (see <see cref="Craft.Shields"/>), a blow or bite does this fraction of its damage.</summary>
+    private const float ShieldFactor = 0.67f;
+
     public void TakeDamage(int amount, World world, DeathCause cause, ICombatant? source)
     {
         if (IsDead)
             return;
 
+        // A beetle-shell shield takes the edge off every blow and bite.
+        if (Knows(Craft.Shields) && !IsYoung && cause is DeathCause.Kin or DeathCause.Predator)
+            amount = Math.Max(1, (int)MathF.Round(amount * ShieldFactor));
         Health = Math.Max(0, Health - amount);
 
         // A leadership duel is a contest, not a feud: no lingering threat, no enmity.

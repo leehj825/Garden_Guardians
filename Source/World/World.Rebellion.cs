@@ -220,6 +220,11 @@ public sealed partial class World
     {
         if (!winner.IsDueling && !loser.IsDueling)
             return; // Already resolved from the other side.
+        if (BoutOf(winner) is { } bout)
+        {
+            ResolveBout(bout, winner, loser, timedOut); // Champions, not a leadership duel.
+            return;
+        }
         winner.EndDuel();
         loser.EndDuel();
 

@@ -152,11 +152,11 @@ public sealed partial class Bramblekin
     /// <summary>True if it once left (or was thrown out of) group <paramref name="groupId"/>.</summary>
     public bool HasLeft(Guid groupId) => _formerGroups.Contains(groupId);
 
-    /// <summary>Starts a leadership duel with <paramref name="opponent"/> (both sides call this).</summary>
-    public void BeginDuel(Bramblekin opponent)
+    /// <summary>Starts a duel with <paramref name="opponent"/> — for the leadership, or as its clan's champion (both sides call this).</summary>
+    public void BeginDuel(Bramblekin opponent, float seconds = DuelTimeout)
     {
         _duelOpponent = opponent;
-        _duelTimer = DuelTimeout;
+        _duelTimer = seconds;
         _robTarget = null;
         _raidTarget = null;
     }

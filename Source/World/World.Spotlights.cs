@@ -58,7 +58,9 @@ public sealed partial class World
                 continue;
             if (kin.DuelOpponent is { IsDead: false } rival && kin.ID < rival.ID)
             {
-                shots.Add(new Shot($"{kin.Name} and {rival.Name} fight to lead {GroupOf(kin)?.Title ?? "their clan"}", 9f, kin, kin.Position));
+                shots.Add(BoutOf(kin) is { } bout
+                    ? new Shot($"Champions: {bout.FirstChampion.Name} of {bout.First.Title} against {bout.SecondChampion.Name} of {bout.Second.Title}", 9.5f, kin, kin.Position)
+                    : new Shot($"{kin.Name} and {rival.Name} fight to lead {GroupOf(kin)?.Title ?? "their clan"}", 9f, kin, kin.Position));
                 continue;
             }
             if (kin.State == BramblekinState.Fighting && kin.CombatTarget is Bramblekin foe && !foe.IsDead)

@@ -785,7 +785,7 @@ overhead camera:
     inherited by children (both parents' crafts), carried along by anyone
     who leaves, and taught to allies (odds 0.05 per decision, farming
     first, then granary, spears, palisade, grain, mushrooms, cress,
-    fishing, stonework, cisterns, wells, slings, hearth, snares, herb-lore, herding, smoking). When a clan is ready for several, the one it
+    fishing, stonework, cisterns, wells, slings, hearth, snares, herb-lore, herding, smoking, shields). When a clan is ready for several, the one it
     works out is picked at random.
     *   **Granary** (needs farming and a House): each House gets a round
         granary beside it and holds half as much again in store.
@@ -881,6 +881,11 @@ overhead camera:
         taken — stings and all): with a lit hearth at home to take a brand
         from, the clan's honey-takers rouse the bees one time in ten
         instead of more than half.
+    *   **Shields** (needs spears, and a hunting or martial tradition):
+        round shields of stag-beetle shell — every blow and bite on a grown
+        member does two-thirds of its damage (at least 1). Carried on the
+        arm when fighting, guarding, raiding or duelling, with a boss in
+        the clan's colour.
 *   The Stats tab and the clan card list a clan's crafts; the headless
     summary counts them. Over 13 years a clan works out about six and
     teaches eleven; most clans end up knowing all of them.
@@ -1025,6 +1030,22 @@ overhead camera:
     another belief, and leads the restless (the rebellious, or the less
     loyal) out to found a new clan and raise a shrine to it — a splinter
     with some bad blood.
+
+## Champions
+*   **Settling it by single combat:** a Leader with a feud (a grievance of
+    5 or more) with neutral neighbours may, instead of letting it fester
+    toward war, call for champions — odds 0.04 × (0.5 + its
+    Persuasiveness) a decision; at war, 0.05 × the same, to end the war.
+    Each clan sends its best fighter (fit, grown, not old; healthiest,
+    fiercest, bravest, handiest, better with a shield), and the two fight
+    it out between the villages as a duel (up to 70s) until one yields at
+    half Health.
+*   **What it settles:** the grievance is forgotten. A feud's loser pays
+    3 food from its stores to the winner; a war's loser sues for peace
+    and pays tribute, as if beaten in the war. The winner gains standing,
+    counts a champion's win, and goes in the chronicle; the Director
+    cuts to any contest under way. A contest that times out (or loses a
+    clan) settles nothing.
 
 ## Weather
 *   **Good and bad years:** each season rolls its weather. A Winter is

@@ -12,6 +12,11 @@ public sealed partial class Bramblekin
 
     public void NoteSpiderKill() => SpiderKills++;
 
+    /// <summary>Contests of champions it has won for its clan (see World.Champions).</summary>
+    public int ChampionWins { get; private set; }
+
+    public void NoteChampionWin() => ChampionWins++;
+
     // --- Infamy: reputation between individuals ---------------------------------------
 
     /// <summary>Infamy never climbs past this.</summary>
