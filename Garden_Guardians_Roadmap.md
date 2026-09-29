@@ -1042,10 +1042,24 @@ triangles. The four baked terrains stay as they are.
 *   ✅ **Stage B:** make the map size a setting (`TerrainData.Half`) in the
     ~15 places that assume ±50 m (height lookup, obstacle grid, water map,
     known map, flood scan, map-edge drawing, walkers' limits).
-*   ⬜ **Stage C:** port the generator to C# (own seeded random, so a seed
-    always gives the same garden), producing the same `TerrainSet` the game
-    already reads; build the ground mesh at run time in chunks, simplified to
-    a few cm of the height grid; draw the props; save the seed.
+*   ✅ **Stage C:** `TerrainGenerator` (C#, its own seeded `SeededRandom`, so
+    a seed always regrows the same garden) makes a terrain number 1,000,001
+    and up from its seed: ground, 1-3 ponds, the oak and its hive, rocks and
+    plants from the prop kit (`ProceduralKit`, 21 prop models in
+    `Assets/Models/Procedural/props`, each with its own cropped texture), the
+    creek's spring. It fills the same `TerrainSet` the baked terrains use, so
+    water, routes, building and the rest are unchanged. `ProceduralView`
+    draws it: the ground mesh simplified by `TerrainMesh` (right-triangulated
+    network, within 4 cm of the height grid, cracks-free), one 2048 px texture
+    baked at start from the models' own grass and dirt tiles
+    (`Assets/Textures/Ground`), and the props as models. A **Fixed/Random**
+    button beside Garden on the History screen picks what a new garden gets
+    (Fixed is the default: the original terrain); the terrain number is saved
+    with the garden. `--check-terrains N` grows and checks N terrains;
+    `GARDEN_TERRAIN=n` forces one for a new garden or headless run;
+    `GARDEN_SCREENSHOT`/`GARDEN_CAMERA` take a picture without a person
+    (`DebugShot`, works under Xvfb). Not yet: sand tile, more kit variety,
+    a smaller kit (14 MB), the extra pass that pins props to steep ground.
 *   ⬜ **Stage D:** bigger gardens: scale spawn amounts, the known-map grid
     and camera limits with the area; check speed on a phone.
 
