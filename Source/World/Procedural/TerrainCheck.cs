@@ -56,7 +56,7 @@ public static class TerrainCheck
                 problems.Add("the same seed gave different ground");
 
             // The water map (shores, routes, creek) must be measurable and find its way round the ponds.
-            if (WaterMap.Creek.Length < 1 || WaterMap.Shore.Length == 0)
+            if ((WaterMap.CreekEnabled && WaterMap.Creek.Length < 1) || WaterMap.Shore.Length == 0)
                 problems.Add("no shore");
 
             if (problems.Count > 0)

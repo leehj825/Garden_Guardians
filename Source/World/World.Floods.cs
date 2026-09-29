@@ -175,6 +175,8 @@ public sealed partial class World
     private static void DrawCreek()
     {
         Vector2[] course = WaterMap.Creek;
+        if (course.Length == 0)
+            return;
         for (int i = 0; i + 1 < course.Length; i++)
         {
             Vector2 a = course[i], b = course[i + 1];

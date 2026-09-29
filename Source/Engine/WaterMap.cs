@@ -61,13 +61,18 @@ public static class WaterMap
     public static Vector2[] Creek { get; private set; } = Array.Empty<Vector2>();
 
     /// <summary>Where the brook comes to rest and pools.</summary>
-    public static Vector2 CreekPool => Creek[^1];
+    public static Vector2 CreekPool => Creek.Length > 0 ? Creek[^1] : new Vector2(1e6f, 1e6f);
+
+    /// <summary>Whether the garden has a creek at all. Off: no brook is traced, drawn, drunk from or built round — the ponds are the only water.</summary>
+    public static readonly bool CreekEnabled = false;
 
     /// <summary>Points along the creek's banks (and round its pool) — somewhere to drink, and to grow cress.</summary>
     public static Vector3[] CreekBanks { get; private set; } = Array.Empty<Vector3>();
 
     private static Vector2[] TraceCreek()
     {
+        if (!CreekEnabled)
+            return Array.Empty<Vector2>();
         var course = new List<Vector2> { Spring };
         Vector2 at = Spring;
         for (int i = 0; i < 60; i++)
@@ -112,6 +117,8 @@ public static class WaterMap
 
     private static Vector3[] BuildCreekBanks()
     {
+        if (Creek.Length == 0)
+            return Array.Empty<Vector3>();
         var banks = new List<Vector3>();
         for (int i = 0; i + 1 < Creek.Length; i += 2)
         {
@@ -162,9 +169,10 @@ public static class WaterMap
         CameFrom = new int[Cells * Cells];
         Stamp = new int[Cells * Cells];
         Creek = TraceCreek();
-        CreekBounds = (
-            Creek.Min(p => p.X) - CreekPoolRadius, Creek.Max(p => p.X) + CreekPoolRadius,
-            Creek.Min(p => p.Y) - CreekPoolRadius, Creek.Max(p => p.Y) + CreekPoolRadius);
+        CreekBounds = Creek.Length == 0
+            ? (1e6f, -1e6f, 1e6f, -1e6f) // Nowhere: no point is near a creek that isn't there.
+            : (Creek.Min(p => p.X) - CreekPoolRadius, Creek.Max(p => p.X) + CreekPoolRadius,
+               Creek.Min(p => p.Y) - CreekPoolRadius, Creek.Max(p => p.Y) + CreekPoolRadius);
         CreekBanks = BuildCreekBanks();
         LevelHeights = Enumerable.Range(0, Levels).Select(i => World.PondLevel - DroughtDrop * i / (Levels - 1)).ToArray();
         Ground = BuildGround();
