@@ -729,7 +729,14 @@
     12.09453700116234,
     0.75
    ]
-  ]
+  ],
+  "trunk_dx": -0.004726280283520623,
+  "trunk_dz": -2.4821436711065674,
+  "trunk_radius": 6.154581744998688,
+  "trunk_height": 39.3616834317485,
+  "hive_angle": 3.2288591161895095,
+  "hive_surface": 6.0,
+  "file": "props/terrain4_oak_0.glb"
  },
  {
   "name": "rock_0",
@@ -796,7 +803,8 @@
     2.0793650793650826,
     0.75
    ]
-  ]
+  ],
+  "file": "props/terrain4_rock_0.glb"
  },
  {
   "name": "rock_1",
@@ -973,7 +981,8 @@
     8.416901408450705,
     0.75
    ]
-  ]
+  ],
+  "file": "props/terrain4_rock_1.glb"
  },
  {
   "name": "rock_2",
@@ -1485,7 +1494,8 @@
     15.093240093240095,
     0.75
    ]
-  ]
+  ],
+  "file": "props/terrain4_rock_2.glb"
  },
  {
   "name": "plant_0",
@@ -1622,7 +1632,8 @@
     3.353107344632768,
     0.75
    ]
-  ]
+  ],
+  "file": "props/terrain4_plant_0.glb"
  },
  {
   "name": "rock_3",
@@ -1714,7 +1725,8 @@
     2.0961538461538467,
     0.75
    ]
-  ]
+  ],
+  "file": "props/terrain4_rock_3.glb"
  },
  {
   "name": "plant_1",
@@ -1821,7 +1833,8 @@
     3.985714285714284,
     0.75
    ]
-  ]
+  ],
+  "file": "props/terrain4_plant_1.glb"
  },
  {
   "name": "plant_2",
@@ -1948,7 +1961,8 @@
     4.164179104477611,
     0.75
    ]
-  ]
+  ],
+  "file": "props/terrain4_plant_2.glb"
  },
  {
   "name": "rock_4",
@@ -2192,7 +2206,8 @@
     5.1,
     0.75
    ]
-  ]
+  ],
+  "file": "props/terrain4_plant_3.glb"
  },
  {
   "name": "plant_4",
@@ -2344,6 +2359,7 @@
     5.098930481283422,
     0.75
    ]
-  ]
+  ],
+  "file": "props/terrain4_plant_4.glb"
  }
 ]

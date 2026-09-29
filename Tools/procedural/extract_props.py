@@ -68,11 +68,81 @@ def classify(colour_mean):
     return "wood"
 
 
+def oak_measure(raw, ground, cx, cz):
+    """The oak's trunk (centre relative to the prop's origin, radius, height) and where its hive can hang, measured the way convert_terrain.py does."""
+    xs = -HALF + np.arange(N) * STEP
+    trunk = ndi.binary_fill_holes((raw - ground) > 12.0)
+    labels, n = ndi.label(trunk)
+    sizes = ndi.sum(trunk, labels, range(1, n + 1))
+    trunk = labels == (1 + int(np.argmax(sizes)))
+    zz, xx = np.nonzero(trunk)
+    tx, tz = float(xs[xx].mean()), float(xs[zz].mean())
+    radius = math.sqrt(trunk.sum() * STEP ** 2 / math.pi)
+    top = float(raw[trunk].max())
+    base = float(ground[int(round((tz + HALF) / STEP)), int(round((tx + HALF) / STEP))])
+
+    def cell(x, z):
+        return int(round((z + HALF) / STEP)), int(round((x + HALF) / STEP))
+
+    best = None
+    for k in range(72):
+        angle = k * math.tau / 72
+        dx, dz = math.cos(angle), math.sin(angle)
+        surface = 0.0
+        for r in np.arange(0.0, 14.0, STEP):
+            j, i = cell(tx + dx * r, tz + dz * r)
+            if raw[j, i] - ground[j, i] > 2.6:
+                surface = r
+        j, i = cell(tx + dx * (surface + 1.0), tz + dz * (surface + 1.0))
+        if raw[j, i] - ground[j, i] < 0.6 and (best is None or surface < best[0]):  # no root there: the nearest bare trunk
+            best = (surface, angle)
+    surface, angle = best if best else (radius, 0.0)
+    return dict(trunk_dx=tx - cx, trunk_dz=tz - cz, trunk_radius=float(radius), trunk_height=float(top - base), hive_angle=float(angle), hive_surface=float(surface))
+
+
+def export_prop(obj, full, path, max_side):
+    """Write `obj` as its own glb with just the part of the model's texture it uses (padded, and shrunk to max_side), UVs remapped to it."""
+    from PIL import Image
+    mesh = obj.data
+    layer = mesh.uv_layers.active
+    uvs = np.array([loop.uv[:] for loop in layer.data])
+    height, width = full.shape[:2]
+    pad = 6
+    x0, x1 = max(0, int(math.floor(uvs[:, 0].min() * width)) - pad), min(width, int(math.ceil(uvs[:, 0].max() * width)) + pad)
+    y0, y1 = max(0, int(math.floor(uvs[:, 1].min() * height)) - pad), min(height, int(math.ceil(uvs[:, 1].max() * height)) + pad)
+    crop = (np.clip(full[y0:y1, x0:x1, :3], 0, 1) * 255).astype(np.uint8)[::-1]  # Blender's rows run bottom-up, a PNG's top-down
+    img = Image.fromarray(crop)
+    scale = min(1.0, max_side / max(img.size))
+    if scale < 1.0:
+        img = img.resize((max(4, round(img.width * scale)), max(4, round(img.height * scale))), Image.LANCZOS)
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    tmp = path + ".png"
+    img.save(tmp)
+    cw, ch = x1 - x0, y1 - y0
+    for loop in layer.data:
+        loop.uv = ((loop.uv.x * width - x0) / cw, (loop.uv.y * height - y0) / ch)
+    material = bpy.data.materials.new(obj.name)
+    material.use_nodes = True
+    texture = material.node_tree.nodes.new("ShaderNodeTexImage")
+    texture.image = bpy.data.images.load(tmp)
+    texture.image.pack()
+    material.node_tree.links.new(texture.outputs["Color"], material.node_tree.nodes["Principled BSDF"].inputs["Base Color"])
+    mesh.materials.clear()
+    mesh.materials.append(material)
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, export_yup=True, export_image_format="AUTO", export_apply=True)
+    os.remove(tmp)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("src")
     ap.add_argument("prefix")
     ap.add_argument("--texture", type=int, default=1024)
+    ap.add_argument("--glb-dir", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "Assets", "Models", "Procedural", "props"),
+                    help="where each prop's own glb (with its own cropped texture) is written")
     args = ap.parse_args()
 
     ob = D.load(args.src)
@@ -118,6 +188,7 @@ def main():
     print("%d props: %s" % (len(regions), ", ".join("%d faces" % (owner == i).sum() for i in range(len(regions)))))
 
     image = next(i for i in bpy.data.images if i.size[0] > 0)
+    full = np.array(image.pixels[:], dtype=np.float32).reshape(image.size[1], image.size[0], 4)  # full resolution, kept for each prop's own crop
     if image.size[0] > args.texture:
         image.scale(args.texture, args.texture)
     image.pack()
@@ -186,22 +257,22 @@ def main():
         pts = np.array([v.co[:] for v in mesh.vertices])
         footprint = (np.abs(raw - floor) > above) & region
         circles = [(x - cx, z - cz, r) for x, z, r in C.oak_circles(ground, footprint, min_radius=(0.5 * STEP + 0.2) if cls == "oak" else 0.0)]
-        items.append(dict(name=name, kind=cls, source=os.path.basename(args.src), x=cx, z=cz, base=base_y,
-                          height=float(pts[:, 2].max()), radius=float(np.hypot(pts[:, 0], pts[:, 1]).max()), circles=[list(map(float, c)) for c in circles]))
+        item = dict(name=name, kind=cls, source=os.path.basename(args.src), x=cx, z=cz, base=base_y,
+                    height=float(pts[:, 2].max()), radius=float(np.hypot(pts[:, 0], pts[:, 1]).max()), circles=[list(map(float, c)) for c in circles])
+        if cls == "oak":
+            item.update(oak_measure(raw, ground, cx, cz))
+        if cls == "oak" or (cls in ("rock", "plant") and item["height"] >= 1.5):
+            file = "%s_%s.glb" % (os.path.splitext(os.path.basename(args.src))[0], name)
+            export_prop(obj, full, os.path.join(args.glb_dir, file), 1024 if cls == "oak" else 512)
+            item["file"] = "props/" + file
+        items.append(item)
     bm.free()
 
-    # Remove the source mesh, keep only the props.
-    bpy.data.objects.remove(ob)
-    bpy.ops.object.select_all(action="DESELECT")
-    for obj in objects:
-        obj.select_set(True)
     os.makedirs(os.path.dirname(os.path.abspath(args.prefix)), exist_ok=True)
-    bpy.ops.export_scene.gltf(filepath=args.prefix + ".glb", export_format="GLB", use_selection=True, export_yup=True,
-                              export_image_format="AUTO", export_apply=True)
     with open(args.prefix + ".json", "w") as f:
         json.dump(items, f, indent=1)
-    print("wrote", args.prefix + ".glb", os.path.getsize(args.prefix + ".glb") // 1024, "KB;",
-          ", ".join("%d %s" % (sum(1 for i in items if i["kind"] == k), k) for k in ("oak", "rock", "plant", "wood")))
+    print("wrote", args.prefix + ".json;", len([i for i in items if "file" in i]), "prop models in", os.path.abspath(args.glb_dir), ";",
+          ", ".join("%d %s" % (sum(1 for i in items if i["kind"] == k and "file" in i), k) for k in ("oak", "rock", "plant")))
 
 
 if __name__ == "__main__":
