@@ -8,20 +8,23 @@ public sealed partial class Bramblekin
     // --- Drawing ---------------------------------------------------------------------------
 
     /// <summary>
-    /// A bark-brown body tinted redder the more Aggressive it is (alarm red
-    /// while fleeing), topped with a head in its group's colour (off-white
-    /// while solitary). A Leader carries its group's banner; anything
-    /// fighting, robbing or hunting holds a thorn out front; carried Food
-    /// rides on its head. Elders go grey.
+    /// The rig's own painted texture, tinted redder the more Aggressive it
+    /// is (alarm red while fleeing) and grey for an Elder — all blended from
+    /// White rather than from a flat body colour, since <see cref="Raylib.DrawModelEx"/>
+    /// multiplies this tint into the texture: tinting from anything darker
+    /// than White (as the old, untextured cylinder body needed to) muddies
+    /// the texture's own colours instead of just shading them. A Leader
+    /// carries its group's banner; anything fighting, robbing or hunting
+    /// holds a thorn out front; carried Food rides on its head.
     /// </summary>
     public void Draw(World world)
     {
         KinGroup? group = world.GroupOf(this);
         Color color = State == BramblekinState.Fleeing
-            ? PanicColor
-            : LerpColor(CalmColor, AggressiveColor, Personality.Aggression);
+            ? LerpColor(Color.White, PanicColor, 0.6f)
+            : LerpColor(Color.White, AggressiveColor, Personality.Aggression * 0.5f);
         if (IsElder)
-            color = LerpColor(color, ElderColor, ElderGreying);
+            color = LerpColor(color, ElderColor, ElderGreying * 0.5f);
 
         // A small, dark, semi-transparent drop shadow at this unit's own X/Z
         // on the ground, drawn before the body itself — a flat disc laid on
@@ -30,25 +33,43 @@ public sealed partial class Bramblekin
         var shadowCenter = new Vector3(Position.X, Position.Y + 0.02f, Position.Z);
         Raylib.DrawCircle3D(shadowCenter, BodyRadius * 1.3f, new Vector3(1, 0, 0), 90f, new Color(0, 0, 0, 90));
 
-        // Cached-Model body: a cylinder tilted to the terrain's own surface
-        // normal. GenMeshCylinder's mesh runs from local y=0 (base) to
-        // y=BodyHeight (top), so it pivots flush on the ground at Position.
-        EnsureBodyModel();
+        // The skinned rig, tilted to the terrain's own surface normal and
+        // posed to whatever clip its current State plays (see
+        // BramblekinModel.ClipFor). Its own local origin already sits at its
+        // feet (baked in when it was rigged), so — like the cylinder it
+        // replaced — it pivots flush on the ground at Position.
+        EnsureAnimModel();
+        BramblekinClip clip = BramblekinModel.ClipFor(State, _mover.IsMoving);
+        BramblekinModel.Play(ref _animModel, clip, clip == BramblekinClip.Idle ? 0f : _animTime);
+
+        // The cylinder this replaced was rotationally symmetric, so it never
+        // needed to face any particular way; the rig is not, so it must be
+        // yawed to face Heading before the terrain tilt is applied — applied
+        // as a single combined rotation (DrawModelEx only takes one
+        // axis/angle) rather than two separate draws-with-rotation.
+        Vector2 facing = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;
+        float yawRadians = MathF.Atan2(facing.X, facing.Y) + BramblekinModel.ForwardYawOffset;
+        Quaternion yaw = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawRadians);
+
         Vector3 normal = World.GetNormalAt(Position.X, Position.Z);
-        Vector3 axis = Vector3.Cross(Vector3.UnitY, normal);
-        float angleDegrees = 0f;
-        if (axis.LengthSquared() > 1e-6f)
-            angleDegrees = MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.UnitY, normal), -1f, 1f)) * (180f / MathF.PI);
-        else
-            axis = Vector3.UnitY; // Flat ground: any axis is fine at a 0-degree rotation.
-        float scale = BodyScale;
-        Raylib.DrawModelEx(_bodyModel, Position, axis, angleDegrees, new Vector3(scale), color);
+        Vector3 tiltAxis = Vector3.Cross(Vector3.UnitY, normal);
+        Quaternion tilt = Quaternion.Identity;
+        if (tiltAxis.LengthSquared() > 1e-6f)
+        {
+            float tiltRadians = MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.UnitY, normal), -1f, 1f));
+            tilt = Quaternion.CreateFromAxisAngle(Vector3.Normalize(tiltAxis), tiltRadians);
+        }
+
+        Quaternion rotation = Quaternion.Normalize(tilt * yaw);
+        float angleDegrees = 2f * MathF.Acos(Math.Clamp(rotation.W, -1f, 1f)) * (180f / MathF.PI);
+        float sinHalf = MathF.Sqrt(Math.Max(0f, 1f - rotation.W * rotation.W));
+        Vector3 axis = sinHalf > 1e-6f ? new Vector3(rotation.X, rotation.Y, rotation.Z) / sinHalf : Vector3.UnitY;
+
+        float scale = BodyScale * (BodyHeight / BramblekinModel.RawHeightUnits);
+        Raylib.DrawModelEx(_animModel, Position, axis, angleDegrees, new Vector3(scale), color);
 
         var top = Position + new Vector3(0, (BodyHeight - BodyRadius) * scale, 0);
-        Detail.Sphere(top + new Vector3(0, BodyRadius * 0.5f, 0), BodyRadius * 0.35f, group?.Color ?? SolitaryHeadColor);
         DrawSickness(top);
-
-        Vector2 facing = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;
 
         if (group is not null && group.Leader == this)
         {

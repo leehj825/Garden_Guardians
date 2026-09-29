@@ -14,11 +14,26 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>GardenGuardians</RootNamespace>
+    <!-- BramblekinModel manages its own native bone-matrix buffers per instance (see its doc comment). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' != 'net8.0-android'">
     <PackageReference Include="Raylib-cs" Version="8.1.0" />
+    <!-- Desktop reads these straight off disk (relative to the working
+         directory), so they just need to land next to the built exe. -->
+    <None Include="Assets/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!-- Files under a project's "Assets" folder are AndroidAsset items by the
+       .NET Android SDK's own default glob — same convention as "Resources"
+       for AndroidResource — so nothing extra is needed to package them
+       there; raylib's own AAssetManager hookup reads them straight out of
+       the APK the same way it already does for everything else raylib
+       loads on that platform (see BramblekinModel's Android asset path,
+       which drops the "Assets/" prefix the SDK itself strips on packaging).
+       An explicit <AndroidAsset Include="Assets/**" /> here would just
+       duplicate that default glob. -->
 
   <!-- On Android, take only the managed bindings. The package's native
        binaries are desktop builds, and NuGet treats android-x64 as a kind of
