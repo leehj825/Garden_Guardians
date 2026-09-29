@@ -238,7 +238,13 @@ public static partial class Game
         if (platform == GamePlatform.Android)
             Raylib.InitWindow(0, 0, "Garden Guardians");
         else
+        {
             Raylib.InitWindow(ScreenWidth, ScreenHeight, "Garden Guardians");
+            Image icon = Raylib.LoadImage("Assets/icon.png");
+            if (icon.Width > 0)
+                Raylib.SetWindowIcon(icon);
+            Raylib.UnloadImage(icon);
+        }
         Raylib.SetTargetFPS(TargetFps);
 
         // --- Build the world -------------------------------------------------
