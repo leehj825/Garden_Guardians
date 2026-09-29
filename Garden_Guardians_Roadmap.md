@@ -975,6 +975,8 @@ three fixes:
     removed), the village models three each (full, a quarter, a
     fourteenth), and the house, bush and spider a cheap copy; each is chosen
     by how big the thing looks on screen, and far-off kin are still pegs.
+    The terrain is 60,000 triangles (was 150,000), and kin off screen or
+    behind the camera are neither animated nor drawn.
 *   ⬜ **Wells** were never dug in the headless runs on either terrain;
     worth a look at why (the clan must know Wells and live over 20m from
     water).

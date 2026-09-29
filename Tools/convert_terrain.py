@@ -280,7 +280,7 @@ def main():
     ap.add_argument("src")
     ap.add_argument("dst")
     ap.add_argument("--scale", type=float, default=100.0)
-    ap.add_argument("--tris", type=int, default=150000)
+    ap.add_argument("--tris", type=int, default=60000)
     ap.add_argument("--texture", type=int, default=2048)
     ap.add_argument("--csharp", default=os.path.join(os.path.dirname(__file__), "..", "Source", "World", "TerrainData.cs"))
     args = ap.parse_args()
