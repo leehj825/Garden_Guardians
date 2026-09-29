@@ -140,6 +140,74 @@ def signed_distance(mask):
     return (ndi.distance_transform_edt(mask) - ndi.distance_transform_edt(~mask)) * GRID_STEP
 
 
+def cover_holes(ob):
+    """Extend the ground to the whole square. These models are a slab with a ragged rim, so along some edges (and in
+    corners) there is nothing under a walker standing inside the 100 m square: fill those cells with a flat-ish
+    patch at the nearest ground's height, textured with the nearest ground inside the rim (so not its dark edge)."""
+    bm = bmesh_of(ob)
+    bmesh.ops.triangulate(bm, faces=bm.faces[:])
+    bm.faces.ensure_lookup_table()
+    uv_layer = bm.loops.layers.uv.active
+    bvh = BVHTree.FromBMesh(bm)
+    height = np.full((GRID_N, GRID_N), np.nan)
+    uv = np.zeros((GRID_N, GRID_N, 2))
+    down = Vector((0, 0, -1))
+    for j in range(GRID_N):
+        z = -HALF + j * GRID_STEP
+        for i in range(GRID_N):
+            hit = bvh.ray_cast(Vector((-HALF + i * GRID_STEP, -z, 1000.0)), down)
+            if hit[0] is None:
+                continue
+            face = bm.faces[hit[2]]
+            w = mathutils_interpolate(face, hit[0])
+            height[j, i] = hit[0].z
+            uv[j, i] = (sum(wt * loop[uv_layer].uv.x for wt, loop in zip(w, face.loops)),
+                        sum(wt * loop[uv_layer].uv.y for wt, loop in zip(w, face.loops)))
+    hole = np.isnan(height)
+    print("ground missing under %d of %d cells (%.0f m2); covering it" % (hole.sum(), hole.size, hole.sum() * GRID_STEP ** 2))
+    if not hole.any():
+        bm.free()
+        return
+    inner = ndi.binary_erosion(~hole, iterations=5)
+    if not inner.any():
+        inner = ~hole
+    near_h = ndi.distance_transform_edt(hole, return_distances=False, return_indices=True)
+    near_uv = ndi.distance_transform_edt(~inner, return_distances=False, return_indices=True)
+    filled_h = height[tuple(near_h)]
+    patch = bmesh.new()
+    patch_uv = patch.loops.layers.uv.new("UVMap") if not bm.loops.layers.uv.keys() else patch.loops.layers.uv.new(bm.loops.layers.uv.active.name)
+    for j in range(GRID_N - 1):
+        for i in range(GRID_N - 1):
+            if not (hole[j, i] or hole[j, i + 1] or hole[j + 1, i] or hole[j + 1, i + 1]):
+                continue
+            corners = [(j, i), (j, i + 1), (j + 1, i + 1), (j + 1, i)]
+            verts = [patch.verts.new((-HALF + ci * GRID_STEP, -(-HALF + cj * GRID_STEP), filled_h[cj, ci])) for cj, ci in corners]
+            face = patch.faces.new(verts)
+            if face.normal.z < 0:
+                face.normal_flip()
+            for loop, (cj, ci) in zip(face.loops, corners):
+                u, v = uv[tuple(near_uv[:, cj, ci])]
+                loop[patch_uv].uv = (u, v)
+    bm.free()
+    added = bpy.data.meshes.new("patch")
+    patch.to_mesh(added)
+    patch.free()
+    for mat in ob.data.materials:
+        added.materials.append(mat)
+    extra = bpy.data.objects.new("patch", added)
+    bpy.context.collection.objects.link(extra)
+    bpy.ops.object.select_all(action="DESELECT")
+    extra.select_set(True)
+    ob.select_set(True)
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.join()
+
+
+def mathutils_interpolate(face, point):
+    from mathutils.interpolate import poly_3d_calc
+    return poly_3d_calc([v.co for v in face.verts], point)
+
+
 def reshape_ponds(ob, h, ponds=None, shared=None):
     """Lower every pond above the shared level to it and keep all other ground dry. Returns the new pond masks."""
     ponds = ponds or [POND_HIGH, POND_LOW]
@@ -350,6 +418,9 @@ def main():
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
     bm.to_mesh(ob.data)
     bm.free()
+
+    cover_holes(ob)
+    ob = bpy.context.view_layer.objects.active
 
     bm = bmesh_of(ob)
     h0 = fill_nan(grid_of(bm))

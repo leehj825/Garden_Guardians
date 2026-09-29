@@ -1012,6 +1012,11 @@ three fixes:
     model into `Assets/Models/Terrain/*.glb` and `Terrains/TerrainN.cs`
     (ground heights, one shared water level, oak and hive, footprint circles,
     and where the creek rises, picked so the brook runs downhill).
+*   ✅ **Ground fills the whole square:** the new models' slabs fall short
+    of the 100 m square along their ragged rims, so kin could stand on
+    ground that wasn't drawn; the converter now extends the ground to the
+    full square (same height as the nearest ground, textured from just
+    inside the rim).
 *   ⬜ **Not yet:** a terrain picker (New garden chooses at random), the
     ragged raised corner of terrain2's model, terrain-specific tuning of
     where clans start.
