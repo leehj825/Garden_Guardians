@@ -977,9 +977,16 @@ three fixes:
     by how big the thing looks on screen, and far-off kin are still pegs.
     The terrain is 60,000 triangles (was 150,000), and kin off screen or
     behind the camera are neither animated nor drawn.
-*   ⬜ **Wells** were never dug in the headless runs on either terrain;
-    worth a look at why (the clan must know Wells and live over 20m from
-    water).
+*   ✅ **Wells now get dug.** They almost never were: a clan needed to live
+    over 20m from water (two ponds and a creek leave few homes that far)
+    and dug five stones deep for a trickle of stones. The reach is now 10m
+    and a well takes 2 + ground height ÷ 3 stones (seed 13, 5,000s: 9
+    dug, 248 drinks from them; seeds with no far-off clan still dig none).
+*   ✅ **Scale and slopes.** Kin and buildings drawn at 80% of their
+    earlier size (the terrain looked small beside them); the ground's hills
+    and hollows flattened to 65% by `convert_terrain.py` (`RELIEF`) while
+    the oak, roots, reeds and stones keep their height; drought drop and
+    flood rise scaled to match.
 
 ## Phases 35+: Advancing Civilizations (ideas, not scheduled)
 Ideas for the clans to grow past today's crafts, farming, herding,
@@ -987,23 +994,30 @@ fishing, wells, palisades, shrines, feasts, alliances and wars. Suggested
 first picks: roads, workshops with tools, and the tech tree with eras.
 *   🟡 **Tech tree with eras:** Stone Age, Farming Age, Village Age,
     Kingdom Age. Done: a clan's age is worked out from its crafts (farming
-    → Farming Age; stonework and 7 crafts → Village Age; 12 crafts →
-    Kingdom Age), announced as a headline and chronicle entry, gates the
-    new Tools (Farming Age) and Roads (Village Age) crafts, and is in the
-    headless report. Not yet: showing the age on the clan card, more
-    crafts and buildings per age, prerequisites beyond these.
+    → Farming Age; stonework and 9 crafts → Village Age; 15 crafts
+    including Roads and Markets → Kingdom Age), announced as a headline
+    and chronicle entry, shown on the clan card, and gates Tools (Farming
+    Age), Roads and Markets (Village Age). Seeds now end in different ages
+    (Farming only, Village, Kingdom). Not yet: more crafts and buildings per
+    age.
 *   🟡 **Roads and bridges:** Done: feet wear dirt paths into the ground
     (a little faster to walk), and once a clan knows Roads the hardest-worn
-    cells are paved for good (faster still); drawn over the terrain, saved
-    with the garden. Not yet: clans deliberately laying roads between
-    homes, bridges over the creek or a pond neck, a model for the paving.
-*   🟡 **Workshops and specialists:** Done: the Tools craft puts a workbench
-    (procedural for now) by each House and the whole clan works 25% faster.
-    Not yet: specialists (stonecutter, weaver), cloth and trade goods, tools
-    that affect farming and hunting separately, a workbench model.
-*   ⬜ **Markets and currency:** a village market where clans barter
-    surplus for scarce goods (acorn-shell coins); caravans between allies
-    that can be raided.
+    cells are paved for good (faster still; stonecutting lets paving start
+    at 60% of the wear); drawn over the terrain, saved with the garden.
+    Not yet: clans deliberately laying roads between homes, bridges over
+    the creek or a pond neck, a model for the paving.
+*   🟡 **Workshops and specialists:** Tools puts a workbench by each House
+    (clan works 25% faster); Weaving makes cloth and Stonecutting cut
+    stone (each needs Tools, the second Stonework), a good made every
+    25-35s per clan while it has a home and adults, wearing out slowly.
+    Not yet: individual specialists with their own jobs, goods with uses
+    beyond trade, a workbench/loom model.
+*   🟡 **Markets and currency:** Done (first slice): Markets (Village Age,
+    Roads and a trade good) puts a stall by the main home; allied clans
+    that both hold one swap two goods for 5 food from the buyer's stores,
+    at most every 30s, reported in the headless summary. Goods are saved
+    with the garden. Not yet: coins, caravans that walk between markets
+    and can be raided, prices that follow scarcity.
 *   ⬜ **Writing and history:** runes carved on a standing stone record a
     clan's deeds, feed the chronicle, improve teaching between clans and
     make culture last.
