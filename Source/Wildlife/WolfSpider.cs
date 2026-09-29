@@ -50,6 +50,9 @@ public enum SpiderState
 /// </summary>
 public sealed class WolfSpider : ICombatant
 {
+    /// <summary>The model's scale: its legs span about 1.9 m.</summary>
+    private const float ModelScale = 1.9f / PropModels.SpiderWidth;
+
     /// <summary>Collision radius (m) — twice a Bramblekin's.</summary>
     public const float BodyRadius = Bramblekin.BodyRadius * 2f;
 
@@ -519,49 +522,18 @@ public sealed class WolfSpider : ICombatant
             Rlgl.Rotatef(fallIn * 80f + wobble, 1, 0, 0);
         }
 
-        // Abdomen: a flattened, elongated sphere.
-        Rlgl.PushMatrix();
-        Rlgl.Translatef(-0.28f, 0.34f, 0);
-        Rlgl.Scalef(1.25f, 0.62f, 1f);
-        Detail.Sphere(Vector3.Zero, 0.36f, BodyColor, Position);
-        Rlgl.PopMatrix();
-
-        // Head (cephalothorax).
-        Rlgl.PushMatrix();
-        Rlgl.Translatef(0.2f, 0.3f, 0);
-        Rlgl.Scalef(1.1f, 0.7f, 1f);
-        Detail.Sphere(Vector3.Zero, 0.24f, BodyColor, Position);
-        Rlgl.PopMatrix();
-
-        // Eyes.
-        Color eyeColor = State switch
+        // The model (its head faces −X, so turned about), tinted by mood — dim when
+        // prowling, red when hunting, yellow when investigating, pale when tumbled —
+        // and bobbing as its legs work while it moves.
+        Color mood = State switch
         {
-            SpiderState.Hunting or SpiderState.Pouncing => new Color(230, 40, 30, 255),
-            SpiderState.Investigating => new Color(240, 210, 60, 255),
-            SpiderState.Tumbled => new Color(175, 190, 220, 220),
-            _ => new Color(120, 110, 100, 255),
+            SpiderState.Hunting or SpiderState.Pouncing => new Color(255, 170, 160, 255),
+            SpiderState.Investigating => new Color(255, 240, 170, 255),
+            SpiderState.Tumbled => new Color(200, 210, 235, 255),
+            _ => Color.White,
         };
-        Detail.Sphere(new Vector3(0.43f, 0.38f, -0.08f), 0.045f, eyeColor, Position);
-        Detail.Sphere(new Vector3(0.43f, 0.38f, 0.08f), 0.045f, eyeColor, Position);
-
-        // Legs: four per side, fanning from front to back.
-        float[] attachX = { 0.28f, 0.2f, 0.1f, 0.0f };
-        float[] reachX = { 0.55f, 0.2f, -0.2f, -0.55f };
-        for (int side = -1; side <= 1; side += 2)
-        {
-            for (int i = 0; i < 4; i++)
-            {
-                // Alternate legs lift in turn while walking.
-                float phase = _walkCycle + i * MathF.PI / 2f + (side > 0 ? MathF.PI : 0f);
-                float lift = _mover.IsMoving ? MathF.Max(0f, MathF.Sin(phase)) * 0.12f : 0f;
-
-                var hip = new Vector3(attachX[i], 0.3f, side * 0.16f);
-                var knee = new Vector3(attachX[i] + reachX[i] * 0.55f, 0.62f + lift, side * 0.62f);
-                var foot = new Vector3(attachX[i] + reachX[i], lift * 0.5f, side * 0.95f);
-                Raylib.DrawCylinderEx(hip, knee, 0.045f, 0.035f, 5, LegColor);
-                Raylib.DrawCylinderEx(knee, foot, 0.035f, 0.02f, 5, LegColor);
-            }
-        }
+        float bob = _mover.IsMoving ? MathF.Abs(MathF.Sin(_walkCycle)) * 0.04f : 0f;
+        PropModels.Draw(PropModels.Spider, new Vector3(0f, bob, 0f), 180f, ModelScale, mood);
 
         Rlgl.PopMatrix();
 

@@ -112,7 +112,7 @@ public sealed partial class World
 
         bool roomForBranch = LooseMaterial(MaterialKind.Branch) < MaxLooseBranches;
         if (IsStorming && Tick(ref _stormBranchTimer, StormBranchInterval, 1f, deltaTime) && roomForBranch)
-            SpawnBranch(OakCenter, OakRadius + 2f, OakRadius + 18f);
+            SpawnBranch(OakCenter, OakRadius + 3f, OakRadius + 16f);
         if (Tick(ref _branchTimer, BranchSpawnInterval, 1f, deltaTime) && roomForBranch && _twigPatches.Count > 0)
             SpawnBranch(_twigPatches[Rng.Next(_twigPatches.Count)], 0.8f, 3f);
     }

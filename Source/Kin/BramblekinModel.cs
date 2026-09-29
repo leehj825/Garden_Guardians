@@ -58,6 +58,13 @@ internal static unsafe class BramblekinModel
     private const float ClipFps = 60f;
 
     private static Model _baseModel;
+
+    /// <summary>
+    /// The female mesh, rigged (Tools/convert_female.py) to the male's own
+    /// skeleton: it shares his clips, which are baked for that skeleton, so
+    /// every clip drives both. Only the mesh, skin weights and texture differ.
+    /// </summary>
+    private static Model _femaleModel;
     private static Model _lowDetailModel;
     private static readonly Dictionary<BramblekinClip, ModelAnimation> _clips = new();
     private static bool _ready;
@@ -73,6 +80,7 @@ internal static unsafe class BramblekinModel
             return;
 
         _baseModel = Raylib.LoadModel(AssetPath + "Walking.glb");
+        _femaleModel = Raylib.LoadModel(AssetPath + "Walking_female.glb");
         // Same skeleton, ~2,000 triangles and a 256px texture instead of ~50,000 and 2048px.
         _lowDetailModel = Raylib.LoadModel(AssetPath + "Walking_lod.glb");
 
@@ -138,7 +146,7 @@ internal static unsafe class BramblekinModel
 
     /// <summary>
     /// A cheap per-Bramblekin clone: same Meshes/Materials/Skeleton pointers
-    /// as the shared <see cref="_baseModel"/> (nothing is re-uploaded to the
+    /// as the shared model for its sex, <see cref="_baseModel"/> or <see cref="_femaleModel"/> (nothing is re-uploaded to the
     /// GPU), but its own <see cref="Model.BoneMatrices"/>/<see cref="Model.CurrentPose"/>
     /// buffers, so <see cref="Raylib.UpdateModelAnimation"/> can pose it
     /// independently of every other Bramblekin sharing the same mesh.
@@ -146,15 +154,24 @@ internal static unsafe class BramblekinModel
     /// <see cref="Raylib.UnloadModel"/>, which would free the shared mesh out
     /// from under every other Bramblekin.
     /// </summary>
-    public static Model CreatePoseInstance()
+    public static Model CreatePoseInstance(Sex sex)
     {
         EnsureLoaded();
-        Model instance = _baseModel;
-        int boneCount = _baseModel.Skeleton.BoneCount;
+        Model instance = sex == Sex.Female ? _femaleModel : _baseModel;
+        int boneCount = instance.Skeleton.BoneCount;
         instance.BoneMatrices = (Matrix4x4*)NativeMemory.AllocZeroed((nuint)boneCount, (nuint)sizeof(Matrix4x4));
         instance.CurrentPose = (Transform*)NativeMemory.AllocZeroed((nuint)boneCount, (nuint)sizeof(Transform));
         return instance;
     }
+
+    /// <summary>
+    /// Whether the zoomed-out <see cref="LowDetail"/> mesh may be used. Off:
+    /// <c>Walking_lod.glb</c> does not line up with the shared skeleton's
+    /// pose, so kin drew lying flat on their faces when zoomed out. Turn back
+    /// on only once a rebuilt low-poly mesh has been checked against the full
+    /// model's pose.
+    /// </summary>
+    public const bool HasLowDetail = false;
 
     /// <summary>
     /// <paramref name="instance"/> as the low-detail mesh: its own pose

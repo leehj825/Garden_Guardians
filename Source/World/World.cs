@@ -19,32 +19,43 @@ namespace GardenGuardians;
 public sealed partial class World
 {
     /// <summary>
-    /// The Terrain Height Function: procedural rolling-hills elevation at
-    /// any (x, z) ground coordinate, via a stacked sine/cosine formula.
-    /// Deterministic and stateless — the same (x, z) always yields the same
-    /// height, so it can be called freely from rendering, spawning and
-    /// grounding code alike without ever needing to be cached.
+    /// The Terrain Height Function: the ground's elevation at any (x, z),
+    /// bilinearly sampled from the height grid taken from the terrain model
+    /// (<see cref="TerrainData"/>; the oak's trunk and roots are painted out
+    /// of it — they are obstacles, not ground). Off the edge it holds the
+    /// edge's height. Deterministic and stateless, so it can be called
+    /// freely from rendering, spawning and grounding code alike.
     /// </summary>
     public static float GetHeightAt(float x, float z)
     {
         if (!float.IsFinite(x) || !float.IsFinite(z))
             return 0f;
 
-        return MathF.Sin(x * 0.1f) * 2.0f + MathF.Cos(z * 0.1f) * 2.0f + MathF.Sin((x + z) * 0.05f) * 1.5f;
+        const float max = TerrainData.Size - 1.001f;
+        float fx = Math.Clamp((x + 50f) / TerrainData.Step, 0f, max);
+        float fz = Math.Clamp((z + 50f) / TerrainData.Step, 0f, max);
+        int ix = (int)fx, iz = (int)fz;
+        float tx = fx - ix, tz = fz - iz;
+        float[] h = TerrainData.Heights;
+        int i = iz * TerrainData.Size + ix;
+        float near = h[i] + (h[i + 1] - h[i]) * tx;
+        float far = h[i + TerrainData.Size] + (h[i + TerrainData.Size + 1] - h[i + TerrainData.Size]) * tx;
+        return near + (far - near) * tz;
     }
 
     /// <summary>
     /// Surface-Normal Tilting: the terrain's outward surface normal at
     /// (x, z), found via finite differences — sampling
-    /// <see cref="GetHeightAt"/> a small step to either side on both axes
-    /// and using the resulting slope to build a normalized normal vector.
+    /// <see cref="GetHeightAt"/> a step to either side on both axes
+    /// and using the resulting slope to build a normalized normal vector
+    /// (the step is a grid cell, so the grid's flat facets don't show).
     /// Used to tilt bodies and props (see <see cref="Bramblekin.Draw"/> and
     /// <see cref="GardenProp.Draw"/>) so they sit flush on a hillside
     /// instead of just being lifted straight up out of it.
     /// </summary>
     public static Vector3 GetNormalAt(float x, float z)
     {
-        const float offset = 0.1f;
+        const float offset = TerrainData.Step;
         float L = GetHeightAt(x - offset, z);
         float R = GetHeightAt(x + offset, z);
         float B = GetHeightAt(x, z - offset);

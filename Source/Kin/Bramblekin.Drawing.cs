@@ -86,7 +86,7 @@ public sealed partial class Bramblekin
             Raylib.DrawCylinderEx(Position, Position + new Vector3(0, BodyHeight * BodyScale * grow, 0), BodyRadius * 0.7f * BodyScale * grow, BodyRadius * 0.5f * BodyScale * grow, 4, peg);
         }
         else
-            Raylib.DrawModelEx(fine ? _animModel : BramblekinModel.LowDetail(_animModel), Position, axis, angleDegrees, new Vector3(scale), color);
+            Raylib.DrawModelEx(fine || !BramblekinModel.HasLowDetail ? _animModel : BramblekinModel.LowDetail(_animModel), Position, axis, angleDegrees, new Vector3(scale), color);
 
         var top = Position + new Vector3(0, (BodyHeight - BodyRadius) * scale, 0);
         if (props)

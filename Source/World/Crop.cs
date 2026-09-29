@@ -234,21 +234,11 @@ public sealed class Crop
         }
     }
 
-    /// <summary>A round leafy clump dotted with its ripe berries.</summary>
+    /// <summary>A berry bush: the model, grown from a sapling; it fades toward its winter colour as it withers or the year turns.</summary>
     private void DrawBush(float size, bool winter, float withering)
     {
-        Color leaves = Blend(winter ? WinterLeafColor : LeafColor, WinterLeafColor, withering);
-        Vector3 center = Position + new Vector3(0f, size * 0.8f, 0f);
-        Detail.Sphere(center, size, leaves);
-        Detail.Sphere(center + new Vector3(size * 0.6f, -size * 0.3f, 0f), size * 0.7f, leaves);
-        Detail.Sphere(center + new Vector3(-size * 0.5f, -size * 0.35f, size * 0.3f), size * 0.65f, leaves);
-
-        for (int i = 0; i < Fruit; i++)
-        {
-            float angle = i * MathF.Tau / MaxFruit + 0.4f;
-            Vector3 berry = center + new Vector3(MathF.Cos(angle) * size * 0.95f, size * 0.1f * (i % 2), MathF.Sin(angle) * size * 0.95f);
-            Detail.Sphere(berry, 0.07f, BerryColor);
-        }
+        Color tint = Blend(winter ? Blend(Color.White, WinterLeafColor, 0.7f) : Color.White, WinterLeafColor, withering);
+        PropModels.Draw(PropModels.Bush, Position, 0f, size * 1.9f / PropModels.BushWidth, tint);
     }
 
     /// <summary>A tuft of tall stalks, green while growing and golden once they bear, each ripe one nodding under a seed head; stubble in winter.</summary>

@@ -81,7 +81,7 @@ public sealed partial class Bramblekin : ICombatant
         if (_animModelReady)
             return;
 
-        _animModel = BramblekinModel.CreatePoseInstance();
+        _animModel = BramblekinModel.CreatePoseInstance(Sex);
         _animModelReady = true;
     }
 

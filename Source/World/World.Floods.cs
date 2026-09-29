@@ -11,8 +11,8 @@ public sealed partial class World
     /// <summary>At its height a flood covers about this much of the garden, lowest ground first…</summary>
     private const float FloodedFraction = 0.15f;
 
-    /// <summary>…and the pond, always, this much (see <see cref="PondLevel"/>).</summary>
-    private const float PondFraction = 0.05f;
+    /// <summary>A flood rises at least this far (m) above the pond, however little low ground the terrain has.</summary>
+    private const float MinFloodRise = 1.2f;
 
     /// <summary>After the rain stops, the water drains away over this long.</summary>
     private const float FloodRecedeSeconds = 60f;
@@ -22,12 +22,13 @@ public sealed partial class World
 
     private static readonly Color WaterColor = new(70, 120, 190, 150);
 
-    /// <summary>The pond's surface, and how high a flood reaches (see <see cref="PondFraction"/>, <see cref="FloodedFraction"/>) — the terrain never changes, so worked out once.</summary>
+    /// <summary>The pond's surface, and how high a flood reaches (see <see cref="FloodedFraction"/>) — the terrain never changes, so worked out once.</summary>
     private static readonly (float Lowest, float Peak) FloodHeights = MeasureFloodHeights();
 
     /// <summary>
-    /// The pond: water standing in the lowest hollows of the garden (world
-    /// Y). Nothing is built, planted or spawned in it; walkers wade through
+    /// The pond: water standing in the model's two hollows, both at one level
+    /// (world Y; the terrain model's higher pond was lowered to match the
+    /// lower — see Tools/convert_terrain.py). Nothing is built, planted or spawned in it; walkers wade through
     /// at half pace; floods rise out of it.
     /// </summary>
     public static float PondLevel => FloodHeights.Lowest;
@@ -68,7 +69,8 @@ public sealed partial class World
                 heights.Add(GetHeightAt(x, z));
         }
         heights.Sort();
-        return (heights[(int)(heights.Count * PondFraction)], heights[(int)(heights.Count * FloodedFraction)]);
+        float pond = TerrainData.PondLevel;
+        return (pond, MathF.Max(heights[(int)(heights.Count * FloodedFraction)], pond + MinFloodRise));
     }
 
     /// <summary>A storm blowing up in spring or autumn may be a downpour, and flood the low ground.</summary>
