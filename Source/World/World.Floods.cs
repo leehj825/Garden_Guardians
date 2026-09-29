@@ -63,9 +63,10 @@ public sealed partial class World
     private static (float Lowest, float Peak) MeasureFloodHeights()
     {
         var heights = new List<float>();
-        for (float x = -49f; x <= 49f; x += 2f)
+        float reach = TerrainData.Half - 1f;
+        for (float x = -reach; x <= reach; x += 2f)
         {
-            for (float z = -49f; z <= 49f; z += 2f)
+            for (float z = -reach; z <= reach; z += 2f)
                 heights.Add(GetHeightAt(x, z));
         }
         heights.Sort();

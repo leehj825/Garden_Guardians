@@ -153,6 +153,16 @@ public static partial class Game
     /// <summary>True while <see cref="RunHeadless"/> is driving the simulation — event logs go to stdout instead of the on-screen console.</summary>
     private static bool _isHeadless;
 
+    /// <summary>The whole-garden camera: pulled back and up far enough to take in the whole square map (centred on the origin) at once.</summary>
+    private static Camera3D OverviewCamera(float mapSize) => new()
+    {
+        Target = Vector3.Zero,
+        Position = new Vector3(0f, 1.2f * mapSize, mapSize),
+        Up = Vector3.UnitY,
+        FovY = 45f,
+        Projection = CameraProjection.Perspective,
+    };
+
     /// <summary>The terrain a headless run is on: the original, or the number in GARDEN_TERRAIN.</summary>
     private static int HeadlessTerrain => int.TryParse(Environment.GetEnvironmentVariable("GARDEN_TERRAIN"), out int terrain) ? terrain : 0;
 
@@ -269,6 +279,7 @@ public static partial class Game
         World.Overlays = Preferences.Get(OverlaySetting, MapOverlays.All);
         _gardenSlot = (int)Preferences.Get(GardenSetting, GardenSlot.Garden1);
         World world = LoadOrCreateWorld(GardenPath);
+        camera = OverviewCamera(world.Terrain.Size);
         var input = new WorldTapInput();
         var touchCamera = new TouchCameraController();
         var followCamera = new FollowCamera(camera);
@@ -345,6 +356,7 @@ public static partial class Game
                 {
                     world = StartNewGarden(GardenPath);
                     ClearBanners();
+                    overview = OverviewCamera(world.Terrain.Size);
                     camera = overview;
                     followCamera = new FollowCamera(overview);
                     director.Stop();
@@ -355,6 +367,7 @@ public static partial class Game
             {
                 world = SwitchGarden(world);
                 ClearBanners();
+                overview = OverviewCamera(world.Terrain.Size);
                 camera = overview;
                 followCamera = new FollowCamera(overview);
                 director.Stop();
@@ -470,7 +483,7 @@ public static partial class Game
         World world;
         if (loadPath is null)
         {
-            world = new World(new Terrain(size: 100f, HeadlessTerrain), rng, InitialKinCount);
+            world = new World(new Terrain(HeadlessTerrain), rng, InitialKinCount);
         }
         else if (SaveSystem.TryLoad(loadPath, rng) is { } loaded)
         {

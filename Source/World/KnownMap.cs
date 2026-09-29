@@ -9,12 +9,22 @@ namespace GardenGuardians;
 /// </summary>
 public sealed class KnownMap
 {
-    /// <summary>Cell edge (m), and cells per side, covering the garden's ±50m.</summary>
+    /// <summary>Cell edge (m).</summary>
     public const float CellSize = 5f;
-    public const int Cells = 20;
-    private const float Half = 50f;
 
-    private readonly bool[] _known = new bool[Cells * Cells];
+    private readonly float _half;
+    private readonly bool[] _known;
+
+    /// <summary>A map of the garden spanning -<paramref name="half"/>..<paramref name="half"/> on x and z, all unknown.</summary>
+    public KnownMap(float half)
+    {
+        _half = half;
+        Cells = (int)MathF.Ceiling(2f * half / CellSize);
+        _known = new bool[Cells * Cells];
+    }
+
+    /// <summary>Cells per side.</summary>
+    public int Cells { get; }
 
     /// <summary>How many cells are known.</summary>
     public int KnownCount { get; private set; }
@@ -22,14 +32,14 @@ public sealed class KnownMap
     /// <summary>The share of the garden known, 0..1.</summary>
     public float Fraction => KnownCount / (float)(Cells * Cells);
 
-    private static int Index(int cx, int cz) => cz * Cells + cx;
+    private int Index(int cx, int cz) => cz * Cells + cx;
 
-    private static bool InRange(int cx, int cz) => cx >= 0 && cz >= 0 && cx < Cells && cz < Cells;
+    private bool InRange(int cx, int cz) => cx >= 0 && cz >= 0 && cx < Cells && cz < Cells;
 
-    private static int CellOf(float coordinate) => (int)MathF.Floor((coordinate + Half) / CellSize);
+    private int CellOf(float coordinate) => (int)MathF.Floor((coordinate + _half) / CellSize);
 
     /// <summary>The middle of cell (<paramref name="cx"/>, <paramref name="cz"/>) on the ground plane.</summary>
-    public static Vector3 CenterOf(int cx, int cz) => new(-Half + (cx + 0.5f) * CellSize, 0f, -Half + (cz + 0.5f) * CellSize);
+    public Vector3 CenterOf(int cx, int cz) => new(-_half + (cx + 0.5f) * CellSize, 0f, -_half + (cz + 0.5f) * CellSize);
 
     public bool IsKnown(int cx, int cz) => !InRange(cx, cz) || _known[Index(cx, cz)];
 

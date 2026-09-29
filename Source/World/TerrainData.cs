@@ -7,9 +7,12 @@ namespace GardenGuardians;
 /// </summary>
 public static class TerrainData
 {
-    /// <summary>Metres between samples, and samples per side — the same for every terrain.</summary>
+    /// <summary>Metres between height samples — the same for every terrain.</summary>
     public const float Step = 0.5f;
-    public const int Size = 201;
+
+    /// <summary>Half the map's width (m) and the height grid's samples per side, for the terrain in use.</summary>
+    public static float Half { get; private set; } = 50f;
+    public static int Size { get; private set; } = 201;
 
     /// <summary>The terrains, by number: 0 the original; the rest from Tools/convert_terrain.py.</summary>
     private static readonly Func<TerrainSet>[] Makers = { Terrain0.Make, Terrain1.Make, Terrain2.Make, Terrain3.Make };
@@ -25,8 +28,11 @@ public static class TerrainData
     /// <summary>The terrain in use (the original until another is chosen).</summary>
     public static TerrainSet Current => _current ??= Makers[CurrentIndex]();
 
-    /// <summary>A terrain number picked at random.</summary>
-    public static int RandomIndex(Random rng) => rng.Next(Count);
+    /// <summary>The terrains a new garden may be given, by number. For now only the original: the others are baked and ship with the game, but aren't offered yet.</summary>
+    private static readonly int[] NewGardenTerrains = { 0 };
+
+    /// <summary>A terrain number picked at random from those a new garden may have.</summary>
+    public static int RandomIndex(Random rng) => NewGardenTerrains[rng.Next(NewGardenTerrains.Length)];
 
     /// <summary>Makes terrain <paramref name="index"/> (out of range: the original) the one in use, re-measuring everything that depends on it.</summary>
     public static void Select(int index)
@@ -37,6 +43,8 @@ public static class TerrainData
             return;
         CurrentIndex = index;
         _current = Makers[index]();
+        Half = _current.Half;
+        Size = (int)MathF.Round(2f * Half / Step) + 1;
         World.OnTerrainChanged();
     }
 

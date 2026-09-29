@@ -1017,6 +1017,7 @@ three fixes:
     ground that wasn't drawn; the converter now extends the ground to the
     full square (same height as the nearest ground, textured from just
     inside the rim).
+*   ✅ **New gardens use the original terrain only for now** (`TerrainData.NewGardenTerrains`); saved gardens keep theirs.
 *   ⬜ **Not yet:** a terrain picker (New garden chooses at random), the
     ragged raised corner of terrain2's model, terrain-specific tuning of
     where clans start.
@@ -1036,7 +1037,7 @@ triangles. The four baked terrains stay as they are.
     a creek spring) and draws them with the real tiles
     (`preview_seeds.png`). Not yet: sand tile, more kit variety (terrain2
     has no ferns), tile repeat still visible up close.
-*   ⬜ **Stage B:** make the map size a setting (`TerrainData.Half`) in the
+*   ✅ **Stage B:** make the map size a setting (`TerrainData.Half`) in the
     ~15 places that assume ±50 m (height lookup, obstacle grid, water map,
     known map, flood scan, map-edge drawing, walkers' limits).
 *   ⬜ **Stage C:** port the generator to C# (own seeded random, so a seed

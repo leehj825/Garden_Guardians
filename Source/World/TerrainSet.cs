@@ -7,6 +7,9 @@ namespace GardenGuardians;
 /// </summary>
 public sealed class TerrainSet
 {
+    /// <summary>Half the map's width and depth (m): the ground spans -Half..Half on x and z. Every baked terrain is 100 m across.</summary>
+    public float Half { get; init; } = 50f;
+
     /// <summary>The model's file under Assets/Models/Terrain.</summary>
     public required string ModelFile { get; init; }
 

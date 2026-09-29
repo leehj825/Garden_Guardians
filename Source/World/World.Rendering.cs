@@ -243,7 +243,7 @@ public sealed partial class World
         Vector3 Around(float radius, float angle) =>
             Grounded(center + new Vector3(MathF.Cos(angle) * radius, 0f, MathF.Sin(angle) * radius), 0.06f);
 
-        static bool OnMap(Vector3 p) => MathF.Abs(p.X) <= 50f && MathF.Abs(p.Z) <= 50f;
+        static bool OnMap(Vector3 p) => MathF.Abs(p.X) <= TerrainData.Half && MathF.Abs(p.Z) <= TerrainData.Half;
     }
 
     /// <summary>A circle of <paramref name="radius"/> around <paramref name="center"/>, drawn as line segments that follow the terrain's height.</summary>

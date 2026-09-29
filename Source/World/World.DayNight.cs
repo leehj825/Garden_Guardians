@@ -320,8 +320,9 @@ public sealed partial class World
         for (int i = 0; i < FireflyCount; i++)
         {
             uint h = (uint)(i * 2654435761u);
-            float x = (h % 9000) / 100f - 45f;
-            float z = (h / 9000 % 9000) / 100f - 45f;
+            float span = 2f * (TerrainData.Half - 5f); // Fireflies keep 5 m off the edge.
+            float x = (h % 9000) / 9000f * span - span / 2f;
+            float z = (h / 9000 % 9000) / 9000f * span - span / 2f;
             float phase = (h >> 7 & 1023) / 1023f * MathF.Tau;
             var spot = new Vector3(x + MathF.Sin(time * 0.3f + phase) * 1.5f, 0f, z + MathF.Cos(time * 0.23f + phase) * 1.5f);
             if (IsWater(spot) || !IsVisible(spot, camera))

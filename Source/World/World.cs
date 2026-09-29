@@ -31,15 +31,17 @@ public sealed partial class World
         if (!float.IsFinite(x) || !float.IsFinite(z))
             return 0f;
 
-        const float max = TerrainData.Size - 1.001f;
-        float fx = Math.Clamp((x + 50f) / TerrainData.Step, 0f, max);
-        float fz = Math.Clamp((z + 50f) / TerrainData.Step, 0f, max);
+        int size = TerrainData.Size;
+        float max = size - 1.001f;
+        float half = TerrainData.Half;
+        float fx = Math.Clamp((x + half) / TerrainData.Step, 0f, max);
+        float fz = Math.Clamp((z + half) / TerrainData.Step, 0f, max);
         int ix = (int)fx, iz = (int)fz;
         float tx = fx - ix, tz = fz - iz;
         float[] h = TerrainData.Heights;
-        int i = iz * TerrainData.Size + ix;
+        int i = iz * size + ix;
         float near = h[i] + (h[i + 1] - h[i]) * tx;
-        float far = h[i + TerrainData.Size] + (h[i + TerrainData.Size + 1] - h[i + TerrainData.Size]) * tx;
+        float far = h[i + size] + (h[i + size + 1] - h[i + size]) * tx;
         return near + (far - near) * tz;
     }
 
@@ -253,17 +255,20 @@ public sealed partial class World
     /// <summary>…and each lists every obstacle within this far (m) of it — room for a walker's look-ahead and body.</summary>
     private const float ObstacleCellReach = 3f;
 
-    private const int ObstacleCells = 20;
+    /// <summary>Obstacle cells along each side of the garden.</summary>
+    private static int ObstacleSide => (int)MathF.Ceiling(2f * TerrainData.Half / ObstacleCellSize);
+
+    private readonly int _obstacleSide = ObstacleSide;
 
     /// <summary>The obstacles near each 5m cell of the garden (see <see cref="ObstaclesNear"/>).</summary>
-    private readonly List<Obstacle>[] _obstacleCells = Enumerable.Range(0, ObstacleCells * ObstacleCells).Select(_ => new List<Obstacle>()).ToArray();
+    private readonly List<Obstacle>[] _obstacleCells = Enumerable.Range(0, ObstacleSide * ObstacleSide).Select(_ => new List<Obstacle>()).ToArray();
 
     /// <summary>The obstacles a walker at <paramref name="point"/> could bump into or need to steer round — the handful near it, not all of them.</summary>
     public IReadOnlyList<Obstacle> ObstaclesNear(Vector3 point)
     {
-        int x = Math.Clamp((int)((point.X + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
-        int z = Math.Clamp((int)((point.Z + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
-        return _obstacleCells[x * ObstacleCells + z];
+        int x = Math.Clamp((int)((point.X + TerrainData.Half) / ObstacleCellSize), 0, _obstacleSide - 1);
+        int z = Math.Clamp((int)((point.Z + TerrainData.Half) / ObstacleCellSize), 0, _obstacleSide - 1);
+        return _obstacleCells[x * _obstacleSide + z];
     }
     public IReadOnlyList<(Vector3 Position, string Text, Color Color, float TimeLeft)> FloatingTexts => _floatingTexts;
 
@@ -357,14 +362,15 @@ public sealed partial class World
         foreach (Obstacle obstacle in _obstacles)
         {
             float reach = obstacle.Radius + ObstacleCellReach;
-            int x0 = Math.Clamp((int)((obstacle.Center.X - reach + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
-            int x1 = Math.Clamp((int)((obstacle.Center.X + reach + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
-            int z0 = Math.Clamp((int)((obstacle.Center.Y - reach + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
-            int z1 = Math.Clamp((int)((obstacle.Center.Y + reach + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
+            float half = TerrainData.Half;
+            int x0 = Math.Clamp((int)((obstacle.Center.X - reach + half) / ObstacleCellSize), 0, _obstacleSide - 1);
+            int x1 = Math.Clamp((int)((obstacle.Center.X + reach + half) / ObstacleCellSize), 0, _obstacleSide - 1);
+            int z0 = Math.Clamp((int)((obstacle.Center.Y - reach + half) / ObstacleCellSize), 0, _obstacleSide - 1);
+            int z1 = Math.Clamp((int)((obstacle.Center.Y + reach + half) / ObstacleCellSize), 0, _obstacleSide - 1);
             for (int x = x0; x <= x1; x++)
             {
                 for (int z = z0; z <= z1; z++)
-                    _obstacleCells[x * ObstacleCells + z].Add(obstacle);
+                    _obstacleCells[x * _obstacleSide + z].Add(obstacle);
             }
         }
     }

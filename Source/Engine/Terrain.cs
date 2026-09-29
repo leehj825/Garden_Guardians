@@ -18,10 +18,10 @@ public sealed class Terrain
     public float Size { get; }
 
     /// <summary>The ground of terrain <paramref name="terrainIndex"/> (see <see cref="TerrainData"/>) — choosing it, if it isn't the one in use.</summary>
-    public Terrain(float size, int terrainIndex = 0)
+    public Terrain(int terrainIndex = 0)
     {
         TerrainData.Select(terrainIndex);
-        Size = size;
+        Size = 2f * TerrainData.Half;
         _modelFile = TerrainData.Current.ModelFile;
     }
 

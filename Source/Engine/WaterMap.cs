@@ -14,12 +14,12 @@ namespace GardenGuardians;
 /// </summary>
 public static class WaterMap
 {
-    private const float HalfSize = 50f;
+    private static float HalfSize = 50f;
 
     /// <summary>Route cells are this size (m)…</summary>
     private const float CellSize = 1f;
 
-    private const int Cells = (int)(2 * HalfSize / CellSize);
+    private static int Cells = (int)(2 * 50f / CellSize);
 
     /// <summary>…and a route keeps this far off the water's edge…</summary>
     private const float ShoreClearance = 0.6f;
@@ -30,7 +30,7 @@ public static class WaterMap
     /// <summary>The fine grid (m) that says exactly where the water is, for <see cref="IsWet"/>.</summary>
     private const float WetCellSize = 0.25f;
 
-    private const int WetCells = (int)(2 * HalfSize / WetCellSize);
+    private static int WetCells = (int)(2 * 50f / WetCellSize);
 
     /// <summary>A route search gives up after looking at this many cells (the garden has 10,000).</summary>
     private const int MaxSearch = 6000;
@@ -79,7 +79,7 @@ public static class WaterMap
             if (slope.Length() < 0.02f)
                 break;
             Vector2 next = at - Vector2.Normalize(slope);
-            if (World.GetHeightAt(next.X, next.Y) >= World.GetHeightAt(at.X, at.Y) - 0.005f || MathF.Abs(next.X) > 46f || MathF.Abs(next.Y) > 46f)
+            if (World.GetHeightAt(next.X, next.Y) >= World.GetHeightAt(at.X, at.Y) - 0.005f || MathF.Abs(next.X) > HalfSize - 4f || MathF.Abs(next.Y) > HalfSize - 4f)
                 break; // Level ground (or the garden's edge): it pools here.
             at = next;
             course.Add(at);
@@ -155,6 +155,12 @@ public static class WaterMap
         if (ReferenceEquals(_builtFor, TerrainData.Current))
             return;
         _builtFor = TerrainData.Current;
+        HalfSize = TerrainData.Half;
+        Cells = (int)(2 * HalfSize / CellSize);
+        WetCells = (int)(2 * HalfSize / WetCellSize);
+        Cost = new float[Cells * Cells];
+        CameFrom = new int[Cells * Cells];
+        Stamp = new int[Cells * Cells];
         Creek = TraceCreek();
         CreekBounds = (
             Creek.Min(p => p.X) - CreekPoolRadius, Creek.Max(p => p.X) + CreekPoolRadius,
@@ -295,9 +301,10 @@ public static class WaterMap
     private static Vector3[] BuildShore(int level)
     {
         var spots = new List<Vector3>();
-        for (float x = -48f; x <= 48f; x += 1f)
+        float reach = HalfSize - 2f;
+        for (float x = -reach; x <= reach; x += 1f)
         {
-            for (float z = -48f; z <= 48f; z += 1f)
+            for (float z = -reach; z <= reach; z += 1f)
             {
                 if (IsWetNear(x, z, 0.8f, level) || World.IsOnOak(new Vector3(x, 0f, z), 0.5f))
                     continue;
@@ -371,9 +378,9 @@ public static class WaterMap
     }
 
     // Search scratch space, reused by every search (the simulation runs on one thread).
-    private static readonly float[] Cost = new float[Cells * Cells];
-    private static readonly int[] CameFrom = new int[Cells * Cells];
-    private static readonly int[] Stamp = new int[Cells * Cells];
+    private static float[] Cost = new float[Cells * Cells];
+    private static int[] CameFrom = new int[Cells * Cells];
+    private static int[] Stamp = new int[Cells * Cells];
     private static readonly PriorityQueue<int, float> Frontier = new();
     private static int _search;
 

@@ -79,7 +79,7 @@ public static class SaveSystem
                 return null;
             }
             int terrain = save.Numbers.TryGetValue(TerrainKey, out double saved) ? (int)saved : 0; // A garden from before terrains were chosen kept the original.
-            return World.FromSave(save, new Terrain(size: 100f, terrain), rng);
+            return World.FromSave(save, new Terrain(terrain), rng);
         }
         catch (Exception e)
         {

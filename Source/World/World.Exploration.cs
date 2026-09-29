@@ -189,13 +189,13 @@ public sealed partial class World
         Rlgl.DisableBackfaceCulling();
         var fog = new Color(60, 60, 70, 150);
         const float e = KnownMap.CellSize / 2f;
-        for (int cz = 0; cz < KnownMap.Cells; cz++)
+        for (int cz = 0; cz < clan.Known.Cells; cz++)
         {
-            for (int cx = 0; cx < KnownMap.Cells; cx++)
+            for (int cx = 0; cx < clan.Known.Cells; cx++)
             {
                 if (clan.Known.IsKnown(cx, cz))
                     continue;
-                Vector3 c = KnownMap.CenterOf(cx, cz);
+                Vector3 c = clan.Known.CenterOf(cx, cz);
                 if (!IsVisible(c, camera))
                     continue;
                 Vector3 a = Grounded(c + new Vector3(-e, 0f, -e), 0.12f), b = Grounded(c + new Vector3(e, 0f, -e), 0.12f);

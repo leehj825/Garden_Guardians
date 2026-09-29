@@ -64,7 +64,7 @@ public sealed class KinGroup
     public Guid? LiegeId { get; set; }
 
     /// <summary>The ground the clan has seen (see World.Exploration); not saved.</summary>
-    public KnownMap Known { get; } = new();
+    public KnownMap Known { get; } = new(TerrainData.Half);
 
     /// <summary>Quarters of the garden known when last announced (0..4).</summary>
     public int ExploredMilestone { get; set; }
