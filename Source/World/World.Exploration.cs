@@ -208,4 +208,77 @@ public sealed partial class World
         Rlgl.EnableBackfaceCulling();
         Rlgl.EnableDepthMask();
     }
+
+    // --- Rafts ---------------------------------------------------------------------------------
+
+    /// <summary>Raft crossings made and rafts capsized (for the headless report).</summary>
+    public int RaftCrossings { get; private set; }
+    public int RaftMishaps { get; private set; }
+
+    /// <summary>The point on the pond's usual bank nearest <paramref name="point"/>, a metre back from the water, or null if the pond has no bank.</summary>
+    public Vector3? NearestShore(Vector3 point)
+    {
+        Vector3[] shore = WaterMap.UsualShore;
+        if (shore.Length == 0)
+            return null;
+        Vector3 centre = Vector3.Zero;
+        Vector3 nearest = shore[0];
+        float best = float.MaxValue;
+        foreach (Vector3 p in shore)
+        {
+            centre += p;
+            float d = GroundMover.HorizontalDistanceSquared(p, point);
+            if (d < best)
+            {
+                best = d;
+                nearest = p;
+            }
+        }
+        centre /= shore.Length;
+        var outward = new Vector3(nearest.X - centre.X, 0f, nearest.Z - centre.Z);
+        return Grounded(outward.LengthSquared() > 0.01f ? nearest + Vector3.Normalize(outward) * 1f : nearest);
+    }
+
+    public void NoteRaftLaunch(Bramblekin scout)
+    {
+        QueueFloatingText(scout.Position, "Raft!", FeastTextColor);
+        if (RaftCrossings == 0)
+            Game.AddEventLog($"[EXPLORE] {scout.Name} of {GroupOf(scout)?.Title ?? "a clan"} set out across the pond on a raft");
+    }
+
+    public void NoteRaftCrossing(Bramblekin scout)
+    {
+        RaftCrossings++;
+        if (RaftCrossings == 1 && GroupOf(scout) is { } group)
+        {
+            Headline("Raft", $"{scout.Name} of {group.Title} crossed the pond on a raft", scout.Position, false, group);
+            Carve(group, $"{scout.Name} crossed the pond on a raft");
+        }
+    }
+
+    public void NoteRaftMishap(Bramblekin scout)
+    {
+        RaftMishaps++;
+        QueueFloatingText(scout.Position, "Capsized!", HostileTextColor);
+    }
+
+    private static readonly Color RaftLogColor = new(150, 110, 70, 255);
+
+    /// <summary>A raft under each scout poling across: logs lashed side by side on the water, and the scout standing on it.</summary>
+    private void DrawRafts()
+    {
+        foreach (Bramblekin kin in Colony)
+        {
+            if (kin.IsDead || !kin.IsOnRaft)
+                continue;
+            Vector3 p = new(kin.Position.X, WaterMap.SurfaceHeight + 0.04f, kin.Position.Z);
+            for (int i = -2; i <= 2; i++)
+                Raylib.DrawCube(p + new Vector3(i * 0.17f, 0f, 0f), 0.15f, 0.1f, 0.9f, RaftLogColor);
+            Raylib.DrawCube(p + new Vector3(0f, 0.07f, -0.25f), 0.9f, 0.05f, 0.06f, RaftLogColor);
+            Raylib.DrawCube(p + new Vector3(0f, 0.07f, 0.25f), 0.9f, 0.05f, 0.06f, RaftLogColor);
+            Color body = GroupOf(kin)?.Color ?? new Color(190, 140, 90, 255);
+            Detail.Sphere(p + new Vector3(0f, 0.3f, 0f), 0.2f, body);
+            Detail.Sphere(p + new Vector3(0f, 0.6f, 0f), 0.13f, new Color(235, 215, 185, 255));
+        }
+    }
 }

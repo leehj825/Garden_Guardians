@@ -164,7 +164,7 @@ public sealed partial class World
         for (int i = Colony.Count - 1; i >= 0; i--)
         {
             Bramblekin b = Colony[i];
-            if (!b.IsDead && IsKinVisible(b, camera))
+            if (!b.IsDead && !b.IsOnRaft && IsKinVisible(b, camera))
                 b.Draw(this);
         }
 
@@ -173,6 +173,7 @@ public sealed partial class World
         DrawPebbles();
 
         DrawWater();
+        DrawRafts();
         DrawCreek();
 
         // Kin Inspector: ring the selected Bramblekin, and trace its

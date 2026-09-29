@@ -94,4 +94,7 @@ public enum Craft
 
     /// <summary>Scouts who walk out beyond the known ground and map it; pioneers settle on ground the clan knows (see World.Exploration). Needs the Farming Age and a House.</summary>
     Exploration = 134217728,
+
+    /// <summary>Log rafts poled across the pond: a scout takes one straight over the water instead of walking round it (see Bramblekin.Scouting). Needs Fishing, Tools and Exploration.</summary>
+    Rafts = 268435456,
 }

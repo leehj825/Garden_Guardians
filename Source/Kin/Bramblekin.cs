@@ -635,6 +635,8 @@ public sealed partial class Bramblekin : ICombatant
             return;
         if (UpdateSickness(deltaTime, world))
             return;
+        if (_onRaft && PoleAcross(deltaTime, world))
+            return; // Out on the water: nothing else can be done until it lands.
 
         _perceptionTimer -= deltaTime;
         if (_perceptionTimer <= 0f)

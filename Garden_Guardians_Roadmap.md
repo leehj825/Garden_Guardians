@@ -1076,8 +1076,13 @@ first picks: roads, workshops with tools, and the tech tree with eras.
     20m from all its homes) gives a cache of food, more for the first clan
     ever, with a headline and chronicle entry; scouts head for it half the
     time while unseen, and clans that know it count ground within 14m of it
-    as good for a new village. Not yet: rafts, and other finds beyond the
-    far shore.
+    as good for a new village. Rafts: Fishing, Tools and Exploration let a
+    clan lash logs into rafts; a scout whose target lies across the pond,
+    where walking round is 1.6x the straight way or more (and the banks
+    are within 40m), walks to the bank, poles straight across at 1.3 m/s
+    (a small chance per second of capsizing back to the launch) and
+    carries on. Not yet: rafts for settling parties, moored rafts on the
+    bank, other finds beyond the far shore.
 *   ⬜ **Religion and culture branches:** beliefs (Oak, Pond, Spider, Moon)
     gain temples, priests, holy days and schisms; culture traits (warlike,
     farming, scholarly) shape each clan's tech choices.
