@@ -178,7 +178,7 @@ public sealed class Shelter
     /// <summary>Where the hearth sits: out front, off to the side away from the cistern.</summary>
     /// <summary>Where a lived-in House's window is (lit at night — see World.DrawNightLights); null for anything else.</summary>
     public Vector3? WindowPosition => IsBuilt && !IsBurrow && !IsAbandoned && Tier == ShelterTier.House
-        ? Position + new Vector3(0f, 0.02f, 0f) + new Vector3(Radius * 0.6f + 0.03f, Radius * 1.25f * 1.12f, Radius * 0.55f + 0.03f)
+        ? Position + new Vector3(0f, 0.02f, 0f) + new Vector3(0f, 0.36f * Radius * 2.6f / PropModels.HouseWidth, -(0.36f * Radius * 2.6f / PropModels.HouseWidth))
         : null;
 
     public Vector3 HearthPosition => Position + new Vector3(Radius * 0.2f, 0f, -(Radius + 0.5f));
@@ -382,19 +382,10 @@ public sealed class Shelter
         }
         else
         {
-            // The nut: a tall egg, sitting a little into the ground.
-            float bodyHeight = radius * 1.25f;
-            Vector3 bodyCenter = basePosition + new Vector3(0f, bodyHeight * 0.82f, 0f);
-            DrawEllipsoid(bodyCenter, radius * 0.92f, bodyHeight, Tint(NutColor));
-            DrawEllipsoid(bodyCenter + new Vector3(0f, -bodyHeight * 0.55f, 0f), radius * 0.7f, bodyHeight * 0.35f, Tint(NutShadeColor));
-
-            // A round door facing out (+X), and a warm round window above to one side.
-            Vector3 door = basePosition + new Vector3(radius * 0.86f, 0.36f, 0f);
-            Raylib.DrawCylinderEx(door, door + new Vector3(0.06f, 0f, 0f), 0.3f, 0.3f, 14, DoorColor);
-            Vector3 window = basePosition + new Vector3(radius * 0.6f, bodyHeight * 1.12f, radius * 0.55f);
-            Raylib.DrawCylinderEx(window, window + new Vector3(0.05f, 0f, 0.05f), 0.13f, 0.13f, 10, IsAbandoned ? DoorColor : WindowColor);
-
-            roofTop = DrawCap(bodyCenter + new Vector3(0f, bodyHeight * 0.62f, 0f), radius * 1.02f, Tint);
+            // The acorn house model, its door turned to face out (+X).
+            float scale = radius * 2.6f / PropModels.HouseWidth;
+            PropModels.Draw(PropModels.House, basePosition, 180f, scale, Tint(Color.White));
+            roofTop = basePosition.Y + PropModels.HouseCapTop * scale;
         }
 
         if (groupColor is { } color)
