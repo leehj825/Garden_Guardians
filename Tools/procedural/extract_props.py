@@ -30,6 +30,32 @@ def cell_of(x, z):
     return (np.clip(((z + HALF) / STEP).round().astype(int), 0, N - 1), np.clip(((x + HALF) / STEP).round().astype(int), 0, N - 1))
 
 
+def grassy(colour):
+    """Lawn green (the ground's texture), as opposed to fern green (darker and bluer) or wood and stone."""
+    r, g, b = colour
+    return g > r * 1.08 and g > b * 1.25 and g > 0.30
+
+
+def components(faces):
+    """Groups of faces that touch (share a vertex): a prop is one big group; stray shards are small ones."""
+    parent = {}
+
+    def find(a):
+        while parent.setdefault(a, a) != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    for f in faces:
+        ids = [v.index for v in f.verts]
+        for other in ids[1:]:
+            parent[find(ids[0])] = find(other)
+    groups = {}
+    for f in faces:
+        groups.setdefault(find(f.verts[0].index), []).append(f)
+    return list(groups.values())
+
+
 def classify(colour_mean):
     r, g, b = colour_mean
     if abs(r - g) < 0.06 and abs(g - b) < 0.08:
@@ -98,9 +124,30 @@ def main():
     objects = []
     uv_layer = bm.loops.layers.uv.active
     xs = -HALF + np.arange(N) * STEP
+    def face_colour(face):
+        u, w = face.loops[0][uv_layer].uv
+        return pixels[min(pixels.shape[0] - 1, int(w * pixels.shape[0])), min(pixels.shape[1] - 1, int(u * pixels.shape[1])), :3]
+
+    bm.normal_update()
     for index, (kind, region, above, floor) in enumerate(regions):
         picked = [f for f, o in zip(bm.faces, owner) if o == index]
-        if len(picked) < 8:
+        # The skirt of lawn round a prop's foot (up-facing, low, lawn-coloured) is ground, not prop.
+        picked = [f for f in picked
+                  if not (f.normal.z > 0.7 and f.calc_center_median().z - floor[cell_of(np.array([f.calc_center_median().x]), np.array([-f.calc_center_median().y]))][0] < 0.8
+                          and grassy(face_colour(f)))]
+        # Drop stray shards: pieces not joined to the prop that are small (under 0.8 m across) or a sliver of it.
+        groups = components(picked)
+        if not groups:
+            continue
+        largest = max(len(g) for g in groups)
+        kept = []
+        for group in groups:
+            pts = np.array([v.co[:] for f in group for v in f.verts])
+            extent = float((pts.max(axis=0) - pts.min(axis=0)).max())
+            if len(group) == largest or (extent >= 0.8 and len(group) >= max(12, 0.04 * largest)):
+                kept.extend(group)
+        picked = kept
+        if len(picked) < 40:
             continue
         zz, xx = np.nonzero(region & (np.abs(raw - floor) > above))
         cx, cz = float(xs[xx].mean()), float(xs[zz].mean())
