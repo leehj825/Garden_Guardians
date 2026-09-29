@@ -245,7 +245,7 @@ public sealed class Crop
     private void DrawPlot(VillageItem item, float grown, bool winter, float withering)
     {
         Color tint = Blend(winter ? Blend(Color.White, WinterLeafColor, 0.6f) : Color.White, WinterLeafColor, withering);
-        VillageModels.Draw(item, Position, 0f, Radius * 5.5f * (0.5f + 0.5f * grown), tint);
+        VillageModels.Draw(item, Position, 0f, Radius * 7.5f * (0.6f + 0.4f * grown), tint);
     }
 
     /// <summary>A tuft of tall stalks, green while growing and golden once they bear, each ripe one nodding under a seed head; stubble in winter.</summary>
