@@ -64,7 +64,7 @@ public sealed class FoodShard
 
     /// <summary>
     /// Dibs: the one Bramblekin currently walking to this Food, if any — see
-    /// <see cref="World.IsAvailable"/>. Released the moment that Bramblekin
+    /// <see cref="World.IsAvailable(FoodShard, Bramblekin?)"/>. Released the moment that Bramblekin
     /// stops foraging for it, and force-released after
     /// <see cref="World.FoodClaimTimeoutSeconds"/> as a failsafe.
     /// </summary>

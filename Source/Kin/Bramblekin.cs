@@ -65,7 +65,7 @@ public sealed partial class Bramblekin : ICombatant
     /// texture are shared with every other Bramblekin, but the bone matrices
     /// are its own, so it can be mid-stride at a different frame than the
     /// one next to it. Built lazily on first draw (see <see cref="Draw"/>)
-    /// so it never runs before <see cref="Raylib.InitWindow"/> has created a
+    /// so it never runs before <see cref="Raylib.InitWindow(int, int, string)"/> has created a
     /// GPU context, and released in <see cref="MarkDead"/> since it owns
     /// unmanaged memory the garbage collector won't reclaim on its own.
     /// </summary>
@@ -500,6 +500,9 @@ public sealed partial class Bramblekin : ICombatant
     public void TakeHit(int damage, Bramblekin attacker, World world) =>
         TakeDamage(damage, world, DeathCause.Kin, attacker);
 
+    /// <summary>With a shield (see <see cref="Craft.Shields"/>), a blow or bite does this fraction of its damage.</summary>
+    private const float ShieldFactor = 0.67f;
+
     /// <summary>
     /// Reduces Health and, at 0, dies via <see cref="World.Kill"/>. Any hit
     /// with a <paramref name="source"/> makes that source its top threat for
@@ -507,9 +510,6 @@ public sealed partial class Bramblekin : ICombatant
     /// <see cref="Perceive"/>); a hit from another Bramblekin also makes the
     /// two Enemies for good.
     /// </summary>
-    /// <summary>With a shield (see <see cref="Craft.Shields"/>), a blow or bite does this fraction of its damage.</summary>
-    private const float ShieldFactor = 0.67f;
-
     public void TakeDamage(int amount, World world, DeathCause cause, ICombatant? source)
     {
         if (IsDead)

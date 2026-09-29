@@ -63,8 +63,7 @@ internal static unsafe class BramblekinModel
 
     /// <summary>
     /// Loads the shared mesh and every clip the first time any Bramblekin
-    /// draws. Lazy, like <see cref="Bramblekin.EnsureBodyModel"/> was: this
-    /// can't run before <see cref="Raylib.InitWindow"/> has created a GPU
+    /// draws. Lazy: this can't run before <see cref="Raylib.InitWindow(int, int, string)"/> has created a GPU
     /// context to upload the mesh into.
     /// </summary>
     public static void EnsureLoaded()
