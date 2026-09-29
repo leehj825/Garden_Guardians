@@ -12,7 +12,7 @@ public sealed partial class World
     private static readonly Craft[] LaterCrafts =
     {
         Craft.Granary, Craft.Spears, Craft.Palisade, Craft.Grain, Craft.Mushrooms, Craft.Cress, Craft.Fishing, Craft.Stonework, Craft.Cisterns,
-        Craft.Wells, Craft.Slings, Craft.Hearth, Craft.Snares, Craft.Herbalism, Craft.Herding, Craft.Smoking, Craft.Shields, Craft.Tools, Craft.Roads, Craft.Weaving, Craft.Stonecutting, Craft.Markets, Craft.Writing, Craft.Watchtowers, Craft.Calendar, Craft.Medicine,
+        Craft.Wells, Craft.Slings, Craft.Hearth, Craft.Snares, Craft.Herbalism, Craft.Herding, Craft.Smoking, Craft.Shields, Craft.Tools, Craft.Roads, Craft.Weaving, Craft.Stonecutting, Craft.Markets, Craft.Writing, Craft.Watchtowers, Craft.Calendar, Craft.Medicine, Craft.Exploration,
     };
 
     /// <summary>A clan whose main home is further than this (m) from the water works out cisterns — necessity being the mother of invention.</summary>
@@ -151,6 +151,7 @@ public sealed partial class World
             Craft.Markets => EraOf(group) >= Era.VillageAge && Knows(group, Craft.Roads) && (Knows(group, Craft.Weaving) || Knows(group, Craft.Stonecutting)),
             Craft.Writing => EraOf(group) >= Era.VillageAge && Knows(group, Craft.Stonecutting),
             Craft.Watchtowers => EraOf(group) >= Era.VillageAge && Knows(group, Craft.Palisade) && Knows(group, Craft.Spears),
+            Craft.Exploration => hasHouse && EraOf(group) >= Era.FarmingAge,
             Craft.Medicine => hasHouse && Knows(group, Craft.Herbalism) && EraOf(group) >= Era.VillageAge,
             Craft.Calendar => Knows(group, Craft.Writing) && farms,
             _ => false,
@@ -183,6 +184,7 @@ public sealed partial class World
         Craft.Stonecutting => "cut stone into blocks",
         Craft.Markets => "hold a market",
         Craft.Writing => "carve runes on a standing stone",
+        Craft.Exploration => "send scouts to map the far ground",
         Craft.Medicine => "grow a herb garden and quarantine the sick",
         Craft.Calendar => "keep a calendar by the sun",
         Craft.Watchtowers => "raise a watchtower with an alarm horn",

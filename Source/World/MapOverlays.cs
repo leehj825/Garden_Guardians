@@ -11,5 +11,7 @@ public enum MapOverlays
     KinLinks = 2,
     /// <summary>The selected Bramblekin's detection ring.</summary>
     KinRange = 4,
+    /// <summary>Greys out the ground the selected clan hasn't seen (off by default, not part of <see cref="All"/>).</summary>
+    Fog = 8,
     All = ClanRange | KinLinks | KinRange,
 }

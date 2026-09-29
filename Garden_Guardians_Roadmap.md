@@ -1061,9 +1061,18 @@ first picks: roads, workshops with tools, and the tech tree with eras.
     and the seller has sick folk it may reach the buyer (a third as likely if
     the buyer knows Medicine). Not yet: healer huts, quarantined homes the
     sick are moved to, wider epidemics along caravans, a herb-garden yield.
-*   ⬜ **Exploration and expeditions:** scouts map beyond the known bank;
-    the pond's far side becomes a discoverable region; small rafts cross
-    the pond.
+*   🟡 **Exploration and expeditions:** Done (first slice, scouts and the
+    known map): every clan keeps a 20x20 grid of the garden it has seen
+    (5m cells, marked round its homes and wherever its people walk). The
+    Exploration craft (Farming Age and a House) puts one bold, clever
+    Gatherer of a clan of four or more out as a Scout, walking to the
+    nearest unseen ground within 45m of home and mapping 16m round it; the
+    clan card shows how much of the garden it knows, mapping milestones
+    (a quarter, half, three quarters) reach the chronicle, and pioneers
+    prefer settling on ground their clan knows. A Fog toggle greys out what
+    the selected clan hasn't seen. The map isn't saved (a loaded garden
+    re-marks round homes and people). Not yet: the pond's far side as a
+    discoverable region with its own finds, and rafts.
 *   ⬜ **Religion and culture branches:** beliefs (Oak, Pond, Spider, Moon)
     gain temples, priests, holy days and schisms; culture traits (warlike,
     farming, scholarly) shape each clan's tech choices.

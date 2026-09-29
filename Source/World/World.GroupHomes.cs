@@ -322,7 +322,7 @@ public sealed partial class World
             }
             daughter.ElectLeader();
             NameGroup(daughter);
-            daughter.SettleTarget = FindOpenGround(house.Position);
+            daughter.SettleTarget = FindOpenGround(house.Position, parent);
             daughter.Culture.CopyFrom(parent.Culture);
             daughter.Belief = parent.Belief; // A daughter village keeps its parent's faith (and raises its own shrine to it).
             int dowry = Math.Min(MaxDowry, StoredFood(parent) / 3);
@@ -395,7 +395,7 @@ public sealed partial class World
     /// (see <see cref="WaterPull"/>). Null if the map is too crowded to find
     /// anywhere clear, in which case they settle wherever they find food.
     /// </summary>
-    private Vector3? FindOpenGround(Vector3 from)
+    private Vector3? FindOpenGround(Vector3 from, KinGroup? knowing = null)
     {
         Vector3? best = null;
         float bestScore = float.MinValue;
@@ -420,7 +420,7 @@ public sealed partial class World
                 : _berryPatches.Min(patch => GroundMover.HorizontalDistance(patch, candidate));
             float toWater = WaterMap.UsualDistanceToWater(candidate.X, candidate.Z);
             float score = MathF.Min(nearestHome, PioneerSpacing * 1.4f) - 0.5f * MathF.Min(nearestPatch, 30f) - 0.1f * distance -
-                          WaterPull * MathF.Min(toWater, 50f);
+                          WaterPull * MathF.Min(toWater, 50f) - UnknownPenalty(knowing, candidate);
             if (score > bestScore)
             {
                 best = candidate;

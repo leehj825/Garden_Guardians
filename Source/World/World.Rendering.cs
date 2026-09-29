@@ -79,6 +79,8 @@ public sealed partial class World
             shelter.Draw(flag);
         }
 
+        if (Overlays.HasFlag(MapOverlays.Fog))
+            DrawFog(camera);
         if (Overlays.HasFlag(MapOverlays.KinLinks))
         {
             DrawRelations(camera);

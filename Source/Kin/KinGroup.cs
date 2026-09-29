@@ -63,6 +63,12 @@ public sealed class KinGroup
     /// <summary>The clan this one owes fealty to, if any (see World.Kingdoms).</summary>
     public Guid? LiegeId { get; set; }
 
+    /// <summary>The ground the clan has seen (see World.Exploration); not saved.</summary>
+    public KnownMap Known { get; } = new();
+
+    /// <summary>Quarters of the garden known when last announced (0..4).</summary>
+    public int ExploredMilestone { get; set; }
+
     /// <summary>What the clan reveres (see World.Beliefs).</summary>
     public Belief Belief { get; set; }
 

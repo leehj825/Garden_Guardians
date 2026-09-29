@@ -434,6 +434,7 @@ public sealed partial class World
         UpdateWatchtowers(deltaTime);
         UpdateCalendar(deltaTime);
         UpdateKingdoms(deltaTime);
+        UpdateExploration(deltaTime);
         UpdateSnares();
         UpdateNight(deltaTime);
         UpdateFeasts();

@@ -91,4 +91,7 @@ public enum Craft
 
     /// <summary>Medicine: a herb garden by the main home, sick clanmates recover faster and sickness spreads far less within the clan (quarantine), but trade can still carry it in (see World.Sickness). Needs herb-lore, a House and the Village Age.</summary>
     Medicine = 67108864,
+
+    /// <summary>Scouts who walk out beyond the known ground and map it; pioneers settle on ground the clan knows (see World.Exploration). Needs the Farming Age and a House.</summary>
+    Exploration = 134217728,
 }
