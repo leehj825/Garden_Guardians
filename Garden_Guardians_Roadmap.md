@@ -1025,11 +1025,17 @@ three fixes:
 Goal: a new garden gets its own ground from a seed — ponds, oak, rocks and
 plants in different places, a chosen size, and a mesh with far fewer
 triangles. The four baked terrains stay as they are.
-*   ⬜ **Stage A (offline, game unchanged):** cut the oak, boulder piles and
-    reed/fern clumps out of the four models as small prop models; write a
-    seeded generator (ground noise at low relief, ponds carved to one water
-    level, oak mound, props scattered clear of water) in Python; preview a
-    dozen seeds.
+*   ✅ **Stage A (offline, game unchanged):** `Tools/procedural/`:
+    `extract_tiles.py` cuts seamless grass (4) and dirt (3) tiles out of the
+    models' textures (no clean sand patch turned up; dirt stands in);
+    `extract_props.py` cuts each model's oak, boulders and plant clumps out
+    as a prop kit (`kit/`, 3 oaks, 11 rocks, 15 plants, with footprint
+    circles); `generate_terrain.py --seeds 1-12` makes seeded gardens
+    (rolling ground with ~4 degrees mean slope, 1-3 ponds at one water
+    level, an oak on a levelled patch, boulders and plant rings on the banks,
+    a creek spring) and draws them with the real tiles
+    (`preview_seeds.png`). Not yet: sand tile, more kit variety (terrain2
+    has no ferns), tile repeat still visible up close.
 *   ⬜ **Stage B:** make the map size a setting (`TerrainData.Half`) in the
     ~15 places that assume ±50 m (height lookup, obstacle grid, water map,
     known map, flood scan, map-edge drawing, walkers' limits).

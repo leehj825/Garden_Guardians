@@ -39,11 +39,14 @@ def fbm(rng, n, octaves):
 
 
 def load_kit():
+    """The props worth placing: real oaks, boulders and plant clumps (not the low bumps and mounds the extractor also finds)."""
     items = []
     for path in sorted(glob.glob(os.path.join(HERE, "kit", "*.json"))):
         with open(path) as f:
             items += json.load(f)
-    return items
+    for item in items:
+        item["reach"] = max((math.hypot(cx, cz) + r for cx, cz, r in item["circles"]), default=item["radius"])
+    return [i for i in items if i["kind"] == "oak" or (i["kind"] in ("rock", "plant") and i["height"] >= 1.5)]
 
 
 def load_tiles():
@@ -101,7 +104,7 @@ class Garden:
             theta = np.arctan2(v, u)
             ring = 1 + 0.16 * np.sin(2 * theta + p["wobble"][0]) + 0.10 * np.sin(3 * theta + p["wobble"][1]) + 0.06 * np.sin(5 * theta + p["wobble"][2])
             d = np.hypot(u, v) / (p["r"] * ring)
-            profile = np.where(d < 1, WATER_LEVEL - 0.55 * (1 - d ** 2) ** 0.8, WATER_LEVEL + 0.8 * (d - 1))
+            profile = np.where(d < 1, WATER_LEVEL - 0.55 * np.clip(1 - d ** 2, 0, 1) ** 0.8, WATER_LEVEL + 0.8 * (d - 1))
             w = smoothstep((1.9 - d) / 0.9)
             bowl = np.where(w > blend, profile, bowl)
             blend = np.maximum(blend, w)
@@ -110,7 +113,7 @@ class Garden:
         ground = lifted
         for p in self.ponds:
             d = p["d"]
-            profile = np.where(d < 1, WATER_LEVEL - 0.55 * (1 - d ** 2) ** 0.8, WATER_LEVEL + 0.8 * (d - 1))
+            profile = np.where(d < 1, WATER_LEVEL - 0.55 * np.clip(1 - d ** 2, 0, 1) ** 0.8, WATER_LEVEL + 0.8 * (d - 1))
             w = smoothstep((1.9 - d) / 0.9)
             ground = ground * (1 - w) + profile * w
         self.ground = ground
@@ -148,19 +151,20 @@ class Garden:
     def make_props(self, kit):
         rng = self.rng
         oaks = [k for k in kit if k["kind"] == "oak"]
-        rocks = [k for k in kit if k["kind"] == "rock" and k["radius"] < 6]
-        plants = [k for k in kit if k["kind"] == "plant" and k["radius"] < 5]
+        rocks = [k for k in kit if k["kind"] == "rock" and k["reach"] < 8]
+        plants = [k for k in kit if k["kind"] == "plant" and k["reach"] < 10]
         if oaks:
             item = oaks[int(rng.integers(len(oaks)))]
-            for _ in range(300):
-                margin = item["radius"] + 8
+            for attempt in range(600):
+                if attempt and attempt % 200 == 0:
+                    item = min(oaks, key=lambda o: o["reach"])  # the roomiest map can still take the smallest oak
+                margin = item["reach"] * 0.8 + 3
                 x, z = (float(v) for v in rng.uniform(-self.half + margin, self.half - margin, 2))
-                if self.dist_to_pond_edge(x, z) < item["radius"] + 10:
+                if self.dist_to_pond_edge(x, z) < item["reach"] * 0.45 + 4 - attempt * 0.01:
                     continue
                 # Level the ground under the trunk and roots so it stands on a flat.
-                rr = item["radius"] + 4
-                inside = np.hypot(self.gx - x, self.gz - z) < rr
-                target = float(np.median(self.ground[np.hypot(self.gx - x, self.gz - z) < item["radius"]]))
+                rr = item["reach"] * 0.6 + 4
+                target = float(np.median(self.ground[np.hypot(self.gx - x, self.gz - z) < item["reach"] * 0.6]))
                 w = smoothstep((rr - np.hypot(self.gx - x, self.gz - z)) / 4.0)
                 self.ground = self.ground * (1 - w) + target * w
                 self.oak = self.place(item, x, z, float(rng.uniform(0, math.tau)), 1.0)
@@ -314,7 +318,7 @@ class Garden:
         img = np.where(water_px[..., None], water_col * (1 + 0.04 * noise(1.0))[..., None], img)
         # A little relief shading.
         gy2, gx2 = np.gradient(ndi.gaussian_filter(ground_px, 1.5))
-        img *= (1 + np.clip((-gx2 - gy2) * 6.0 * px_per_m, -0.25, 0.25))[..., None]
+        img *= (1 + np.clip((-gx2 - gy2) * 2.5 * px_per_m, -0.10, 0.10))[..., None]
         out = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8))
         draw = ImageDraw.Draw(out)
 
