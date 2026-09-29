@@ -8,7 +8,7 @@ public sealed partial class Bramblekin
     /// <summary>A follower takes orders only while its Loyalty is at least this.</summary>
     public const float ObedienceThreshold = 0.3f;
 
-    /// <summary>Below this, a follower may rebel — see <see cref="World.CheckRebellions"/>.</summary>
+    /// <summary>Below this, a follower may rebel — see <see cref="World.ProcessRebellions"/>.</summary>
     public const float RebelThreshold = 0.2f;
 
     /// <summary>Reputation never climbs past this.</summary>

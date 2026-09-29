@@ -187,7 +187,7 @@ public sealed partial class World
     }
 
     /// <summary>
-    /// A couple leaves <paramref name="group"/> together — as a new,
+    /// A couple leaves their group together — as a new,
     /// homeless household of two with a Leader of its own. Both count as
     /// having left.
     /// </summary>

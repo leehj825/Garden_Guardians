@@ -22,7 +22,7 @@ public sealed partial class Bramblekin
     /// <summary>Infamy never climbs past this.</summary>
     public const float MaxInfamy = 3f;
 
-    /// <summary>Infamy fades on its own, like a grievance — see <see cref="World.DecayInfamy"/>.</summary>
+    /// <summary>Infamy fades on its own, like a grievance — see <see cref="DecayInfamy"/>.</summary>
     private const float InfamyFadePerSecond = 0.001f;
 
     /// <summary>At or above this, word has got around: even a stranger who's never met it is warier — see <see cref="World.IsWaryOf"/>.</summary>

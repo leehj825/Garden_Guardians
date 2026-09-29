@@ -24,10 +24,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         env:
           # Install into a user-writable folder so 'dotnet workload install'
           # doesn't need sudo to write into the runner's system .NET.
@@ -78,7 +78,7 @@ jobs:
           -p:AndroidSigningStorePass=env:KEYSTORE_PASSWORD
 
       - name: Upload signed release APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: garden-guardians-release-apk
           path: bin/Release/net8.0-android/publish/*-Signed.apk

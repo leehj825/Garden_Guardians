@@ -59,7 +59,7 @@ public sealed class TouchCameraController
     /// camera.Target. Turn this down if panning still feels too fast at
     /// every zoom level, up if it feels sluggish.
     /// </summary>
-    private const float PanSensitivity = 0.12f;
+    private const float PanSensitivity = 0.24f;
 
     /// <summary>
     /// Camera Sensitivity Tuning: the single knob on Two-Finger Rotation's
