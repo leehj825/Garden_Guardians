@@ -19,10 +19,10 @@ public sealed partial class World
     private const int CropsPerTent = 1;
 
     /// <summary>A berry bush or grain patch is planted between this…</summary>
-    private const float PlantMinDistance = 2.5f;
+    private const float PlantMinDistance = 3.8f;
 
     /// <summary>…and this far (m) from its planter's home.</summary>
-    private const float PlantMaxDistance = 6f;
+    private const float PlantMaxDistance = 7.5f;
 
     /// <summary>A mushroom bed goes this close (m) to its House's wall, in the damp shade.</summary>
     private const float MushroomBedReach = 1.2f;
@@ -193,13 +193,39 @@ public sealed partial class World
 
             if (!Terrain.Contains(spot, 3f) || IsBlocked(spot, Crop.Radius + 0.2f))
                 continue;
-            if (Shelters.Any(s => GroundMover.HorizontalDistance(s.Position, spot) < s.Radius + (s == home && kind == CropKind.Mushroom ? Crop.Radius : 1f)))
+            if (Shelters.Any(s => IsInHomeYard(s, spot, kind, home)))
                 continue;
             if (Crops.Any(c => GroundMover.HorizontalDistanceSquared(c.Position, spot) < CropSpacing * CropSpacing))
                 continue;
             return spot;
         }
         return null;
+    }
+
+    /// <summary>True if <paramref name="spot"/> is too close to <paramref name="shelter"/> for a <paramref name="kind"/> crop: inside its wall, its palisade ring and the yard round it. A mushroom bed may hug its own <paramref name="home"/>.</summary>
+    private static bool IsInHomeYard(Shelter shelter, Vector3 spot, CropKind kind, Shelter? home)
+    {
+        float reach = kind == CropKind.Mushroom && shelter == home
+            ? shelter.Radius + Crop.Radius
+            : shelter.PalisadeRadius + Crop.Radius + 0.2f;
+        return GroundMover.HorizontalDistance(shelter.Position, spot) < reach;
+    }
+
+    private float _yardSweepTimer;
+
+    /// <summary>Homes grow (tent to house) and gain palisades after a crop is in: plough under any that now sit in a home's yard, so none ever overlaps a home.</summary>
+    private void ClearHomeYards(float deltaTime)
+    {
+        _yardSweepTimer -= deltaTime;
+        if (_yardSweepTimer > 0f)
+            return;
+        _yardSweepTimer = 5f;
+        for (int i = Crops.Count - 1; i >= 0; i--)
+        {
+            Crop crop = Crops[i];
+            if (Shelters.Any(s => !s.IsCollapsed && GroundMover.HorizontalDistance(s.Position, crop.Position) < (crop.Kind == CropKind.Mushroom ? s.Radius + Crop.Radius * 0.5f : s.Radius + Crop.Radius + 0.9f)))
+                Crops.RemoveAt(i);
+        }
     }
 
     /// <summary>A Farmer plants a <paramref name="kind"/> crop at <paramref name="spot"/> for <paramref name="group"/>, paying a piece of food from the stores as seed — or, for grain, <see cref="GrainSeedCost"/> of its seed corn. Null if the group can't (or needn't) plant after all.</summary>
@@ -322,6 +348,7 @@ public sealed partial class World
     /// </summary>
     private void UpdateFarming(float deltaTime)
     {
+        ClearHomeYards(deltaTime);
         for (int i = Crops.Count - 1; i >= 0; i--)
         {
             Crop crop = Crops[i];

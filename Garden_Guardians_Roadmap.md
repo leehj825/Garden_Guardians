@@ -988,6 +988,16 @@ three fixes:
     the oak, roots, reeds and stones keep their height; drought drop and
     flood rise scaled to match.
 
+## Phase 36: Cleaner Map, Easier Taps
+*   ✅ **Crops keep clear of homes:** a crop is planted outside a home's
+    palisade ring (3.8-7.5m out), and crops left inside a home's yard after a
+    tent grows into a house are ploughed under.
+*   ✅ **Map guide toggles:** Clans (clan range), Links (follower tethers and
+    ally/war lines) and Range (the selected kin's detection ring) buttons
+    down the left edge, each on its own and remembered between runs.
+*   ✅ **Easier stat taps:** tapping a clan's name tag opens its clan card;
+    taps on homes and kin forgive more the farther the camera is zoomed out.
+
 ## Phases 35+: Advancing Civilizations (ideas, not scheduled)
 Ideas for the clans to grow past today's crafts, farming, herding,
 fishing, wells, palisades, shrines, feasts, alliances and wars. Suggested

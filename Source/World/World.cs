@@ -158,6 +158,9 @@ public sealed partial class World
     /// <summary>How close (m) a tap has to land to a Bramblekin to select it for the Kin Inspector.</summary>
     public const float KinSelectionRadius = 2f;
 
+    /// <summary>Which map guides are drawn (clan range, kin links, kin range) — set from the buttons on the map.</summary>
+    public static MapOverlays Overlays { get; set; } = MapOverlays.All;
+
     // --- Encounters & groups ------------------------------------------------------
 
     /// <summary>Two Bramblekin closer than this (m) have "crossed paths" — see <see cref="ResolveEncounter"/>.</summary>
@@ -765,13 +768,13 @@ public sealed partial class World
     /// within <see cref="KinSelectionRadius"/>, or clears the selection on a
     /// tap at empty ground.
     /// </summary>
-    public void TrySelectAt(Vector3 groundPoint)
+    public void TrySelectAt(Vector3 groundPoint, float slack = 0f)
     {
-        Bramblekin? kin = NearestKinTo(groundPoint);
+        Bramblekin? kin = NearestKinTo(groundPoint, slack);
         Shelter? home = Shelters
-            .Where(s => !s.IsCollapsed && GroundMover.HorizontalDistance(groundPoint, s.Position) <= s.Radius + 0.3f)
+            .Where(s => !s.IsCollapsed && GroundMover.HorizontalDistance(groundPoint, s.Position) <= s.Radius + 0.9f + slack)
             .MinBy(s => GroundMover.HorizontalDistanceSquared(groundPoint, s.Position));
-        bool onKin = kin is not null && GroundMover.HorizontalDistance(groundPoint, kin.Position) <= DirectTapRadius;
+        bool onKin = kin is not null && GroundMover.HorizontalDistance(groundPoint, kin.Position) <= DirectTapRadius + slack * 0.5f;
         if (home is not null && !onKin)
         {
             if (home.GroupId is { } clan && _groups.ContainsKey(clan))
@@ -792,14 +795,21 @@ public sealed partial class World
 
     private Guid? _selectedClanId;
 
+    /// <summary>Selects <paramref name="clan"/> as if its home had been tapped (a tap on its name tag).</summary>
+    public void SelectClan(KinGroup clan)
+    {
+        SelectedKin = null;
+        _selectedClanId = clan.Id;
+    }
+
     /// <summary>The clan picked by tapping one of its homes (see <see cref="TrySelectAt"/>), while it lasts.</summary>
     public KinGroup? SelectedClan => _selectedClanId is { } id && _groups.TryGetValue(id, out KinGroup? clan) ? clan : null;
 
     /// <summary>The living Bramblekin nearest <paramref name="groundPoint"/> within <see cref="KinSelectionRadius"/>, if any.</summary>
-    private Bramblekin? NearestKinTo(Vector3 groundPoint)
+    private Bramblekin? NearestKinTo(Vector3 groundPoint, float slack = 0f)
     {
         Bramblekin? best = null;
-        float bestDistanceSquared = KinSelectionRadius * KinSelectionRadius;
+        float bestDistanceSquared = (KinSelectionRadius + slack) * (KinSelectionRadius + slack);
         foreach (Bramblekin kin in Colony)
         {
             if (kin.IsDead)

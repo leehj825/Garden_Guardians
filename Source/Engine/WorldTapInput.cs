@@ -58,7 +58,11 @@ public sealed class WorldTapInput
     public void HandlePress(Vector2 screenPosition, Camera3D camera, World world)
     {
         if (PickGround(camera, world.Terrain, screenPosition) is { } tapGround)
-            world.TrySelectAt(tapGround);
+        {
+            // Zoomed out, a Bramblekin is a few pixels wide: forgive more the farther the camera is.
+            float slack = Math.Clamp(Vector3.Distance(camera.Position, tapGround) * 0.035f - 0.3f, 0f, 4f);
+            world.TrySelectAt(tapGround, slack);
+        }
     }
 
     /// <summary>

@@ -121,6 +121,35 @@ public static partial class Game
     /// <summary>Where the Log button was drawn last frame, for taps.</summary>
     private static Rectangle _logButtonBounds;
 
+    private const string OverlaySetting = "overlays";
+
+    /// <summary>Where each clan's name tag was drawn last frame, for tapping it to open the clan card.</summary>
+    private static readonly List<(Rectangle Bounds, KinGroup Clan)> _clanLabelBounds = new();
+
+    /// <summary>The three map-guide toggles (clan range, kin links, kin range), stacked under the top buttons.</summary>
+    private static (UiButton Button, string Label, MapOverlays Flag)[] OverlayButtons(float uiScale, int top, int margin)
+    {
+        int width = (int)(250 * uiScale), height = (int)(96 * uiScale), gap = (int)(10 * uiScale);
+        (string, MapOverlays)[] rows = { ("Clans", MapOverlays.ClanRange), ("Links", MapOverlays.KinLinks), ("Range", MapOverlays.KinRange) };
+        var buttons = new (UiButton, string, MapOverlays)[rows.Length];
+        for (int i = 0; i < rows.Length; i++)
+            buttons[i] = (new UiButton(new Rectangle(margin, top + i * (height + gap), width, height)), rows[i].Item1, rows[i].Item2);
+        return buttons;
+    }
+
+    /// <summary>A tap on a clan's name tag opens its card. Returns true if it landed on one.</summary>
+    private static bool TapClanLabel(Vector2 point, World world)
+    {
+        foreach (var (bounds, clan) in _clanLabelBounds)
+        {
+            if (!Raylib.CheckCollisionPointRec(point, bounds))
+                continue;
+            world.SelectClan(clan);
+            return true;
+        }
+        return false;
+    }
+
     /// <summary>True while <see cref="RunHeadless"/> is driving the simulation — event logs go to stdout instead of the on-screen console.</summary>
     private static bool _isHeadless;
 
@@ -228,6 +257,7 @@ public static partial class Game
         // Save/Load: the garden carries on where it was left (see SaveSystem).
         Preferences.Load(Preferences.DefaultPath);
         _logView = Preferences.Get(LogViewSetting, LogView.Brief);
+        World.Overlays = Preferences.Get(OverlaySetting, MapOverlays.All);
         _gardenSlot = (int)Preferences.Get(GardenSetting, GardenSlot.Garden1);
         World world = LoadOrCreateWorld(GardenPath);
         var input = new WorldTapInput();
@@ -273,6 +303,7 @@ public static partial class Game
             UiButton? followButton = _showChronicle ? null : FollowButton(world);
             UiButton? newGardenButton = _showChronicle ? NewGardenButton(historyButton, speedButtonMargin) : null;
             UiButton? gardenSlotButton = newGardenButton is null ? null : GardenSlotButton(newGardenButton, speedButtonMargin);
+            var overlayButtons = _showChronicle ? null : OverlayButtons(uiScale, speedButtonMargin * 2 + speedButtonHeight, speedButtonMargin);
             _newGardenConfirm = MathF.Max(0f, _newGardenConfirm - Raylib.GetFrameTime());
 
             // 1) Input: the player has no lever on the world. The only tap
@@ -328,6 +359,15 @@ public static partial class Game
             {
                 // Showed more, less or none of the log.
             }
+            else if (mousePressed && overlayButtons is not null && overlayButtons.Any(o => o.Button.Contains(mousePosition)))
+            {
+                World.Overlays ^= overlayButtons.First(o => o.Button.Contains(mousePosition)).Flag;
+                Preferences.Set(OverlaySetting, World.Overlays);
+            }
+            else if (mousePressed && TapClanLabel(mousePosition, world))
+            {
+                // Opened the clan card from its name tag.
+            }
             else if (mousePressed && mapButton.Contains(mousePosition))
             {
                 director.Stop();
@@ -363,6 +403,9 @@ public static partial class Game
             speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
             mapButton.Draw("Map", highlighted: false);
             historyButton.Draw("History", highlighted: _showChronicle);
+            if (overlayButtons is not null)
+                foreach (var (button, label, flag) in overlayButtons)
+                    button.Draw(label, highlighted: World.Overlays.HasFlag(flag));
             autoButton?.Draw("Auto", highlighted: director.IsOn);
             newGardenButton?.Draw(_newGardenConfirm > 0f ? "Sure?" : "New", highlighted: _newGardenConfirm > 0f);
             gardenSlotButton?.Draw($"Garden {_gardenSlot}", highlighted: false);
@@ -908,6 +951,7 @@ public static partial class Game
     {
         int fontSize = ScaledFontSize(0.42f);
         KinGroup? highlighted = world.SelectedKin is { IsDead: false } kin ? world.GroupOf(kin) : world.SelectedClan;
+        _clanLabelBounds.Clear();
         foreach (KinGroup group in world.Groups)
         {
             if (group.Name is null || group.Home is not { IsCollapsed: false } home)
@@ -920,6 +964,8 @@ public static partial class Game
             int width = Raylib.MeasureText(text, fontSize);
             int x = (int)(screen.X - width / 2f), y = (int)(screen.Y - fontSize);
             byte alpha = group == highlighted ? (byte)240 : (byte)190;
+            int pad = fontSize / 2; // A generous tap target, well past the tag itself.
+            _clanLabelBounds.Add((new Rectangle(x - pad, y - pad, width + pad * 2, fontSize + pad * 2), group));
             Raylib.DrawRectangle(x - 6, y - 3, width + 12, fontSize + 6, PanelFill with { A = alpha });
             Raylib.DrawRectangle(x - 6, y + fontSize + 1, width + 12, 3, group.Color);
             if (group == highlighted)

@@ -53,7 +53,8 @@ public sealed partial class World
         var (seasonTint, seasonAmount) = SeasonTint;
         Terrain.Draw(seasonTint, seasonAmount);
         DrawTrails(camera);
-        DrawTerritories(camera);
+        if (Overlays.HasFlag(MapOverlays.ClanRange))
+            DrawTerritories(camera);
         DrawOak();
         for (int i = _splats.Count - 1; i >= 0; i--)
         {
@@ -78,7 +79,8 @@ public sealed partial class World
             shelter.Draw(flag);
         }
 
-        DrawRelations(camera);
+        if (Overlays.HasFlag(MapOverlays.KinLinks))
+            DrawRelations(camera);
         DrawRain(camera);
         bool winter = CurrentSeason == Season.Winter;
         foreach (Crop bush in Crops)
@@ -139,7 +141,7 @@ public sealed partial class World
         // Group tethers: a faint line in the group's colour from every
         // follower's head to its Leader's, so who runs with whom reads at a
         // glance.
-        foreach (KinGroup group in _groups.Values)
+        foreach (KinGroup group in Overlays.HasFlag(MapOverlays.KinLinks) ? _groups.Values : Enumerable.Empty<KinGroup>())
         {
             if (group.Leader is not { IsDead: false } leader)
                 continue;
@@ -173,7 +175,8 @@ public sealed partial class World
         if (SelectedKin is { IsDead: false } selected)
         {
             DrawTerrainRing(selected.Position, 0.5f, new Color(255, 230, 60, 255));
-            DrawTerrainRing(selected.Position, selected.DetectionRadius, new Color(255, 255, 255, 140));
+            if (Overlays.HasFlag(MapOverlays.KinRange))
+                DrawTerrainRing(selected.Position, selected.DetectionRadius, new Color(255, 255, 255, 140));
         }
     }
 
