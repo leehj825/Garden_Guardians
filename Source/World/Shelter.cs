@@ -515,7 +515,7 @@ public sealed class Shelter
             {
                 Vector3 mouth = tower + new Vector3(0.45f, 2.55f, 0.55f);
                 for (int ring = 1; ring <= 3; ring++)
-                    Raylib.DrawCircle3D(mouth, 0.2f * ring, new Vector3(0f, 1f, 0f), 0f, new Color(255, 230, 120, (byte)(200 - ring * 50)));
+                    Raylib.DrawCircle3D(mouth, 0.2f * ring, new Vector3(0f, 1f, 0f), 0f, new Color(255, 230, 120, 200 - ring * 50));
             }
         }
 
