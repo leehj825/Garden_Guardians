@@ -180,11 +180,10 @@ def cover_holes(ob):
         for i in range(GRID_N - 1):
             if not (hole[j, i] or hole[j, i + 1] or hole[j + 1, i] or hole[j + 1, i + 1]):
                 continue
-            corners = [(j, i), (j, i + 1), (j + 1, i + 1), (j + 1, i)]
+            # Game z runs down Blender's y, so this order goes anticlockwise seen from above: the face looks up (raylib culls the back).
+            corners = [(j + 1, i), (j + 1, i + 1), (j, i + 1), (j, i)]
             verts = [patch.verts.new((-HALF + ci * GRID_STEP, -(-HALF + cj * GRID_STEP), filled_h[cj, ci])) for cj, ci in corners]
             face = patch.faces.new(verts)
-            if face.normal.z < 0:
-                face.normal_flip()
             for loop, (cj, ci) in zip(face.loops, corners):
                 u, v = uv[tuple(near_uv[:, cj, ci])]
                 loop[patch_uv].uv = (u, v)
