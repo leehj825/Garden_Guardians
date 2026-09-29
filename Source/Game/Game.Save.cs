@@ -63,7 +63,11 @@ public static partial class Game
         return fresh;
     }
 
-    private static World NewWorld() => new(new Terrain(size: 100f), new Random(), InitialKinCount);
+    private static World NewWorld()
+    {
+        var rng = new Random();
+        return new World(new Terrain(size: 100f, TerrainData.RandomIndex(rng)), rng, InitialKinCount);
+    }
 
     /// <summary>The "New" (garden) button, shown beside History while the History screen is open.</summary>
     private static UiButton NewGardenButton(UiButton historyButton, int margin) =>

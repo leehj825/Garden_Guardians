@@ -49,7 +49,7 @@ public static class WaterMap
     // counts as water for everyone weighing up how far they live from some.
 
     /// <summary>Where the spring rises.</summary>
-    private static readonly Vector2 Spring = new(-40f, 45f);
+    private static Vector2 Spring => new(TerrainData.SpringX, TerrainData.SpringZ);
 
     /// <summary>The brook is this wide (m)…</summary>
     public const float CreekWidth = 0.7f;
@@ -58,13 +58,13 @@ public static class WaterMap
     public const float CreekPoolRadius = 1.4f;
 
     /// <summary>The brook's course: from the spring, a meter a step, straight downhill until the ground levels out.</summary>
-    public static readonly Vector2[] Creek = TraceCreek();
+    public static Vector2[] Creek { get; private set; } = Array.Empty<Vector2>();
 
     /// <summary>Where the brook comes to rest and pools.</summary>
     public static Vector2 CreekPool => Creek[^1];
 
     /// <summary>Points along the creek's banks (and round its pool) — somewhere to drink, and to grow cress.</summary>
-    public static readonly Vector3[] CreekBanks = BuildCreekBanks();
+    public static Vector3[] CreekBanks { get; private set; } = Array.Empty<Vector3>();
 
     private static Vector2[] TraceCreek()
     {
@@ -88,9 +88,7 @@ public static class WaterMap
     }
 
     /// <summary>The creek's bounds, grown by <see cref="CreekPoolRadius"/> — a quick first check before <see cref="DistanceToCreek"/>.</summary>
-    private static readonly (float MinX, float MaxX, float MinZ, float MaxZ) CreekBounds = (
-        Creek.Min(p => p.X) - CreekPoolRadius, Creek.Max(p => p.X) + CreekPoolRadius,
-        Creek.Min(p => p.Y) - CreekPoolRadius, Creek.Max(p => p.Y) + CreekPoolRadius);
+    private static (float MinX, float MaxX, float MinZ, float MaxZ) CreekBounds;
 
     /// <summary>True if the creek's water comes within <paramref name="clearance"/> of (x, z).</summary>
     public static bool IsNearCreek(float x, float z, float clearance) =>
@@ -135,16 +133,45 @@ public static class WaterMap
     }
 
     /// <summary>The surface (world Y) at each level.</summary>
-    public static readonly float[] LevelHeights = Enumerable.Range(0, Levels).Select(i => World.PondLevel - DroughtDrop * i / (Levels - 1)).ToArray();
+    public static float[] LevelHeights { get; private set; } = Array.Empty<float>();
 
-    private static readonly float[] Ground = BuildGround();
-    private static readonly bool[] Oak = BuildOak();
-    private static readonly bool[][] Wet = Enumerable.Range(0, Levels).Select(BuildWet).ToArray();
-    private static readonly bool[][] WaterBlocked = Enumerable.Range(0, Levels).Select(BuildWaterBlocked).ToArray();
-    private static readonly bool[][] Blocked = Enumerable.Range(0, Levels).Select(l => WaterBlocked[l].Select((water, i) => water || Oak[i]).ToArray()).ToArray();
-    private static readonly float[][] ShoreDistance = Enumerable.Range(0, Levels).Select(BuildShoreDistance).ToArray();
-    private static readonly Vector3[][] Shores = Enumerable.Range(0, Levels).Select(BuildShore).ToArray();
-    private static readonly int[] WetCount = Wet.Select(w => w.Count(c => c)).ToArray();
+    private static float[] Ground = Array.Empty<float>();
+    private static bool[] Oak = Array.Empty<bool>();
+    private static bool[][] Wet = Array.Empty<bool[]>();
+    private static bool[][] WaterBlocked = Array.Empty<bool[]>();
+    private static bool[][] Blocked = Array.Empty<bool[]>();
+    private static float[][] ShoreDistance = Array.Empty<float[]>();
+    private static Vector3[][] Shores = Array.Empty<Vector3[]>();
+    private static int[] WetCount = Array.Empty<int>();
+
+    /// <summary>The terrain everything above was measured from.</summary>
+    private static TerrainSet? _builtFor;
+
+    static WaterMap() => Reload();
+
+    /// <summary>Measures the water for the terrain in use (see <see cref="TerrainData.Select"/>): the creek, and each water level's wet ground, shore and routes. Does nothing if it already has.</summary>
+    public static void Reload()
+    {
+        if (ReferenceEquals(_builtFor, TerrainData.Current))
+            return;
+        _builtFor = TerrainData.Current;
+        Creek = TraceCreek();
+        CreekBounds = (
+            Creek.Min(p => p.X) - CreekPoolRadius, Creek.Max(p => p.X) + CreekPoolRadius,
+            Creek.Min(p => p.Y) - CreekPoolRadius, Creek.Max(p => p.Y) + CreekPoolRadius);
+        CreekBanks = BuildCreekBanks();
+        LevelHeights = Enumerable.Range(0, Levels).Select(i => World.PondLevel - DroughtDrop * i / (Levels - 1)).ToArray();
+        Ground = BuildGround();
+        Oak = BuildOak();
+        Wet = Enumerable.Range(0, Levels).Select(BuildWet).ToArray();
+        WaterBlocked = Enumerable.Range(0, Levels).Select(BuildWaterBlocked).ToArray();
+        Blocked = Enumerable.Range(0, Levels).Select(l => WaterBlocked[l].Select((water, i) => water || Oak[i]).ToArray()).ToArray();
+        ShoreDistance = Enumerable.Range(0, Levels).Select(BuildShoreDistance).ToArray();
+        Shores = Enumerable.Range(0, Levels).Select(BuildShore).ToArray();
+        WetCount = Wet.Select(w => w.Count(c => c)).ToArray();
+        Level = 0;
+        Generation++;
+    }
 
     /// <summary>The water level in force (0 = usual; see <see cref="Levels"/>).</summary>
     public static int Level { get; private set; }

@@ -153,6 +153,9 @@ public static partial class Game
     /// <summary>True while <see cref="RunHeadless"/> is driving the simulation — event logs go to stdout instead of the on-screen console.</summary>
     private static bool _isHeadless;
 
+    /// <summary>The terrain a headless run is on: the original, or the number in GARDEN_TERRAIN.</summary>
+    private static int HeadlessTerrain => int.TryParse(Environment.GetEnvironmentVariable("GARDEN_TERRAIN"), out int terrain) ? terrain : 0;
+
     /// <summary>
     /// Appends <paramref name="message"/> to the on-screen debug console
     /// (<see cref="_debugLogs"/>/<see cref="DrawDebugConsole"/>), dropping
@@ -467,7 +470,7 @@ public static partial class Game
         World world;
         if (loadPath is null)
         {
-            world = new World(new Terrain(size: 100f), rng, InitialKinCount);
+            world = new World(new Terrain(size: 100f, HeadlessTerrain), rng, InitialKinCount);
         }
         else if (SaveSystem.TryLoad(loadPath, rng) is { } loaded)
         {

@@ -89,6 +89,7 @@ public sealed partial class World
             else
                 save.Numbers["f:" + field.Name] = Convert.ToDouble(value);
         }
+        save.Numbers[SaveSystem.TerrainKey] = TerrainData.CurrentIndex; // Which of the terrains this garden is on.
         return save;
     }
 

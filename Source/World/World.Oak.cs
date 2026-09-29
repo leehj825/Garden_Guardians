@@ -14,10 +14,10 @@ public sealed partial class World
     /// and in autumn it drops acorns: food for whoever gathers them. Where
     /// it stands and how wide it is are measured off the model (TerrainData).
     /// </summary>
-    public static readonly Vector3 OakCenter = Grounded(new Vector3(TerrainData.OakX, 0f, TerrainData.OakZ));
+    public static Vector3 OakCenter { get; private set; } = Grounded(new Vector3(TerrainData.OakX, 0f, TerrainData.OakZ));
 
     /// <summary>The trunk's radius (a solid obstacle).</summary>
-    public const float OakRadius = TerrainData.OakTrunkRadius;
+    public static float OakRadius => TerrainData.OakTrunkRadius;
 
     /// <summary>In autumn an acorn falls this often (s)…</summary>
     private const float AcornDropInterval = 4f;
@@ -35,7 +35,19 @@ public sealed partial class World
     /// the trunk and every root, plus the reed clumps and boulders on the
     /// ponds' banks, covered by circles measured off the model.
     /// </summary>
-    public static readonly (Vector2 Center, float Radius)[] OakFootprint = MakeOakFootprint();
+    public static (Vector2 Center, float Radius)[] OakFootprint { get; private set; } = MakeOakFootprint();
+
+    /// <summary>
+    /// A different terrain has been chosen (see <see cref="TerrainData.Select"/>): the oak, the pond's
+    /// heights and everything measured off the ground are worked out again for it.
+    /// </summary>
+    public static void OnTerrainChanged()
+    {
+        OakCenter = Grounded(new Vector3(TerrainData.OakX, 0f, TerrainData.OakZ));
+        OakFootprint = MakeOakFootprint();
+        FloodHeights = MeasureFloodHeights();
+        WaterMap.Reload();
+    }
 
     private float _acornTimer;
 

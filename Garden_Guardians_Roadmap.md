@@ -998,6 +998,24 @@ three fixes:
 *   ✅ **Easier stat taps:** tapping a clan's name tag opens its clan card;
     taps on homes and kin forgive more the farther the camera is zoomed out.
 
+## Phase 37: More Gardens (Terrains)
+*   ✅ **Four terrains:** the original and three more (from
+    `terrain2/3/4.glb`), each with its own ponds (one or two), Giant Oak,
+    reed clumps and boulders, and creek. A new garden picks one at random;
+    a saved garden keeps its own (saved as "terrain"; older saves stay on the
+    original). Each garden slot can be on a different terrain.
+*   ✅ **Flatter ground:** the new terrains keep 40% of their hills and
+    hollows (the original keeps 65%); rocks and plants keep their height.
+*   ✅ **Tools:** `Tools/detect_terrain.py` finds a model's ponds, oak
+    roots, rocks and plants (with overlays under `Tools/terrain_features/`);
+    `Tools/convert_terrain.py --features ... --relief ... --index N` turns a
+    model into `Assets/Models/Terrain/*.glb` and `Terrains/TerrainN.cs`
+    (ground heights, one shared water level, oak and hive, footprint circles,
+    and where the creek rises, picked so the brook runs downhill).
+*   ⬜ **Not yet:** a terrain picker (New garden chooses at random), the
+    ragged raised corner of terrain2's model, terrain-specific tuning of
+    where clans start.
+
 ## Phases 35+: Advancing Civilizations (ideas, not scheduled)
 Ideas for the clans to grow past today's crafts, farming, herding,
 fishing, wells, palisades, shrines, feasts, alliances and wars. Suggested

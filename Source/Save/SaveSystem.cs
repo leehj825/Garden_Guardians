@@ -56,6 +56,9 @@ public static class SaveSystem
         }
     }
 
+    /// <summary>The name a garden's terrain number is saved under (see <see cref="SaveGame.Numbers"/>).</summary>
+    public const string TerrainKey = "terrain";
+
     /// <summary>
     /// The garden saved at <paramref name="path"/>, or null if there isn't
     /// one — or it can't be read, or is from an incompatible version (it's
@@ -75,7 +78,8 @@ public static class SaveSystem
                 Console.Error.WriteLine($"Garden Guardians: ignoring {path} (save version {save?.Version}, expected {SaveGame.CurrentVersion})");
                 return null;
             }
-            return World.FromSave(save, new Terrain(size: 100f), rng);
+            int terrain = save.Numbers.TryGetValue(TerrainKey, out double saved) ? (int)saved : 0; // A garden from before terrains were chosen kept the original.
+            return World.FromSave(save, new Terrain(size: 100f, terrain), rng);
         }
         catch (Exception e)
         {

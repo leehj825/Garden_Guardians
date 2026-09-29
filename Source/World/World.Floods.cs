@@ -23,7 +23,7 @@ public sealed partial class World
     private static readonly Color WaterColor = new(70, 120, 190, 150);
 
     /// <summary>The pond's surface, and how high a flood reaches (see <see cref="FloodedFraction"/>) — the terrain never changes, so worked out once.</summary>
-    private static readonly (float Lowest, float Peak) FloodHeights = MeasureFloodHeights();
+    private static (float Lowest, float Peak) FloodHeights = MeasureFloodHeights();
 
     /// <summary>
     /// The pond: water standing in the model's two hollows, both at one level
