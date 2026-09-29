@@ -146,6 +146,9 @@ public sealed class Shelter
     /// <summary>True if its clan keeps a watch: a tower with an alarm horn stands by the home (see <see cref="Craft.Watchtowers"/>).</summary>
     public bool HasWatchtower { get; set; }
 
+    /// <summary>True if its clan keeps a calendar: a sundial stands by the home (see <see cref="Craft.Calendar"/>).</summary>
+    public bool HasSundial { get; set; }
+
     /// <summary>Seconds the alarm horn has left to sound (drives its drawn blast).</summary>
     public float HornSeconds { get; set; }
 
@@ -457,6 +460,20 @@ public sealed class Shelter
             {
                 Raylib.DrawCube(stone + new Vector3(-0.08f, 0.3f + row * 0.25f, 0.15f), 0.05f, 0.14f, 0.02f, rune);
                 Raylib.DrawCube(stone + new Vector3(0.08f, 0.3f + row * 0.25f, 0.15f), 0.14f, 0.05f, 0.02f, rune);
+            }
+        }
+
+        if (HasSundial)
+        {
+            // A round stone dial on a short pillar, with a slanted pointer and hour marks round the rim.
+            Vector3 dial = basePosition + new Vector3(radius * 0.4f, 0f, radius + 1.6f);
+            Raylib.DrawCylinderEx(dial, dial + new Vector3(0f, 0.45f, 0f), 0.16f, 0.16f, 8, Tint(FootingColor));
+            Raylib.DrawCylinderEx(dial + new Vector3(0f, 0.45f, 0f), dial + new Vector3(0f, 0.5f, 0f), 0.34f, 0.34f, 10, Tint(FootingColor));
+            Raylib.DrawCylinderEx(dial + new Vector3(0f, 0.5f, 0f), dial + new Vector3(0.05f, 0.75f, -0.12f), 0.03f, 0.01f, 4, Tint(StickColor));
+            for (int mark = 0; mark < 6; mark++)
+            {
+                float a = mark * MathF.PI / 3f;
+                Raylib.DrawCube(dial + new Vector3(MathF.Cos(a) * 0.28f, 0.51f, MathF.Sin(a) * 0.28f), 0.03f, 0.02f, 0.03f, Tint(new Color(45, 40, 35, 255)));
             }
         }
 

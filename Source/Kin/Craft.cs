@@ -85,4 +85,7 @@ public enum Craft
 
     /// <summary>A watchtower by the main home with an alarm horn: it sees trouble coming from far off, and the horn wakes and warns the clan (see World.Watchtowers). Needs the Village Age, Palisade and Spears.</summary>
     Watchtowers = 16777216,
+
+    /// <summary>A sundial calendar stone by the main home: the clan keeps the solstices with a festival that lifts spirits and eases grudges with neighbours (see World.Calendar). Needs Writing and farming.</summary>
+    Calendar = 33554432,
 }

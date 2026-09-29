@@ -1042,9 +1042,12 @@ first picks: roads, workshops with tools, and the tech tree with eras.
     within 30m, sounds the horn (waking and warning the clan) and kin near
     home see 6m farther. Not yet: gates in the palisade, siege tools (sling
     catapults, battering logs), organized traps for the spider and owl.
-*   ⬜ **Seasonal calendar and festivals:** a sundial or calendar stone to
-    plan planting and hunting; solstice festivals with morale and
-    diplomacy chances.
+*   🟡 **Seasonal calendar and festivals:** Done (first slice): Calendar
+    (needs Writing and farming) puts a sundial by the main home; the clan
+    keeps midsummer and midwinter with a solstice festival — loyalty rises,
+    grudges with neighbours at peace within 40m ease, and a neutral
+    neighbour may become an ally. Not yet: planting and hunting plans that
+    follow the calendar, a calendar-stone model, festivals with games.
 *   ⬜ **Medicine and disease:** herb gardens, healer huts, quarantine,
     epidemics along trade routes (building on sickness and healing).
 *   ⬜ **Exploration and expeditions:** scouts map beyond the known bank;

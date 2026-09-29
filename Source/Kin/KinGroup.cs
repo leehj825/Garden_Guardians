@@ -54,6 +54,9 @@ public sealed class KinGroup
     /// <summary>The year it last held a harvest feast (see World.Feasts).</summary>
     public int LastFeastYear { get; set; }
 
+    /// <summary>Year × 4 + season of the last solstice festival kept (see World.Calendar).</summary>
+    public int LastSolstice { get; set; }
+
     /// <summary>What the clan reveres (see World.Beliefs).</summary>
     public Belief Belief { get; set; }
 

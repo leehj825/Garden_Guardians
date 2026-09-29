@@ -120,6 +120,7 @@ public static partial class Game
             $"Snares: {KnowCraft(Craft.Snares)} ({world.SnareCatches} grubs caught)",
             $"Herb-lore: {KnowCraft(Craft.Herbalism)} ({world.Tendings} tendings)",
             $"Writing: {KnowCraft(Craft.Writing)} ({world.RunesCarved} deeds carved)",
+            $"Calendar: {KnowCraft(Craft.Calendar)} ({world.SolsticesKept} solstices kept)",
             $"Watchtowers: {KnowCraft(Craft.Watchtowers)} ({world.HornsSounded} horns sounded)",
         }));
 

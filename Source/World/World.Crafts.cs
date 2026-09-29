@@ -12,7 +12,7 @@ public sealed partial class World
     private static readonly Craft[] LaterCrafts =
     {
         Craft.Granary, Craft.Spears, Craft.Palisade, Craft.Grain, Craft.Mushrooms, Craft.Cress, Craft.Fishing, Craft.Stonework, Craft.Cisterns,
-        Craft.Wells, Craft.Slings, Craft.Hearth, Craft.Snares, Craft.Herbalism, Craft.Herding, Craft.Smoking, Craft.Shields, Craft.Tools, Craft.Roads, Craft.Weaving, Craft.Stonecutting, Craft.Markets, Craft.Writing, Craft.Watchtowers,
+        Craft.Wells, Craft.Slings, Craft.Hearth, Craft.Snares, Craft.Herbalism, Craft.Herding, Craft.Smoking, Craft.Shields, Craft.Tools, Craft.Roads, Craft.Weaving, Craft.Stonecutting, Craft.Markets, Craft.Writing, Craft.Watchtowers, Craft.Calendar,
     };
 
     /// <summary>A clan whose main home is further than this (m) from the water works out cisterns — necessity being the mother of invention.</summary>
@@ -71,6 +71,7 @@ public sealed partial class World
             home.HasWorkshop = (known & Craft.Tools) != 0;
             home.HasMarket = (known & Craft.Markets) != 0;
             home.HasRuneStone = (known & Craft.Writing) != 0 && home == group.Home;
+            home.HasSundial = (known & Craft.Calendar) != 0 && home == group.Home;
             home.HasWatchtower = (known & Craft.Watchtowers) != 0 && home == group.Home;
         }
         UpdateEra(group);
@@ -148,6 +149,7 @@ public sealed partial class World
             Craft.Markets => EraOf(group) >= Era.VillageAge && Knows(group, Craft.Roads) && (Knows(group, Craft.Weaving) || Knows(group, Craft.Stonecutting)),
             Craft.Writing => EraOf(group) >= Era.VillageAge && Knows(group, Craft.Stonecutting),
             Craft.Watchtowers => EraOf(group) >= Era.VillageAge && Knows(group, Craft.Palisade) && Knows(group, Craft.Spears),
+            Craft.Calendar => Knows(group, Craft.Writing) && farms,
             _ => false,
         };
     }
@@ -178,6 +180,7 @@ public sealed partial class World
         Craft.Stonecutting => "cut stone into blocks",
         Craft.Markets => "hold a market",
         Craft.Writing => "carve runes on a standing stone",
+        Craft.Calendar => "keep a calendar by the sun",
         Craft.Watchtowers => "raise a watchtower with an alarm horn",
         _ => craft.ToString().ToLowerInvariant(),
     };
