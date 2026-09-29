@@ -1021,6 +1021,25 @@ three fixes:
     ragged raised corner of terrain2's model, terrain-specific tuning of
     where clans start.
 
+## Phase 38: Procedural Terrain (plan, not started)
+Goal: a new garden gets its own ground from a seed — ponds, oak, rocks and
+plants in different places, a chosen size, and a mesh with far fewer
+triangles. The four baked terrains stay as they are.
+*   ⬜ **Stage A (offline, game unchanged):** cut the oak, boulder piles and
+    reed/fern clumps out of the four models as small prop models; write a
+    seeded generator (ground noise at low relief, ponds carved to one water
+    level, oak mound, props scattered clear of water) in Python; preview a
+    dozen seeds.
+*   ⬜ **Stage B:** make the map size a setting (`TerrainData.Half`) in the
+    ~15 places that assume ±50 m (height lookup, obstacle grid, water map,
+    known map, flood scan, map-edge drawing, walkers' limits).
+*   ⬜ **Stage C:** port the generator to C# (own seeded random, so a seed
+    always gives the same garden), producing the same `TerrainSet` the game
+    already reads; build the ground mesh at run time in chunks, simplified to
+    a few cm of the height grid; draw the props; save the seed.
+*   ⬜ **Stage D:** bigger gardens: scale spawn amounts, the known-map grid
+    and camera limits with the area; check speed on a phone.
+
 ## Phases 35+: Advancing Civilizations (ideas, not scheduled)
 Ideas for the clans to grow past today's crafts, farming, herding,
 fishing, wells, palisades, shrines, feasts, alliances and wars. Suggested
