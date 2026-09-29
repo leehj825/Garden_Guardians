@@ -23,6 +23,8 @@ public sealed class Terrain
         TerrainData.Select(terrainIndex);
         Size = 2f * TerrainData.Half;
         _modelFile = TerrainData.Current.ModelFile;
+        if (TerrainData.Current.IsProcedural)
+            _procedural = new ProceduralView(TerrainData.Current);
     }
 
     /// <summary>True if the (x, z) point lies on the terrain surface.</summary>
@@ -96,6 +98,9 @@ public sealed class Terrain
     /// <summary>The model file of the terrain this ground was made for.</summary>
     private readonly string _modelFile;
 
+    /// <summary>How a generated terrain is drawn (null for a baked one, drawn from its model).</summary>
+    private readonly ProceduralView? _procedural;
+
     /// <summary>How much of a season's tint is also added over the lawn (a multiply alone can't frost it white).</summary>
     private const float SeasonGlow = 0.3f;
 
@@ -123,9 +128,17 @@ public sealed class Terrain
     /// </summary>
     public void Draw(Color seasonTint, float seasonAmount)
     {
-        EnsureModel();
         seasonAmount = Math.Clamp(seasonAmount, 0f, 1f);
         Color multiply = LerpColor(Color.White, seasonTint, seasonAmount);
+        if (_procedural is not null)
+        {
+            _procedural.Draw(multiply, seasonAmount <= 0f ? null : new Color(
+                (byte)(seasonTint.R * seasonAmount * SeasonGlow),
+                (byte)(seasonTint.G * seasonAmount * SeasonGlow),
+                (byte)(seasonTint.B * seasonAmount * SeasonGlow), (byte)255));
+            return;
+        }
+        EnsureModel();
         Raylib.DrawModel(_model, Vector3.Zero, 1f, multiply);
         if (seasonAmount <= 0f)
             return;

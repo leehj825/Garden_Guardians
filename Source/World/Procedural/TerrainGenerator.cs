@@ -361,7 +361,7 @@ public static class TerrainGenerator
             {
                 KitItem item = pool[Rng.Next(pool.Count)];
                 float yaw = Rng.Uniform(0f, MathF.Tau), scale = Rng.Uniform(0.8f, 1.3f);
-                if (item.Kind == KitKind.Rock && PondDistanceAt(x, z) < 0.98f)
+                if (item.Kind == KitKind.Rock && PondDistanceAt(x, z) < 1.02f)
                     continue;
                 float[] circles = Rotated(item, x, z, yaw, scale);
                 if (!Clear(circles))

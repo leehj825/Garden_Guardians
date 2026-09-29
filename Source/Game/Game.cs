@@ -163,8 +163,8 @@ public static partial class Game
         Projection = CameraProjection.Perspective,
     };
 
-    /// <summary>The terrain a headless run is on: the original, or the number in GARDEN_TERRAIN.</summary>
-    private static int HeadlessTerrain => int.TryParse(Environment.GetEnvironmentVariable("GARDEN_TERRAIN"), out int terrain) ? terrain : 0;
+    /// <summary>The terrain number in the GARDEN_TERRAIN environment variable, if there is one (0-3 baked; 1000000 and up grown from a seed): a development aid that overrides the choice for a new garden and headless runs.</summary>
+    private static int? ForcedTerrain => int.TryParse(Environment.GetEnvironmentVariable("GARDEN_TERRAIN"), out int terrain) ? terrain : null;
 
     /// <summary>
     /// Appends <paramref name="message"/> to the on-screen debug console
@@ -278,6 +278,7 @@ public static partial class Game
         _logView = Preferences.Get(LogViewSetting, LogView.Brief);
         World.Overlays = Preferences.Get(OverlaySetting, MapOverlays.All);
         _gardenSlot = (int)Preferences.Get(GardenSetting, GardenSlot.Garden1);
+        TerrainData.GrowNewGardens = Preferences.Get(TerrainSetting, TerrainMode.Fixed) == TerrainMode.Random;
         World world = LoadOrCreateWorld(GardenPath);
         camera = OverviewCamera(world.Terrain.Size);
         var input = new WorldTapInput();
@@ -285,6 +286,7 @@ public static partial class Game
         var followCamera = new FollowCamera(camera);
         var director = new Director();
         Camera3D overview = camera;
+        DebugShot.Place(ref camera);
         float autosaveTimer = AutosaveInterval;
 
         // --- Main loop -------------------------------------------------------
@@ -323,6 +325,7 @@ public static partial class Game
             UiButton? followButton = _showChronicle ? null : FollowButton(world);
             UiButton? newGardenButton = _showChronicle ? NewGardenButton(historyButton, speedButtonMargin) : null;
             UiButton? gardenSlotButton = newGardenButton is null ? null : GardenSlotButton(newGardenButton, speedButtonMargin);
+            UiButton? terrainButton = gardenSlotButton is null ? null : TerrainModeButton(gardenSlotButton, speedButtonMargin);
             var overlayButtons = _showChronicle ? null : OverlayButtons(uiScale, speedButtonMargin * 2 + speedButtonHeight, speedButtonMargin);
             _newGardenConfirm = MathF.Max(0f, _newGardenConfirm - Raylib.GetFrameTime());
 
@@ -363,6 +366,8 @@ public static partial class Game
                     autosaveTimer = AutosaveInterval;
                 }
             }
+            else if (mousePressed && terrainButton is not null && terrainButton.Contains(mousePosition))
+                ToggleTerrainMode();
             else if (mousePressed && gardenSlotButton is not null && gardenSlotButton.Contains(mousePosition))
             {
                 world = SwitchGarden(world);
@@ -431,6 +436,7 @@ public static partial class Game
             autoButton?.Draw("Auto", highlighted: director.IsOn);
             newGardenButton?.Draw(_newGardenConfirm > 0f ? "Sure?" : "New", highlighted: _newGardenConfirm > 0f);
             gardenSlotButton?.Draw($"Garden {_gardenSlot}", highlighted: false);
+            terrainButton?.Draw(TerrainData.GrowNewGardens ? "Random" : "Fixed", highlighted: TerrainData.GrowNewGardens);
             if (!_showChronicle)
                 DrawKinPanel(world); // The History screen covers it (its header names the selected clan).
             followButton?.Draw(followCamera.IsFollowing ? "Following" : "Follow", highlighted: followCamera.IsFollowing);
@@ -444,6 +450,8 @@ public static partial class Game
                 DrawDebugConsole(top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
 
             Raylib.EndDrawing();
+            if (DebugShot.Finished())
+                break;
 
             // 4) Deferred spawns/removals: applied once here, after this
             //    frame's Update() and Draw() have both fully run, so no
@@ -483,7 +491,7 @@ public static partial class Game
         World world;
         if (loadPath is null)
         {
-            world = new World(new Terrain(HeadlessTerrain), rng, InitialKinCount);
+            world = new World(new Terrain(ForcedTerrain ?? 0), rng, InitialKinCount);
         }
         else if (SaveSystem.TryLoad(loadPath, rng) is { } loaded)
         {

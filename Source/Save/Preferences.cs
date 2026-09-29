@@ -1,5 +1,12 @@
 namespace GardenGuardians;
 
+/// <summary>What terrain a new garden gets: the fixed one, or a fresh one grown from a random seed.</summary>
+public enum TerrainMode
+{
+    Fixed,
+    Random,
+}
+
 /// <summary>Which of the kept gardens (see <see cref="SaveSystem.Slots"/>) is being played.</summary>
 public enum GardenSlot
 {

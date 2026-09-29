@@ -66,6 +66,13 @@ public static class Program
 {
     public static void Main(string[] args)
     {
+        int checkIndex = Array.IndexOf(args, "--check-terrains");
+        if (checkIndex >= 0)
+        {
+            int count = checkIndex + 1 < args.Length && int.TryParse(args[checkIndex + 1], out int parsedCount) ? parsedCount : 100;
+            Environment.Exit(TerrainCheck.Run(count));
+        }
+
         int headlessIndex = Array.IndexOf(args, "--headless");
         if (headlessIndex < 0)
         {
