@@ -533,7 +533,7 @@ public sealed class WolfSpider : ICombatant
             _ => Color.White,
         };
         float bob = _mover.IsMoving ? MathF.Abs(MathF.Sin(_walkCycle)) * 0.04f : 0f;
-        PropModels.Draw(PropModels.Spider, new Vector3(0f, bob, 0f), 180f, ModelScale, mood);
+        PropModels.Draw(PropModels.Prop.Spider, new Vector3(0f, bob, 0f), 180f, ModelScale, mood);
 
         Rlgl.PopMatrix();
 

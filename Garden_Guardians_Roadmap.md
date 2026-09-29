@@ -968,10 +968,13 @@ three fixes:
     the construction stages of footings and palisades. The carried-twigs
     bundle is in the asset sheet but not wired in. Water, rain, fireflies
     and night lights stay procedural on purpose.
-*   ⬜ **Low-detail Bramblekin.** `Walking_lod.glb` doesn't line up with the
-    skeleton's pose (kin lay flat when zoomed out), so it's switched off
-    (`BramblekinModel.HasLowDetail`). Rebuild a low-poly mesh from the full
-    model with Blender and check its pose before turning it back on.
+*   ✅ **Levels of detail.** Kin have three meshes per sex (about 50,000,
+    9,000 and 2,500 triangles, `Tools/convert_kin_lod.py` — decimated as
+    plain geometry with the nearest full-detail vertex's skin weights, so
+    they stay in step with the skeleton; the old `Walking_lod.glb` was
+    removed), the village models three each (full, a quarter, a
+    fourteenth), and the house, bush and spider a cheap copy; each is chosen
+    by how big the thing looks on screen, and far-off kin are still pegs.
 *   ⬜ **Wells** were never dug in the headless runs on either terrain;
     worth a look at why (the clan must know Wells and live over 20m from
     water).

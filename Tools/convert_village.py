@@ -6,9 +6,9 @@ accessory laid out on a board) into one mesh per item, for the game.
 
 Each item is cut out of the sheet (its connected pieces), decimated to its
 own triangle budget, stood on y = 0 and centred on x = z = 0, and written as
-one mesh of a single glb that shares the sheet's texture (stored as PNG: this
-raylib build can't read the sheet's webp). The meshes are named 00_Name,
-01_Name... so their order in the file is the VillageItem order, which is
+three meshes (full, a quarter and a fourteenth of the triangles) of a single glb that shares the sheet's texture (stored as PNG: this
+raylib build can't read the sheet's webp). The meshes are named 00_0_Name,
+00_1_Name, 00_2_Name, 01_0_Name... so their order in the file is item*3+level, the VillageItem order times three, which is
 also written, with each item's size, to Source/Engine/VillageItems.cs.
 
 An item faces +Z (its door, or its front). The sheet's board is a
@@ -168,6 +168,7 @@ def main():
         centres[p] = (v.min(0) + v.max(0)) / 2
     taken = set()
     objects = []
+    lods = []
     for index, (name, (cx, cy), budget) in enumerate(ITEMS):
         p = min((q for q in ids if q not in taken), key=lambda q: (centres[q][0] - cx) ** 2 + (centres[q][1] - cy) ** 2)
         taken.add(p)
@@ -195,6 +196,20 @@ def main():
             t, u = t[leftover == biggest], u[leftover == biggest]
         ob, size = build_object("%02d_%s" % (index, name), co, t, u, image, budget)
         objects.append((name, ob, size))
+        ob.name = "%02d_0_%s" % (index, name)
+        for lod, share in ((1, 4), (2, 14)):
+            # Cheaper copies for when the item is far away or small on screen.
+            copy = ob.copy()
+            copy.data = ob.data.copy()
+            copy.name = "%02d_%d_%s" % (index, lod, name)
+            bpy.context.collection.objects.link(copy)
+            bpy.context.view_layer.objects.active = copy
+            target = max(300, budget // share)
+            if len(copy.data.polygons) > target:
+                mod = copy.modifiers.new("lod", "DECIMATE")
+                mod.ratio = target / len(copy.data.polygons)
+                bpy.ops.object.modifier_apply(modifier=mod.name)
+            lods.append(copy)
         print(name, "piece", p, "size", size.round(3), "tris", len(ob.data.polygons))
 
     if image.size[0] > 1024:
@@ -202,6 +217,8 @@ def main():
     image.pack()
     bpy.ops.object.select_all(action="DESELECT")
     for _, ob, _ in objects:
+        ob.select_set(True)
+    for ob in lods:
         ob.select_set(True)
     bpy.ops.export_scene.gltf(filepath=args.dst, export_format="GLB", use_selection=True, export_yup=True, export_image_format="AUTO", export_apply=True)
 

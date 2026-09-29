@@ -238,7 +238,7 @@ public sealed class Crop
     private void DrawBush(float size, bool winter, float withering)
     {
         Color tint = Blend(winter ? Blend(Color.White, WinterLeafColor, 0.7f) : Color.White, WinterLeafColor, withering);
-        PropModels.Draw(PropModels.Bush, Position, 0f, size * 3.8f / PropModels.BushWidth, tint);
+        PropModels.Draw(PropModels.Prop.Bush, Position, 0f, size * 3.8f / PropModels.BushWidth, tint);
     }
 
     /// <summary>A plot of grain, mushrooms or cress: the model, small while it grows and fading toward its winter colour as it withers or the year turns.</summary>

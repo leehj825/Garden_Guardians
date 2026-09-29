@@ -36,7 +36,7 @@ public sealed partial class Bramblekin
         // the same tint, with the small props skipped.
         float onScreen = Detail.Pixels(Position, BodyHeight * BodyScale);
         bool speck = onScreen < SpeckPixels;
-        bool fine = onScreen >= FinePixels;
+        int lod = onScreen >= FinePixels ? 0 : onScreen >= MidPixels ? 1 : 2;
         bool props = onScreen >= PropPixels;
 
         var shadowCenter = new Vector3(Position.X, Position.Y + 0.02f, Position.Z);
@@ -87,7 +87,7 @@ public sealed partial class Bramblekin
             Raylib.DrawCylinderEx(Position, Position + new Vector3(0, BodyHeight * BodyScale * grow, 0), BodyRadius * 0.7f * BodyScale * grow, BodyRadius * 0.5f * BodyScale * grow, 4, peg);
         }
         else
-            Raylib.DrawModelEx(fine || !BramblekinModel.HasLowDetail ? _animModel : BramblekinModel.LowDetail(_animModel), Position, axis, angleDegrees, new Vector3(scale), color);
+            Raylib.DrawModelEx(lod == 0 ? _animModel : BramblekinModel.LodView(_animModel, Sex, lod), Position, axis, angleDegrees, new Vector3(scale), color);
 
         var top = Position + new Vector3(0, (BodyHeight - BodyRadius) * scale, 0);
         if (props)
@@ -140,8 +140,8 @@ public sealed partial class Bramblekin
     /// <summary>The least height, in pixels, a peg is drawn at.</summary>
     private const float SpeckMinPixels = 7f;
 
-    /// <summary>From this many pixels tall, the full-detail model; below it the low-poly one.</summary>
-    private const float FinePixels = 110f;
+    /// <summary>From this many pixels tall, the full-detail model (~50,000 triangles); from <see cref="MidPixels"/> the ~9,000-triangle one; below that the ~2,500-triangle one.</summary>
+    private const float FinePixels = 150f, MidPixels = 60f;
 
     /// <summary>From this many pixels tall, the small props (thorn, shield, rod, poultice…) are drawn.</summary>
     private const float PropPixels = 40f;

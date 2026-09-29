@@ -17,6 +17,12 @@ public static unsafe class VillageModels
         ? "Models/Props/Village.glb"
         : Path.Combine(AppContext.BaseDirectory, "Assets", "Models", "Props", "Village.glb");
 
+    /// <summary>Each item has this many meshes: 0 full detail, 1 a quarter of the triangles, 2 a fourteenth (Tools/convert_village.py).</summary>
+    private const int Lods = 3;
+
+    /// <summary>From this many pixels across, the full mesh; from <see cref="MidPixels"/> the middle one; below that the cheapest.</summary>
+    private const float FullPixels = 140f, MidPixels = 45f;
+
     private static Model _model;
     private static bool _ready;
 
@@ -25,8 +31,8 @@ public static unsafe class VillageModels
         if (_ready)
             return;
         _model = Raylib.LoadModel(ModelPath);
-        if (_model.MeshCount != VillageItems.Sizes.Length)
-            throw new InvalidOperationException($"Village.glb has {_model.MeshCount} meshes, expected {VillageItems.Sizes.Length}");
+        if (_model.MeshCount != VillageItems.Sizes.Length * Lods)
+            throw new InvalidOperationException($"Village.glb has {_model.MeshCount} meshes, expected {VillageItems.Sizes.Length * Lods}");
         _ready = true;
     }
 
@@ -52,17 +58,17 @@ public static unsafe class VillageModels
         Rlgl.Translatef(position.X, position.Y, position.Z);
         if (axis.LengthSquared() > 1e-8f)
             Rlgl.Rotatef(angle, axis.X, axis.Y, axis.Z);
-        Draw(item, Vector3.Zero, 0f, width, tint);
+        Draw(item, Vector3.Zero, 0f, width, tint, 0f, position);
         Rlgl.PopMatrix();
     }
 
     /// <summary>Draws <paramref name="item"/> standing on <paramref name="position"/>, <paramref name="width"/> wide, turned <paramref name="yawDegrees"/> about the vertical (0 faces +Z, 90 faces +X) and leaning <paramref name="pitchDegrees"/> toward the way it faces.</summary>
-    public static void Draw(VillageItem item, Vector3 position, float yawDegrees, float width, Color tint, float pitchDegrees = 0f)
+    public static void Draw(VillageItem item, Vector3 position, float yawDegrees, float width, Color tint, float pitchDegrees = 0f, Vector3? lodAnchor = null)
     {
         EnsureLoaded();
         int i = (int)item;
         float scale = width * Scale / VillageItems.Sizes[i].Width;
-        Raylib_cs.Material material = _model.Materials[_model.MeshMaterial[i]];
+        Raylib_cs.Material material = _model.Materials[_model.MeshMaterial[i * Lods]];
         material.Maps[(int)MaterialMapIndex.Albedo].Color = tint;
         Rlgl.PushMatrix();
         Rlgl.Translatef(position.X, position.Y, position.Z);
@@ -70,7 +76,9 @@ public static unsafe class VillageModels
         if (pitchDegrees != 0f)
             Rlgl.Rotatef(pitchDegrees, 1f, 0f, 0f); // leaning toward the way it faces
         Rlgl.Scalef(scale, scale, scale);
-        Raylib.DrawMesh(_model.Meshes[i], material, Matrix4x4.Identity);
+        float pixels = Detail.Pixels(lodAnchor ?? position, width * Scale);
+        int lod = pixels >= FullPixels ? 0 : pixels >= MidPixels ? 1 : 2;
+        Raylib.DrawMesh(_model.Meshes[i * Lods + lod], material, Matrix4x4.Identity);
         Rlgl.PopMatrix();
     }
 }

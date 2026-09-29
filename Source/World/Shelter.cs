@@ -382,7 +382,7 @@ public sealed class Shelter
         {
             // The acorn house model, its door turned to face out (+X).
             float scale = radius * 2.6f / PropModels.HouseWidth;
-            PropModels.Draw(PropModels.House, basePosition, 180f, scale, Tint(Color.White));
+            PropModels.Draw(PropModels.Prop.House, basePosition, 180f, scale, Tint(Color.White));
             roofTop = basePosition.Y + PropModels.HouseCapTop * scale;
         }
 
