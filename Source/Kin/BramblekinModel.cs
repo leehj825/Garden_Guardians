@@ -99,20 +99,34 @@ internal static unsafe class BramblekinModel
         return animations[0];
     }
 
-    /// <summary>Which clip a given <see cref="BramblekinState"/> plays — see the type's own doc for the four clips this maps onto.</summary>
-    public static BramblekinClip ClipFor(BramblekinState state) => state switch
+    /// <summary>
+    /// Which clip a given <see cref="BramblekinState"/> plays while
+    /// <paramref name="isMoving"/> is false — see the type's own doc for the
+    /// four clips this maps onto. States like Collecting, Farming or Fishing
+    /// cover both the walk there and the action itself, so <see cref="ClipFor"/>
+    /// checks <paramref name="isMoving"/> first: actually translating across
+    /// the ground always plays Walking, whatever job it's walking to do,
+    /// and only a Bramblekin standing still doing that job plays its own
+    /// clip — otherwise a Bramblekin fetching a twig, say, would play the
+    /// Gathering clip's stationary reach-and-lift motion while visibly still
+    /// walking toward it.
+    /// </summary>
+    public static BramblekinClip ClipFor(BramblekinState state, bool isMoving)
     {
-        BramblekinState.Fishing => BramblekinClip.Fishing,
-        BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or
-            BramblekinState.Dueling or BramblekinState.Guarding => BramblekinClip.Combat,
-        BramblekinState.Collecting or BramblekinState.Building or BramblekinState.Farming or
-            BramblekinState.Foraging or BramblekinState.Stockpiling or BramblekinState.GatheringHoney or
-            BramblekinState.Raiding => BramblekinClip.Gathering,
-        BramblekinState.Wandering or BramblekinState.Socializing or BramblekinState.Following or
-            BramblekinState.HeadingHome or BramblekinState.Traveling or BramblekinState.Searching or
-            BramblekinState.Fleeing or BramblekinState.Drinking => BramblekinClip.Walking,
-        _ => BramblekinClip.Idle,
-    };
+        if (isMoving)
+            return BramblekinClip.Walking;
+
+        return state switch
+        {
+            BramblekinState.Fishing => BramblekinClip.Fishing,
+            BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or
+                BramblekinState.Dueling or BramblekinState.Guarding => BramblekinClip.Combat,
+            BramblekinState.Collecting or BramblekinState.Building or BramblekinState.Farming or
+                BramblekinState.Foraging or BramblekinState.Stockpiling or BramblekinState.GatheringHoney or
+                BramblekinState.Raiding => BramblekinClip.Gathering,
+            _ => BramblekinClip.Idle,
+        };
+    }
 
     /// <summary>The keyframe index <paramref name="timeSeconds"/> lands on within <paramref name="clip"/>, looping.</summary>
     public static int FrameAt(BramblekinClip clip, float timeSeconds)

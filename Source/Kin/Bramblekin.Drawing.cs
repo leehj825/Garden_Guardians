@@ -13,10 +13,9 @@ public sealed partial class Bramblekin
     /// White rather than from a flat body colour, since <see cref="Raylib.DrawModelEx"/>
     /// multiplies this tint into the texture: tinting from anything darker
     /// than White (as the old, untextured cylinder body needed to) muddies
-    /// the texture's own colours instead of just shading them. Topped with a
-    /// head marker in its group's colour (off-white while solitary). A
-    /// Leader carries its group's banner; anything fighting, robbing or
-    /// hunting holds a thorn out front; carried Food rides on its head.
+    /// the texture's own colours instead of just shading them. A Leader
+    /// carries its group's banner; anything fighting, robbing or hunting
+    /// holds a thorn out front; carried Food rides on its head.
     /// </summary>
     public void Draw(World world)
     {
@@ -40,7 +39,7 @@ public sealed partial class Bramblekin
         // feet (baked in when it was rigged), so — like the cylinder it
         // replaced — it pivots flush on the ground at Position.
         EnsureAnimModel();
-        BramblekinClip clip = BramblekinModel.ClipFor(State);
+        BramblekinClip clip = BramblekinModel.ClipFor(State, _mover.IsMoving);
         BramblekinModel.Play(ref _animModel, clip, clip == BramblekinClip.Idle ? 0f : _animTime);
 
         // The cylinder this replaced was rotationally symmetric, so it never
@@ -70,7 +69,6 @@ public sealed partial class Bramblekin
         Raylib.DrawModelEx(_animModel, Position, axis, angleDegrees, new Vector3(scale), color);
 
         var top = Position + new Vector3(0, (BodyHeight - BodyRadius) * scale, 0);
-        Detail.Sphere(top + new Vector3(0, BodyRadius * 0.5f, 0), BodyRadius * 0.35f, group?.Color ?? SolitaryHeadColor);
         DrawSickness(top);
 
         if (group is not null && group.Leader == this)
