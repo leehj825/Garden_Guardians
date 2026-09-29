@@ -92,12 +92,12 @@ public sealed partial class Bramblekin
     /// <summary>A rod held out over the water, its line dropping to the surface.</summary>
     private void DrawFishingRod(Vector2 facing)
     {
-        // The rod planted upright in front of the fisher, its line running out to the bob.
-        const float rodWidth = 1.0f;
-        var foot = Position + new Vector3(facing.X * 0.3f, 0f, facing.Y * 0.3f);
-        VillageModels.Draw(VillageItem.FishingRod, foot, MathF.Atan2(facing.X, facing.Y) * 180f / MathF.PI, rodWidth, Color.White);
-        var tip = foot + new Vector3(0f, VillageModels.HeightAt(VillageItem.FishingRod, rodWidth), 0f);
-        var bob = new Vector3(tip.X + facing.X * 0.2f, WaterMap.SurfaceHeight + 0.02f, tip.Z + facing.Y * 0.2f);
+        // A plain rod held out over the water at chest height, its line running from the tip to the bob
+        // (the sheet's "fishing rod" is a forked stick with hooks, not something a fisher can hold).
+        var grip = Position + new Vector3(facing.X * 0.25f, BodyHeight * 0.55f, facing.Y * 0.25f);
+        var tip = grip + new Vector3(facing.X * 1.3f, 0.7f, facing.Y * 1.3f);
+        Raylib.DrawCylinderEx(grip, tip, 0.03f, 0.012f, 5, RodColor);
+        var bob = new Vector3(tip.X + facing.X * 0.2f, MathF.Max(WaterMap.SurfaceHeight, tip.Y - 1.8f) + 0.02f, tip.Z + facing.Y * 0.2f);
         Raylib.DrawLine3D(tip, bob, LineColor);
         Detail.Sphere(bob, 0.04f, new Color(220, 60, 50, 255));
     }

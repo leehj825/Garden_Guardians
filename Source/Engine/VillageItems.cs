@@ -50,6 +50,6 @@ public static class VillageItems
         (0.1435f, 0.0378f), // GrainPlot
         (0.0524f, 0.0570f), // FoodSack
         (0.1385f, 0.0329f), // MushroomPlot
-        (0.0873f, 0.1204f), // FishingRod
+        (0.0873f, 0.1181f), // FishingRod
     };
 }

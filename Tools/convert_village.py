@@ -47,6 +47,7 @@ ITEMS = [
     ("FishingRod", (0.39, -0.205), 3000),
 ]
 # Pieces of the sheet that are not part of any item (a magnifying glass drawn beside the rod).
+DROP_GREY = {"FishingRod"}
 DROP_AFTER = {"FishingRod": lambda centroid, lo, hi: centroid[0] > lo[0] + 0.62 * (hi[0] - lo[0])}
 # Flat items lying tilted on the sheet, turned to stand facing +Z (their thinnest direction becomes the front).
 FACE_FRONT = {"Shield"}
@@ -178,6 +179,20 @@ def main():
             lo, hi = v.min(0), v.max(0)
             keep = ~np.array([drop(co[f].mean(0), lo, hi) for f in t])
             t, u = t[keep], u[keep]
+        if name in DROP_GREY:
+            # Grey-white metal left over from a picture drawn beside the item (the magnifying glass by the rod).
+            w, h = image.size
+            pix = np.empty(w * h * 4, "f4")
+            image.pixels.foreach_get(pix)
+            pix = pix.reshape(h, w, 4)
+            centre = u.mean(1)
+            rgb = pix[np.clip((centre[:, 1] * h).astype(int), 0, h - 1), np.clip((centre[:, 0] * w).astype(int), 0, w - 1), :3]
+            grey = (rgb.max(1) - rgb.min(1) < 0.09) & (rgb.mean(1) > 0.55)
+            t, u = t[~grey], u[~grey]
+            # …and keep only the biggest connected piece that is left.
+            leftover = split_pieces(co, t)
+            biggest = np.bincount(leftover).argmax()
+            t, u = t[leftover == biggest], u[leftover == biggest]
         ob, size = build_object("%02d_%s" % (index, name), co, t, u, image, budget)
         objects.append((name, ob, size))
         print(name, "piece", p, "size", size.round(3), "tris", len(ob.data.polygons))

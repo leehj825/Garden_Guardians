@@ -56,8 +56,8 @@ public static unsafe class VillageModels
         Rlgl.PopMatrix();
     }
 
-    /// <summary>Draws <paramref name="item"/> standing on <paramref name="position"/>, <paramref name="width"/> wide, turned <paramref name="yawDegrees"/> about the vertical (0 faces +Z, 90 faces +X).</summary>
-    public static void Draw(VillageItem item, Vector3 position, float yawDegrees, float width, Color tint)
+    /// <summary>Draws <paramref name="item"/> standing on <paramref name="position"/>, <paramref name="width"/> wide, turned <paramref name="yawDegrees"/> about the vertical (0 faces +Z, 90 faces +X) and leaning <paramref name="pitchDegrees"/> toward the way it faces.</summary>
+    public static void Draw(VillageItem item, Vector3 position, float yawDegrees, float width, Color tint, float pitchDegrees = 0f)
     {
         EnsureLoaded();
         int i = (int)item;
@@ -67,6 +67,8 @@ public static unsafe class VillageModels
         Rlgl.PushMatrix();
         Rlgl.Translatef(position.X, position.Y, position.Z);
         Rlgl.Rotatef(yawDegrees, 0f, 1f, 0f);
+        if (pitchDegrees != 0f)
+            Rlgl.Rotatef(pitchDegrees, 1f, 0f, 0f); // leaning toward the way it faces
         Rlgl.Scalef(scale, scale, scale);
         Raylib.DrawMesh(_model.Meshes[i], material, Matrix4x4.Identity);
         Rlgl.PopMatrix();
