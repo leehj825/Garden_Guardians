@@ -128,6 +128,31 @@ internal static unsafe class BramblekinModel
         };
     }
 
+    /// <summary>
+    /// A constant upward correction (metres) applied only to a clip's
+    /// render position, on top of the terrain-follow ground height —
+    /// not a real fix, a stopgap: these clips weren't captured as an
+    /// in-place loop with the feet locked to the floor the way a game
+    /// character needs. Root motion (X/Z, and Y — see the asset
+    /// pipeline notes) is already stripped from every clip, but Combat
+    /// and Gathering still visibly sink into the ground at points in
+    /// their cycle: the crouch/lunge itself is animated through the leg
+    /// joints' own rotations, not through the root bone, so stripping
+    /// root motion alone can't reach it, and there's no per-vertex foot
+    /// (IK) locking here to hold the feet at the floor through a
+    /// crouch's full range. This constant is tuned against the least
+    /// extreme, most-often-seen part of each clip's cycle, so it won't
+    /// fully hide the deepest point of a crouch or lunge — a proper fix
+    /// needs either foot-IK or clips re-captured as in-place, floor-
+    /// locked loops.
+    /// </summary>
+    public static float GroundLift(BramblekinClip clip) => clip switch
+    {
+        BramblekinClip.Combat => 15f / RawHeightUnits * Bramblekin.BodyHeight,
+        BramblekinClip.Gathering => 12f / RawHeightUnits * Bramblekin.BodyHeight,
+        _ => 0f,
+    };
+
     /// <summary>The keyframe index <paramref name="timeSeconds"/> lands on within <paramref name="clip"/>, looping.</summary>
     public static int FrameAt(BramblekinClip clip, float timeSeconds)
     {

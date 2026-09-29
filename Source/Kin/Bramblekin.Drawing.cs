@@ -66,7 +66,8 @@ public sealed partial class Bramblekin
         Vector3 axis = sinHalf > 1e-6f ? new Vector3(rotation.X, rotation.Y, rotation.Z) / sinHalf : Vector3.UnitY;
 
         float scale = BodyScale * (BodyHeight / BramblekinModel.RawHeightUnits);
-        Raylib.DrawModelEx(_animModel, Position, axis, angleDegrees, new Vector3(scale), color);
+        Vector3 drawPosition = Position + new Vector3(0, BramblekinModel.GroundLift(clip) * BodyScale, 0);
+        Raylib.DrawModelEx(_animModel, drawPosition, axis, angleDegrees, new Vector3(scale), color);
 
         var top = Position + new Vector3(0, (BodyHeight - BodyRadius) * scale, 0);
         DrawSickness(top);
