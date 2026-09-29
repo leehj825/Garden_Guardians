@@ -138,7 +138,7 @@ class Garden:
         circles = []
         for cx, cz, r in item["circles"]:
             circles.append((x + (cx * c - cz * s) * scale, z + (cx * s + cz * c) * scale, r * scale))
-        return dict(name=item["name"], kind=item["kind"], x=x, z=z, base=base, yaw=yaw, scale=scale, circles=circles, radius=item["radius"] * scale)
+        return dict(name=item["name"], kind=item["kind"], source=item["source"], x=x, z=z, base=base, yaw=yaw, scale=scale, circles=circles, radius=item["radius"] * scale)
 
     def clear_of_everything(self, prop, margin=0.3):
         for other in [self.oak] + self.props if self.oak else self.props:
@@ -280,7 +280,7 @@ class Garden:
                     oak=[self.oak["x"], self.oak["z"]], spring=self.spring)
 
     # --- picture ---------------------------------------------------------------------------------
-    def picture(self, tiles, px_per_m=4):
+    def picture(self, tiles, px_per_m=4, markers=True):
         n = int(2 * self.half * px_per_m)
         xs = -self.half + (np.arange(n) + 0.5) / px_per_m
         X, Z = np.meshgrid(xs, xs)
@@ -320,6 +320,8 @@ class Garden:
         gy2, gx2 = np.gradient(ndi.gaussian_filter(ground_px, 1.5))
         img *= (1 + np.clip((-gx2 - gy2) * 2.5 * px_per_m, -0.10, 0.10))[..., None]
         out = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8))
+        if not markers:
+            return out
         draw = ImageDraw.Draw(out)
 
         def to_px(x, z):
