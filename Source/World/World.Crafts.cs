@@ -12,7 +12,7 @@ public sealed partial class World
     private static readonly Craft[] LaterCrafts =
     {
         Craft.Granary, Craft.Spears, Craft.Palisade, Craft.Grain, Craft.Mushrooms, Craft.Cress, Craft.Fishing, Craft.Stonework, Craft.Cisterns,
-        Craft.Wells, Craft.Slings, Craft.Hearth, Craft.Snares, Craft.Herbalism, Craft.Herding, Craft.Smoking, Craft.Shields,
+        Craft.Wells, Craft.Slings, Craft.Hearth, Craft.Snares, Craft.Herbalism, Craft.Herding, Craft.Smoking, Craft.Shields, Craft.Tools, Craft.Roads,
     };
 
     /// <summary>A clan whose main home is further than this (m) from the water works out cisterns — necessity being the mother of invention.</summary>
@@ -68,7 +68,9 @@ public sealed partial class World
             home.HasGranary = (known & Craft.Granary) != 0;
             home.HasCistern = (known & Craft.Cisterns) != 0;
             home.HasHearth = (known & Craft.Hearth) != 0;
+            home.HasWorkshop = (known & Craft.Tools) != 0;
         }
+        UpdateEra(group);
 
         Craft[] ready = LaterCrafts.Where(c => (known & c) == 0 && ReadyFor(group, c)).ToArray();
         if (ready.Length == 0)
@@ -134,6 +136,8 @@ public sealed partial class World
             Craft.Herding => hasHouse && farms && CurrentSeason is Season.Spring or Season.Summer,
             Craft.Smoking => Knows(group, Craft.Hearth) && group.HoneyTaken > 0,
             Craft.Shields => Knows(group, Craft.Spears) && (group.Culture.Hunting >= 0.2f || group.Culture.Martial >= 0.2f),
+            Craft.Tools => hasHouse && EraOf(group) >= Era.FarmingAge,
+            Craft.Roads => EraOf(group) >= Era.VillageAge,
             _ => false,
         };
     }
@@ -158,6 +162,8 @@ public sealed partial class World
         Craft.Herding => "herd aphids for their honeydew",
         Craft.Smoking => "smoke out the bees before taking their honey",
         Craft.Shields => "make shields of beetle shell",
+        Craft.Tools => "build a workbench and make tools",
+        Craft.Roads => "pave their paths into roads",
         _ => craft.ToString().ToLowerInvariant(),
     };
 

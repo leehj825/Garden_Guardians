@@ -134,6 +134,9 @@ public sealed class Shelter
     /// <summary>Its clan knows <see cref="Craft.Granary"/> (Houses only): half as much again in store.</summary>
     public bool HasGranary { get; set; }
 
+    /// <summary>True if its clan knows tools: a workbench stands by the home (see <see cref="Craft.Tools"/>).</summary>
+    public bool HasWorkshop { get; set; }
+
     /// <summary>A cistern holds this many sips.</summary>
     public const int CisternSips = 6;
 
@@ -403,6 +406,18 @@ public sealed class Shelter
             VillageModels.Draw(VillageItem.Cistern, basePosition + new Vector3(-radius * 0.35f, 0f, radius + 0.35f), 0f, 0.8f, Tint(Color.White));
         }
 
+        if (HasWorkshop)
+        {
+            // A workbench beside the home: a plank on trestles with a stone anvil and a mallet.
+            Vector3 bench = basePosition + new Vector3(radius * 0.9f, 0f, -(radius + 0.7f));
+            Raylib.DrawCube(bench + new Vector3(0f, 0.42f, 0f), 0.9f, 0.08f, 0.45f, Tint(WorkbenchColor));
+            for (int side = -1; side <= 1; side += 2)
+                Raylib.DrawCylinderEx(bench + new Vector3(side * 0.35f, 0f, 0f), bench + new Vector3(side * 0.35f, 0.4f, 0f), 0.05f, 0.04f, 5, Tint(StickColor));
+            Detail.Sphere(bench + new Vector3(-0.2f, 0.56f, 0f), 0.11f, Tint(FootingColor));
+            Raylib.DrawCylinderEx(bench + new Vector3(0.15f, 0.47f, 0.05f), bench + new Vector3(0.35f, 0.5f, 0.12f), 0.025f, 0.025f, 4, Tint(StickColor));
+            Raylib.DrawCube(bench + new Vector3(0.38f, 0.52f, 0.13f), 0.12f, 0.08f, 0.08f, Tint(FootingColor));
+        }
+
         if (HasHearth)
         {
             // A ring of stones round a fire pit; lit, a little fire of orange and yellow tongues that shrinks as the fuel burns down.
@@ -545,6 +560,8 @@ public sealed class Shelter
             Raylib.DrawCylinderEx(foot, tip, 0.035f, 0.025f, 5, StickColor);
         }
     }
+
+    private static readonly Color WorkbenchColor = new(140, 105, 70, 255);
 
     private static Color Blend(Color a, Color b, float t) => new(
         (byte)(a.R + (b.R - a.R) * t),

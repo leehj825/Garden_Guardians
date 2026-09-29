@@ -64,4 +64,10 @@ public enum Craft
 
     /// <summary>Shields of stag-beetle shell: a third less from every blow and bite (see Bramblekin.TakeDamage).</summary>
     Shields = 131072,
+
+    /// <summary>A workbench by each House and tools to work with: the whole clan works a quarter faster (see Bramblekin.WorkPace). Needs the Farming Age.</summary>
+    Tools = 262144,
+
+    /// <summary>Paving the paths the clan's feet have worn into roads of set stones: whoever walks them goes faster (see World.Trails). Needs the Village Age.</summary>
+    Roads = 524288,
 }

@@ -36,6 +36,26 @@ public static unsafe class VillageModels
     /// <summary>The height (m) <paramref name="item"/> stands when drawn <paramref name="width"/> wide.</summary>
     public static float HeightAt(VillageItem item, float width) => VillageItems.Sizes[(int)item].Height * width * Scale / VillageItems.Sizes[(int)item].Width;
 
+    /// <summary>
+    /// Draws <paramref name="item"/> lying <paramref name="width"/> wide on the ground at <paramref name="position"/>,
+    /// tilted to the slope under it (measured over the item's own width, so a big plot follows the hill rather than one bump).
+    /// </summary>
+    public static void DrawOnGround(VillageItem item, Vector3 position, float width, Color tint)
+    {
+        float reach = Math.Max(0.75f, width * Scale / 2f);
+        float dx = World.GetHeightAt(position.X + reach, position.Z) - World.GetHeightAt(position.X - reach, position.Z);
+        float dz = World.GetHeightAt(position.X, position.Z + reach) - World.GetHeightAt(position.X, position.Z - reach);
+        Vector3 normal = Vector3.Normalize(new Vector3(-dx, 2f * reach, -dz));
+        Vector3 axis = Vector3.Cross(Vector3.UnitY, normal);
+        float angle = MathF.Acos(Math.Clamp(normal.Y, -1f, 1f)) * 180f / MathF.PI;
+        Rlgl.PushMatrix();
+        Rlgl.Translatef(position.X, position.Y, position.Z);
+        if (axis.LengthSquared() > 1e-8f)
+            Rlgl.Rotatef(angle, axis.X, axis.Y, axis.Z);
+        Draw(item, Vector3.Zero, 0f, width, tint);
+        Rlgl.PopMatrix();
+    }
+
     /// <summary>Draws <paramref name="item"/> standing on <paramref name="position"/>, <paramref name="width"/> wide, turned <paramref name="yawDegrees"/> about the vertical (0 faces +Z, 90 faces +X).</summary>
     public static void Draw(VillageItem item, Vector3 position, float yawDegrees, float width, Color tint)
     {

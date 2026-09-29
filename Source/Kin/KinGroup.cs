@@ -11,6 +11,9 @@ namespace GardenGuardians;
 /// </summary>
 public sealed class KinGroup
 {
+    /// <summary>The age the clan has reached (see <see cref="World.EraOf"/>); only ever rises.</summary>
+    public Era Era { get; set; }
+
     private static readonly Color[] Palette =
     {
         new(60, 120, 220, 255),  // Blue

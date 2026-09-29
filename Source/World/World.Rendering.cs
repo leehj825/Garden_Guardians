@@ -36,6 +36,7 @@ public sealed partial class World
         Detail.BeginFrame(camera);
         var (seasonTint, seasonAmount) = SeasonTint;
         Terrain.Draw(seasonTint, seasonAmount);
+        DrawTrails(camera);
         DrawTerritories(camera);
         DrawOak();
         for (int i = _splats.Count - 1; i >= 0; i--)

@@ -195,8 +195,11 @@ public sealed partial class Bramblekin
     // --- Movement helpers ----------------------------------------------------------------------
 
     /// <summary>Walks toward <paramref name="target"/>, steering round Pebbles. Returns true on arrival.</summary>
+    /// <summary>True while it moved this step (used to wear paths into the ground — see World.Trails).</summary>
+    public bool IsWalking => _mover.IsMoving;
+
     private bool MoveTo(Vector3 target, float speed, float deltaTime, World world) =>
-        _mover.MoveTowards(target, speed * AgeSpeedFactor * (IsSick ? SickSpeedFactor : 1f) * WorkPace, deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius));
+        _mover.MoveTowards(target, speed * AgeSpeedFactor * (IsSick ? SickSpeedFactor : 1f) * WorkPace * world.PathSpeed(Position), deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius));
 
     private void StartPause()
     {

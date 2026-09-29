@@ -980,15 +980,22 @@ three fixes:
 Ideas for the clans to grow past today's crafts, farming, herding,
 fishing, wells, palisades, shrines, feasts, alliances and wars. Suggested
 first picks: roads, workshops with tools, and the tech tree with eras.
-*   ⬜ **Tech tree with eras:** Stone Age, Farming Age, Village Age,
-    Kingdom Age; each era unlocks buildings and needs a discovery, with
-    prerequisites (wells need stonework).
-*   ⬜ **Roads and bridges:** paths wear in where kin walk often; clans lay
-    stone paths; a log bridge over the creek or a pond neck opens shorter
-    routes.
-*   ⬜ **Workshops and specialists:** a stonecutter and a weaver make tools
-    and cloth; tools raise farming, building and hunting output;
-    specialists make trade goods.
+*   🟡 **Tech tree with eras:** Stone Age, Farming Age, Village Age,
+    Kingdom Age. Done: a clan's age is worked out from its crafts (farming
+    → Farming Age; stonework and 7 crafts → Village Age; 12 crafts →
+    Kingdom Age), announced as a headline and chronicle entry, gates the
+    new Tools (Farming Age) and Roads (Village Age) crafts, and is in the
+    headless report. Not yet: showing the age on the clan card, more
+    crafts and buildings per age, prerequisites beyond these.
+*   🟡 **Roads and bridges:** Done: feet wear dirt paths into the ground
+    (a little faster to walk), and once a clan knows Roads the hardest-worn
+    cells are paved for good (faster still); drawn over the terrain, saved
+    with the garden. Not yet: clans deliberately laying roads between
+    homes, bridges over the creek or a pond neck, a model for the paving.
+*   🟡 **Workshops and specialists:** Done: the Tools craft puts a workbench
+    (procedural for now) by each House and the whole clan works 25% faster.
+    Not yet: specialists (stonecutter, weaver), cloth and trade goods, tools
+    that affect farming and hunting separately, a workbench model.
 *   ⬜ **Markets and currency:** a village market where clans barter
     surplus for scarce goods (acorn-shell coins); caravans between allies
     that can be raided.
