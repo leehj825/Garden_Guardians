@@ -50,8 +50,11 @@ public sealed partial class Bramblekin
         // replaced — it pivots flush on the ground at Position.
         EnsureAnimModel();
         BramblekinClip clip = BramblekinModel.ClipFor(State, _mover.IsMoving);
+        // Skinning is done on the CPU into the mesh being drawn, so it is done on the mesh of the level of detail in
+        // use (a cheaper mesh skins faster too) — skinning the full one and drawing another would draw the other unposed.
+        Model pose = lod == 0 ? _animModel : BramblekinModel.LodView(_animModel, Sex, lod);
         if (!speck)
-            BramblekinModel.Play(ref _animModel, clip, clip == BramblekinClip.Idle ? 0f : _animTime);
+            BramblekinModel.Play(ref pose, clip, clip == BramblekinClip.Idle ? 0f : _animTime);
 
         // The cylinder this replaced was rotationally symmetric, so it never
         // needed to face any particular way; the rig is not, so it must be
@@ -87,7 +90,7 @@ public sealed partial class Bramblekin
             Raylib.DrawCylinderEx(Position, Position + new Vector3(0, BodyHeight * BodyScale * grow, 0), BodyRadius * 0.7f * BodyScale * grow, BodyRadius * 0.5f * BodyScale * grow, 4, peg);
         }
         else
-            Raylib.DrawModelEx(lod == 0 ? _animModel : BramblekinModel.LodView(_animModel, Sex, lod), Position, axis, angleDegrees, new Vector3(scale), color);
+            Raylib.DrawModelEx(pose, Position, axis, angleDegrees, new Vector3(scale), color);
 
         var top = Position + new Vector3(0, (BodyHeight - BodyRadius) * scale, 0);
         if (props)
