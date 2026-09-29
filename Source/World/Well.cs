@@ -67,6 +67,16 @@ public sealed class Well
             return;
         }
 
+        if (IsDug)
+        {
+            // The finished well: stone ring, wooden frame and bucket.
+            float width = Radius * 2.4f;
+            VillageModels.Draw(VillageItem.Well, Position, 0f, width, Color.White);
+            if (clanColor is { } pennant)
+                Raylib.DrawCube(Position + new Vector3(Radius * 0.9f + 0.1f, VillageModels.HeightAt(VillageItem.Well, width) + 0.05f, 0f), 0.16f, 0.1f, 0.02f, pennant);
+            return;
+        }
+
         const int perCourse = 10, courses = 3;
         int shown = IsDug ? perCourse * courses : perCourse * courses * StonesLaid / Math.Max(1, StonesNeeded);
         for (int course = 0; course < courses; course++)
@@ -90,21 +100,5 @@ public sealed class Well
             Rlgl.PopMatrix();
             return;
         }
-
-        Raylib.DrawCylinder(Position + new Vector3(0f, 0.25f, 0f), Radius * 0.7f, Radius * 0.7f, 0.02f, 12, WaterColor);
-
-        // Two posts and a crossbar, a rope down, and the acorn-cup bucket.
-        Vector3 left = Position + new Vector3(-Radius * 0.9f, 0f, 0f), right = Position + new Vector3(Radius * 0.9f, 0f, 0f);
-        const float frameHeight = 1.1f;
-        Raylib.DrawCylinderEx(left, left + new Vector3(0f, frameHeight, 0f), 0.04f, 0.035f, 5, WoodColor);
-        Raylib.DrawCylinderEx(right, right + new Vector3(0f, frameHeight, 0f), 0.04f, 0.035f, 5, WoodColor);
-        Raylib.DrawCylinderEx(left + new Vector3(0f, frameHeight, 0f), right + new Vector3(0f, frameHeight, 0f), 0.035f, 0.035f, 5, WoodColor);
-        Vector3 bucket = Position + new Vector3(0f, 0.6f, 0f);
-        Raylib.DrawLine3D(Position + new Vector3(0f, frameHeight, 0f), bucket, RopeColor);
-        Raylib.DrawCylinder(bucket - new Vector3(0f, 0.12f, 0f), 0.1f, 0.07f, 0.12f, 8, BucketColor);
-
-        // A little pennant in its clan's colour on the crossbar.
-        if (clanColor is { } color)
-            Raylib.DrawCube(right + new Vector3(0.1f, frameHeight - 0.05f, 0f), 0.16f, 0.1f, 0.02f, color);
     }
 }

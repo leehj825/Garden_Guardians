@@ -23,26 +23,33 @@ public static class PropModels
     /// <summary>The acorn house's door faces −X and its window +Z; its cap's top is this fraction of its height (the stem rises above).</summary>
     public const float HouseCapTop = 0.86f;
 
-    private static Model _house, _bush, _spider;
-    private static bool _houseReady, _bushReady, _spiderReady;
+    /// <summary>The three props; each has a full model and a cheap one (a fifth or so of the triangles, a 512px texture) for when it is small on screen.</summary>
+    public enum Prop { House, Bush, Spider }
 
-    public static Model House => Load(ref _house, ref _houseReady, "AcornHouse.glb");
+    private static readonly string[] Files = { "AcornHouse", "BerryFarm", "Spider" };
 
-    public static Model Bush => Load(ref _bush, ref _bushReady, "BerryFarm.glb");
+    /// <summary>Below this many pixels across, the cheap model.</summary>
+    private const float FullPixels = 110f;
 
-    public static Model Spider => Load(ref _spider, ref _spiderReady, "Spider.glb");
+    private static readonly Model[] _full = new Model[3], _cheap = new Model[3];
+    private static readonly bool[] _ready = new bool[3];
 
-    private static Model Load(ref Model model, ref bool ready, string file)
+    private static void EnsureLoaded(Prop prop)
     {
-        if (!ready)
-        {
-            model = Raylib.LoadModel(AssetPath + file);
-            ready = true;
-        }
-        return model;
+        int i = (int)prop;
+        if (_ready[i])
+            return;
+        _full[i] = Raylib.LoadModel(AssetPath + Files[i] + ".glb");
+        _cheap[i] = Raylib.LoadModel(AssetPath + Files[i] + "_lod.glb");
+        _ready[i] = true;
     }
 
-    /// <summary>Draws <paramref name="model"/> standing on <paramref name="position"/>, turned <paramref name="yawDegrees"/> about the vertical.</summary>
-    public static void Draw(Model model, Vector3 position, float yawDegrees, float scale, Color tint) =>
+    /// <summary>Draws <paramref name="prop"/> standing on <paramref name="position"/>, turned <paramref name="yawDegrees"/> about the vertical, in the model that suits its size on screen.</summary>
+    public static void Draw(Prop prop, Vector3 position, float yawDegrees, float scale, Color tint)
+    {
+        EnsureLoaded(prop);
+        float pixels = Detail.Pixels(position, scale * (prop switch { Prop.House => HouseWidth, Prop.Bush => BushWidth, _ => SpiderWidth }));
+        Model model = pixels >= FullPixels ? _full[(int)prop] : _cheap[(int)prop];
         Raylib.DrawModelEx(model, position, Vector3.UnitY, yawDegrees, new Vector3(scale), tint);
+    }
 }

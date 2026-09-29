@@ -222,16 +222,26 @@ public sealed partial class World
                 float a = i * MathF.Tau / 6f;
                 Detail.Sphere(Grounded(at + new Vector3(MathF.Cos(a) * 0.7f, 0f, MathF.Sin(a) * 0.7f), 0.03f), 0.08f, CairnColor);
             }
-            int stones = 1 + (int)(raised * 3f);
             float y = 0f;
-            for (int i = 0; i < stones; i++)
+            if (raised >= 1f)
             {
-                float r = 0.3f - i * 0.06f;
-                Detail.Sphere(at + new Vector3(0f, y + r * 0.8f, 0f), r, CairnColor);
-                y += r * 1.4f;
+                // Raised: a little shrine hut with candles, its symbol above the roof.
+                const float shrineWidth = 1.1f;
+                VillageModels.Draw(VillageItem.Shrine, at, 0f, shrineWidth, Color.White);
+                y = VillageModels.HeightAt(VillageItem.Shrine, shrineWidth);
             }
-            if (raised < 1f)
+            else
+            {
+                // Going up: a cairn, stone on stone.
+                int stones = 1 + (int)(raised * 3f);
+                for (int i = 0; i < stones; i++)
+                {
+                    float r = 0.3f - i * 0.06f;
+                    Detail.Sphere(at + new Vector3(0f, y + r * 0.8f, 0f), r, CairnColor);
+                    y += r * 1.4f;
+                }
                 continue;
+            }
             Vector3 top = at + new Vector3(0f, y + 0.12f, 0f);
             switch (group.Belief)
             {

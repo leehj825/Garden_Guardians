@@ -64,4 +64,19 @@ public enum Craft
 
     /// <summary>Shields of stag-beetle shell: a third less from every blow and bite (see Bramblekin.TakeDamage).</summary>
     Shields = 131072,
+
+    /// <summary>A workbench by each House and tools to work with: the whole clan works a quarter faster (see Bramblekin.WorkPace). Needs the Farming Age.</summary>
+    Tools = 262144,
+
+    /// <summary>Paving the paths the clan's feet have worn into roads of set stones: whoever walks them goes faster (see World.Trails). Needs the Village Age.</summary>
+    Roads = 524288,
+
+    /// <summary>Weaving grass and fibre into cloth on a loom by the House: a trade good (see World.Goods). Needs Tools.</summary>
+    Weaving = 1048576,
+
+    /// <summary>Cutting stone into blocks with tools: a trade good, and paving goes faster (see World.Trails). Needs Tools and Stonework.</summary>
+    Stonecutting = 2097152,
+
+    /// <summary>A market stall by the main home where allied clans swap cloth and cut stone for food (see World.Goods). Needs the Village Age, Roads and a trade good.</summary>
+    Markets = 4194304,
 }

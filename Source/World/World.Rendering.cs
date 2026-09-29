@@ -24,6 +24,22 @@ public sealed partial class World
     }
 
     /// <summary>
+    /// True unless the kin (body, head and shadow) is wholly off screen or behind the camera. Tested at the middle of
+    /// its body with a margin as big as the kin looks, so a tall kin close to the camera whose feet are just below the
+    /// edge is still drawn; skipped kin are neither animated nor drawn.
+    /// </summary>
+    private static bool IsKinVisible(Bramblekin kin, Camera3D camera)
+    {
+        Vector3 middle = kin.Position + new Vector3(0f, Bramblekin.BodyHeight * 0.5f, 0f);
+        if (Vector3.Dot(middle - camera.Position, camera.Target - camera.Position) <= 0f)
+            return false;
+        Vector2 screen = Raylib.GetWorldToScreen(middle, camera);
+        float margin = CullScreenMargin + 1.5f * Detail.Pixels(kin.Position, Bramblekin.BodyHeight);
+        return screen.X >= -margin && screen.X <= Raylib.GetScreenWidth() + margin &&
+               screen.Y >= -margin && screen.Y <= Raylib.GetScreenHeight() + margin;
+    }
+
+    /// <summary>
     /// Frustum Culling: anything whose ground point projects off screen
     /// (see <see cref="IsOnScreen"/>) isn't drawn. There's no draw distance:
     /// zoomed out, the whole garden shows. Nothing culled here is ever gated
@@ -36,6 +52,7 @@ public sealed partial class World
         Detail.BeginFrame(camera);
         var (seasonTint, seasonAmount) = SeasonTint;
         Terrain.Draw(seasonTint, seasonAmount);
+        DrawTrails(camera);
         DrawTerritories(camera);
         DrawOak();
         for (int i = _splats.Count - 1; i >= 0; i--)
@@ -140,7 +157,7 @@ public sealed partial class World
         for (int i = Colony.Count - 1; i >= 0; i--)
         {
             Bramblekin b = Colony[i];
-            if (!b.IsDead && IsVisible(b.Position, camera))
+            if (!b.IsDead && IsKinVisible(b, camera))
                 b.Draw(this);
         }
 

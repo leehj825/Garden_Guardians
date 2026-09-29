@@ -50,8 +50,8 @@ public enum SpiderState
 /// </summary>
 public sealed class WolfSpider : ICombatant
 {
-    /// <summary>The model's scale: its legs span about 1.9 m.</summary>
-    private const float ModelScale = 1.9f / PropModels.SpiderWidth;
+    /// <summary>The model's scale: its legs span about 2 m.</summary>
+    private const float ModelScale = 2.0f / PropModels.SpiderWidth;
 
     /// <summary>Collision radius (m) — twice a Bramblekin's.</summary>
     public const float BodyRadius = Bramblekin.BodyRadius * 2f;
@@ -533,7 +533,7 @@ public sealed class WolfSpider : ICombatant
             _ => Color.White,
         };
         float bob = _mover.IsMoving ? MathF.Abs(MathF.Sin(_walkCycle)) * 0.04f : 0f;
-        PropModels.Draw(PropModels.Spider, new Vector3(0f, bob, 0f), 180f, ModelScale, mood);
+        PropModels.Draw(PropModels.Prop.Spider, new Vector3(0f, bob, 0f), 180f, ModelScale, mood);
 
         Rlgl.PopMatrix();
 

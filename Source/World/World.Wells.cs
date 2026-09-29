@@ -17,7 +17,7 @@ public sealed partial class World
     // --- Wells ----------------------------------------------------------------------------
 
     /// <summary>A clan whose main home is further than this (m) from water, walking, digs a well (once it knows how).</summary>
-    private const float WellNeedReach = 20f;
+    private const float WellNeedReach = 10f;
 
     /// <summary>A well goes this far (m) from the main home's edge…</summary>
     private const float WellSiteMin = 1.2f;
@@ -25,9 +25,9 @@ public sealed partial class World
     private const float WellSiteMax = 5f;
 
     /// <summary>…and takes this many stones, plus one for every <see cref="WellDepthPerStone"/> meters the ground there stands above the pond (the water lies deeper under a hill).</summary>
-    private const int WellBaseStones = 3;
+    private const int WellBaseStones = 2;
 
-    private const float WellDepthPerStone = 2f;
+    private const float WellDepthPerStone = 3f;
 
     /// <summary>Crops this close (m) to a dug well are watered from it.</summary>
     private const float WellWateringReach = 6f;

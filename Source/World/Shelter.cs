@@ -134,6 +134,12 @@ public sealed class Shelter
     /// <summary>Its clan knows <see cref="Craft.Granary"/> (Houses only): half as much again in store.</summary>
     public bool HasGranary { get; set; }
 
+    /// <summary>True if its clan knows tools: a workbench stands by the home (see <see cref="Craft.Tools"/>).</summary>
+    public bool HasWorkshop { get; set; }
+
+    /// <summary>True if its clan holds a market: a stall stands by the home (see <see cref="Craft.Markets"/>).</summary>
+    public bool HasMarket { get; set; }
+
     /// <summary>A cistern holds this many sips.</summary>
     public const int CisternSips = 6;
 
@@ -178,7 +184,7 @@ public sealed class Shelter
     /// <summary>Where the hearth sits: out front, off to the side away from the cistern.</summary>
     /// <summary>Where a lived-in House's window is (lit at night — see World.DrawNightLights); null for anything else.</summary>
     public Vector3? WindowPosition => IsBuilt && !IsBurrow && !IsAbandoned && Tier == ShelterTier.House
-        ? Position + new Vector3(0f, 0.02f, 0f) + new Vector3(0f, 0.36f * Radius * 2.6f / PropModels.HouseWidth, -(0.36f * Radius * 2.6f / PropModels.HouseWidth))
+        ? Position + new Vector3(0f, 0.02f, 0f) + new Vector3(0f, 0.36f * Radius * 2.6f * 0.8f / PropModels.HouseWidth, -(0.36f * Radius * 2.6f * 0.8f / PropModels.HouseWidth))
         : null;
 
     public Vector3 HearthPosition => Position + new Vector3(Radius * 0.2f, 0f, -(Radius + 0.5f));
@@ -353,7 +359,7 @@ public sealed class Shelter
         if (!IsBuilt)
         {
             // A site marked out: a patch of bare earth, a stake flying its clan's colour, and the twigs laid so far.
-            Raylib.DrawCylinder(Position - new Vector3(0f, 0.05f, 0f), TentRadius + 0.25f, TentRadius + 0.3f, 0.1f, 16, SiteColor);
+            VillageModels.Draw(VillageItem.ConstructionSite, Position, 0f, (TentRadius + 0.3f) * 2f, Color.White);
             DrawSticks(basePosition, TentRadius, TwigsDelivered, TentTwigCost);
             if (groupColor is { } siteFlag)
             {
@@ -368,23 +374,18 @@ public sealed class Shelter
         float roofTop;
         if (Tier == ShelterTier.Tent)
         {
-            // Three twig legs holding an acorn cap up like a little umbrella.
-            const float legHeight = 0.62f;
-            for (int i = 0; i < 3; i++)
-            {
-                float angle = MathF.PI / 3f + i * MathF.Tau / 3f;
-                Vector3 foot = basePosition + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * radius * 0.7f;
-                Raylib.DrawCylinderEx(foot, basePosition + new Vector3(0f, legHeight, 0f) + (foot - basePosition) * 0.35f, 0.04f, 0.03f, 5, Tint(StickColor));
-            }
-            roofTop = DrawCap(basePosition + new Vector3(0f, legHeight, 0f), radius * 1.05f, Tint);
+            // The tent model: an acorn cap propped on twigs and leaves.
+            float tentWidth = radius * 2.2f;
+            VillageModels.Draw(VillageItem.Tent, basePosition, 0f, tentWidth, Tint(Color.White));
+            roofTop = basePosition.Y + VillageModels.HeightAt(VillageItem.Tent, tentWidth);
             if (IsUpgrading)
                 DrawSticks(basePosition, HouseRadius, TwigsDelivered, HouseUpgradeTwigCost);
         }
         else
         {
             // The acorn house model, its door turned to face out (+X).
-            float scale = radius * 2.6f / PropModels.HouseWidth;
-            PropModels.Draw(PropModels.House, basePosition, 180f, scale, Tint(Color.White));
+            float scale = radius * 2.6f * 0.8f / PropModels.HouseWidth;
+            PropModels.Draw(PropModels.Prop.House, basePosition, 180f, scale, Tint(Color.White));
             roofTop = basePosition.Y + PropModels.HouseCapTop * scale;
         }
 
@@ -398,47 +399,54 @@ public sealed class Shelter
 
         if (HasGranary && Tier == ShelterTier.House)
         {
-            // A hazelnut on the far side from the door, its pale base to the ground.
-            Vector3 hazel = basePosition + new Vector3(-radius - 0.3f, 0.32f, 0.3f);
-            Detail.Sphere(hazel, 0.33f, Tint(HazelColor));
-            DrawEllipsoid(hazel + new Vector3(0f, -0.2f, 0f), 0.27f, 0.12f, Tint(HazelBaseColor));
-            Raylib.DrawCylinderEx(hazel + new Vector3(0f, 0.3f, 0f), hazel + new Vector3(0.04f, 0.42f, 0f), 0.04f, 0.02f, 4, Tint(StickColor));
+            // A hazelnut store on the far side from the door.
+            VillageModels.Draw(VillageItem.Granary, basePosition + new Vector3(-radius - 0.3f, 0f, 0.3f), 90f, 0.7f, Tint(Color.White));
         }
 
         if (HasCistern)
         {
-            // An acorn cup on the ground out front, water showing as it fills.
-            Vector3 cup = basePosition + new Vector3(-radius * 0.35f, 0f, radius + 0.35f);
-            Raylib.DrawCylinder(cup, 0.3f, 0.22f, 0.32f, 10, Tint(CapColor));
-            if (Water > 0)
-                Raylib.DrawCylinder(cup + new Vector3(0f, 0.05f + 0.25f * Water / CisternSips, 0f), 0.2f + 0.08f * Water / CisternSips, 0.2f + 0.08f * Water / CisternSips, 0.02f, 10, CisternWaterColor);
+            // A stone basin on the ground out front.
+            VillageModels.Draw(VillageItem.Cistern, basePosition + new Vector3(-radius * 0.35f, 0f, radius + 0.35f), 0f, 0.8f, Tint(Color.White));
+        }
+
+        if (HasWorkshop)
+        {
+            // A workbench beside the home: a plank on trestles with a stone anvil and a mallet.
+            Vector3 bench = basePosition + new Vector3(radius * 0.9f, 0f, -(radius + 0.7f));
+            Raylib.DrawCube(bench + new Vector3(0f, 0.42f, 0f), 0.9f, 0.08f, 0.45f, Tint(WorkbenchColor));
+            for (int side = -1; side <= 1; side += 2)
+                Raylib.DrawCylinderEx(bench + new Vector3(side * 0.35f, 0f, 0f), bench + new Vector3(side * 0.35f, 0.4f, 0f), 0.05f, 0.04f, 5, Tint(StickColor));
+            Detail.Sphere(bench + new Vector3(-0.2f, 0.56f, 0f), 0.11f, Tint(FootingColor));
+            Raylib.DrawCylinderEx(bench + new Vector3(0.15f, 0.47f, 0.05f), bench + new Vector3(0.35f, 0.5f, 0.12f), 0.025f, 0.025f, 4, Tint(StickColor));
+            Raylib.DrawCube(bench + new Vector3(0.38f, 0.52f, 0.13f), 0.12f, 0.08f, 0.08f, Tint(FootingColor));
+        }
+
+        if (HasMarket)
+        {
+            // A market stall by the home: four posts, a striped awning and a table of goods.
+            Vector3 stall = basePosition + new Vector3(-radius * 0.8f, 0f, radius + 1.5f);
+            for (int i = 0; i < 4; i++)
+            {
+                Vector3 post = stall + new Vector3((i % 2 == 0 ? -0.5f : 0.5f), 0f, (i < 2 ? -0.35f : 0.35f));
+                Raylib.DrawCylinderEx(post, post + new Vector3(0f, 0.9f, 0f), 0.03f, 0.025f, 5, Tint(StickColor));
+            }
+            Raylib.DrawCube(stall + new Vector3(0f, 0.95f, -0.12f), 1.2f, 0.04f, 0.5f, Tint(AwningColor));
+            Raylib.DrawCube(stall + new Vector3(0f, 0.93f, 0.2f), 1.2f, 0.04f, 0.3f, Tint(AwningStripeColor));
+            Raylib.DrawCube(stall + new Vector3(0f, 0.38f, 0f), 0.9f, 0.06f, 0.4f, Tint(WorkbenchColor));
+            Detail.Sphere(stall + new Vector3(-0.25f, 0.47f, 0f), 0.09f, Tint(AwningStripeColor));
+            Detail.Sphere(stall + new Vector3(0.2f, 0.46f, 0.05f), 0.08f, Tint(FootingColor));
         }
 
         if (HasHearth)
         {
-            // A ring of pebbles; lit, a little fire of orange and yellow tongues that shrinks as the fuel burns down.
+            // A ring of stones round a fire pit; lit, a little fire of orange and yellow tongues that shrinks as the fuel burns down.
             Vector3 hearth = World.Grounded(HearthPosition) + new Vector3(0f, 0.03f, 0f);
-            if (_fineDetail)
-            {
-                for (int i = 0; i < 7; i++)
-                {
-                    float angle = i * MathF.Tau / 7f;
-                    Raylib.DrawSphereEx(hearth + new Vector3(MathF.Cos(angle) * 0.24f, 0.03f, MathF.Sin(angle) * 0.24f), 0.07f, 4, 6, Tint(FootingColor));
-                }
-            }
-            else
-            {
-                Raylib.DrawCylinder(hearth, 0.3f, 0.3f, 0.06f, 7, Tint(FootingColor));
-            }
+            VillageModels.Draw(VillageItem.Hearth, hearth - new Vector3(0f, 0.03f, 0f), 0f, 0.7f, IsHearthLit ? Color.White : Tint(new Color(150, 150, 150, 255)));
             if (IsHearthLit)
             {
                 float flame = 0.18f + 0.22f * HearthFuel / (HearthSecondsPerTwig * HearthTwigCapacity);
-                Raylib.DrawCylinder(hearth, 0.15f, 0f, flame, 6, FlameColor);
-                Raylib.DrawCylinder(hearth + new Vector3(0f, 0.02f, 0f), 0.08f, 0f, flame * 0.7f, 6, EmberColor);
-            }
-            else
-            {
-                Raylib.DrawCylinder(hearth, 0.14f, 0.14f, 0.02f, 6, AshColor);
+                Raylib.DrawCylinder(hearth + new Vector3(0f, 0.12f, 0f), 0.15f, 0f, flame, 6, FlameColor);
+                Raylib.DrawCylinder(hearth + new Vector3(0f, 0.14f, 0f), 0.08f, 0f, flame * 0.7f, 6, EmberColor);
             }
         }
 
@@ -446,7 +454,13 @@ public sealed class Shelter
         {
             // The stone footing: grey stones set round the foot of the nut, filling in as they're laid.
             int stones = 16 * Math.Min(StonesLaid, FootingStoneCost) / FootingStoneCost;
-            if (!_fineDetail && stones > 0)
+            if (StonesLaid >= FootingStoneCost)
+            {
+                // Finished: a pad of set stones under the whole home.
+                VillageModels.Draw(VillageItem.StoneFooting, basePosition, 0f, radius * 2f + 0.5f, Tint(Color.White));
+                stones = 0;
+            }
+            else if (!_fineDetail && stones > 0)
             {
                 // Seen from afar, the stones are just a grey band round the foot.
                 Raylib.DrawCylinder(basePosition, radius * 0.95f + 0.12f, radius * 0.95f + 0.1f, 0.18f, 10, Tint(FootingColor));
@@ -465,6 +479,12 @@ public sealed class Shelter
             // A ring of thorny stakes, curving outward, with a gap for the door — going up branch by branch.
             float ring = PalisadeRadius;
             int standing = 1 + 21 * Math.Min(StakesSet, PalisadeStakeCost) / PalisadeStakeCost;
+            if (StakesSet >= PalisadeStakeCost)
+            {
+                // Finished: the ring of rose thorns.
+                VillageModels.Draw(VillageItem.Palisade, World.Grounded(Position), 0f, ring * 2f + 0.4f, Tint(Color.White));
+                standing = 1;
+            }
             for (int i = 1; i < standing; i++)
             {
                 float angle = i * MathF.Tau / 22f;
@@ -499,11 +519,7 @@ public sealed class Shelter
             DrawSticks(basePosition, radius, TwigsDelivered, BurrowTwigCost);
             return;
         }
-        DrawEllipsoid(basePosition + new Vector3(0f, 0.05f, 0f), radius * 1.3f, 0.5f, tint(EarthColor));
-        DrawEllipsoid(basePosition + new Vector3(-0.08f, 0.3f, 0f), radius * 1.05f, 0.28f, tint(TurfColor));
-        Raylib.DrawCylinderEx(door, door + new Vector3(0.08f, 0f, 0f), 0.2f, 0.2f, 12, DoorColor);
-        for (int side = -1; side <= 1; side += 2)
-            Raylib.DrawCylinderEx(door + new Vector3(0.05f, -0.18f, side * 0.22f), door + new Vector3(0.05f, 0.2f, side * 0.1f), 0.03f, 0.025f, 5, tint(StickColor));
+        VillageModels.Draw(VillageItem.Burrow, basePosition, 90f, radius * 2.8f, tint(Color.White));
         if (groupColor is { } color)
         {
             Vector3 pole = basePosition + new Vector3(-0.1f, 0.5f, 0f);
@@ -563,6 +579,10 @@ public sealed class Shelter
             Raylib.DrawCylinderEx(foot, tip, 0.035f, 0.025f, 5, StickColor);
         }
     }
+
+    private static readonly Color WorkbenchColor = new(140, 105, 70, 255);
+    private static readonly Color AwningColor = new(190, 70, 60, 255);
+    private static readonly Color AwningStripeColor = new(235, 225, 200, 255);
 
     private static Color Blend(Color a, Color b, float t) => new(
         (byte)(a.R + (b.R - a.R) * t),

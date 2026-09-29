@@ -11,6 +11,19 @@ namespace GardenGuardians;
 /// </summary>
 public sealed class KinGroup
 {
+    /// <summary>The age the clan has reached (see <see cref="World.EraOf"/>); only ever rises.</summary>
+    public Era Era { get; set; }
+
+    /// <summary>Cloth and cut stone the clan holds to trade (see <c>World.Goods</c>).</summary>
+    public int Cloth { get; set; }
+
+    public int CutStone { get; set; }
+
+    /// <summary>Seconds until the clan next makes a good and next trades one (not saved).</summary>
+    public float GoodsTimer { get; set; }
+
+    public float TradeCooldown { get; set; }
+
     private static readonly Color[] Palette =
     {
         new(60, 120, 220, 255),  // Blue

@@ -52,7 +52,7 @@ public sealed partial class Bramblekin : ICombatant
     public const float BodyRadius = 0.25f;
 
     /// <summary>Total body height in meters.</summary>
-    public const float BodyHeight = 0.9f;
+    public const float BodyHeight = 1.0f;
 
     /// <summary>How far from the terrain edge targets are kept, in meters.</summary>
     public const float EdgeMargin = 0.5f;
@@ -166,8 +166,11 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>At work — gathering, building, stocking, farming, carrying for its group — the diligent go briskly and the idle slowly.</summary>
     private float WorkPace => State is BramblekinState.Collecting or BramblekinState.Building or BramblekinState.Stockpiling or
         BramblekinState.Farming or BramblekinState.Traveling or BramblekinState.Fishing or BramblekinState.Healing
-        ? (0.85f + 0.3f * Personality.Diligence) * SkillPace
+        ? (0.85f + 0.3f * Personality.Diligence) * SkillPace * (Knows(Craft.Tools) ? ToolPaceBonus : 1f)
         : 1f;
+
+    /// <summary>A clan with tools (see <see cref="Craft.Tools"/>) works this much faster.</summary>
+    private const float ToolPaceBonus = 1.25f;
 
     /// <summary>Its nerve breaks at this fraction of its Health: lower for the brave, higher for the cautious (<see cref="FightBreakHealthFraction"/> for the middling).</summary>
     private float NerveBreaksAt => FightBreakHealthFraction * (1.4f - 0.8f * Personality.Courage);

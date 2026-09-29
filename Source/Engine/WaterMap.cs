@@ -39,7 +39,7 @@ public static class WaterMap
     public const int Levels = 5;
 
     /// <summary>At its lowest, the water stands this far (m) below its usual level — a sixth or so of the pond left, in the bottom of each hollow.</summary>
-    private const float DroughtDrop = 0.92f;
+    private const float DroughtDrop = 0.6f;
 
     // --- The creek ------------------------------------------------------------------
     // A spring in the garden's driest corner, far from either pond, feeds a

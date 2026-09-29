@@ -212,13 +212,13 @@ public sealed class Crop
         switch (Kind)
         {
             case CropKind.Grain:
-                DrawGrain(size, winter, withering);
+                DrawPlot(VillageItem.GrainPlot, grown, winter, withering);
                 break;
             case CropKind.Mushroom:
-                DrawMushrooms(size);
+                DrawPlot(VillageItem.MushroomPlot, grown, false, withering);
                 break;
             case CropKind.Cress:
-                DrawCress(size, winter, withering);
+                DrawPlot(VillageItem.CressPlot, grown, winter, withering);
                 break;
             default:
                 DrawBush(size, winter, withering);
@@ -238,7 +238,14 @@ public sealed class Crop
     private void DrawBush(float size, bool winter, float withering)
     {
         Color tint = Blend(winter ? Blend(Color.White, WinterLeafColor, 0.7f) : Color.White, WinterLeafColor, withering);
-        PropModels.Draw(PropModels.Bush, Position, 0f, size * 1.9f / PropModels.BushWidth, tint);
+        PropModels.Draw(PropModels.Prop.Bush, Position, 0f, size * 3.04f / PropModels.BushWidth, tint);
+    }
+
+    /// <summary>A plot of grain, mushrooms or cress: the model, small while it grows and fading toward its winter colour as it withers or the year turns.</summary>
+    private void DrawPlot(VillageItem item, float grown, bool winter, float withering)
+    {
+        Color tint = Blend(winter ? Blend(Color.White, WinterLeafColor, 0.6f) : Color.White, WinterLeafColor, withering);
+        VillageModels.DrawOnGround(item, Position, Radius * 7.5f * (0.6f + 0.4f * grown), tint);
     }
 
     /// <summary>A tuft of tall stalks, green while growing and golden once they bear, each ripe one nodding under a seed head; stubble in winter.</summary>

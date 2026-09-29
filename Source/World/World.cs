@@ -477,6 +477,8 @@ public sealed partial class World
         UpdateBeetleSpawn(deltaTime);
         UpdateAnts(deltaTime);
         UpdateOak(deltaTime);
+        UpdateTrails(deltaTime);
+        UpdateGoods(deltaTime);
         UpdateBeehive(deltaTime);
         UpdateArrivals(deltaTime);
         UpdateFoodDespawn(deltaTime);

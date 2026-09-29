@@ -36,7 +36,7 @@ public sealed partial class Bramblekin
         // the same tint, with the small props skipped.
         float onScreen = Detail.Pixels(Position, BodyHeight * BodyScale);
         bool speck = onScreen < SpeckPixels;
-        bool fine = onScreen >= FinePixels;
+        int lod = onScreen >= FinePixels ? 0 : onScreen >= MidPixels ? 1 : 2;
         bool props = onScreen >= PropPixels;
 
         var shadowCenter = new Vector3(Position.X, Position.Y + 0.02f, Position.Z);
@@ -50,8 +50,11 @@ public sealed partial class Bramblekin
         // replaced — it pivots flush on the ground at Position.
         EnsureAnimModel();
         BramblekinClip clip = BramblekinModel.ClipFor(State, _mover.IsMoving);
+        // Skinning is done on the CPU into the mesh being drawn, so it is done on the mesh of the level of detail in
+        // use (a cheaper mesh skins faster too) — skinning the full one and drawing another would draw the other unposed.
+        Model pose = lod == 0 ? _animModel : BramblekinModel.LodView(_animModel, Sex, lod);
         if (!speck)
-            BramblekinModel.Play(ref _animModel, clip, clip == BramblekinClip.Idle ? 0f : _animTime);
+            BramblekinModel.Play(ref pose, clip, clip == BramblekinClip.Idle ? 0f : _animTime);
 
         // The cylinder this replaced was rotationally symmetric, so it never
         // needed to face any particular way; the rig is not, so it must be
@@ -67,7 +70,8 @@ public sealed partial class Bramblekin
         Quaternion tilt = Quaternion.Identity;
         if (tiltAxis.LengthSquared() > 1e-6f)
         {
-            float tiltRadians = MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.UnitY, normal), -1f, 1f));
+            // A steep bank must not tip a kin over: lean with the slope, but only so far (and hardly at all while fishing).
+            float tiltRadians = MathF.Min(MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.UnitY, normal), -1f, 1f)), State == BramblekinState.Fishing ? 0.08f : 0.3f);
             tilt = Quaternion.CreateFromAxisAngle(Vector3.Normalize(tiltAxis), tiltRadians);
         }
 
@@ -86,7 +90,7 @@ public sealed partial class Bramblekin
             Raylib.DrawCylinderEx(Position, Position + new Vector3(0, BodyHeight * BodyScale * grow, 0), BodyRadius * 0.7f * BodyScale * grow, BodyRadius * 0.5f * BodyScale * grow, 4, peg);
         }
         else
-            Raylib.DrawModelEx(fine || !BramblekinModel.HasLowDetail ? _animModel : BramblekinModel.LowDetail(_animModel), Position, axis, angleDegrees, new Vector3(scale), color);
+            Raylib.DrawModelEx(pose, Position, axis, angleDegrees, new Vector3(scale), color);
 
         var top = Position + new Vector3(0, (BodyHeight - BodyRadius) * scale, 0);
         if (props)
@@ -139,8 +143,8 @@ public sealed partial class Bramblekin
     /// <summary>The least height, in pixels, a peg is drawn at.</summary>
     private const float SpeckMinPixels = 7f;
 
-    /// <summary>From this many pixels tall, the full-detail model; below it the low-poly one.</summary>
-    private const float FinePixels = 110f;
+    /// <summary>From this many pixels tall, the full-detail model (~50,000 triangles); from <see cref="MidPixels"/> the ~9,000-triangle one; below that the ~2,500-triangle one.</summary>
+    private const float FinePixels = 150f, MidPixels = 60f;
 
     /// <summary>From this many pixels tall, the small props (thorn, shield, rod, poultice…) are drawn.</summary>
     private const float PropPixels = 40f;
@@ -162,7 +166,10 @@ public sealed partial class Bramblekin
     {
         var side = new Vector3(-facing.Y, 0f, facing.X);
         Vector3 at = Position + new Vector3(0f, BodyHeight * 0.5f, 0f) + side * 0.22f + new Vector3(facing.X, 0f, facing.Y) * 0.08f;
-        Raylib.DrawCylinderEx(at, at + side * 0.04f, 0.17f, 0.17f, 10, ShieldColor);
-        Detail.Sphere(at + side * 0.05f, 0.05f, group?.Color ?? ShieldColor);
+        const float width = 0.4f;
+        float yaw = MathF.Atan2(side.X, side.Z) * 180f / MathF.PI;
+        VillageModels.Draw(VillageItem.Shield, at - new Vector3(0f, VillageModels.HeightAt(VillageItem.Shield, width) / 2f, 0f), yaw, width, Color.White);
+        if (group?.Color is { } clan)
+            Detail.Sphere(at + side * 0.06f, 0.04f, clan);
     }
 }

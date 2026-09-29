@@ -171,6 +171,7 @@ public static partial class Game
         int tents = homes.Count(h => h.IsBuilt && h.Tier == ShelterTier.Tent);
         var lines = new List<string>
         {
+            $"Age: {World.EraName(World.EraOf(clan))}",
             $"Members: {clan.Members.Count} ({clan.Members.Count(m => m.IsYoung)} young, {clan.Members.Count(m => m.IsElder)} elders)",
             $"Leader: {clan.Leader?.Name ?? "nobody"}",
             DescribeClanHomes(clan, homes, houses, tents),

@@ -65,7 +65,9 @@ internal static unsafe class BramblekinModel
     /// every clip drives both. Only the mesh, skin weights and texture differ.
     /// </summary>
     private static Model _femaleModel;
-    private static Model _lowDetailModel;
+
+    /// <summary>Every mesh: [male 0 / female 1, level of detail].</summary>
+    private static readonly Model[,] _lods = new Model[2, Lods];
     private static readonly Dictionary<BramblekinClip, ModelAnimation> _clips = new();
     private static bool _ready;
 
@@ -81,8 +83,14 @@ internal static unsafe class BramblekinModel
 
         _baseModel = Raylib.LoadModel(AssetPath + "Walking.glb");
         _femaleModel = Raylib.LoadModel(AssetPath + "Walking_female.glb");
+        _lods[0, 0] = _baseModel;
+        _lods[1, 0] = _femaleModel;
+        for (int lod = 1; lod < Lods; lod++)
+        {
+            _lods[0, lod] = Raylib.LoadModel(AssetPath + $"Walking_lod{lod}.glb");
+            _lods[1, lod] = Raylib.LoadModel(AssetPath + $"Walking_female_lod{lod}.glb");
+        }
         // Same skeleton, ~2,000 triangles and a 256px texture instead of ~50,000 and 2048px.
-        _lowDetailModel = Raylib.LoadModel(AssetPath + "Walking_lod.glb");
 
         _clips[BramblekinClip.Walking] = LoadClip("Walking.glb");
         _clips[BramblekinClip.Fishing] = LoadClip("FishingCast.glb");
@@ -164,28 +172,23 @@ internal static unsafe class BramblekinModel
         return instance;
     }
 
-    /// <summary>
-    /// Whether the zoomed-out <see cref="LowDetail"/> mesh may be used. Off:
-    /// <c>Walking_lod.glb</c> does not line up with the shared skeleton's
-    /// pose, so kin drew lying flat on their faces when zoomed out. Turn back
-    /// on only once a rebuilt low-poly mesh has been checked against the full
-    /// model's pose.
-    /// </summary>
-    public const bool HasLowDetail = false;
+    /// <summary>How many levels of detail each sex has: 0 the full mesh (~50,000 triangles), 1 ~9,000, 2 ~2,500 (Tools/convert_kin_lod.py).</summary>
+    public const int Lods = 3;
 
     /// <summary>
-    /// <paramref name="instance"/> as the low-detail mesh: its own pose
-    /// (bone matrices), but the cheap mesh and small texture. Both meshes
-    /// share one skeleton, so the same pose drives either.
+    /// <paramref name="instance"/> drawn with the level-of-detail <paramref name="lod"/> mesh of its sex: its own pose
+    /// (bone matrices), but a cheaper mesh and smaller texture. Every level shares the one skeleton (they are the same
+    /// glb with the mesh swapped), so the same pose drives any of them.
     /// </summary>
-    public static Model LowDetail(in Model instance)
+    public static Model LodView(in Model instance, Sex sex, int lod)
     {
+        Model source = _lods[sex == Sex.Female ? 1 : 0, Math.Clamp(lod, 0, Lods - 1)];
         Model view = instance;
-        view.MeshCount = _lowDetailModel.MeshCount;
-        view.MaterialCount = _lowDetailModel.MaterialCount;
-        view.Meshes = _lowDetailModel.Meshes;
-        view.Materials = _lowDetailModel.Materials;
-        view.MeshMaterial = _lowDetailModel.MeshMaterial;
+        view.MeshCount = source.MeshCount;
+        view.MaterialCount = source.MaterialCount;
+        view.Meshes = source.Meshes;
+        view.Materials = source.Materials;
+        view.MeshMaterial = source.MeshMaterial;
         return view;
     }
 
