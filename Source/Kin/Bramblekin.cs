@@ -737,6 +737,11 @@ public sealed partial class Bramblekin : ICombatant
             return;
         }
 
+        // A watchtower's lookout spots trouble for everyone near home, calling out farther than they could see.
+        if (Home is { HasWatchtower: true, IsCollapsed: false } tower &&
+            GroundMover.HorizontalDistanceSquared(Position, tower.Position) <= World.TowerCoverRange * World.TowerCoverRange)
+            radius += World.TowerSightBonus;
+
         // Asleep, only something right on top of it wakes it — and a raider creeping in, not even that.
         bool sleeping = IsAsleep && !world.IsAlarmed(world.GroupOf(this));
         if (sleeping)

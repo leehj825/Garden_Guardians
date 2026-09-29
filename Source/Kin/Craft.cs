@@ -79,4 +79,10 @@ public enum Craft
 
     /// <summary>A market stall by the main home where allied clans swap cloth and cut stone for food (see World.Goods). Needs the Village Age, Roads and a trade good.</summary>
     Markets = 4194304,
+
+    /// <summary>Runes carved on a standing stone by the main home: the clan's discoveries are set down in the chronicle and its allies learn from it faster (see World.Crafts). Needs the Village Age and Stonecutting.</summary>
+    Writing = 8388608,
+
+    /// <summary>A watchtower by the main home with an alarm horn: it sees trouble coming from far off, and the horn wakes and warns the clan (see World.Watchtowers). Needs the Village Age, Palisade and Spears.</summary>
+    Watchtowers = 16777216,
 }

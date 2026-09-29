@@ -12,7 +12,7 @@ public sealed partial class World
     private static readonly Craft[] LaterCrafts =
     {
         Craft.Granary, Craft.Spears, Craft.Palisade, Craft.Grain, Craft.Mushrooms, Craft.Cress, Craft.Fishing, Craft.Stonework, Craft.Cisterns,
-        Craft.Wells, Craft.Slings, Craft.Hearth, Craft.Snares, Craft.Herbalism, Craft.Herding, Craft.Smoking, Craft.Shields, Craft.Tools, Craft.Roads, Craft.Weaving, Craft.Stonecutting, Craft.Markets,
+        Craft.Wells, Craft.Slings, Craft.Hearth, Craft.Snares, Craft.Herbalism, Craft.Herding, Craft.Smoking, Craft.Shields, Craft.Tools, Craft.Roads, Craft.Weaving, Craft.Stonecutting, Craft.Markets, Craft.Writing, Craft.Watchtowers,
     };
 
     /// <summary>A clan whose main home is further than this (m) from the water works out cisterns — necessity being the mother of invention.</summary>
@@ -70,6 +70,8 @@ public sealed partial class World
             home.HasHearth = (known & Craft.Hearth) != 0;
             home.HasWorkshop = (known & Craft.Tools) != 0;
             home.HasMarket = (known & Craft.Markets) != 0;
+            home.HasRuneStone = (known & Craft.Writing) != 0 && home == group.Home;
+            home.HasWatchtower = (known & Craft.Watchtowers) != 0 && home == group.Home;
         }
         UpdateEra(group);
 
@@ -91,6 +93,8 @@ public sealed partial class World
         QueueFloatingText(thinker.Position, $"Idea: {craft.ToString().ToLowerInvariant()}!", CraftTextColor);
         Game.AddEventLog($"[CRAFT] {thinker.Name} of {group.Title} worked out how to {what}");
         Headline("Discovery", $"{thinker.Name} of {group.Title} worked out how to {what}", thinker.Position, false, group);
+        if (craft != Craft.Writing)
+            Carve(group, $"{thinker.Name} worked out how to {what}");
     }
 
     /// <summary>
@@ -142,6 +146,8 @@ public sealed partial class World
             Craft.Weaving => Knows(group, Craft.Tools) && farms,
             Craft.Stonecutting => Knows(group, Craft.Tools) && Knows(group, Craft.Stonework),
             Craft.Markets => EraOf(group) >= Era.VillageAge && Knows(group, Craft.Roads) && (Knows(group, Craft.Weaving) || Knows(group, Craft.Stonecutting)),
+            Craft.Writing => EraOf(group) >= Era.VillageAge && Knows(group, Craft.Stonecutting),
+            Craft.Watchtowers => EraOf(group) >= Era.VillageAge && Knows(group, Craft.Palisade) && Knows(group, Craft.Spears),
             _ => false,
         };
     }
@@ -171,6 +177,8 @@ public sealed partial class World
         Craft.Weaving => "weave cloth",
         Craft.Stonecutting => "cut stone into blocks",
         Craft.Markets => "hold a market",
+        Craft.Writing => "carve runes on a standing stone",
+        Craft.Watchtowers => "raise a watchtower with an alarm horn",
         _ => craft.ToString().ToLowerInvariant(),
     };
 
@@ -179,6 +187,8 @@ public sealed partial class World
     {
         Craft missing = CraftsOf(teacher) & ~CraftsOf(ally);
         float persuasion = teacher.Leader is { } leader ? 0.6f + 0.8f * leader.Personality.Persuasiveness : 1f;
+        if (Knows(teacher, Craft.Writing))
+            persuasion *= WritingTeachingBoost; // Lessons set down in runes are easier to pass on.
         if (missing == Craft.None || Rng.NextDouble() >= TeachFarmingChance * persuasion)
             return;
         Craft craft = (missing & Craft.Farming) != 0 ? Craft.Farming : LaterCrafts.First(c => (missing & c) != 0);
@@ -196,6 +206,21 @@ public sealed partial class World
             LearnedGrain(ally);
         Game.AddEventLog($"[CRAFT] {teacher.CapitalTitle} taught their allies, {ally.Title}, how to {Describe(craft)}");
         Chronicle($"{teacher.CapitalTitle} taught {ally.Title} how to {Describe(craft)}", teacher, ally);
+    }
+
+    /// <summary>A clan that writes teaches its allies this many times as readily.</summary>
+    private const float WritingTeachingBoost = 1.5f;
+
+    /// <summary>Deeds set down in runes (for the headless report).</summary>
+    public int RunesCarved { get; private set; }
+
+    /// <summary>A clan that writes carves <paramref name="deed"/> on its standing stone — and into the chronicle, so it lasts.</summary>
+    public void Carve(KinGroup group, string deed)
+    {
+        if (!Knows(group, Craft.Writing))
+            return;
+        RunesCarved++;
+        Chronicle($"{group.CapitalTitle} carved on their standing stone: {deed}", group);
     }
 
     /// <summary>True if <paramref name="point"/> lies inside a palisade (see <see cref="Craft.Palisade"/>).</summary>

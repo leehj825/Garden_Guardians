@@ -47,5 +47,6 @@ public sealed partial class World
         Game.AddEventLog($"[ERA] {group.CapitalTitle} entered the {EraName(era)}");
         Headline("A new age", $"{group.CapitalTitle} entered the {EraName(era)}", group.Leader?.Position, false, group);
         Chronicle($"{group.CapitalTitle} entered the {EraName(era)}", group);
+        Carve(group, $"entered the {EraName(era)}");
     }
 }

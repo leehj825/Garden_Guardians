@@ -431,6 +431,7 @@ public sealed partial class World
         UpdateTributes();
         UpdateGroupHomes(deltaTime);
         UpdateHearths(deltaTime);
+        UpdateWatchtowers(deltaTime);
         UpdateSnares();
         UpdateNight(deltaTime);
         UpdateFeasts();

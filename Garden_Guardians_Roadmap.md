@@ -1028,15 +1028,20 @@ first picks: roads, workshops with tools, and the tech tree with eras.
     at most every 30s, reported in the headless summary. Goods are saved
     with the garden. Not yet: coins, caravans that walk between markets
     and can be raided, prices that follow scarcity.
-*   ⬜ **Writing and history:** runes carved on a standing stone record a
-    clan's deeds, feed the chronicle, improve teaching between clans and
-    make culture last.
+*   🟡 **Writing and history:** Done (first slice): Writing (Village Age and
+    Stonecutting) puts a runed standing stone by the main home; from then on
+    the clan's discoveries and new ages are carved into the chronicle, and it
+    teaches allies 1.5x as readily. Not yet: runes that improve teaching
+    beyond crafts, lore that outlives a clan, readable stone text in-game.
 *   ⬜ **Kingdoms and vassals:** big clans absorb small ones, with tribute,
     a capital and a leader title; wars gain territory stakes (building on
     conquest and tribute).
-*   ⬜ **Defense and siege:** watchtowers with alarm horns, gates in the
-    palisade, siege tools (sling catapults, battering logs), organized
-    traps for the spider and owl.
+*   🟡 **Defense and siege:** Done (first slice): Watchtowers (Village Age,
+    Palisade and Spears) raise a lookout with an alarm horn by the main home;
+    it spots the Wolf Spider, chasing Hornets or a warring clan's fighters
+    within 30m, sounds the horn (waking and warning the clan) and kin near
+    home see 6m farther. Not yet: gates in the palisade, siege tools (sling
+    catapults, battering logs), organized traps for the spider and owl.
 *   ⬜ **Seasonal calendar and festivals:** a sundial or calendar stone to
     plan planting and hunting; solstice festivals with morale and
     diplomacy chances.
