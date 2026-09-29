@@ -153,6 +153,11 @@ public static partial class Game
     /// <summary>True while <see cref="RunHeadless"/> is driving the simulation — event logs go to stdout instead of the on-screen console.</summary>
     private static bool _isHeadless;
 
+    /// <summary>True when a development run (a screenshot, or GARDEN_MENU=0) goes straight to the garden instead of the start menu; GARDEN_MENU=1 shows the menu even for a screenshot.</summary>
+    private static bool SkipMenu => Environment.GetEnvironmentVariable("GARDEN_MENU") is { } menu
+        ? menu == "0"
+        : Environment.GetEnvironmentVariable("GARDEN_SCREENSHOT") is not null;
+
     /// <summary>The whole-garden camera: pulled back and up far enough to take in the whole square map (centred on the origin) at once.</summary>
     private static Camera3D OverviewCamera(float mapSize) => new()
     {
@@ -279,7 +284,26 @@ public static partial class Game
         World.Overlays = Preferences.Get(OverlaySetting, MapOverlays.All);
         _gardenSlot = (int)Preferences.Get(GardenSetting, GardenSlot.Garden1);
         TerrainData.GrowNewGardens = Preferences.Get(TerrainSetting, TerrainMode.Fixed) == TerrainMode.Random;
-        World world = LoadOrCreateWorld(GardenPath);
+        World world;
+        if (SkipMenu)
+            world = LoadOrCreateWorld(GardenPath);
+        else
+        {
+            MenuChoice? choice = ShowMenu();
+            if (choice is null)
+            {
+                Raylib.CloseWindow();
+                return;
+            }
+            _gardenSlot = choice.Slot;
+            Preferences.Set(GardenSetting, (GardenSlot)_gardenSlot);
+            if (!choice.Resume)
+            {
+                TerrainData.GrowNewGardens = choice.GrowTerrain;
+                Preferences.Set(TerrainSetting, choice.GrowTerrain ? TerrainMode.Random : TerrainMode.Fixed);
+            }
+            world = choice.Resume ? LoadOrCreateWorld(GardenPath) : StartNewGarden(GardenPath);
+        }
         camera = OverviewCamera(world.Terrain.Size);
         var input = new WorldTapInput();
         var touchCamera = new TouchCameraController();

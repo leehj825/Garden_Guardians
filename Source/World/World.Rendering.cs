@@ -55,7 +55,6 @@ public sealed partial class World
         DrawTrails(camera);
         if (Overlays.HasFlag(MapOverlays.ClanRange))
             DrawTerritories(camera);
-        DrawOak();
         for (int i = _splats.Count - 1; i >= 0; i--)
         {
             var (position, timeLeft) = _splats[i];

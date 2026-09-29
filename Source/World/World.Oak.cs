@@ -28,8 +28,6 @@ public sealed partial class World
     /// <summary>Acorns land between the trunk and this far from it.</summary>
     private const float AcornFallReach = 16f;
 
-    private static readonly Color OakShadeColor = new(10, 30, 10, 45);
-
     /// <summary>
     /// The oak's footprint on the ground, as circles walkers can't enter:
     /// the trunk and every root, plus the reed clumps and boulders on the
@@ -132,17 +130,5 @@ public sealed partial class World
             return;
         _pendingFoodSpawns.Add((spot, FoodShardKind.Acorn));
         AcornsFallen++;
-    }
-
-    /// <summary>The shade the oak casts on the lawn (the trunk and roots themselves are part of the terrain model).</summary>
-    private void DrawOak()
-    {
-        Rlgl.DrawRenderBatchActive();
-        Rlgl.DisableDepthMask();
-        Rlgl.DisableBackfaceCulling();
-        DrawTerrainBand(OakCenter, OakRadius, OakRadius + 22f, OakShadeColor);
-        Rlgl.DrawRenderBatchActive();
-        Rlgl.EnableBackfaceCulling();
-        Rlgl.EnableDepthMask();
     }
 }

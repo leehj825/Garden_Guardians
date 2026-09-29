@@ -56,6 +56,31 @@ public static class SaveSystem
         }
     }
 
+    /// <summary>What the start menu shows of a saved garden.</summary>
+    public sealed record SaveSummary(int Year, int Kin, int Groups, DateTime SavedAt, bool Grown);
+
+    /// <summary>A quick look at the garden saved at <paramref name="path"/> (its year, how many Bramblekin and clans, when it was saved, whether its terrain was grown from a seed), or null if there isn't a readable one from this version.</summary>
+    public static SaveSummary? Peek(string path)
+    {
+        if (!File.Exists(path))
+            return null;
+        try
+        {
+            using FileStream stream = File.OpenRead(path);
+            SaveGame? save = JsonSerializer.Deserialize(stream, SaveJsonContext.Default.SaveGame);
+            if (save is null || save.Version != SaveGame.CurrentVersion)
+                return null;
+            double elapsed = save.Numbers.TryGetValue("p:ElapsedSeconds", out double seconds) ? seconds : 0.0;
+            bool grown = save.Numbers.TryGetValue(TerrainKey, out double terrain) && terrain >= TerrainData.ProceduralBase;
+            return new SaveSummary((int)(elapsed / (World.SeasonLength * 4f)) + 1, save.Kin.Count, save.Groups.Count, save.SavedAt, grown);
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"Garden Guardians: couldn't read {path}: {e.Message}");
+            return null;
+        }
+    }
+
     /// <summary>The name a garden's terrain number is saved under (see <see cref="SaveGame.Numbers"/>).</summary>
     public const string TerrainKey = "terrain";
 

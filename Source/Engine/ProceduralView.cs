@@ -6,7 +6,9 @@ namespace GardenGuardians;
 /// <summary>
 /// Draws a generated terrain (see <see cref="TerrainGenerator"/>): the ground as a simplified mesh
 /// (<see cref="TerrainMesh"/>) under one texture baked from the models' own grass and dirt tiles, and the props
-/// cut out of the hand-made models. Everything is built the first time it's drawn (that needs a GPU context).
+/// cut out of the hand-made models. The ground and its props are built the first time they're drawn (that needs
+/// a GPU context); the texture is worked out on another thread meanwhile, so a phone never stalls on it — the
+/// ground shows plain grass green until it's ready.
 /// </summary>
 public sealed unsafe class ProceduralView
 {
@@ -16,14 +18,16 @@ public sealed unsafe class ProceduralView
     /// <summary>The baked ground texture is this many pixels square (a power of two, so it can be mipmapped).</summary>
     private const int TextureSize = 2048;
 
-    /// <summary>A ground tile repeats every this many metres.</summary>
-    private const float TileMetres = 6f;
+    /// <summary>A ground tile repeats every this many metres; the noise that mixes the tiles is worked out on a grid of this many metres.</summary>
+    private const float TileMetres = 6f, FieldMetres = 1f;
 
     private const int Grasses = 4, Dirts = 2;
 
     private readonly TerrainSet _set;
     private Model _ground;
+    private Texture2D _flat;
     private bool _ready;
+    private Task<byte[]>? _bake;
 
     private static readonly Dictionary<string, Model> PropModels = new();
 
@@ -63,7 +67,23 @@ public sealed unsafe class ProceduralView
             raw.Indices[i] = mesh.Indices[i];
         Raylib.UploadMesh(ref raw, false);
         _ground = Raylib.LoadModelFromMesh(raw);
-        _ground.Materials[0].Maps[(int)MaterialMapIndex.Albedo].Texture = BakeGround();
+
+        Image plain = Raylib.GenImageColor(2, 2, new Color(95, 120, 55, 255));
+        _flat = Raylib.LoadTextureFromImage(plain);
+        Raylib.UnloadImage(plain);
+        _ground.Materials[0].Maps[(int)MaterialMapIndex.Albedo].Texture = _flat;
+
+        // The tiles are read here (they're files); the mixing of them, the slow part, runs on another thread.
+        var grass = new (byte[] Pixels, int Width)[Grasses];
+        var dirt = new (byte[] Pixels, int Width)[Dirts];
+        for (int k = 0; k < Grasses; k++)
+            grass[k] = LoadTile($"grass_{k + 1}.png");
+        for (int k = 0; k < Dirts; k++)
+            dirt[k] = LoadTile($"dirt_{k + 1}.png");
+        float[] heights = _set.Heights;
+        int size = TerrainData.Size, seed = _set.Seed;
+        float half = TerrainData.Half, level = _set.PondLevel;
+        _bake = Task.Run(() => BakePixels(grass, dirt, heights, size, half, level, seed));
         _ready = true;
     }
 
@@ -71,8 +91,32 @@ public sealed unsafe class ProceduralView
     {
         if (!_ready)
             return;
+        _bake = null; // Its result, if it ever finishes, is not wanted.
         Raylib.UnloadModel(_ground);
         _ready = false;
+    }
+
+    /// <summary>Once the texture has been worked out, puts it on the ground.</summary>
+    private void ApplyBake()
+    {
+        if (_bake is not { IsCompleted: true } task)
+            return;
+        _bake = null;
+        if (!task.IsCompletedSuccessfully)
+        {
+            Console.Error.WriteLine($"Garden Guardians: couldn't bake the ground texture: {task.Exception?.GetBaseException().Message}");
+            return;
+        }
+        byte[] pixels = task.Result;
+        Image image = Raylib.GenImageColor(TextureSize, TextureSize, Color.White);
+        fixed (byte* source = pixels)
+            Buffer.MemoryCopy(source, image.Data, pixels.Length, pixels.Length);
+        Texture2D texture = Raylib.LoadTextureFromImage(image);
+        Raylib.UnloadImage(image);
+        Raylib.GenTextureMipmaps(ref texture);
+        Raylib.SetTextureFilter(texture, TextureFilter.Trilinear);
+        _ground.Materials[0].Maps[(int)MaterialMapIndex.Albedo].Texture = texture;
+        Raylib.UnloadTexture(_flat);
     }
 
     // --- The ground's texture --------------------------------------------------------------------
@@ -121,21 +165,25 @@ public sealed unsafe class ProceduralView
         return t * t * (3f - 2f * t);
     }
 
-    private Texture2D BakeGround()
+    /// <summary>A value between a grid's samples (the grid spans -half..half, <paramref name="cell"/> metres between samples, <paramref name="n"/> along a side).</summary>
+    private static float Bilinear(float[] grid, int n, float half, float cell, float x, float z)
     {
-        var grass = new (byte[] Pixels, int Width)[Grasses];
-        var dirt = new (byte[] Pixels, int Width)[Dirts];
-        for (int k = 0; k < Grasses; k++)
-            grass[k] = LoadTile($"grass_{k + 1}.png");
-        for (int k = 0; k < Dirts; k++)
-            dirt[k] = LoadTile($"dirt_{k + 1}.png");
+        float fx = Math.Clamp((x + half) / cell, 0f, n - 1.001f), fz = Math.Clamp((z + half) / cell, 0f, n - 1.001f);
+        int ix = (int)fx, iz = (int)fz;
+        float tx = fx - ix, tz = fz - iz;
+        float near = grid[iz * n + ix] + (grid[iz * n + ix + 1] - grid[iz * n + ix]) * tx;
+        float far = grid[(iz + 1) * n + ix] + (grid[(iz + 1) * n + ix + 1] - grid[(iz + 1) * n + ix]) * tx;
+        return near + (far - near) * tz;
+    }
 
-        float half = TerrainData.Half;
-        int size = TerrainData.Size;
-        float step = TerrainData.Step;
-        float[] heights = _set.Heights;
-        float waterLevel = _set.PondLevel;
-        int seed = _set.Seed;
+    /// <summary>
+    /// The ground's colours as bytes (R, G, B, A per pixel, <see cref="TextureSize"/> square): the grass tiles mixed by slow noise,
+    /// dirt patches on level ground, sand round the ponds, the ponds' beds, and the hills' shading. Pure arithmetic on what it's given,
+    /// so it can run on any thread.
+    /// </summary>
+    private static byte[] BakePixels((byte[] Pixels, int Width)[] grass, (byte[] Pixels, int Width)[] dirt, float[] heights, int size, float half, float waterLevel, int seed)
+    {
+        float step = 2f * half / (size - 1);
 
         // The ground's slope (rise per metre) and its shading, per height sample.
         var slope = new float[size * size];
@@ -151,14 +199,29 @@ public sealed unsafe class ProceduralView
             }
         }
 
-        float Bilinear(float[] grid, float x, float z)
+        // The noise, on a coarse grid: how much of each grass tile, a light and dark wobble, and where dirt patches lie.
+        int n = (int)MathF.Ceiling(2f * half / FieldMetres) + 1;
+        var mix = new float[Grasses][];
+        for (int k = 0; k < Grasses; k++)
+            mix[k] = new float[n * n];
+        var tint = new float[n * n];
+        var patches = new float[n * n];
+        for (int j = 0; j < n; j++)
         {
-            float fx = Math.Clamp((x + half) / step, 0f, size - 1.001f), fz = Math.Clamp((z + half) / step, 0f, size - 1.001f);
-            int ix = (int)fx, iz = (int)fz;
-            float tx = fx - ix, tz = fz - iz;
-            float near = grid[iz * size + ix] + (grid[iz * size + ix + 1] - grid[iz * size + ix]) * tx;
-            float far = grid[(iz + 1) * size + ix] + (grid[(iz + 1) * size + ix + 1] - grid[(iz + 1) * size + ix]) * tx;
-            return near + (far - near) * tz;
+            for (int i = 0; i < n; i++)
+            {
+                float x = -half + i * FieldMetres, z = -half + j * FieldMetres;
+                float total = 0f;
+                for (int k = 0; k < Grasses; k++)
+                {
+                    mix[k][j * n + i] = MathF.Exp(1.2f * Noise(x, z, 6f, seed + 11 * k));
+                    total += mix[k][j * n + i];
+                }
+                for (int k = 0; k < Grasses; k++)
+                    mix[k][j * n + i] /= total;
+                tint[j * n + i] = 1f + 0.10f * Noise(x, z, 9f, seed + 77);
+                patches[j * n + i] = SmoothStep((Noise(x, z, 5f, seed + 55) - 1.15f) / 0.5f);
+            }
         }
 
         Vector3 Tile((byte[] Pixels, int Width) tile, float x, float z, float offsetX, float offsetZ)
@@ -171,33 +234,24 @@ public sealed unsafe class ProceduralView
             return new Vector3(tile.Pixels[at], tile.Pixels[at + 1], tile.Pixels[at + 2]);
         }
 
-        Image image = Raylib.GenImageColor(TextureSize, TextureSize, Color.White);
-        Color* pixels = (Color*)image.Data;
+        var result = new byte[TextureSize * TextureSize * 4];
         float metresPerPixel = 2f * half / TextureSize;
-        var weights = new float[Grasses];
-        for (int py = 0; py < TextureSize; py++)
+        Parallel.For(0, TextureSize, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 2) }, py =>
         {
             float z = -half + (py + 0.5f) * metresPerPixel;
             for (int px = 0; px < TextureSize; px++)
             {
                 float x = -half + (px + 0.5f) * metresPerPixel;
-                float h = Bilinear(heights, x, z);
+                float h = Bilinear(heights, size, half, step, x, z);
 
-                // Grass: the tiles mixed by slow noise, so no one tile shows its repeat.
-                float total = 0f;
-                for (int k = 0; k < Grasses; k++)
-                {
-                    weights[k] = MathF.Exp(1.2f * Noise(x, z, 6f, seed + 11 * k));
-                    total += weights[k];
-                }
                 Vector3 colour = Vector3.Zero;
                 for (int k = 0; k < Grasses; k++)
-                    colour += weights[k] / total * Tile(grass[k], x, z, k * 2.3f, k * 1.7f);
-                colour *= 1f + 0.10f * Noise(x, z, 9f, seed + 77);
+                    colour += Bilinear(mix[k], n, half, FieldMetres, x, z) * Tile(grass[k], x, z, k * 2.3f, k * 1.7f);
+                colour *= Bilinear(tint, n, half, FieldMetres, x, z);
 
                 // Dirt: patches on the level ground; a band of it round each pond.
                 Vector3 earth = Tile(dirt[0], x, z, 0f, 0f);
-                float patch = SmoothStep((Noise(x, z, 5f, seed + 55) - 1.15f) / 0.5f) * SmoothStep((0.12f - Bilinear(slope, x, z)) / 0.06f);
+                float patch = Bilinear(patches, n, half, FieldMetres, x, z) * SmoothStep((0.12f - Bilinear(slope, size, half, step, x, z)) / 0.06f);
                 colour = colour * (1f - patch) + earth * patch;
                 float shore = SmoothStep((waterLevel + 0.5f - h) / 0.35f);
                 Vector3 sand = Tile(dirt[Dirts - 1], x, z, 1f, 1f) * 1.08f;
@@ -209,16 +263,15 @@ public sealed unsafe class ProceduralView
                     float deep = SmoothStep((waterLevel - h) / 0.6f);
                     colour = earth * 0.7f * (1f - deep) + new Vector3(50f, 70f, 60f) * deep;
                 }
-                colour *= Bilinear(shade, x, z);
-                pixels[py * TextureSize + px] = new Color(
-                    (byte)Math.Clamp(colour.X, 0f, 255f), (byte)Math.Clamp(colour.Y, 0f, 255f), (byte)Math.Clamp(colour.Z, 0f, 255f), (byte)255);
+                colour *= Bilinear(shade, size, half, step, x, z);
+                int at = (py * TextureSize + px) * 4;
+                result[at] = (byte)Math.Clamp(colour.X, 0f, 255f);
+                result[at + 1] = (byte)Math.Clamp(colour.Y, 0f, 255f);
+                result[at + 2] = (byte)Math.Clamp(colour.Z, 0f, 255f);
+                result[at + 3] = 255;
             }
-        }
-        Texture2D texture = Raylib.LoadTextureFromImage(image);
-        Raylib.UnloadImage(image);
-        Raylib.GenTextureMipmaps(ref texture);
-        Raylib.SetTextureFilter(texture, TextureFilter.Trilinear);
-        return texture;
+        });
+        return result;
     }
 
     // --- Drawing ---------------------------------------------------------------------------------
@@ -227,6 +280,7 @@ public sealed unsafe class ProceduralView
     public void Draw(Color multiply, Color? additive)
     {
         EnsureBuilt();
+        ApplyBake();
         Raylib.DrawModel(_ground, Vector3.Zero, 1f, multiply);
         if (_set.Props is { } props)
         {
