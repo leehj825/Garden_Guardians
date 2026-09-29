@@ -30,9 +30,12 @@ def cell_of(x, z):
     return (np.clip(((z + HALF) / STEP).round().astype(int), 0, N - 1), np.clip(((x + HALF) / STEP).round().astype(int), 0, N - 1))
 
 
-def grassy(colour):
-    """Lawn green (the ground's texture), as opposed to fern green (darker and bluer) or wood and stone."""
+def grassy(colour, loose=False):
+    """Lawn green (the ground's texture), as opposed to fern green (darker and bluer) or wood and stone.
+    `loose` also takes the olive and yellow-green a lawn skirt shows in some models (still not wood: tan has less green than red)."""
     r, g, b = colour
+    if loose:
+        return g >= r * 0.93 and b < g * 0.75 and g > 0.30
     return g > r * 1.08 and g > b * 1.25 and g > 0.30
 
 
@@ -134,7 +137,7 @@ def main():
         # The skirt of lawn round a prop's foot (up-facing, low, lawn-coloured) is ground, not prop.
         picked = [f for f in picked
                   if not (f.normal.z > 0.7 and f.calc_center_median().z - floor[cell_of(np.array([f.calc_center_median().x]), np.array([-f.calc_center_median().y]))][0] < 0.8
-                          and grassy(face_colour(f)))]
+                          and grassy(face_colour(f), loose=(kind == "oak")))]
         # Drop stray shards: pieces not joined to the prop that are small (under 0.8 m across) or a sliver of it.
         groups = components(picked)
         if not groups:

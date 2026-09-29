@@ -57,6 +57,16 @@ def largest_squares(mask, size, want):
     return found
 
 
+def despeckle(crop):
+    """Replace pixels that stand out from their surroundings (stray light or dark dots) by the local median."""
+    median = ndi.median_filter(crop, size=(5, 5, 1))
+    off = np.abs(crop.astype(int) - median.astype(int)).sum(axis=2) > 45
+    off = ndi.binary_dilation(off, iterations=1)
+    out = crop.copy()
+    out[off] = median[off]
+    return out
+
+
 def tileable(crop):
     """Blend the crop with a copy shifted by half a tile, weighting the middle of the crop, so opposite edges match."""
     a = crop.astype(np.float32)
@@ -79,13 +89,15 @@ def main():
         atlas = atlas_of(model)
         h, s, v = hsv(atlas)
         for kind, rule in KINDS.items():
-            mask = ndi.binary_opening(rule(h, s, v), iterations=2)
+            # Stay well inside the patch: its rim is bleed from the next patch (light and dark specks).
+            mask = ndi.binary_erosion(ndi.binary_opening(rule(h, s, v), iterations=2), iterations=8)
             for size in (384, 256, 192):
                 spots = largest_squares(mask, size, 2)
                 if spots:
                     break
             for y0, x0 in spots:
-                crop = Image.fromarray(atlas[y0:y0 + size, x0:x0 + size]).resize((TILE, TILE), Image.LANCZOS)
+                crop = despeckle(atlas[y0:y0 + size, x0:x0 + size])
+                crop = Image.fromarray(crop).resize((TILE, TILE), Image.LANCZOS)
                 counts[kind] += 1
                 name = "%s_%d.png" % (kind, counts[kind])
                 Image.fromarray(tileable(np.array(crop))).save(os.path.join(out_dir, name))

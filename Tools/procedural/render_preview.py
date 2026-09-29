@@ -133,6 +133,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--view", default="wide", choices=["wide", "oak", "pond"])
     ap.add_argument("--samples", type=int, default=32)
+    ap.add_argument("--no-props", action="store_true", help="the ground and water only")
     args = ap.parse_args()
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -142,7 +143,8 @@ def main():
     garden.picture(G.load_tiles(), px_per_m=12, markers=False).save(texture)
     build_ground(garden, texture)
     add_water(garden)
-    place_props(garden, import_kits())
+    if not args.no_props:
+        place_props(garden, import_kits())
     cam = set_up_render(args.view, garden.half, os.path.abspath(args.out), args.samples)
     h = garden.half
     if args.view == "wide":
