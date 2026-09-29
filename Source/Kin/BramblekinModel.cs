@@ -157,6 +157,15 @@ internal static unsafe class BramblekinModel
     }
 
     /// <summary>
+    /// Whether the zoomed-out <see cref="LowDetail"/> mesh may be used. Off:
+    /// <c>Walking_lod.glb</c> does not line up with the shared skeleton's
+    /// pose, so kin drew lying flat on their faces when zoomed out. Turn back
+    /// on only once a rebuilt low-poly mesh has been checked against the full
+    /// model's pose.
+    /// </summary>
+    public const bool HasLowDetail = false;
+
+    /// <summary>
     /// <paramref name="instance"/> as the low-detail mesh: its own pose
     /// (bone matrices), but the cheap mesh and small texture. Both meshes
     /// share one skeleton, so the same pose drives either.
