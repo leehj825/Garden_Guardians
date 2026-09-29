@@ -46,6 +46,16 @@ internal static unsafe class BramblekinModel
     /// <summary>The rig's height in its own units (see the FBX/glb bounding box) — divide by this to scale to <see cref="Bramblekin.BodyHeight"/> meters.</summary>
     public const float RawHeightUnits = 99.98168f;
 
+    /// <summary>
+    /// The rig's own rest-pose forward direction doesn't line up with the
+    /// world +Z axis Bramblekin.Draw's yaw is measured from — this is the
+    /// extra turn (radians) needed on top of that yaw so the model actually
+    /// faces <see cref="GroundMover.Heading"/> instead of some fixed offset
+    /// from it. Measured empirically by rendering the Walking clip with a
+    /// known heading and reading off which way the rig actually faced.
+    /// </summary>
+    public const float ForwardYawOffset = 0f;
+
     /// <summary>Frames per second every clip was baked at (Tripo/Mixamo's usual export rate) — confirmed against each clip's own KeyFrameCount.</summary>
     private const float ClipFps = 60f;
 

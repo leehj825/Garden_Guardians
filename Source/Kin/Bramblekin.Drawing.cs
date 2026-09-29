@@ -43,21 +43,35 @@ public sealed partial class Bramblekin
         BramblekinClip clip = BramblekinModel.ClipFor(State);
         BramblekinModel.Play(ref _animModel, clip, clip == BramblekinClip.Idle ? 0f : _animTime);
 
+        // The cylinder this replaced was rotationally symmetric, so it never
+        // needed to face any particular way; the rig is not, so it must be
+        // yawed to face Heading before the terrain tilt is applied — applied
+        // as a single combined rotation (DrawModelEx only takes one
+        // axis/angle) rather than two separate draws-with-rotation.
+        Vector2 facing = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;
+        float yawRadians = MathF.Atan2(facing.X, facing.Y) + BramblekinModel.ForwardYawOffset;
+        Quaternion yaw = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawRadians);
+
         Vector3 normal = World.GetNormalAt(Position.X, Position.Z);
-        Vector3 axis = Vector3.Cross(Vector3.UnitY, normal);
-        float angleDegrees = 0f;
-        if (axis.LengthSquared() > 1e-6f)
-            angleDegrees = MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.UnitY, normal), -1f, 1f)) * (180f / MathF.PI);
-        else
-            axis = Vector3.UnitY; // Flat ground: any axis is fine at a 0-degree rotation.
+        Vector3 tiltAxis = Vector3.Cross(Vector3.UnitY, normal);
+        Quaternion tilt = Quaternion.Identity;
+        if (tiltAxis.LengthSquared() > 1e-6f)
+        {
+            float tiltRadians = MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.UnitY, normal), -1f, 1f));
+            tilt = Quaternion.CreateFromAxisAngle(Vector3.Normalize(tiltAxis), tiltRadians);
+        }
+
+        Quaternion rotation = Quaternion.Normalize(tilt * yaw);
+        float angleDegrees = 2f * MathF.Acos(Math.Clamp(rotation.W, -1f, 1f)) * (180f / MathF.PI);
+        float sinHalf = MathF.Sqrt(Math.Max(0f, 1f - rotation.W * rotation.W));
+        Vector3 axis = sinHalf > 1e-6f ? new Vector3(rotation.X, rotation.Y, rotation.Z) / sinHalf : Vector3.UnitY;
+
         float scale = BodyScale * (BodyHeight / BramblekinModel.RawHeightUnits);
         Raylib.DrawModelEx(_animModel, Position, axis, angleDegrees, new Vector3(scale), color);
 
         var top = Position + new Vector3(0, (BodyHeight - BodyRadius) * scale, 0);
         Detail.Sphere(top + new Vector3(0, BodyRadius * 0.5f, 0), BodyRadius * 0.35f, group?.Color ?? SolitaryHeadColor);
         DrawSickness(top);
-
-        Vector2 facing = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;
 
         if (group is not null && group.Leader == this)
         {
