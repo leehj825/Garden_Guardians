@@ -43,14 +43,17 @@ public sealed partial class World
     public int BeesSwatted { get; private set; }
     public int HoneyGifts { get; private set; }
 
-    /// <summary>Which way the hive faces: out from the trunk toward the middle of the garden.</summary>
-    private static Vector3 HiveFacing => Vector3.Normalize(new Vector3(-OakCenter.X, 0f, -OakCenter.Z));
+    /// <summary>Which way the hive faces: out from the trunk where it is bare of roots and dry underfoot (found in the model).</summary>
+    private static Vector3 HiveFacing => new(MathF.Cos(TerrainData.HiveAngle), 0f, MathF.Sin(TerrainData.HiveAngle));
+
+    /// <summary>How far from the oak's centre the trunk's surface is, that way.</summary>
+    private const float HiveSurface = TerrainData.HiveSurface;
 
     /// <summary>The hive itself, hanging on the trunk a little above a Bramblekin's reach.</summary>
-    public static Vector3 HivePosition => OakCenter + HiveFacing * (OakRadius + 0.35f) + new Vector3(0f, 2.6f, 0f);
+    public static Vector3 HivePosition => OakCenter + HiveFacing * (HiveSurface + 0.35f) + new Vector3(0f, 2.6f, 0f);
 
     /// <summary>Where a honey-taker stands to climb up to it.</summary>
-    public static Vector3 HiveFoot => Grounded(OakCenter + HiveFacing * (OakRadius + 0.9f));
+    public static Vector3 HiveFoot => Grounded(OakCenter + HiveFacing * (HiveSurface + 0.9f));
 
     /// <summary>The bees make honey from spring to autumn; roused swarms chase and sting.</summary>
     private void UpdateBeehive(float deltaTime)

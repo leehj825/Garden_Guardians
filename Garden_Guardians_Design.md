@@ -19,7 +19,7 @@ bottom.*
 
 ## Core Concept
 **Genre:** Emergent Individual-Agent Survival Simulation / Spectator Game
-**The Hook:** A 100m×100m procedurally hilly backyard is home to a
+**The Hook:** A 100m×100m hilly backyard (a 3D model with two ponds and a hollow oak) is home to a
 population of Bramblekin — tiny creatures who each have to find their own
 food, survive the local wildlife, and decide for themselves whom to trust.
 Nobody assigns them teams. A newcomer forages alone, then builds a tent

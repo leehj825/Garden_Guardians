@@ -3,7 +3,7 @@
 // -----------------------------------------------------------------------------
 //  Design (see Garden_Guardians_Roadmap.md/Garden_Guardians_Design.md):
 //    * A fixed isometric camera looking down at a 100 m x 100 m patch of
-//      procedurally-hilly terrain, with a mobile-friendly one-finger-pan/
+//      hilly terrain (a 3D model), with a mobile-friendly one-finger-pan/
 //      two-finger-pinch camera controller layered on top.
 //    * No factions, no top-down economy. The map is the terrain, a pond no
 //      walker may enter, and whatever loose things live on it: wild Berries,

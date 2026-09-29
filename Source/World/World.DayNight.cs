@@ -173,8 +173,8 @@ public sealed partial class World
     public int OwlsDrivenOff { get; private set; }
     public int OwlsKilled { get; private set; }
 
-    /// <summary>Where it roosts: high in the Giant Oak, on the garden side.</summary>
-    private static Vector3 OwlRoost => OakCenter + new Vector3(0f, 14f, OakRadius + 1f);
+    /// <summary>Where it roosts: high in the Giant Oak's hollow, on the garden side.</summary>
+    private static Vector3 OwlRoost => OakCenter + new Vector3(0f, TerrainData.OakTrunkHeight * 0.7f, OakRadius * 0.8f);
 
     private void MaybeSendOwl()
     {
