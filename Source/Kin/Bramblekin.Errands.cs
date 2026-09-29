@@ -163,6 +163,8 @@ public sealed partial class Bramblekin
         if (SackLoad <= 0)
             return;
         Vector3 back = Position + new Vector3(-facing.X * 0.2f, BodyHeight * 0.75f * BodyScale, -facing.Y * 0.2f);
-        Detail.Sphere(back, 0.1f + 0.02f * MathF.Min(SackLoad, 4), SackColor);
+        float width = 0.22f + 0.04f * MathF.Min(SackLoad, 4);
+        float yaw = MathF.Atan2(-facing.X, -facing.Y) * 180f / MathF.PI;
+        VillageModels.Draw(VillageItem.FoodSack, back - new Vector3(0f, VillageModels.HeightAt(VillageItem.FoodSack, width) * 0.6f, 0f), yaw, width, Color.White);
     }
 }

@@ -49,14 +49,9 @@ public sealed class AphidPen
     /// <summary>A ring of bent grass stems, and its aphids ambling about inside — worked out from the time, not the simulation's dice.</summary>
     public void Draw(float time, Color? clanColor)
     {
-        const int stems = 12;
-        for (int i = 0; i < stems; i++)
-        {
-            float angle = i * MathF.Tau / stems;
-            Vector3 foot = World.Grounded(Position + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * Radius);
-            Vector3 tip = foot + new Vector3(MathF.Cos(angle) * 0.08f, 0.45f, MathF.Sin(angle) * 0.08f);
-            Raylib.DrawCylinderEx(foot, tip, 0.03f, 0.01f, 4, i == 0 && clanColor is { } flag ? flag : StemColor);
-        }
+        VillageModels.Draw(VillageItem.AphidPen, World.Grounded(Position), 0f, Radius * 2.2f, Color.White);
+        if (clanColor is { } flag)
+            Raylib.DrawCube(World.Grounded(Position + new Vector3(Radius, 0f, 0f)) + new Vector3(0f, 0.6f, 0f), 0.16f, 0.1f, 0.02f, flag);
 
         for (int i = 0; i < Aphids; i++)
         {
