@@ -30,15 +30,18 @@ public static unsafe class VillageModels
         _ready = true;
     }
 
+    /// <summary>Every item is drawn this much larger than the width it is asked for.</summary>
+    public const float Scale = 1.35f;
+
     /// <summary>The height (m) <paramref name="item"/> stands when drawn <paramref name="width"/> wide.</summary>
-    public static float HeightAt(VillageItem item, float width) => VillageItems.Sizes[(int)item].Height * width / VillageItems.Sizes[(int)item].Width;
+    public static float HeightAt(VillageItem item, float width) => VillageItems.Sizes[(int)item].Height * width * Scale / VillageItems.Sizes[(int)item].Width;
 
     /// <summary>Draws <paramref name="item"/> standing on <paramref name="position"/>, <paramref name="width"/> wide, turned <paramref name="yawDegrees"/> about the vertical (0 faces +Z, 90 faces +X).</summary>
     public static void Draw(VillageItem item, Vector3 position, float yawDegrees, float width, Color tint)
     {
         EnsureLoaded();
         int i = (int)item;
-        float scale = width / VillageItems.Sizes[i].Width;
+        float scale = width * Scale / VillageItems.Sizes[i].Width;
         Raylib_cs.Material material = _model.Materials[_model.MeshMaterial[i]];
         material.Maps[(int)MaterialMapIndex.Albedo].Color = tint;
         Rlgl.PushMatrix();

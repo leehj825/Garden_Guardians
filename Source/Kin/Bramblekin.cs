@@ -52,7 +52,7 @@ public sealed partial class Bramblekin : ICombatant
     public const float BodyRadius = 0.25f;
 
     /// <summary>Total body height in meters.</summary>
-    public const float BodyHeight = 0.9f;
+    public const float BodyHeight = 1.25f;
 
     /// <summary>How far from the terrain edge targets are kept, in meters.</summary>
     public const float EdgeMargin = 0.5f;

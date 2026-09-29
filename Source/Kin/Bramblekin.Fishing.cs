@@ -93,7 +93,7 @@ public sealed partial class Bramblekin
     private void DrawFishingRod(Vector2 facing)
     {
         // The rod planted upright in front of the fisher, its line running out to the bob.
-        const float rodWidth = 0.7f;
+        const float rodWidth = 1.0f;
         var foot = Position + new Vector3(facing.X * 0.3f, 0f, facing.Y * 0.3f);
         VillageModels.Draw(VillageItem.FishingRod, foot, MathF.Atan2(facing.X, facing.Y) * 180f / MathF.PI, rodWidth, Color.White);
         var tip = foot + new Vector3(0f, VillageModels.HeightAt(VillageItem.FishingRod, rodWidth), 0f);

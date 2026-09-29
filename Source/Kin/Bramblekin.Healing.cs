@@ -101,6 +101,6 @@ public sealed partial class Bramblekin
     private void DrawPoultice(Vector2 facing)
     {
         var hand = Position + new Vector3(facing.X * 0.25f, BodyHeight * 0.55f, facing.Y * 0.25f);
-        VillageModels.Draw(VillageItem.Poultice, hand - new Vector3(0f, 0.08f, 0f), 0f, 0.2f, Color.White);
+        VillageModels.Draw(VillageItem.Poultice, hand - new Vector3(0f, 0.08f, 0f), 0f, 0.28f, Color.White);
     }
 }

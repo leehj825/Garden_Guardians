@@ -50,8 +50,8 @@ public enum SpiderState
 /// </summary>
 public sealed class WolfSpider : ICombatant
 {
-    /// <summary>The model's scale: its legs span about 1.9 m.</summary>
-    private const float ModelScale = 1.9f / PropModels.SpiderWidth;
+    /// <summary>The model's scale: its legs span about 2.5 m.</summary>
+    private const float ModelScale = 2.5f / PropModels.SpiderWidth;
 
     /// <summary>Collision radius (m) — twice a Bramblekin's.</summary>
     public const float BodyRadius = Bramblekin.BodyRadius * 2f;

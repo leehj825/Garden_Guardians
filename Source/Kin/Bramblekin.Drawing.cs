@@ -67,7 +67,8 @@ public sealed partial class Bramblekin
         Quaternion tilt = Quaternion.Identity;
         if (tiltAxis.LengthSquared() > 1e-6f)
         {
-            float tiltRadians = MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.UnitY, normal), -1f, 1f));
+            // A steep bank must not tip a kin over: lean with the slope, but only so far (and hardly at all while fishing).
+            float tiltRadians = MathF.Min(MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.UnitY, normal), -1f, 1f)), State == BramblekinState.Fishing ? 0.08f : 0.3f);
             tilt = Quaternion.CreateFromAxisAngle(Vector3.Normalize(tiltAxis), tiltRadians);
         }
 
@@ -162,7 +163,7 @@ public sealed partial class Bramblekin
     {
         var side = new Vector3(-facing.Y, 0f, facing.X);
         Vector3 at = Position + new Vector3(0f, BodyHeight * 0.5f, 0f) + side * 0.22f + new Vector3(facing.X, 0f, facing.Y) * 0.08f;
-        const float width = 0.36f;
+        const float width = 0.5f;
         float yaw = MathF.Atan2(side.X, side.Z) * 180f / MathF.PI;
         VillageModels.Draw(VillageItem.Shield, at - new Vector3(0f, VillageModels.HeightAt(VillageItem.Shield, width) / 2f, 0f), yaw, width, Color.White);
         if (group?.Color is { } clan)
