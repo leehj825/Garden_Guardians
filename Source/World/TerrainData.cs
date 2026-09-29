@@ -10,6 +10,12 @@ public static class TerrainData
     /// <summary>Metres between height samples — the same for every terrain.</summary>
     public const float Step = 0.5f;
 
+    /// <summary>Half the width (m) of the maps made so far: every terrain is 100 m across.</summary>
+    public const float DefaultHalf = 50f;
+
+    /// <summary>Terrain numbers from here up are grown from a seed (number - this) rather than baked in (see <see cref="TerrainGenerator"/>).</summary>
+    public const int ProceduralBase = 1_000_000;
+
     /// <summary>Half the map's width (m) and the height grid's samples per side, for the terrain in use.</summary>
     public static float Half { get; private set; } = 50f;
     public static int Size { get; private set; } = 201;
@@ -32,17 +38,21 @@ public static class TerrainData
     private static readonly int[] NewGardenTerrains = { 0 };
 
     /// <summary>A terrain number picked at random from those a new garden may have.</summary>
-    public static int RandomIndex(Random rng) => NewGardenTerrains[rng.Next(NewGardenTerrains.Length)];
+    public static int RandomIndex(Random rng) =>
+        GrowNewGardens ? ProceduralBase + 1 + rng.Next(899_999) : NewGardenTerrains[rng.Next(NewGardenTerrains.Length)];
+
+    /// <summary>True: a new garden grows a fresh terrain from a random seed. False: it gets one of <see cref="NewGardenTerrains"/> (the History screen's terrain button).</summary>
+    public static bool GrowNewGardens { get; set; }
 
     /// <summary>Makes terrain <paramref name="index"/> (out of range: the original) the one in use, re-measuring everything that depends on it.</summary>
     public static void Select(int index)
     {
-        if (index < 0 || index >= Count)
+        if (index < 0 || (index >= Count && index < ProceduralBase))
             index = 0;
         if (_current is not null && index == CurrentIndex)
             return;
         CurrentIndex = index;
-        _current = Makers[index]();
+        _current = index >= ProceduralBase ? TerrainGenerator.Generate(index - ProceduralBase) : Makers[index]();
         Half = _current.Half;
         Size = (int)MathF.Round(2f * Half / Step) + 1;
         World.OnTerrainChanged();

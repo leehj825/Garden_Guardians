@@ -38,12 +38,22 @@ public sealed class TerrainSet
     public required float[] OakCircles { get; init; }
 
     /// <summary>Ground height in centimetres, row by row (z from -50 m, then x from -50 m), little-endian shorts, base64.</summary>
-    public required string Encoded { get; init; }
+    public string Encoded { get; init; } = "";
+
+    /// <summary>The ground heights of a generated terrain (in place of <see cref="Encoded"/>).</summary>
+    public float[]? GeneratedHeights { get; init; }
+
+    /// <summary>The seed a generated terrain grew from, and the props on it (null for a baked terrain, whose props are part of its model).</summary>
+    public int Seed { get; init; }
+    public IReadOnlyList<PlacedProp>? Props { get; init; }
+
+    /// <summary>True for a terrain grown from a seed (see <see cref="TerrainGenerator"/>).</summary>
+    public bool IsProcedural => Props is not null;
 
     private float[]? _heights;
 
     /// <summary>The ground heights (world Y) on the grid, decoded on first use.</summary>
-    public float[] Heights => _heights ??= Decode();
+    public float[] Heights => _heights ??= GeneratedHeights ?? Decode();
 
     private float[] Decode()
     {
