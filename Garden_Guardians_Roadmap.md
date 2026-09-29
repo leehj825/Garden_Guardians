@@ -1060,6 +1060,13 @@ triangles. The four baked terrains stay as they are.
     `GARDEN_SCREENSHOT`/`GARDEN_CAMERA` take a picture without a person
     (`DebugShot`, works under Xvfb). Not yet: sand tile, more kit variety,
     a smaller kit (14 MB), the extra pass that pins props to steep ground.
+*   ✅ **Start menu:** the game opens on a menu: pick one of the three kept
+    gardens (year, Bramblekin and clans, terrain kind, when saved), then
+    Resume it, or start a new garden on the original terrain or a random
+    grown one (over a kept garden it asks for a second tap). The ground
+    texture of a grown terrain is baked on another thread (the ground shows
+    plain green for a moment), which stopped Android's "isn't responding"
+    prompt at garden start. The oak's dark shade circle is gone.
 *   ⬜ **Stage D:** bigger gardens: scale spawn amounts, the known-map grid
     and camera limits with the area; check speed on a phone.
 

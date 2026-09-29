@@ -33,6 +33,8 @@ public static partial class Game
             }
         }
 
+        string? auto = Environment.GetEnvironmentVariable("GARDEN_MENU_AUTO"); // A development aid: "resume", "original" or "random" picks after a few frames.
+        int frames = 0;
         int armed = 0; // 0 nothing, 1 new (fixed), 2 new (grown): tapped once over a kept garden.
         float armedFor = 0f;
         while (!Raylib.WindowShouldClose())
@@ -92,6 +94,9 @@ public static partial class Game
                     armedFor = MenuConfirmSeconds;
                 }
             }
+
+            if (auto is not null && ++frames > 5)
+                return new MenuChoice(chosen, Resume: auto == "resume", GrowTerrain: auto == "random");
 
             Raylib.BeginDrawing();
             Raylib.DrawRectangleGradientV(0, 0, width, height, new Color(150, 200, 235, 255), new Color(95, 150, 80, 255));
