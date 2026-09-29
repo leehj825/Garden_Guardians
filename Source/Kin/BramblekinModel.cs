@@ -58,6 +58,7 @@ internal static unsafe class BramblekinModel
     private const float ClipFps = 60f;
 
     private static Model _baseModel;
+    private static Model _lowDetailModel;
     private static readonly Dictionary<BramblekinClip, ModelAnimation> _clips = new();
     private static bool _ready;
 
@@ -72,6 +73,8 @@ internal static unsafe class BramblekinModel
             return;
 
         _baseModel = Raylib.LoadModel(AssetPath + "Walking.glb");
+        // Same skeleton, ~2,000 triangles and a 256px texture instead of ~50,000 and 2048px.
+        _lowDetailModel = Raylib.LoadModel(AssetPath + "Walking_lod.glb");
 
         _clips[BramblekinClip.Walking] = LoadClip("Walking.glb");
         _clips[BramblekinClip.Fishing] = LoadClip("FishingCast.glb");
@@ -151,6 +154,22 @@ internal static unsafe class BramblekinModel
         instance.BoneMatrices = (Matrix4x4*)NativeMemory.AllocZeroed((nuint)boneCount, (nuint)sizeof(Matrix4x4));
         instance.CurrentPose = (Transform*)NativeMemory.AllocZeroed((nuint)boneCount, (nuint)sizeof(Transform));
         return instance;
+    }
+
+    /// <summary>
+    /// <paramref name="instance"/> as the low-detail mesh: its own pose
+    /// (bone matrices), but the cheap mesh and small texture. Both meshes
+    /// share one skeleton, so the same pose drives either.
+    /// </summary>
+    public static Model LowDetail(in Model instance)
+    {
+        Model view = instance;
+        view.MeshCount = _lowDetailModel.MeshCount;
+        view.MaterialCount = _lowDetailModel.MaterialCount;
+        view.Meshes = _lowDetailModel.Meshes;
+        view.Materials = _lowDetailModel.Materials;
+        view.MeshMaterial = _lowDetailModel.MeshMaterial;
+        return view;
     }
 
     /// <summary>Frees a pose instance's own buffers (see <see cref="CreatePoseInstance"/>) — the shared mesh they point at is untouched.</summary>

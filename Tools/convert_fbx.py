@@ -2,6 +2,11 @@
 
     pip install bpy pygltflib
     python Tools/convert_fbx.py "Walking.fbx" Assets/Models/Bramblekin/Walking.glb
+    python Tools/convert_fbx.py "Walking.fbx" out.glb --texture 256 --decimate 0.04
+
+--texture N shrinks the texture to N x N (the source is 4096 x 4096, some
+64 MB of GPU memory). --decimate R keeps that fraction of the triangles
+(skin weights survive), for the low-detail model drawn when far away.
 
 Uses Blender's FBX importer (assimp's mishandles Mixamo pre-rotations and
 scrambles the limbs), bakes the armature's 0.01 scale and Z-up rotation
@@ -25,11 +30,24 @@ def all_fcurves(action):
                 yield from bag.fcurves
 
 
-def export_with_blender(src, dst):
+def export_with_blender(src, dst, texture=None, decimate=None):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.fbx(filepath=src, automatic_bone_orientation=False)
     armature = next(o for o in bpy.data.objects if o.type == "ARMATURE")
     scale = armature.scale[0]
+    if decimate:
+        mesh = next(o for o in bpy.data.objects if o.type == "MESH")
+        bpy.ops.object.select_all(action="DESELECT")
+        bpy.context.view_layer.objects.active = mesh
+        mod = mesh.modifiers.new("lod", "DECIMATE")
+        mod.ratio = decimate
+        while mesh.modifiers[0] != mod:  # decimate before the armature deform
+            bpy.ops.object.modifier_move_up(modifier=mod.name)
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+    if texture:
+        for image in bpy.data.images:
+            image.scale(texture, texture)
+            image.pack()
     bpy.ops.object.select_all(action="SELECT")
     bpy.context.view_layer.objects.active = armature
     bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
@@ -66,5 +84,10 @@ def pin_root_motion(path):
 
 
 if __name__ == "__main__":
-    export_with_blender(sys.argv[1], sys.argv[2])
-    pin_root_motion(sys.argv[2])
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("src"); ap.add_argument("dst")
+    ap.add_argument("--texture", type=int); ap.add_argument("--decimate", type=float)
+    a = ap.parse_args(sys.argv[sys.argv.index("--")+1:] if "--" in sys.argv else sys.argv[1:])
+    export_with_blender(a.src, a.dst, a.texture, a.decimate)
+    pin_root_motion(a.dst)

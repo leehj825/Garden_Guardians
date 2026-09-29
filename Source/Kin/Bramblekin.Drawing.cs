@@ -30,8 +30,18 @@ public sealed partial class Bramblekin
         // on the ground, drawn before the body itself — a flat disc laid on
         // the XZ plane at a tiny epsilon above the terrain to avoid
         // z-fighting with it.
+        // Level of detail: by how tall it looks on screen right now. Up close
+        // the full model; from a little way off the ~2,000-triangle one; and
+        // zoomed right out (hundreds of them in view) just a coarse peg in
+        // the same tint, with the small props skipped.
+        float onScreen = Detail.Pixels(Position, BodyHeight * BodyScale);
+        bool speck = onScreen < SpeckPixels;
+        bool fine = onScreen >= FinePixels;
+        bool props = onScreen >= PropPixels;
+
         var shadowCenter = new Vector3(Position.X, Position.Y + 0.02f, Position.Z);
-        Raylib.DrawCircle3D(shadowCenter, BodyRadius * 1.3f, new Vector3(1, 0, 0), 90f, new Color(0, 0, 0, 90));
+        if (!speck)
+            Raylib.DrawCircle3D(shadowCenter, BodyRadius * 1.3f, new Vector3(1, 0, 0), 90f, new Color(0, 0, 0, 90));
 
         // The skinned rig, tilted to the terrain's own surface normal and
         // posed to whatever clip its current State plays (see
@@ -40,7 +50,8 @@ public sealed partial class Bramblekin
         // replaced — it pivots flush on the ground at Position.
         EnsureAnimModel();
         BramblekinClip clip = BramblekinModel.ClipFor(State, _mover.IsMoving);
-        BramblekinModel.Play(ref _animModel, clip, clip == BramblekinClip.Idle ? 0f : _animTime);
+        if (!speck)
+            BramblekinModel.Play(ref _animModel, clip, clip == BramblekinClip.Idle ? 0f : _animTime);
 
         // The cylinder this replaced was rotationally symmetric, so it never
         // needed to face any particular way; the rig is not, so it must be
@@ -66,10 +77,20 @@ public sealed partial class Bramblekin
         Vector3 axis = sinHalf > 1e-6f ? new Vector3(rotation.X, rotation.Y, rotation.Z) / sinHalf : Vector3.UnitY;
 
         float scale = BodyScale * (BodyHeight / BramblekinModel.RawHeightUnits);
-        Raylib.DrawModelEx(_animModel, Position, axis, angleDegrees, new Vector3(scale), color);
+        if (speck)
+        {
+            // Grown so it never drops under a few pixels: zoomed right out, a
+            // true-size Bramblekin would vanish and the colony would be unfindable.
+            float grow = Math.Clamp(SpeckMinPixels / Math.Max(onScreen, 0.01f), 1f, 8f);
+            Color peg = LerpColor(color, new Color(110, 90, 40, 255), 0.6f);
+            Raylib.DrawCylinderEx(Position, Position + new Vector3(0, BodyHeight * BodyScale * grow, 0), BodyRadius * 0.7f * BodyScale * grow, BodyRadius * 0.5f * BodyScale * grow, 4, peg);
+        }
+        else
+            Raylib.DrawModelEx(fine ? _animModel : BramblekinModel.LowDetail(_animModel), Position, axis, angleDegrees, new Vector3(scale), color);
 
         var top = Position + new Vector3(0, (BodyHeight - BodyRadius) * scale, 0);
-        DrawSickness(top);
+        if (props)
+            DrawSickness(top);
 
         if (group is not null && group.Leader == this)
         {
@@ -80,25 +101,28 @@ public sealed partial class Bramblekin
             Raylib.DrawCube(flagCenter, 0.2f, 0.14f, 0.02f, group.Color);
         }
 
-        if (State is BramblekinState.Fighting or BramblekinState.Dueling or BramblekinState.Guarding or BramblekinState.Raiding &&
-            !IsYoung && Knows(Craft.Shields))
-            DrawShield(facing, group);
-
-        if (State is BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or BramblekinState.Dueling)
+        if (props)
         {
-            Color thornColor = State == BramblekinState.Attacking ? BloodyThornColor : ThornColor;
-            var grip = Position + new Vector3(0, BodyHeight * 0.6f, 0);
-            var tip = grip + new Vector3(facing.X, 0.55f, facing.Y) * 0.6f;
-            Raylib.DrawLine3D(grip, tip, thornColor);
-            Detail.Sphere(tip, 0.025f, thornColor);
-        }
+            if (State is BramblekinState.Fighting or BramblekinState.Dueling or BramblekinState.Guarding or BramblekinState.Raiding &&
+                !IsYoung && Knows(Craft.Shields))
+                DrawShield(facing, group);
 
-        if (State == BramblekinState.Fishing && _fishingSpot is { } spot && GroundMover.HorizontalDistanceSquared(Position, spot) < 1f)
-            DrawFishingRod(facing);
-        if (State == BramblekinState.Healing)
-            DrawPoultice(facing);
-        if (State == BramblekinState.Sleeping)
-            DrawSleep(world);
+            if (State is BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or BramblekinState.Dueling)
+            {
+                Color thornColor = State == BramblekinState.Attacking ? BloodyThornColor : ThornColor;
+                var grip = Position + new Vector3(0, BodyHeight * 0.6f, 0);
+                var tip = grip + new Vector3(facing.X, 0.55f, facing.Y) * 0.6f;
+                Raylib.DrawLine3D(grip, tip, thornColor);
+                Detail.Sphere(tip, 0.025f, thornColor);
+            }
+
+            if (State == BramblekinState.Fishing && _fishingSpot is { } spot && GroundMover.HorizontalDistanceSquared(Position, spot) < 1f)
+                DrawFishingRod(facing);
+            if (State == BramblekinState.Healing)
+                DrawPoultice(facing);
+            if (State == BramblekinState.Sleeping)
+                DrawSleep(world);
+        }
 
         _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
         DrawSack(facing);
@@ -108,6 +132,18 @@ public sealed partial class Bramblekin
         if (_carryingWater)
             DrawWaterCup(facing);
     }
+
+    /// <summary>Below this many pixels tall on screen, a Bramblekin is drawn as a bare peg.</summary>
+    private const float SpeckPixels = 14f;
+
+    /// <summary>The least height, in pixels, a peg is drawn at.</summary>
+    private const float SpeckMinPixels = 7f;
+
+    /// <summary>From this many pixels tall, the full-detail model; below it the low-poly one.</summary>
+    private const float FinePixels = 110f;
+
+    /// <summary>From this many pixels tall, the small props (thorn, shield, rod, poultice…) are drawn.</summary>
+    private const float PropPixels = 40f;
 
     private static Color LerpColor(Color a, Color b, float t)
     {

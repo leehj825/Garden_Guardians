@@ -43,11 +43,30 @@ public sealed class Well
     /// <summary>Stones laid so far.</summary>
     public int StonesLaid { get; set; }
 
+    /// <summary>Under this many pixels across, a well is drawn as the coarse stand-in (see <see cref="Draw"/>).</summary>
+    private const float FarPixels = 14f;
+
+    /// <summary>The stand-in is grown to at least this many pixels across.</summary>
+    private const float FarMinPixels = 10f;
+
     public bool IsDug => StonesLaid >= StonesNeeded;
 
     /// <summary>The ring of stones, rising course by course as they're laid (only as many as have been carried in); dug, dark water inside, a frame over it and a bucket on a rope. While it's being dug, a dark shaft and a heap of earth beside it.</summary>
     public void Draw(Color? clanColor)
     {
+        // Zoomed out, a metre-wide well is a couple of pixels and disappears:
+        // stand in a chunkier, coarser one that stays visible (a dark shaft
+        // mound while it's dug, blue water in a stone ring once it's done).
+        float onScreen = Detail.Pixels(Position, Radius * 2f);
+        if (onScreen < FarPixels)
+        {
+            float grow = Math.Clamp(FarMinPixels / Math.Max(onScreen, 0.01f), 1f, 10f);
+            float r = Radius * grow;
+            Raylib.DrawCylinder(Position, r, r, 0.35f * grow, 6, StoneColor);
+            Raylib.DrawCylinder(Position + new Vector3(0f, 0.36f * grow, 0f), r * 0.65f, r * 0.65f, 0.01f * grow, 6, IsDug ? WaterColor : HoleColor);
+            return;
+        }
+
         const int perCourse = 10, courses = 3;
         int shown = IsDug ? perCourse * courses : perCourse * courses * StonesLaid / Math.Max(1, StonesNeeded);
         for (int course = 0; course < courses; course++)
