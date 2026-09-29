@@ -6,7 +6,7 @@ namespace GardenGuardians;
 public static partial class Game
 {
     /// <summary>What the start menu decided: which kept garden, and whether to carry on with it or begin a new one (with the fixed or a grown terrain).</summary>
-    private sealed record MenuChoice(int Slot, bool Resume, bool GrowTerrain);
+    private sealed record MenuChoice(int Slot, bool Resume, bool GrowTerrain, int Size);
 
     /// <summary>A second tap within this many seconds confirms starting a new garden over a kept one.</summary>
     private const float MenuConfirmSeconds = 4f;
@@ -35,6 +35,7 @@ public static partial class Game
 
         string? auto = Environment.GetEnvironmentVariable("GARDEN_MENU_AUTO"); // A development aid: "resume", "original" or "random" picks after a few frames.
         int frames = 0;
+        int size = Math.Clamp((int)Preferences.Get(MapSizeSetting, MapSize.Small), 0, TerrainData.MapSizes.Length - 1);
         int armed = 0; // 0 nothing, 1 new (fixed), 2 new (grown): tapped once over a kept garden.
         float armedFor = 0f;
         while (!Raylib.WindowShouldClose())
@@ -59,6 +60,14 @@ public static partial class Game
             int detailY = y;
             y += (subtitleSize + gap / 2) * 2 + gap * 2;
 
+            int sizeCaptionY = y;
+            y += subtitleSize + gap / 2;
+            var sizeChips = new UiButton[TerrainData.MapSizes.Length];
+            int sizeWidth = (wide - gap * (sizeChips.Length - 1)) / sizeChips.Length;
+            for (int k = 0; k < sizeChips.Length; k++)
+                sizeChips[k] = new UiButton(new Rectangle(left + k * (sizeWidth + gap), y, sizeWidth, buttonHeight));
+            y += buttonHeight + gap * 2;
+
             var resume = new UiButton(new Rectangle(left, y, wide, buttonHeight));
             y += buttonHeight + gap;
             var newFixed = new UiButton(new Rectangle(left, y, wide, buttonHeight));
@@ -82,21 +91,30 @@ public static partial class Game
                         armed = 0;
                     }
                 }
+                for (int k = 0; k < sizeChips.Length; k++)
+                {
+                    if (sizeChips[k].Contains(mouse) && k != size)
+                    {
+                        size = k;
+                        armed = 0;
+                        Preferences.Set(MapSizeSetting, (MapSize)k);
+                    }
+                }
                 if (kept is not null && resume.Contains(mouse))
-                    return new MenuChoice(chosen, Resume: true, GrowTerrain: false);
+                    return new MenuChoice(chosen, Resume: true, GrowTerrain: false, size);
                 foreach ((UiButton button, int which) in new[] { (newFixed, 1), (newGrown, 2) })
                 {
                     if (!button.Contains(mouse))
                         continue;
                     if (kept is null || armed == which)
-                        return new MenuChoice(chosen, Resume: false, GrowTerrain: which == 2);
+                        return new MenuChoice(chosen, Resume: false, GrowTerrain: which == 2, size);
                     armed = which;
                     armedFor = MenuConfirmSeconds;
                 }
             }
 
             if (auto is not null && ++frames > 5)
-                return new MenuChoice(chosen, Resume: auto == "resume", GrowTerrain: auto == "random");
+                return new MenuChoice(chosen, Resume: auto == "resume", GrowTerrain: auto == "random", size);
 
             Raylib.BeginDrawing();
             Raylib.DrawRectangleGradientV(0, 0, width, height, new Color(150, 200, 235, 255), new Color(95, 150, 80, 255));
@@ -108,6 +126,9 @@ public static partial class Game
             Color ink = new(40, 55, 30, 255);
             DrawCentred(Fit(first, subtitleSize, wide), width / 2, detailY, subtitleSize, ink);
             DrawCentred(Fit(second, subtitleSize, wide), width / 2, detailY + subtitleSize + gap / 2, subtitleSize, ink);
+            DrawCentred("Size of a random terrain", width / 2, sizeCaptionY, subtitleSize, ink);
+            for (int k = 0; k < sizeChips.Length; k++)
+                sizeChips[k].Draw(TerrainData.MapSizes[k].Name, highlighted: k == size);
             resume.Draw(kept is null ? "Resume" : $"Resume garden {chosen}", highlighted: kept is not null, disabled: kept is null);
             string erase = kept is null ? "" : $"Erase garden {chosen}? Tap again";
             newFixed.Draw(armed == 1 ? erase : "New garden: original terrain", highlighted: armed == 1);
@@ -121,4 +142,40 @@ public static partial class Game
 
     private static void DrawCentred(string text, int centreX, int y, int fontSize, Color colour) =>
         Raylib.DrawText(text, centreX - Raylib.MeasureText(text, fontSize) / 2, y, fontSize, colour);
+
+    /// <summary>
+    /// Makes a world (growing a big terrain, measuring its water and settling its people takes a while) on another thread, while this one keeps
+    /// the window alive and shows a loading screen with a progress bar (see <see cref="Loading"/>).
+    /// </summary>
+    private static World MakeWorld(Func<World> make)
+    {
+        Loading.Reset();
+        Task<World> task = Task.Run(make);
+        while (!task.IsCompleted)
+        {
+            DrawLoadingFrame();
+            if (Environment.GetEnvironmentVariable("GARDEN_MENU") == "3" && DebugShot.Finished())
+                Environment.Exit(0); // A development picture of the loading screen.
+        }
+        return task.GetAwaiter().GetResult();
+    }
+
+    private static void DrawLoadingFrame()
+    {
+        float uiScale = UiScale;
+        int width = Raylib.GetScreenWidth(), height = Raylib.GetScreenHeight();
+        int titleSize = ScaledFontSize(2.6f), textSize = ScaledFontSize(0.9f);
+        Color ink = new(40, 55, 30, 255);
+        Raylib.BeginDrawing();
+        Raylib.DrawRectangleGradientV(0, 0, width, height, new Color(150, 200, 235, 255), new Color(95, 150, 80, 255));
+        DrawCentred("Garden Guardians", width / 2, (int)(height * 0.08f), titleSize, ink);
+        int barWidth = Math.Min((int)(width * 0.7f), (int)(900 * uiScale)), barHeight = (int)(44 * uiScale);
+        int barX = (width - barWidth) / 2, barY = (int)(height * 0.45f);
+        DrawCentred(Loading.Text + "...", width / 2, barY - textSize - (int)(24 * uiScale), textSize, ink);
+        Raylib.DrawRectangle(barX, barY, barWidth, barHeight, new Color(235, 235, 225, 255));
+        Raylib.DrawRectangle(barX + 4, barY + 4, (int)((barWidth - 8) * Loading.Fraction), barHeight - 8, new Color(230, 190, 60, 255));
+        Raylib.DrawRectangleLines(barX, barY, barWidth, barHeight, ink);
+        DrawCentred($"{(int)(Loading.Fraction * 100f)}%", width / 2, barY + barHeight + (int)(20 * uiScale), textSize, ink);
+        Raylib.EndDrawing();
+    }
 }

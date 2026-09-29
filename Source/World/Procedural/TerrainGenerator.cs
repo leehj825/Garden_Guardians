@@ -46,22 +46,24 @@ public static class TerrainGenerator
         return t * t * (3f - 2f * t);
     }
 
-    /// <summary>Grows the terrain for <paramref name="seed"/>.</summary>
-    public static TerrainSet Generate(int seed)
+    /// <summary>Grows the terrain for <paramref name="seed"/> at map size <paramref name="sizeNumber"/> (see <see cref="TerrainData.MapSizes"/>).</summary>
+    public static TerrainSet Generate(int seed, int sizeNumber = 0)
     {
         var rng = new SeededRandom(seed);
-        float half = TerrainData.DefaultHalf;
+        float half = TerrainData.HalfOfSize(sizeNumber);
         float step = TerrainData.Step;
         int size = (int)MathF.Round(2f * half / step) + 1;
         float X(int i) => -half + i * step;
 
         // Gentle rolling ground: broad swells a few metres high, a little grain on top.
+        Loading.Report(0.02f, "Growing the ground");
         float[] ground = Noise(rng, size, new (float Sigma, float Amplitude)[] { (24f, 0.55f), (10f, 0.30f), (4f, 0.08f) });
 
         // Ponds.
         var ponds = new List<Pond>();
         float roll = (float)rng.NextDouble();
         int wanted = roll < 0.3f ? 1 : roll < 0.9f ? 2 : 3;
+        wanted += (int)MathF.Round(half * half / 2500f - 1f); // A bigger garden has room for more water: a medium one a pond more, a large one three.
         for (int tries = 0; tries < 200 && ponds.Count < wanted; tries++)
         {
             var pond = new Pond { R = rng.Uniform(5.5f, 12f), Stretch = rng.Uniform(1f, 1.9f), Angle = rng.Uniform(0f, MathF.PI) };
@@ -80,6 +82,7 @@ public static class TerrainGenerator
                 ponds.Add(pond);
         }
 
+        Loading.Report(0.45f, "Digging the ponds");
         // Each pond is a bowl below the water level, its banks easing back up to the ground; the land is never wet.
         float floor = WaterLevel + Guard;
         var pondDistance = new float[size * size]; // The smallest normalised distance to any pond: below 1 is water.
@@ -104,6 +107,7 @@ public static class TerrainGenerator
             }
         }
 
+        Loading.Report(0.62f, "Raising the oak");
         var placed = new List<PlacedProp>();
         PlacedProp? oak = PlaceOak(rng, ground, size, half, step, ponds);
         if (oak is not null)
@@ -111,10 +115,12 @@ public static class TerrainGenerator
             LevelUnder(ground, size, half, step, oak);
             placed.Add(oak);
         }
+        Loading.Report(0.70f, "Planting reeds and setting boulders");
         var context = new PlaceContext(rng, ground, pondDistance, size, half, step, placed);
         ScatterProps(context, ponds);
 
-        (float springX, float springZ) = PickSpring(ground, size, half, step, oak);
+        (float springX, float springZ) = TerrainData.CreekEnabled ? PickSpring(ground, size, half, step, oak) : (0f, 0f);
+        Loading.Report(0.76f, "Measuring the water");
 
         // What the game reads: the oak's trunk and hive, and the circles walkers keep out of.
         var oakCircles = new List<float>();
@@ -150,8 +156,10 @@ public static class TerrainGenerator
     private static float[] Noise(SeededRandom rng, int size, (float Sigma, float Amplitude)[] octaves)
     {
         var total = new float[size * size];
+        int done = 0;
         foreach (var (sigma, amplitude) in octaves)
         {
+            Loading.Report(0.02f + 0.40f * done++ / octaves.Length, "Growing the ground");
             var layer = new float[size * size];
             for (int i = 0; i < layer.Length; i++)
                 layer[i] = rng.Normal();

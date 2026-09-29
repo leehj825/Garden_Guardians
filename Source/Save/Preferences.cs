@@ -7,6 +7,14 @@ public enum TerrainMode
     Random,
 }
 
+/// <summary>How big a grown terrain is: 100, 150 or 200 m across (see <see cref="TerrainData.MapSizes"/>).</summary>
+public enum MapSize
+{
+    Small,
+    Medium,
+    Large,
+}
+
 /// <summary>Which of the kept gardens (see <see cref="SaveSystem.Slots"/>) is being played.</summary>
 public enum GardenSlot
 {

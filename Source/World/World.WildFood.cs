@@ -10,12 +10,12 @@ public sealed partial class World
     private const float CressSpawnInterval = 7f;
 
     /// <summary>…until this many sprigs (at its season's pace) lie there.</summary>
-    private const int MaxWildCress = 5;
+    private static int MaxWildCress => Scaled(5);
 
     /// <summary>A mushroom springs up in the shade every this many seconds (at its season's pace, twice as fast after rain)…</summary>
     private const float MushroomSpawnInterval = 9f;
 
-    private const int MaxWildMushrooms = 6;
+    private static int MaxWildMushrooms => Scaled(6);
 
     /// <summary>Rain brings the mushrooms up for this long after a storm.</summary>
     private const float AfterRainSeconds = 60f;
@@ -23,7 +23,7 @@ public sealed partial class World
     /// <summary>A seed head sheds on the open lawn every this many seconds (at its season's pace)…</summary>
     private const float SeedSpawnInterval = 8f;
 
-    private const int MaxWildSeeds = 6;
+    private static int MaxWildSeeds => Scaled(6);
 
     private float _cressTimer, _mushroomTimer, _seedTimer, _sinceRain = AfterRainSeconds;
 

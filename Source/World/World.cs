@@ -18,6 +18,12 @@ namespace GardenGuardians;
 /// </summary>
 public sealed partial class World
 {
+    /// <summary>How many times the area of the original 100 m garden this garden covers: 1 for a small map, 2.25 for a medium one, 4 for a large one.</summary>
+    public static float MapArea => TerrainData.Half * TerrainData.Half / 2500f;
+
+    /// <summary>A count that suits the original 100 m garden, made to suit this one's area.</summary>
+    public static int Scaled(int count) => Math.Max(1, (int)MathF.Round(count * MapArea));
+
     /// <summary>
     /// The Terrain Height Function: the ground's elevation at any (x, z),
     /// bilinearly sampled from the height grid taken from the terrain model
@@ -80,16 +86,16 @@ public sealed partial class World
     // --- Food ------------------------------------------------------------------
 
     /// <summary>Object Pooling: fixed number of Food slots, constructed once and reused — see <see cref="ActivateFood"/>.</summary>
-    private const int FoodPoolCapacity = 400;
+    private static int FoodPoolCapacity => Scaled(400);
 
     /// <summary>Berries already on the ground when the world is created, so the first arrivals have something to find.</summary>
-    private const int InitialBerries = 45;
+    private static int InitialBerries => Scaled(45);
 
     /// <summary>Passive Foraging: seconds between wild Berry spawns in a normal season — divided by the season's abundance (see <see cref="AbundanceOf"/>).</summary>
-    public const float BerrySpawnInterval = 0.8f;
+    public static float BerrySpawnInterval => 0.8f / MapArea;
 
     /// <summary>Wild Berries stop spawning once this many are on the ground in a normal season — scaled by the season's abundance.</summary>
-    public const int MaxBerries = 75;
+    public static int MaxBerries => Scaled(75);
 
     /// <summary>
     /// Berry Patches: how many fixed spots (preferably Dandelions) most
@@ -97,7 +103,7 @@ public sealed partial class World
     /// converge on the same places — which is where encounters, alliances
     /// and robberies happen.
     /// </summary>
-    private const int BerryPatchCount = 8;
+    private static int BerryPatchCount => Scaled(8);
 
     /// <summary>How far (m) from its patch's anchor a patch Berry may grow.</summary>
     private const float BerryPatchRadius = 4f;
@@ -124,14 +130,14 @@ public sealed partial class World
 
     private const float SplatDuration = 6f;
 
-    public const int MaxHornetsOnMap = 12;
+    public static int MaxHornetsOnMap => Scaled(12);
 
     public const int HornetSwarmMinSize = 3, HornetSwarmMaxSize = 5;
 
     /// <summary>Seconds between checks that top the Hornet population back up toward <see cref="MaxHornetsOnMap"/>, one whole swarm at a time.</summary>
     public const float HornetSpawnInterval = 10f;
 
-    public const int MaxGrubsOnMap = 4;
+    public static int MaxGrubsOnMap => Scaled(4);
 
     /// <summary>Seconds between checks that top the Grub population back up toward <see cref="MaxGrubsOnMap"/>.</summary>
     public const float GrubSpawnInterval = 20f;
@@ -143,7 +149,7 @@ public sealed partial class World
     /// many living Bramblekin. In practice the Food supply keeps the
     /// population well below it.
     /// </summary>
-    public const int MaxPopulation = 150;
+    public static int MaxPopulation => Scaled(150);
 
     /// <summary>Wandering Arrivals only come while fewer than this many Bramblekin are alive — once the world is busy, growth has to come from births.</summary>
     public const int ArrivalPopulationLimit = 30;
@@ -183,7 +189,7 @@ public sealed partial class World
     public const float FloatingTextDuration = 1.5f;
 
     /// <summary>Oversized Garden Props: how many static decorations to scatter across the map.</summary>
-    private const int GardenPropCount = 40;
+    private static int GardenPropCount => Scaled(40);
 
     private static readonly Color FriendlyTextColor = new(60, 170, 80, 255);
     private static readonly Color HostileTextColor = new(210, 50, 40, 255);
@@ -315,6 +321,8 @@ public sealed partial class World
         // Every starting Bramblekin is solitary, with its own freshly
         // rolled Personality (see the Bramblekin constructor) — groups only
         // ever form later, out of encounters.
+        Loading.Report(0.94f, "Settling the Bramblekin");
+        initialKinCount = Scaled(initialKinCount); // A bigger garden starts with more of them.
         for (int i = 0; i < initialKinCount; i++)
             Colony.Add(Newcomer(RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin)));
         foreach (Bramblekin kin in Colony)

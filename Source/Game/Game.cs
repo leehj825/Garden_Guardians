@@ -284,6 +284,7 @@ public static partial class Game
         World.Overlays = Preferences.Get(OverlaySetting, MapOverlays.All);
         _gardenSlot = (int)Preferences.Get(GardenSetting, GardenSlot.Garden1);
         TerrainData.GrowNewGardens = Preferences.Get(TerrainSetting, TerrainMode.Fixed) == TerrainMode.Random;
+        TerrainData.NewGardenSize = (int)Preferences.Get(MapSizeSetting, MapSize.Small);
         World world;
         if (SkipMenu)
             world = LoadOrCreateWorld(GardenPath);
@@ -302,7 +303,8 @@ public static partial class Game
                 TerrainData.GrowNewGardens = choice.GrowTerrain;
                 Preferences.Set(TerrainSetting, choice.GrowTerrain ? TerrainMode.Random : TerrainMode.Fixed);
             }
-            world = choice.Resume ? LoadOrCreateWorld(GardenPath) : StartNewGarden(GardenPath);
+            TerrainData.NewGardenSize = choice.Size;
+            world = MakeWorld(() => choice.Resume ? LoadOrCreateWorld(GardenPath) : StartNewGarden(GardenPath));
         }
         camera = OverviewCamera(world.Terrain.Size);
         var input = new WorldTapInput();
@@ -381,7 +383,7 @@ public static partial class Game
             {
                 if (ConfirmNewGarden())
                 {
-                    world = StartNewGarden(GardenPath);
+                    world = MakeWorld(() => StartNewGarden(GardenPath));
                     ClearBanners();
                     overview = OverviewCamera(world.Terrain.Size);
                     camera = overview;
@@ -394,7 +396,8 @@ public static partial class Game
                 ToggleTerrainMode();
             else if (mousePressed && gardenSlotButton is not null && gardenSlotButton.Contains(mousePosition))
             {
-                world = SwitchGarden(world);
+                World leaving = world;
+                world = MakeWorld(() => SwitchGarden(leaving));
                 ClearBanners();
                 overview = OverviewCamera(world.Terrain.Size);
                 camera = overview;

@@ -376,7 +376,7 @@ public sealed partial class World
     private const float PioneerSpacing = 25f;
 
     /// <summary>…but no further than this from where they set out.</summary>
-    private const float PioneerMaxTrek = 55f;
+    private static float PioneerMaxTrek => 55f * MathF.Sqrt(MapArea);
 
     /// <summary>They mark out their site within this many meters of the spot they picked.</summary>
     private const float PioneerSiteRadius = 10f;

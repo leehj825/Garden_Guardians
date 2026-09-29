@@ -16,6 +16,7 @@ public static partial class Game
     /// <summary>Preferences key for the garden being played (see <see cref="GardenSlot"/>).</summary>
     private const string GardenSetting = "garden";
     private const string TerrainSetting = "terrain";
+    private const string MapSizeSetting = "mapsize";
 
     /// <summary>Which kept garden is open, 1 to <see cref="SaveSystem.Slots"/>.</summary>
     private static int _gardenSlot = 1;

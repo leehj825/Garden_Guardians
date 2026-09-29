@@ -13,8 +13,28 @@ public static class TerrainData
     /// <summary>Half the width (m) of the maps made so far: every terrain is 100 m across.</summary>
     public const float DefaultHalf = 50f;
 
-    /// <summary>Terrain numbers from here up are grown from a seed (number - this) rather than baked in (see <see cref="TerrainGenerator"/>).</summary>
+    /// <summary>
+    /// Terrain numbers from here up are grown from a seed rather than baked in (see <see cref="TerrainGenerator"/>): the number is
+    /// this + the seed + <see cref="SizeStride"/> x the size (0 small, 1 medium, 2 large — see <see cref="HalfOfSize"/>).
+    /// </summary>
     public const int ProceduralBase = 1_000_000;
+
+    /// <summary>What one step of size adds to a grown terrain's number (a seed is always below this).</summary>
+    public const int SizeStride = 2_000_000;
+
+    /// <summary>Whether the garden has a creek at all. Off: no brook is traced, drawn, drunk from or built round — the ponds are the only water.</summary>
+    public static readonly bool CreekEnabled = false;
+
+    /// <summary>The map sizes a grown terrain can have, by size number: half the width in metres, and a name.</summary>
+    public static readonly (float Half, string Name)[] MapSizes = { (50f, "Small 100 m"), (75f, "Medium 150 m"), (100f, "Large 200 m") };
+
+    public static float HalfOfSize(int size) => MapSizes[Math.Clamp(size, 0, MapSizes.Length - 1)].Half;
+
+    /// <summary>The number of the terrain grown from <paramref name="seed"/> at map size <paramref name="size"/>.</summary>
+    public static int ProceduralIndex(int seed, int size) => ProceduralBase + seed + SizeStride * Math.Clamp(size, 0, MapSizes.Length - 1);
+
+    /// <summary>The map size a new garden's grown terrain gets (an index into <see cref="MapSizes"/>).</summary>
+    public static int NewGardenSize { get; set; }
 
     /// <summary>Half the map's width (m) and the height grid's samples per side, for the terrain in use.</summary>
     public static float Half { get; private set; } = 50f;
@@ -39,7 +59,7 @@ public static class TerrainData
 
     /// <summary>A terrain number picked at random from those a new garden may have.</summary>
     public static int RandomIndex(Random rng) =>
-        GrowNewGardens ? ProceduralBase + 1 + rng.Next(899_999) : NewGardenTerrains[rng.Next(NewGardenTerrains.Length)];
+        GrowNewGardens ? ProceduralIndex(1 + rng.Next(899_999), NewGardenSize) : NewGardenTerrains[rng.Next(NewGardenTerrains.Length)];
 
     /// <summary>True: a new garden grows a fresh terrain from a random seed. False: it gets one of <see cref="NewGardenTerrains"/> (the History screen's terrain button).</summary>
     public static bool GrowNewGardens { get; set; }
@@ -52,7 +72,7 @@ public static class TerrainData
         if (_current is not null && index == CurrentIndex)
             return;
         CurrentIndex = index;
-        _current = index >= ProceduralBase ? TerrainGenerator.Generate(index - ProceduralBase) : Makers[index]();
+        _current = index >= ProceduralBase ? TerrainGenerator.Generate((index - ProceduralBase) % SizeStride, (index - ProceduralBase) / SizeStride) : Makers[index]();
         Half = _current.Half;
         Size = (int)MathF.Round(2f * Half / Step) + 1;
         World.OnTerrainChanged();

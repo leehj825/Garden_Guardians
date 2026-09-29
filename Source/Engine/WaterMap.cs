@@ -33,7 +33,7 @@ public static class WaterMap
     private static int WetCells = (int)(2 * 50f / WetCellSize);
 
     /// <summary>A route search gives up after looking at this many cells (the garden has 10,000).</summary>
-    private const int MaxSearch = 6000;
+    private static int MaxSearch => (int)(Cells * Cells * 0.6f);
 
     /// <summary>How many water levels are worked out: 0 is the pond as usual, the last its lowest in a drought.</summary>
     public const int Levels = 5;
@@ -63,15 +63,13 @@ public static class WaterMap
     /// <summary>Where the brook comes to rest and pools.</summary>
     public static Vector2 CreekPool => Creek.Length > 0 ? Creek[^1] : new Vector2(1e6f, 1e6f);
 
-    /// <summary>Whether the garden has a creek at all. Off: no brook is traced, drawn, drunk from or built round — the ponds are the only water.</summary>
-    public static readonly bool CreekEnabled = false;
 
     /// <summary>Points along the creek's banks (and round its pool) — somewhere to drink, and to grow cress.</summary>
     public static Vector3[] CreekBanks { get; private set; } = Array.Empty<Vector3>();
 
     private static Vector2[] TraceCreek()
     {
-        if (!CreekEnabled)
+        if (!TerrainData.CreekEnabled)
             return Array.Empty<Vector2>();
         var course = new List<Vector2> { Spring };
         Vector2 at = Spring;
@@ -168,6 +166,7 @@ public static class WaterMap
         Cost = new float[Cells * Cells];
         CameFrom = new int[Cells * Cells];
         Stamp = new int[Cells * Cells];
+        Loading.Report(0.78f, "Measuring the water");
         Creek = TraceCreek();
         CreekBounds = Creek.Length == 0
             ? (1e6f, -1e6f, 1e6f, -1e6f) // Nowhere: no point is near a creek that isn't there.
@@ -177,10 +176,13 @@ public static class WaterMap
         LevelHeights = Enumerable.Range(0, Levels).Select(i => World.PondLevel - DroughtDrop * i / (Levels - 1)).ToArray();
         Ground = BuildGround();
         Oak = BuildOak();
+        Loading.Report(0.82f, "Measuring the water");
         Wet = Enumerable.Range(0, Levels).Select(BuildWet).ToArray();
         WaterBlocked = Enumerable.Range(0, Levels).Select(BuildWaterBlocked).ToArray();
         Blocked = Enumerable.Range(0, Levels).Select(l => WaterBlocked[l].Select((water, i) => water || Oak[i]).ToArray()).ToArray();
+        Loading.Report(0.87f, "Finding the shores");
         ShoreDistance = Enumerable.Range(0, Levels).Select(BuildShoreDistance).ToArray();
+        Loading.Report(0.92f, "Finding the shores");
         Shores = Enumerable.Range(0, Levels).Select(BuildShore).ToArray();
         WetCount = Wet.Select(w => w.Count(c => c)).ToArray();
         Level = 0;

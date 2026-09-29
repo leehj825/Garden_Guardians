@@ -262,7 +262,7 @@ public sealed partial class World
     private static readonly Color FireflyColor = new(210, 255, 120, 255);
 
     /// <summary>Fireflies over the grass on a warm night.</summary>
-    private const int FireflyCount = 60;
+    private static int FireflyCount => Scaled(60);
 
     private void DrawOwl(Camera3D camera)
     {

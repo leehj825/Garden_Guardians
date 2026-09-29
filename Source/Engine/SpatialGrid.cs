@@ -23,11 +23,14 @@ public sealed class SpatialGrid<T>
 {
     public const float ChunkSize = 10f;
 
-    /// <summary>Chunks -<see cref="Half"/> to <see cref="Half"/>-1 on each axis (±60m — the whole garden and some) live in a flat array; anything further out in a dictionary.</summary>
-    private const int Half = 6;
-    private const int Span = Half * 2;
+    /// <summary>Chunks -<see cref="Half"/> to <see cref="Half"/>-1 on each axis (the whole garden and a chunk more) live in a flat array; anything further out in a dictionary.</summary>
+    private readonly int Half = (int)MathF.Ceiling(TerrainData.Half / ChunkSize) + 1;
 
-    private readonly List<T>?[] _chunks = new List<T>?[Span * Span];
+    private int Span => Half * 2;
+
+    private readonly List<T>?[] _chunks;
+
+    public SpatialGrid() => _chunks = new List<T>?[Half * 2 * Half * 2];
     private readonly Dictionary<(int X, int Z), List<T>> _outside = new();
 
     private static (int X, int Z) ChunkOf(Vector3 position) =>

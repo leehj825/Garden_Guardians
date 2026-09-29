@@ -13,10 +13,11 @@ public static class TerrainCheck
         float minWet = float.MaxValue, maxWet = 0f;
         int minProps = int.MaxValue, maxProps = 0;
         var pondCounts = new int[6];
-        for (int seed = 1; seed <= count; seed++)
+        for (int size = 0; size < TerrainData.MapSizes.Length; size++)
+        for (int seed = 1; seed <= (size == 0 ? count : Math.Max(5, count / 10)); seed++)
         {
             var problems = new List<string>();
-            TerrainData.Select(TerrainData.ProceduralBase + seed);
+            TerrainData.Select(TerrainData.ProceduralIndex(seed, size));
             TerrainSet set = TerrainData.Current;
             float half = set.Half, level = set.PondLevel;
             float[] heights = set.Heights;
@@ -36,7 +37,7 @@ public static class TerrainCheck
                 problems.Add($"odd trunk {set.OakTrunkRadius:0.0} x {set.OakTrunkHeight:0.0}");
             if (MathF.Abs(set.OakX) > half || MathF.Abs(set.OakZ) > half)
                 problems.Add("oak off the map");
-            if (MathF.Abs(set.SpringX) > half || MathF.Abs(set.SpringZ) > half || World.GetHeightAt(set.SpringX, set.SpringZ) < level + 0.3f)
+            if (TerrainData.CreekEnabled && (MathF.Abs(set.SpringX) > half || MathF.Abs(set.SpringZ) > half || World.GetHeightAt(set.SpringX, set.SpringZ) < level + 0.3f))
                 problems.Add("spring in the water or off the map");
 
             int props = set.Props?.Count ?? 0;
@@ -51,18 +52,18 @@ public static class TerrainCheck
             }
 
             // The same seed grows the same ground.
-            TerrainSet again = TerrainGenerator.Generate(seed);
+            TerrainSet again = TerrainGenerator.Generate(seed, size);
             if (!again.Heights.AsSpan().SequenceEqual(heights))
                 problems.Add("the same seed gave different ground");
 
             // The water map (shores, routes, creek) must be measurable and find its way round the ponds.
-            if ((WaterMap.CreekEnabled && WaterMap.Creek.Length < 1) || WaterMap.Shore.Length == 0)
+            if ((TerrainData.CreekEnabled && WaterMap.Creek.Length < 1) || WaterMap.Shore.Length == 0)
                 problems.Add("no shore");
 
             if (problems.Count > 0)
             {
                 failures++;
-                Console.WriteLine($"seed {seed}: {string.Join("; ", problems)}");
+                Console.WriteLine($"size {size} seed {seed}: {string.Join("; ", problems)}");
             }
         }
         Console.WriteLine($"{count} terrains, {failures} with problems; pond area {minWet:0}-{maxWet:0} m2; {minProps}-{maxProps} props");

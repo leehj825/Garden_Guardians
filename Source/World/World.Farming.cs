@@ -37,7 +37,7 @@ public sealed partial class World
     public const int SeedCost = 1;
 
     /// <summary>Never more than this many crops on the map, planted and wild.</summary>
-    private const int MaxCrops = 60;
+    private static int MaxCrops => Scaled(60);
 
     /// <summary>A crop this close (m) to the pond is watered: it grows and bears this much faster…</summary>
     private const float WateredReach = 8f;
