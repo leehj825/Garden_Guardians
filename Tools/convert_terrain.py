@@ -140,16 +140,18 @@ def signed_distance(mask):
     return (ndi.distance_transform_edt(mask) - ndi.distance_transform_edt(~mask)) * GRID_STEP
 
 
-def reshape_ponds(ob, h):
-    """Lower the higher pond to the shared level and keep all other ground dry. Returns the new pond masks."""
-    high = basin(h, POND_HIGH)
-    low = basin(h, POND_LOW)
-    sd_high = signed_distance(high)
-    sd_low = signed_distance(low)
-    lower = smoothstep((sd_high + BANK) / BANK)  # 1 in the basin, easing to 0 over the bank
-    dish = DISH * smoothstep(sd_high / 5.0)
-    drop = (POND_HIGH["shore"] - SHARED_LEVEL) * lower + dish
-    near_pond = smoothstep((np.maximum(sd_high, sd_low) + 4.0) / 3.0)  # 1 within a metre of a basin
+def reshape_ponds(ob, h, ponds=None, shared=None):
+    """Lower every pond above the shared level to it and keep all other ground dry. Returns the new pond masks."""
+    ponds = ponds or [POND_HIGH, POND_LOW]
+    shared = SHARED_LEVEL if shared is None else shared
+    masks = [basin(h, pond) for pond in ponds]
+    sds = [signed_distance(mask) for mask in masks]
+    drop = np.zeros_like(h)
+    for pond, sd in zip(ponds, sds):
+        if pond["shore"] > shared + 0.05:  # a higher pond is lowered to the shared level (and dished a little at its centre)
+            lower = smoothstep((sd + BANK) / BANK)  # 1 in the basin, easing to 0 over the bank
+            drop = drop + (pond["shore"] - shared) * lower + DISH * smoothstep(sd / 5.0)
+    near_pond = smoothstep((np.max(sds, axis=0) + 4.0) / 3.0)  # 1 within a metre of a basin
 
     me = ob.data
     co = np.empty(len(me.vertices) * 3)
@@ -157,14 +159,30 @@ def reshape_ponds(ob, h):
     co = co.reshape(-1, 3)
     x, z_game, y = co[:, 0], -co[:, 1], co[:, 2]
     y = y - sample_grid(drop, x, z_game)
-    floor = SHARED_LEVEL + GUARD
+    floor = shared + GUARD
     k = 0.5
     soft = floor + 0.5 * ((y - floor) + np.sqrt((y - floor) ** 2 + k * k))  # a smooth max(y, floor)
     keep = sample_grid(near_pond, x, z_game)
     co[:, 2] = y * keep + soft * (1 - keep)
     me.vertices.foreach_set("co", co.ravel())
     me.update()
-    return high, low
+    return masks
+
+
+def keep_dry(ob, masks, level, guard=0.5):
+    """After flattening, lift any ground away from the ponds (the map's edges, gullies) to at least `guard` above the water, so only the ponds hold water."""
+    near_pond = smoothstep((np.max([signed_distance(mask) for mask in masks], axis=0) + 4.0) / 3.0)
+    me = ob.data
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    y = co[:, 2]
+    floor = level + guard
+    soft = floor + 0.5 * ((y - floor) + np.sqrt((y - floor) ** 2 + 0.25))
+    keep = sample_grid(near_pond, co[:, 0], -co[:, 1])
+    co[:, 2] = y * keep + soft * (1 - keep)
+    me.vertices.foreach_set("co", co.ravel())
+    me.update()
 
 
 def flatten_relief(ob, ground_grid, k):
@@ -298,6 +316,18 @@ def build_ground_and_oak(final):
     return raw, ground, mask, props
 
 
+def ponds_from_features(path):
+    """Ponds of another terrain model, from detect_terrain's json: each with a seed, a box round it and a shore level a little above its water; the shared level is the lowest pond's."""
+    import json
+    with open(path) as f:
+        found = json.load(f)["ponds"]
+    ponds = []
+    for pond in found:
+        x0, x1, z0, z1 = pond["bbox"]
+        ponds.append(dict(seed=(pond["x"], pond["z"]), box=(x0 - 6.0, x1 + 6.0, z0 - 6.0, z1 + 6.0), shore=pond["level"] + max(0.3, pond["spread"])))
+    return ponds, min(p["level"] + max(0.3, p["spread"]) for p in found)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("src")
@@ -305,6 +335,8 @@ def main():
     ap.add_argument("--scale", type=float, default=100.0)
     ap.add_argument("--tris", type=int, default=60000)
     ap.add_argument("--texture", type=int, default=2048)
+    ap.add_argument("--relief", type=float, default=RELIEF, help="how much of the ground's hills and hollows to keep (0..1)")
+    ap.add_argument("--features", help="ponds of a new model, from Tools/detect_terrain.py --json (default: the original model's two ponds)")
     ap.add_argument("--csharp", default=os.path.join(os.path.dirname(__file__), "..", "Source", "World", "TerrainData.cs"))
     args = ap.parse_args()
 
@@ -320,17 +352,21 @@ def main():
     bm = bmesh_of(ob)
     h0 = fill_nan(grid_of(bm))
     bm.free()
-    reshape_ponds(ob, h0)
+    ponds, shared = None, SHARED_LEVEL
+    if args.features:
+        ponds, shared = ponds_from_features(args.features)
+    pond_masks = reshape_ponds(ob, h0, ponds, shared)
 
     bm = bmesh_of(ob)
     h1 = fill_nan(grid_of(bm))
     bm.free()
     mean_ground = float(h1[~ndi.binary_dilation(oak_mask(h1), iterations=3)].mean())
     ob.data.transform(Matrix.Translation((0, 0, -mean_ground)))
-    level = SHARED_LEVEL - mean_ground
-    flatten_relief(ob, h1 - mean_ground, RELIEF)
-    level *= RELIEF
-    print("mean ground %.3f, shared pond level %.3f (after re-centring and flattening the relief to %.0f%%)" % (mean_ground, level, RELIEF * 100))
+    level = shared - mean_ground
+    flatten_relief(ob, h1 - mean_ground, args.relief)
+    level *= args.relief
+    keep_dry(ob, pond_masks, level)
+    print("mean ground %.3f, shared pond level %.3f (after re-centring and flattening the relief to %.0f%%)" % (mean_ground, level, args.relief * 100))
 
     decimate(ob, args.tris)
     shrink_texture(args.texture)

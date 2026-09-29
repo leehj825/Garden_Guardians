@@ -126,7 +126,10 @@ def main():
         cells = plab == k
         zz, xx = np.nonzero(cells)
         level = float(np.median(raw[cells]))
-        ponds.append(dict(x=float(xs[xx].mean()), z=float(xs[zz].mean()), area=float(cells.sum() * STEP * STEP),
+        cx_, cz_ = xs[xx].mean(), xs[zz].mean()
+        near = np.argmin((xs[xx] - cx_) ** 2 + (xs[zz] - cz_) ** 2)  # the water cell nearest the centre, so a curved pond still seeds inside itself
+        ponds.append(dict(x=float(xs[xx][near]), z=float(xs[zz][near]), area=float(cells.sum() * STEP * STEP),
+                          bbox=[float(xs[xx].min()), float(xs[xx].max()), float(xs[zz].min()), float(xs[zz].max())],
                           level=level, spread=float(np.percentile(raw[cells], 90) - np.percentile(raw[cells], 10))))
     zz, xx = np.nonzero(oak)
     oak_info = dict(x=float(xs[xx].mean()), z=float(xs[zz].mean()), cells=int(oak.sum()), top=float(raw[oak].max()))
