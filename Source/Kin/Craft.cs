@@ -88,4 +88,7 @@ public enum Craft
 
     /// <summary>A sundial calendar stone by the main home: the clan keeps the solstices with a festival that lifts spirits and eases grudges with neighbours (see World.Calendar). Needs Writing and farming.</summary>
     Calendar = 33554432,
+
+    /// <summary>Medicine: a herb garden by the main home, sick clanmates recover faster and sickness spreads far less within the clan (quarantine), but trade can still carry it in (see World.Sickness). Needs herb-lore, a House and the Village Age.</summary>
+    Medicine = 67108864,
 }

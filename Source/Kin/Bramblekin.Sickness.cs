@@ -25,6 +25,9 @@ public sealed partial class Bramblekin
     /// <summary>…and get hungry this much faster.</summary>
     private const float SickHungerFactor = 1.3f;
 
+    /// <summary>A clan that knows Medicine nurses its sick through an illness this much faster.</summary>
+    private const float MedicineRecoveryFactor = 1.5f;
+
     private static readonly Color SickColor = new(120, 190, 60, 255);
 
     private float _sickness;
@@ -73,7 +76,7 @@ public sealed partial class Bramblekin
             return false;
         }
 
-        _sickness -= deltaTime;
+        _sickness -= deltaTime * (world.GroupOf(this) is { HasMedicine: true } ? MedicineRecoveryFactor : 1f);
         if (_sickness <= 0f)
         {
             _sickness = 0f;

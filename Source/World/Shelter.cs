@@ -149,6 +149,9 @@ public sealed class Shelter
     /// <summary>True if its clan keeps a calendar: a sundial stands by the home (see <see cref="Craft.Calendar"/>).</summary>
     public bool HasSundial { get; set; }
 
+    /// <summary>True if its clan knows Medicine: a herb garden grows by the home (see <see cref="Craft.Medicine"/>).</summary>
+    public bool HasHerbGarden { get; set; }
+
     /// <summary>Seconds the alarm horn has left to sound (drives its drawn blast).</summary>
     public float HornSeconds { get; set; }
 
@@ -460,6 +463,23 @@ public sealed class Shelter
             {
                 Raylib.DrawCube(stone + new Vector3(-0.08f, 0.3f + row * 0.25f, 0.15f), 0.05f, 0.14f, 0.02f, rune);
                 Raylib.DrawCube(stone + new Vector3(0.08f, 0.3f + row * 0.25f, 0.15f), 0.14f, 0.05f, 0.02f, rune);
+            }
+        }
+
+        if (HasHerbGarden)
+        {
+            // A fenced bed of herbs: a low frame of sticks round little leafy tufts in pale green, grey-green and purple.
+            Vector3 bed = basePosition + new Vector3(-(radius + 1.2f), 0f, radius * 0.5f + 0.6f);
+            Raylib.DrawCube(bed + new Vector3(0f, 0.04f, 0f), 1.1f, 0.06f, 0.7f, Tint(new Color(100, 75, 50, 255)));
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Raylib.DrawCube(bed + new Vector3(0f, 0.14f, side * 0.35f), 1.1f, 0.06f, 0.05f, Tint(StickColor));
+                Raylib.DrawCube(bed + new Vector3(side * 0.55f, 0.14f, 0f), 0.05f, 0.06f, 0.7f, Tint(StickColor));
+            }
+            for (int i = 0; i < 6; i++)
+            {
+                Color leaf = i % 3 == 0 ? new Color(150, 200, 120, 255) : i % 3 == 1 ? new Color(110, 150, 110, 255) : new Color(150, 110, 180, 255);
+                Detail.Sphere(bed + new Vector3(-0.35f + (i % 3) * 0.35f, 0.15f, i < 3 ? -0.15f : 0.15f), 0.1f, Tint(leaf));
             }
         }
 

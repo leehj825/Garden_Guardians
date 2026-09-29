@@ -57,6 +57,9 @@ public sealed class KinGroup
     /// <summary>Year × 4 + season of the last solstice festival kept (see World.Calendar).</summary>
     public int LastSolstice { get; set; }
 
+    /// <summary>True while someone in the clan knows Medicine (see World.Crafts); refreshed at each Leader decision.</summary>
+    public bool HasMedicine { get; set; }
+
     /// <summary>What the clan reveres (see World.Beliefs).</summary>
     public Belief Belief { get; set; }
 

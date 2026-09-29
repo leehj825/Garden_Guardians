@@ -1048,8 +1048,13 @@ first picks: roads, workshops with tools, and the tech tree with eras.
     grudges with neighbours at peace within 40m ease, and a neutral
     neighbour may become an ally. Not yet: planting and hunting plans that
     follow the calendar, a calendar-stone model, festivals with games.
-*   ⬜ **Medicine and disease:** herb gardens, healer huts, quarantine,
-    epidemics along trade routes (building on sickness and healing).
+*   🟡 **Medicine and disease:** Done (first slice): Medicine (herb-lore,
+    a House and the Village Age) grows a herb garden by the main home; the
+    clan's sick recover 1.5x as fast and pass it on only about a third as
+    often (quarantine). Sickness can still travel: when allies trade goods
+    and the seller has sick folk it may reach the buyer (a third as likely if
+    the buyer knows Medicine). Not yet: healer huts, quarantined homes the
+    sick are moved to, wider epidemics along caravans, a herb-garden yield.
 *   ⬜ **Exploration and expeditions:** scouts map beyond the known bank;
     the pond's far side becomes a discoverable region; small rafts cross
     the pond.

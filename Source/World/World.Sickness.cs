@@ -17,15 +17,43 @@ public sealed partial class World
     /// <summary>Clans' last outbreak headlines (when), so each gets at most one a year.</summary>
     private readonly Dictionary<Guid, float> _lastOutbreak = new();
 
+    /// <summary>A clan that knows Medicine keeps its sick apart: contagion from them is this fraction as likely.</summary>
+    private const double QuarantineFactor = 0.35;
+
+    /// <summary>When allies trade goods and the seller's clan has sick folk, the sickness rides along with these odds — a third as likely if the buyer knows Medicine.</summary>
+    private const double TradeContagionChance = 0.15;
+
+    /// <summary>Times sickness came along a trade road (for the headless report).</summary>
+    public int TradeInfections { get; private set; }
+
+    private double ContagionFrom(Bramblekin sick) =>
+        GroupOf(sick) is { HasMedicine: true } ? ContagionChance * QuarantineFactor : ContagionChance;
+
+    /// <summary>Sickness rides a caravan: called when <paramref name="seller"/> and <paramref name="buyer"/> have just traded.</summary>
+    private void CarryInfectionAlongTrade(KinGroup seller, KinGroup buyer)
+    {
+        if (!seller.Members.Any(m => !m.IsDead && m.IsSick))
+            return;
+        if (Rng.NextDouble() >= TradeContagionChance * (buyer.HasMedicine ? 0.33 : 1.0))
+            return;
+        if (buyer.Members.Where(m => !m.IsDead && m.CanCatchSickness).ToList() is not { Count: > 0 } healthy)
+            return;
+        Bramblekin victim = healthy[Rng.Next(healthy.Count)];
+        victim.FallSick();
+        TradeInfections++;
+        NoteFellSick(victim);
+        Game.AddEventLog($"[SICKNESS] Sickness came to {buyer.Title} along the trade road from {seller.Title}");
+    }
+
     /// <summary>Contagion: when two meet and one is ill, the other may catch it.</summary>
     private void SpreadSickness(Bramblekin a, Bramblekin b)
     {
-        if (a.IsSick && b.CanCatchSickness && Rng.NextDouble() < ContagionChance)
+        if (a.IsSick && b.CanCatchSickness && Rng.NextDouble() < ContagionFrom(a))
         {
             b.FallSick();
             NoteFellSick(b);
         }
-        else if (b.IsSick && a.CanCatchSickness && Rng.NextDouble() < ContagionChance)
+        else if (b.IsSick && a.CanCatchSickness && Rng.NextDouble() < ContagionFrom(b))
         {
             a.FallSick();
             NoteFellSick(a);
