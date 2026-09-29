@@ -120,6 +120,7 @@ public static partial class Game
             $"Snares: {KnowCraft(Craft.Snares)} ({world.SnareCatches} grubs caught)",
             $"Herb-lore: {KnowCraft(Craft.Herbalism)} ({world.Tendings} tendings)",
             $"Writing: {KnowCraft(Craft.Writing)} ({world.RunesCarved} deeds carved)",
+            $"Kingdoms: {world.Groups.Count(g => world.IsKingdom(g))} ({world.FealtiesSworn} fealties sworn, {world.VassalsFreed} vassals freed)",
             $"Medicine: {KnowCraft(Craft.Medicine)} ({world.TradeInfections} caught along trade roads)",
             $"Calendar: {KnowCraft(Craft.Calendar)} ({world.SolsticesKept} solstices kept)",
             $"Watchtowers: {KnowCraft(Craft.Watchtowers)} ({world.HornsSounded} horns sounded)",
@@ -190,6 +191,8 @@ public static partial class Game
         lines.RemoveAll(string.IsNullOrEmpty);
         if (world.FoundingOf(clan.Id) is { } founding)
             lines.Insert(2, $"Founded: year {founding.Year}");
+        if (world.DescribeRealm(clan) is { } realm)
+            lines.Add(realm);
         if (world.DescribeRelations(clan) is { } relations)
             lines.Add(char.ToUpperInvariant(relations[0]) + relations[1..]);
         return lines;

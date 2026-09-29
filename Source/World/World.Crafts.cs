@@ -194,6 +194,8 @@ public sealed partial class World
     {
         Craft missing = CraftsOf(teacher) & ~CraftsOf(ally);
         float persuasion = teacher.Leader is { } leader ? 0.6f + 0.8f * leader.Personality.Persuasiveness : 1f;
+        if (ally.LiegeId == teacher.Id)
+            persuasion *= LiegeTeachingBoost; // A liege's word carries to its vassals.
         if (Knows(teacher, Craft.Writing))
             persuasion *= WritingTeachingBoost; // Lessons set down in runes are easier to pass on.
         if (missing == Craft.None || Rng.NextDouble() >= TeachFarmingChance * persuasion)

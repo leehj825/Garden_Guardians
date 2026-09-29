@@ -80,7 +80,10 @@ public sealed partial class World
         }
 
         if (Overlays.HasFlag(MapOverlays.KinLinks))
+        {
             DrawRelations(camera);
+            DrawRealms(camera);
+        }
         DrawRain(camera);
         bool winter = CurrentSeason == Season.Winter;
         foreach (Crop bush in Crops)

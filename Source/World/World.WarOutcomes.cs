@@ -117,6 +117,7 @@ public sealed partial class World
         relation.Grievance *= 0.5f; // Terms settle some of the bitterness.
         _tributes.Add(new Tribute { Payer = loser.Id, Receiver = winner.Id, SeasonsLeft = TributeSeasons, NextDue = ElapsedSeconds });
         TributesAgreed++;
+        BindVassal(loser, winner);
         Game.AddEventLog($"[PEACE] {loser.CapitalTitle} lost the war with {winner.Title}, and must pay {TributeAmount} food a season in tribute for a year");
         Headline("Tribute", $"{loser.CapitalTitle} lost the war with {winner.Title}, and must pay tribute for a year", PlaceOf(loser), false, winner, loser);
     }

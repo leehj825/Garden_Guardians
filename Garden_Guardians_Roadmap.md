@@ -1033,9 +1033,15 @@ first picks: roads, workshops with tools, and the tech tree with eras.
     the clan's discoveries and new ages are carved into the chronicle, and it
     teaches allies 1.5x as readily. Not yet: runes that improve teaching
     beyond crafts, lore that outlives a clan, readable stone text in-game.
-*   ⬜ **Kingdoms and vassals:** big clans absorb small ones, with tribute,
-    a capital and a leader title; wars gain territory stakes (building on
-    conquest and tribute).
+*   🟡 **Kingdoms and vassals:** Done (first slice): a clan that loses a war
+    and agrees to tribute is its conqueror's vassal while it pays; a Kingdom
+    Age clan can also win a small allied neighbour's fealty (tribute each
+    season, no end); vassals are taught the liege's crafts 1.5x as readily.
+    A clan with vassals is a kingdom's capital (shown on the clan card and
+    Stats tab); gold lines join liege and vassal homes (Links toggle). A
+    vassal that grows as big as its liege breaks free, and one whose term
+    is served is released. Not yet: a leader title, liege protection of
+    vassals in war, a capital model, territory taken in conquest.
 *   🟡 **Defense and siege:** Done (first slice): Watchtowers (Village Age,
     Palisade and Spears) raise a lookout with an alarm horn by the main home;
     it spots the Wolf Spider, chasing Hornets or a warring clan's fighters

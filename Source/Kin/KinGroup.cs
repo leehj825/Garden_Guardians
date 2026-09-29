@@ -60,6 +60,9 @@ public sealed class KinGroup
     /// <summary>True while someone in the clan knows Medicine (see World.Crafts); refreshed at each Leader decision.</summary>
     public bool HasMedicine { get; set; }
 
+    /// <summary>The clan this one owes fealty to, if any (see World.Kingdoms).</summary>
+    public Guid? LiegeId { get; set; }
+
     /// <summary>What the clan reveres (see World.Beliefs).</summary>
     public Belief Belief { get; set; }
 
