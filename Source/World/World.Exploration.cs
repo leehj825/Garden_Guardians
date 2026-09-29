@@ -24,6 +24,20 @@ public sealed partial class World
     /// <summary>Pioneers count unknown ground this much worse (score points) than known ground when picking a place to settle.</summary>
     private const float UnknownGroundPenalty = 18f;
 
+    /// <summary>The far shore must lie at least this far (m) from every home of the clan to count as far.</summary>
+    private const float FarShoreMinDistance = 20f;
+
+    /// <summary>A clan reaching the far shore finds a cache of food there (the first clan ever, a bigger one).</summary>
+    private const int FarShoreCache = 4, FarShoreFirstCache = 7;
+
+    /// <summary>A clan that knows the far shore rates ground within this far (m) of it this much better for a new village.</summary>
+    private const float FarShoreSettleReach = 14f, FarShoreSettleBonus = 12f;
+
+    private bool _farShoreClaimed;
+
+    /// <summary>Clans that have reached the pond's far side (for the headless report).</summary>
+    public int FarShoresFound { get; private set; }
+
     private float _exploreTimer;
 
     /// <summary>Cells scouts newly mapped (for the headless report).</summary>
@@ -57,6 +71,7 @@ public sealed partial class World
                 if (member.Job == KinJob.Scout)
                     CellsMapped += mapped;
             }
+            CheckFarShore(group);
             if (group.Known.KnownCount == before)
                 continue;
 
@@ -79,9 +94,71 @@ public sealed partial class World
         }
     }
 
+    /// <summary>The pond's bank farthest from <paramref name="group"/>'s main home, a few metres back from the water — worked out once.</summary>
+    public Vector3? FarShoreOf(KinGroup group)
+    {
+        if (group.FarShore is { } known)
+            return known;
+        Vector3[] shore = WaterMap.UsualShore;
+        if (group.Home is not { } home || shore.Length == 0)
+            return null;
+        Vector3 centre = Vector3.Zero;
+        foreach (Vector3 p in shore)
+            centre += p;
+        centre /= shore.Length;
+        Vector3 far = shore[0];
+        float best = -1f;
+        foreach (Vector3 p in shore)
+        {
+            float d = GroundMover.HorizontalDistanceSquared(p, home.Position);
+            if (d > best)
+            {
+                best = d;
+                far = p;
+            }
+        }
+        Vector3 outward = new(far.X - centre.X, 0f, far.Z - centre.Z);
+        Vector3 site = outward.LengthSquared() > 0.01f ? far + Vector3.Normalize(outward) * 3f : far;
+        if (!Terrain.Contains(site, 3f))
+            site = far;
+        group.FarShore = Grounded(site);
+        return group.FarShore;
+    }
+
+    /// <summary>
+    /// The pond's far side is a place to discover: the first time anyone of a clan knows the bank farthest
+    /// from its home (and it really is far from every home), the clan finds a cache of food there — the first
+    /// clan ever finds more — and thereafter counts it good ground for a new village.
+    /// </summary>
+    private void CheckFarShore(KinGroup group)
+    {
+        if (group.FarShoreFound || FarShoreOf(group) is not { } site || !group.Known.IsKnown(site))
+            return;
+        foreach (Shelter home in GroupHomes(group))
+        {
+            if (!home.IsCollapsed && GroundMover.HorizontalDistance(home.Position, site) < FarShoreMinDistance)
+                return; // Home ground, not far at all.
+        }
+
+        group.FarShoreFound = true;
+        FarShoresFound++;
+        bool first = !_farShoreClaimed;
+        _farShoreClaimed = true;
+        ScatterFoodAround(site, first ? FarShoreFirstCache : FarShoreCache, 1.6f, FoodShardKind.Berry);
+        QueueFloatingText(site, "Far shore!", FeastTextColor);
+        string what = first ? "the first to reach the pond's far shore" : "reached the pond's far shore";
+        Game.AddEventLog($"[EXPLORE] {group.CapitalTitle} {what}, and found a cache of food");
+        Headline("Far shore", $"{group.CapitalTitle} {what}, and found a cache of food", site, false, group);
+        Carve(group, $"{what}");
+    }
+
     /// <summary>A place worth sending a scout: unknown ground within <see cref="ScoutReach"/> of <paramref name="home"/> that isn't water.</summary>
     public Vector3? ScoutTarget(KinGroup group, Vector3 from)
     {
+        // Half the time, head for the far shore while it's still unseen.
+        if (!group.FarShoreFound && FarShoreOf(group) is { } far && !group.Known.IsKnown(far) &&
+            GroundMover.HorizontalDistance(far, from) <= ScoutReach + 20f && Rng.NextDouble() < 0.5)
+            return far;
         if (group.Known.NearestUnknown(from, ScoutReach, Rng) is not { } target)
             return null;
         return Grounded(target);
@@ -91,8 +168,15 @@ public sealed partial class World
     public static int ExploredPercent(KinGroup group) => (int)MathF.Round(group.Known.Fraction * 100f);
 
     /// <summary>How well a pioneer's clan knows <paramref name="candidate"/>: a penalty to add to its settling score.</summary>
-    private static float UnknownPenalty(KinGroup? knowing, Vector3 candidate) =>
-        knowing is not null && !knowing.Known.IsKnown(candidate) ? UnknownGroundPenalty : 0f;
+    private static float UnknownPenalty(KinGroup? knowing, Vector3 candidate)
+    {
+        if (knowing is null)
+            return 0f;
+        float penalty = knowing.Known.IsKnown(candidate) ? 0f : UnknownGroundPenalty;
+        if (knowing is { FarShoreFound: true, FarShore: { } far } && GroundMover.HorizontalDistance(far, candidate) <= FarShoreSettleReach)
+            penalty -= FarShoreSettleBonus; // Good ground on the far bank, known from the scouts' visit.
+        return penalty;
+    }
 
     /// <summary>Greys out the ground the selected clan (or the selected Bramblekin's clan) hasn't been near — the Fog toggle.</summary>
     private void DrawFog(Camera3D camera)

@@ -69,6 +69,12 @@ public sealed class KinGroup
     /// <summary>Quarters of the garden known when last announced (0..4).</summary>
     public int ExploredMilestone { get; set; }
 
+    /// <summary>The bank of the pond farthest from the clan's main home, once worked out (see World.Exploration); not saved.</summary>
+    public Vector3? FarShore { get; set; }
+
+    /// <summary>True once someone of the clan has reached the far shore (not saved: a loaded garden finds it again quietly).</summary>
+    public bool FarShoreFound { get; set; }
+
     /// <summary>What the clan reveres (see World.Beliefs).</summary>
     public Belief Belief { get; set; }
 

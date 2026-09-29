@@ -1071,8 +1071,13 @@ first picks: roads, workshops with tools, and the tech tree with eras.
     (a quarter, half, three quarters) reach the chronicle, and pioneers
     prefer settling on ground their clan knows. A Fog toggle greys out what
     the selected clan hasn't seen. The map isn't saved (a loaded garden
-    re-marks round homes and people). Not yet: the pond's far side as a
-    discoverable region with its own finds, and rafts.
+    re-marks round homes and people). Also done: the pond's far side is a
+    place to discover — the bank farthest from a clan's main home (at least
+    20m from all its homes) gives a cache of food, more for the first clan
+    ever, with a headline and chronicle entry; scouts head for it half the
+    time while unseen, and clans that know it count ground within 14m of it
+    as good for a new village. Not yet: rafts, and other finds beyond the
+    far shore.
 *   ⬜ **Religion and culture branches:** beliefs (Oak, Pond, Spider, Moon)
     gain temples, priests, holy days and schisms; culture traits (warlike,
     farming, scholarly) shape each clan's tech choices.

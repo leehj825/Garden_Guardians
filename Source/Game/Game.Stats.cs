@@ -120,7 +120,7 @@ public static partial class Game
             $"Snares: {KnowCraft(Craft.Snares)} ({world.SnareCatches} grubs caught)",
             $"Herb-lore: {KnowCraft(Craft.Herbalism)} ({world.Tendings} tendings)",
             $"Writing: {KnowCraft(Craft.Writing)} ({world.RunesCarved} deeds carved)",
-            $"Exploration: {KnowCraft(Craft.Exploration)} ({world.Groups.Count(g => g.Members.Any(m => m.Job == KinJob.Scout))} clans with scouts out, {world.CellsMapped} cells mapped)",
+            $"Exploration: {KnowCraft(Craft.Exploration)} ({world.Groups.Count(g => g.Members.Any(m => m.Job == KinJob.Scout))} clans with scouts out, {world.CellsMapped} cells mapped, {world.FarShoresFound} reached the far shore)",
             $"Kingdoms: {world.Groups.Count(g => world.IsKingdom(g))} ({world.FealtiesSworn} fealties sworn, {world.VassalsFreed} vassals freed)",
             $"Medicine: {KnowCraft(Craft.Medicine)} ({world.TradeInfections} caught along trade roads)",
             $"Calendar: {KnowCraft(Craft.Calendar)} ({world.SolsticesKept} solstices kept)",
