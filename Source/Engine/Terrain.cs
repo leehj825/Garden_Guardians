@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Runtime.InteropServices;
 using Raylib_cs;
 
 namespace GardenGuardians;
@@ -7,7 +8,7 @@ namespace GardenGuardians;
 /// The flat backyard ground: a green plane lying on y = 0 with a grid overlay
 /// so that scale (1 cell = 1 meter) is easy to read.
 /// </summary>
-public sealed class Terrain
+public sealed unsafe class Terrain
 {
     /// <summary>The terrain surface height. Everything rests on this plane.</summary>
     public const float GroundHeight = 0f;
@@ -128,68 +129,124 @@ public sealed class Terrain
     }
 
     /// <summary>
-    /// Part 3: draws the whole 100x100m lawn as a grid of 2x2m cells from
-    /// -50 to 50 on X/Z, using <see cref="World.GetHeightAt"/> for each
-    /// corner's elevation so the lawn reads as rolling hills. The ground
-    /// never changes, so each cell's corners and grass colour are worked out
-    /// once (see <see cref="BuildCells"/>); every frame only blends them
-    /// toward <paramref name="seasonTint"/> by <paramref name="seasonAmount"/>
-    /// — the season's colour cast (see World.SeasonTint).
+    /// Part 3: draws the whole 100x100m lawn as a single smooth-shaded mesh
+    /// — one vertex per 2x2m grid corner, shared between its neighbouring
+    /// cells, coloured and lit from its own exact height and surface normal
+    /// (<see cref="World.GetHeightAt"/>/<see cref="World.GetNormalAt"/>)
+    /// rather than one flat colour per cell. Flat per-cell triangles (this
+    /// mesh's predecessor: <see cref="Raylib.DrawTriangle3D"/>, one solid
+    /// colour each) gave every cell boundary a hard-edged seam — cosmetically
+    /// a patchwork, but visually indistinguishable from an actual terrace,
+    /// so a Bramblekin smoothly climbing the real (continuous) slope looked
+    /// like it was climbing stairs. The vertex positions and normals never
+    /// change, so the mesh is built once (<see cref="EnsureMesh"/>); only its
+    /// vertex colours are re-blended toward <paramref name="seasonTint"/> and
+    /// re-uploaded, and only when that blend actually changes (see
+    /// <see cref="UpdateSeasonColors"/>) rather than every frame.
     /// </summary>
     public void Draw(Color seasonTint, float seasonAmount)
     {
-        _cells ??= BuildCells();
-        foreach (var (p00, p10, p01, p11, grass) in _cells)
-        {
-            Color color = seasonAmount > 0f ? LerpColor(grass, seasonTint, seasonAmount) : grass;
-
-            // Two triangles, upward-facing winding (counter-clockwise
-            // when viewed from above/+Y).
-            Raylib.DrawTriangle3D(p00, p01, p11, color);
-            Raylib.DrawTriangle3D(p00, p11, p10, color);
-        }
+        EnsureMesh();
+        UpdateSeasonColors(seasonTint, seasonAmount);
+        Raylib.DrawModel(_terrainModel, Vector3.Zero, 1f, Color.White);
     }
 
-    private (Vector3 P00, Vector3 P10, Vector3 P01, Vector3 P11, Color Grass)[]? _cells;
+    private Model _terrainModel;
+    private bool _meshReady;
+    private int _vertsPerSide;
+    private Color[] _baseColors = [];
+    private Color _lastSeasonTint;
+    private float _lastSeasonAmount = -1f; // Never matches a real amount on the first call.
 
-    /// <summary>Every lawn cell's four corners on the hills, and its grass colour before the season's cast.</summary>
-    private (Vector3, Vector3, Vector3, Vector3, Color)[] BuildCells()
+    /// <summary>Builds the terrain <see cref="Model"/> the first time it's drawn (needs a GPU context, so not eager) — one shared vertex per grid corner, positioned and normaled from the exact same height function a Bramblekin's own feet follow.</summary>
+    private void EnsureMesh()
     {
+        if (_meshReady)
+            return;
+
         float half = Size / 2f;
-        var cells = new List<(Vector3, Vector3, Vector3, Vector3, Color)>();
-        for (float x = -half; x < half; x += CellSize)
+        int cellsPerSide = (int)MathF.Round(Size / CellSize);
+        _vertsPerSide = cellsPerSide + 1;
+        int vertexCount = _vertsPerSide * _vertsPerSide;
+        int triangleCount = cellsPerSide * cellsPerSide * 2;
+
+        var mesh = new Mesh { VertexCount = vertexCount, TriangleCount = triangleCount };
+        mesh.Vertices = (float*)NativeMemory.Alloc((nuint)(vertexCount * 3), sizeof(float));
+        mesh.Normals = (float*)NativeMemory.Alloc((nuint)(vertexCount * 3), sizeof(float));
+        mesh.Colors = (byte*)NativeMemory.Alloc((nuint)(vertexCount * 4), sizeof(byte));
+        mesh.Indices = (ushort*)NativeMemory.Alloc((nuint)(triangleCount * 3), sizeof(ushort));
+
+        _baseColors = new Color[vertexCount];
+        for (int j = 0; j < _vertsPerSide; j++)
         {
-            for (float z = -half; z < half; z += CellSize)
+            for (int i = 0; i < _vertsPerSide; i++)
             {
-                float x0 = x, x1 = x + CellSize, z0 = z, z1 = z + CellSize;
-                var p00 = new Vector3(x0, World.GetHeightAt(x0, z0), z0);
-                var p10 = new Vector3(x1, World.GetHeightAt(x1, z0), z0);
-                var p01 = new Vector3(x0, World.GetHeightAt(x0, z1), z1);
-                var p11 = new Vector3(x1, World.GetHeightAt(x1, z1), z1);
+                float x = -half + i * CellSize;
+                float z = -half + j * CellSize;
+                float y = World.GetHeightAt(x, z);
+                Vector3 normal = World.GetNormalAt(x, z);
 
-                int cx = (int)MathF.Floor(x / CellSize);
-                int cz = (int)MathF.Floor(z / CellSize);
-                uint hash = CellHash(cx, cz);
+                int v = j * _vertsPerSide + i;
+                mesh.Vertices[v * 3 + 0] = x;
+                mesh.Vertices[v * 3 + 1] = y;
+                mesh.Vertices[v * 3 + 2] = z;
+                mesh.Normals[v * 3 + 0] = normal.X;
+                mesh.Normals[v * 3 + 1] = normal.Y;
+                mesh.Normals[v * 3 + 2] = normal.Z;
 
-                // Organic height-based tinting: a single Forest Green
-                // base, lightened toward a sunlit yellow-green on peaks
-                // and darkened toward a shadowed green in valleys — no
-                // checkerboard, just the cell's own average elevation.
-                float avgHeight = (p00.Y + p10.Y + p01.Y + p11.Y) / 4f;
-                float t = Math.Clamp(avgHeight / HeightAmplitude, -1f, 1f);
-                Color color = t >= 0f
-                    ? LerpColor(GrassBase, GrassPeak, t)
-                    : LerpColor(GrassBase, GrassValley, -t);
-
-                // A rare, sparse dirt patch (~1 cell in 40) — an occasional
-                // embellishment, not a repeating pattern — worn into the
-                // grass rather than painted over it, so it softens into the
-                // lawn and frosts over with it in winter.
-                if (hash % 40 == 0)
+                // Organic height-based tinting: a single Forest Green base,
+                // lightened toward a sunlit yellow-green on peaks and
+                // darkened toward a shadowed green in valleys — no
+                // checkerboard, just this vertex's own elevation. A rare,
+                // sparse dirt fleck (~1 vertex in 40) is worn into it too.
+                float t = Math.Clamp(y / HeightAmplitude, -1f, 1f);
+                Color color = t >= 0f ? LerpColor(GrassBase, GrassPeak, t) : LerpColor(GrassBase, GrassValley, -t);
+                if (CellHash(i, j) % 40 == 0)
                     color = LerpColor(color, Dirt, DirtPatchStrength);
-                cells.Add((p00, p10, p01, p11, color));
+                _baseColors[v] = color;
             }
         }
-        return cells.ToArray();
+
+        int index = 0;
+        for (int j = 0; j < cellsPerSide; j++)
+        {
+            for (int i = 0; i < cellsPerSide; i++)
+            {
+                ushort v00 = (ushort)(j * _vertsPerSide + i);
+                ushort v10 = (ushort)(j * _vertsPerSide + i + 1);
+                ushort v01 = (ushort)((j + 1) * _vertsPerSide + i);
+                ushort v11 = (ushort)((j + 1) * _vertsPerSide + i + 1);
+
+                // Same winding as the flat triangles this replaced: upward-facing when viewed from above/+Y.
+                mesh.Indices[index++] = v00; mesh.Indices[index++] = v01; mesh.Indices[index++] = v11;
+                mesh.Indices[index++] = v00; mesh.Indices[index++] = v11; mesh.Indices[index++] = v10;
+            }
+        }
+
+        // Dynamic: UpdateSeasonColors re-uploads the colour buffer whenever the season's blend changes.
+        Raylib.UploadMesh(ref mesh, true);
+        _terrainModel = Raylib.LoadModelFromMesh(mesh);
+        _meshReady = true;
+    }
+
+    /// <summary>Re-blends every vertex's <see cref="_baseColors"/> toward <paramref name="seasonTint"/> and re-uploads them — skipped when the blend hasn't actually moved since last frame, so a settled season costs nothing every frame.</summary>
+    private void UpdateSeasonColors(Color seasonTint, float seasonAmount)
+    {
+        bool tintChanged = seasonTint.R != _lastSeasonTint.R || seasonTint.G != _lastSeasonTint.G || seasonTint.B != _lastSeasonTint.B;
+        if (!tintChanged && MathF.Abs(seasonAmount - _lastSeasonAmount) < 0.001f)
+            return;
+        _lastSeasonTint = seasonTint;
+        _lastSeasonAmount = seasonAmount;
+
+        var blended = new byte[_baseColors.Length * 4];
+        for (int v = 0; v < _baseColors.Length; v++)
+        {
+            Color color = seasonAmount > 0f ? LerpColor(_baseColors[v], seasonTint, seasonAmount) : _baseColors[v];
+            blended[v * 4 + 0] = color.R;
+            blended[v * 4 + 1] = color.G;
+            blended[v * 4 + 2] = color.B;
+            blended[v * 4 + 3] = color.A;
+        }
+        Raylib.UpdateMeshBuffer(_terrainModel.Meshes[0], 3, (ReadOnlySpan<byte>)blended, 0);
     }
 }
