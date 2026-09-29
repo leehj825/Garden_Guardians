@@ -1068,6 +1068,7 @@ triangles. The four baked terrains stay as they are.
     plain green for a moment), which stopped Android's "isn't responding"
     prompt at garden start. The oak's dark shade circle is gone.
 *   ✅ **Stage D:** bigger gardens. The start menu picks Small 100 m, Medium 150 m or Large 200 m; ponds, Bramblekin, food, hornets and grubs scale with the map area, and a progress bar shows while the ground is grown.
+*   ✅ **Distance detail:** the ground has three mesh levels (fine, medium, coarse) chosen by camera distance, far plants and boulders are skipped, and Bramblekin status bars are hidden when they would be tiny.
     and camera limits with the area; check speed on a phone.
 
 ## Phases 35+: Advancing Civilizations (ideas, not scheduled)

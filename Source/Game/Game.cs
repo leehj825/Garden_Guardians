@@ -443,6 +443,8 @@ public static partial class Game
             Raylib.ClearBackground(world.SkyColor);
 
             Raylib.BeginMode3D(camera);
+            ProceduralView.Eye = camera.Position;
+            ProceduralView.Focus = camera.Target;
             world.Draw(camera);
             Raylib.EndMode3D();
             DrawNight(camera, world);
@@ -851,6 +853,8 @@ public static partial class Game
 
             Vector3 barAnchor = b.Position + new Vector3(0, Bramblekin.BodyHeight + 0.15f, 0);
             float width = BarWidth(camera, barAnchor, Bramblekin.BodyRadius * 2f);
+            if (BodyPixels(camera, barAnchor, Bramblekin.BodyRadius * 2f) < HideBarsBelowPixels)
+                continue; // too far to read a bar: leave it out
             if (b.Health < Bramblekin.MaxHealth)
                 DrawBar(camera, barAnchor, 0f, width, (float)b.Health / Bramblekin.MaxHealth, Color.Green);
             float below = width * 0.21f;
@@ -868,6 +872,18 @@ public static partial class Game
             Vector3 anchor = spider.Position + new Vector3(0, WolfSpider.BodyRadius * 2f + 0.3f, 0);
             DrawBar(camera, anchor, 0f, BarWidth(camera, anchor, WolfSpider.BodyRadius * 2f), (float)spider.Health / WolfSpider.MaxHealth, Color.Green);
         }
+    }
+
+    /// <summary>Below this many pixels across, a Bramblekin's status bars are left out.</summary>
+    private const float HideBarsBelowPixels = 9f;
+
+    /// <summary>How wide (px) something <paramref name="bodyWidth"/> metres across looks at <paramref name="anchor"/>.</summary>
+    private static float BodyPixels(Camera3D camera, Vector3 anchor, float bodyWidth)
+    {
+        Vector3 forward = Vector3.Normalize(camera.Target - camera.Position);
+        Vector3 right = Vector3.Cross(forward, camera.Up);
+        right = right.LengthSquared() > 1e-6f ? Vector3.Normalize(right) : Vector3.UnitX;
+        return Vector2.Distance(Raylib.GetWorldToScreen(anchor, camera), Raylib.GetWorldToScreen(anchor + right * bodyWidth, camera));
     }
 
     /// <summary>A status bar is never narrower than this (px, at the reference screen width)…</summary>
