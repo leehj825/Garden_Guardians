@@ -2,13 +2,13 @@
 
 **Status key:** ✅ Done · 🟡 In progress (partly done) · ⬜ Not started · ❌ Removed/superseded
 
-*Last updated: 2026-09-28*
+*Last updated: 2026-09-29*
 
 ## Progress Snapshot
 The game is an **Emergent Survival** simulation (Phase 7) that has grown
 a **society** (Phase 8), a **living population** (Phase 9), **lives &
 lineages** (Phase 10) and **farming & neighbours** (Phase 11). There are no factions or top-down economy: the
-map is the procedural terrain and loose entities — wild Food, Twigs, a
+map is a 3D terrain model and loose entities — wild Food, Twigs, a
 Wolf Spider, Hornet swarms, Grubs, Stag Beetles, Garden Props — and the
 Bramblekin. Every Bramblekin is an individual agent with a random
 Personality (Aggression, Sociability, Intelligence) serving a strict
@@ -941,6 +941,80 @@ three fixes:
     56.3; sickness 16.3 vs 16.8; births 195 vs 198. No crashes.
 *   **Speed:** the busy garden (112 kin) keeps up at 50x on desktop with
     software rendering (37 FPS), with the Director on.
+
+## Phase 34: A Modelled World
+*   ✅ **The terrain is a 3D model** (`Assets/Models/Terrain/terrain.glb`,
+    made by `Tools/convert_terrain.py`): a grassy 100m square with a hollow
+    dead oak and its roots, two ponds and dirt patches. Ground height is a
+    grid sampled from the model and embedded as C# (`TerrainData.cs`), so
+    headless and Android builds need no model to walk on. Both ponds share
+    one water level (the higher pond's basin was lowered); the oak's trunk,
+    roots and the reed clumps and boulders on the banks are walker
+    obstacles; hive, owl roost and branch fall follow the trunk. Season
+    tint kept.
+*   ✅ **Custom models** (Tripo, shrunk by `Tools/convert_*.py`): the male
+    and female Bramblekin (the female rigged to the male skeleton, so one
+    set of clips drives both), the acorn house, the berry bush, the Wolf
+    Spider, and the village asset sheet — tent, burrow, granary, stone
+    footing, palisade, hearth, cistern, well, aphid pen, building site,
+    shrine, grain/mushroom/cress plots, and kin's shield, food sack,
+    fishing rod, poultice and water cup. Kin, buildings, spider and crops
+    were scaled up to read better; a kin's lean on slopes is capped.
+*   ⬜ **Still procedural (no custom model yet):** ant, bee swarm, frog,
+    grub, heron, hornet, owl, stag beetle, aphids, caught fish; the
+    beehive, snare, feast lanterns; loose food (berries, acorns, seeds,
+    meat, fish, honey, honeydew), loose and carried twigs, stones and
+    branches, garden props, sling pebbles; the sleep and sickness markers;
+    the construction stages of footings and palisades. The carried-twigs
+    bundle is in the asset sheet but not wired in. Water, rain, fireflies
+    and night lights stay procedural on purpose.
+*   ⬜ **Low-detail Bramblekin.** `Walking_lod.glb` doesn't line up with the
+    skeleton's pose (kin lay flat when zoomed out), so it's switched off
+    (`BramblekinModel.HasLowDetail`). Rebuild a low-poly mesh from the full
+    model with Blender and check its pose before turning it back on.
+*   ⬜ **Wells** were never dug in the headless runs on either terrain;
+    worth a look at why (the clan must know Wells and live over 20m from
+    water).
+
+## Phases 35+: Advancing Civilizations (ideas, not scheduled)
+Ideas for the clans to grow past today's crafts, farming, herding,
+fishing, wells, palisades, shrines, feasts, alliances and wars. Suggested
+first picks: roads, workshops with tools, and the tech tree with eras.
+*   ⬜ **Tech tree with eras:** Stone Age, Farming Age, Village Age,
+    Kingdom Age; each era unlocks buildings and needs a discovery, with
+    prerequisites (wells need stonework).
+*   ⬜ **Roads and bridges:** paths wear in where kin walk often; clans lay
+    stone paths; a log bridge over the creek or a pond neck opens shorter
+    routes.
+*   ⬜ **Workshops and specialists:** a stonecutter and a weaver make tools
+    and cloth; tools raise farming, building and hunting output;
+    specialists make trade goods.
+*   ⬜ **Markets and currency:** a village market where clans barter
+    surplus for scarce goods (acorn-shell coins); caravans between allies
+    that can be raided.
+*   ⬜ **Writing and history:** runes carved on a standing stone record a
+    clan's deeds, feed the chronicle, improve teaching between clans and
+    make culture last.
+*   ⬜ **Kingdoms and vassals:** big clans absorb small ones, with tribute,
+    a capital and a leader title; wars gain territory stakes (building on
+    conquest and tribute).
+*   ⬜ **Defense and siege:** watchtowers with alarm horns, gates in the
+    palisade, siege tools (sling catapults, battering logs), organized
+    traps for the spider and owl.
+*   ⬜ **Seasonal calendar and festivals:** a sundial or calendar stone to
+    plan planting and hunting; solstice festivals with morale and
+    diplomacy chances.
+*   ⬜ **Medicine and disease:** herb gardens, healer huts, quarantine,
+    epidemics along trade routes (building on sickness and healing).
+*   ⬜ **Exploration and expeditions:** scouts map beyond the known bank;
+    the pond's far side becomes a discoverable region; small rafts cross
+    the pond.
+*   ⬜ **Religion and culture branches:** beliefs (Oak, Pond, Spider, Moon)
+    gain temples, priests, holy days and schisms; culture traits (warlike,
+    farming, scholarly) shape each clan's tech choices.
+*   ⬜ **Ecology and domestication:** herd beetles or aphids beyond the
+    current pens, plant orchards, manage overfishing; wild food responds to
+    how clans treat the land.
 
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
