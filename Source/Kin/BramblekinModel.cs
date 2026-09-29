@@ -17,8 +17,9 @@ public enum BramblekinClip
 
 /// <summary>
 /// The Bramblekin character rig: one shared skinned mesh (loaded once from
-/// Walking.glb, which — like the other three clips — was exported from
-/// Tripo-rigged FBX to glTF, since raylib has no FBX importer) plus the four
+/// Walking.glb, which — like the other three clips — was converted from the
+/// Mixamo-rigged FBX to Y-up, metre-scaled glTF with Blender, since raylib
+/// has no FBX importer and assimp's mangles Mixamo pre-rotations) plus the four
 /// motion clips, each read from its own glb but replayed against the shared
 /// skeleton. <see cref="CreatePoseInstance"/> hands every Bramblekin its own
 /// small bone-matrix buffer so hundreds of them can each be mid-stride at a
@@ -43,16 +44,13 @@ internal static unsafe class BramblekinModel
         ? "Models/Bramblekin/"
         : Path.Combine(AppContext.BaseDirectory, "Assets", "Models", "Bramblekin") + Path.DirectorySeparatorChar;
 
-    /// <summary>The rig's height in its own units (see the FBX/glb bounding box) — divide by this to scale to <see cref="Bramblekin.BodyHeight"/> meters.</summary>
-    public const float RawHeightUnits = 99.98168f;
+    /// <summary>The rig's height in its own units (metres, as Blender exports it) — divide by this to scale to <see cref="Bramblekin.BodyHeight"/>.</summary>
+    public const float RawHeightUnits = 0.9998169f;
 
     /// <summary>
-    /// The rig's own rest-pose forward direction doesn't line up with the
-    /// world +Z axis Bramblekin.Draw's yaw is measured from — this is the
-    /// extra turn (radians) needed on top of that yaw so the model actually
-    /// faces <see cref="GroundMover.Heading"/> instead of some fixed offset
-    /// from it. Measured empirically by rendering the Walking clip with a
-    /// known heading and reading off which way the rig actually faced.
+    /// Extra turn (radians) on top of Bramblekin.Draw's yaw, which assumes
+    /// the rig faces +Z at rest. It does: the Walking clip's own root motion
+    /// (stripped before shipping) ran along +Z.
     /// </summary>
     public const float ForwardYawOffset = 0f;
 
@@ -75,11 +73,6 @@ internal static unsafe class BramblekinModel
             return;
 
         _baseModel = Raylib.LoadModel(AssetPath + "Walking.glb");
-        // The rig comes out of Tripo/FBX Z-up; raylib (like the rest of this
-        // engine) is Y-up. Baking the fix-up into the model's own transform,
-        // rather than into every draw call, keeps Bramblekin.Draw's terrain-tilt
-        // rotation the only per-frame rotation it has to reason about.
-        _baseModel.Transform = Matrix4x4.CreateRotationX(MathF.PI / 2f);
 
         _clips[BramblekinClip.Walking] = LoadClip("Walking.glb");
         _clips[BramblekinClip.Fishing] = LoadClip("FishingCast.glb");
@@ -127,31 +120,6 @@ internal static unsafe class BramblekinModel
             _ => BramblekinClip.Idle,
         };
     }
-
-    /// <summary>
-    /// A constant upward correction (metres) applied only to a clip's
-    /// render position, on top of the terrain-follow ground height —
-    /// not a real fix, a stopgap: these clips weren't captured as an
-    /// in-place loop with the feet locked to the floor the way a game
-    /// character needs. Root motion (X/Z, and Y — see the asset
-    /// pipeline notes) is already stripped from every clip, but Combat
-    /// and Gathering still visibly sink into the ground at points in
-    /// their cycle: the crouch/lunge itself is animated through the leg
-    /// joints' own rotations, not through the root bone, so stripping
-    /// root motion alone can't reach it, and there's no per-vertex foot
-    /// (IK) locking here to hold the feet at the floor through a
-    /// crouch's full range. This constant is tuned against the least
-    /// extreme, most-often-seen part of each clip's cycle, so it won't
-    /// fully hide the deepest point of a crouch or lunge — a proper fix
-    /// needs either foot-IK or clips re-captured as in-place, floor-
-    /// locked loops.
-    /// </summary>
-    public static float GroundLift(BramblekinClip clip) => clip switch
-    {
-        BramblekinClip.Combat => 15f / RawHeightUnits * Bramblekin.BodyHeight,
-        BramblekinClip.Gathering => 12f / RawHeightUnits * Bramblekin.BodyHeight,
-        _ => 0f,
-    };
 
     /// <summary>The keyframe index <paramref name="timeSeconds"/> lands on within <paramref name="clip"/>, looping.</summary>
     public static int FrameAt(BramblekinClip clip, float timeSeconds)
