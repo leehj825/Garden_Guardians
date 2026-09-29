@@ -15,6 +15,40 @@ public static class TerrainData
     public const float HiveAngle = 0.262f, HiveSurface = 7.00f;
     public const float OakTrunkRadius = 5.43f, OakTrunkHeight = 35.25f;
 
+    /// <summary>Circles (x, z, radius) covering the reed clumps and boulders round the ponds: where walkers may not go.</summary>
+    public static readonly float[] PropCircles =
+    {
+        41.50f, 30.00f, 2.75f,
+        17.00f, 29.00f, 2.05f,
+        10.00f, -1.00f, 1.37f,
+        -23.00f, 0.50f, 1.37f,
+        30.00f, 20.50f, 1.37f,
+        18.50f, 26.50f, 1.37f,
+        15.50f, 30.50f, 1.37f,
+        17.00f, 31.00f, 1.37f,
+        43.00f, 28.00f, 0.96f,
+        15.00f, 29.00f, 0.96f,
+        10.00f, 0.50f, 0.75f,
+        31.50f, 20.50f, 0.75f,
+        30.00f, 22.00f, 0.75f,
+        41.50f, 27.50f, 0.75f,
+        15.50f, 28.00f, 0.75f,
+        18.50f, 28.00f, 0.75f,
+        19.00f, 28.50f, 0.75f,
+        44.00f, 28.50f, 0.75f,
+        39.00f, 29.50f, 0.75f,
+        44.00f, 29.50f, 0.75f,
+        39.00f, 30.50f, 0.75f,
+        44.00f, 30.50f, 0.75f,
+        39.50f, 31.50f, 0.75f,
+        43.50f, 31.50f, 0.75f,
+        40.00f, 32.00f, 0.75f,
+        43.00f, 32.00f, 0.75f,
+        40.50f, 32.50f, 0.75f,
+        41.50f, 32.50f, 0.75f,
+        42.50f, 32.50f, 0.75f,
+    };
+
     /// <summary>Circles (x, z, radius) covering the trunk and roots: where walkers may not go.</summary>
     public static readonly float[] OakCircles =
     {

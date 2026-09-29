@@ -32,7 +32,8 @@ public sealed partial class World
 
     /// <summary>
     /// The oak's footprint on the ground, as circles walkers can't enter:
-    /// the trunk and every root, covered by circles measured off the model.
+    /// the trunk and every root, plus the reed clumps and boulders on the
+    /// ponds' banks, covered by circles measured off the model.
     /// </summary>
     public static readonly (Vector2 Center, float Radius)[] OakFootprint = MakeOakFootprint();
 
@@ -42,11 +43,13 @@ public sealed partial class World
 
     private static (Vector2, float)[] MakeOakFootprint()
     {
-        float[] c = TerrainData.OakCircles;
-        var circles = new (Vector2, float)[c.Length / 3];
-        for (int i = 0; i < circles.Length; i++)
-            circles[i] = (new Vector2(c[i * 3], c[i * 3 + 1]), c[i * 3 + 2]);
-        return circles;
+        var circles = new List<(Vector2, float)>();
+        foreach (float[] c in new[] { TerrainData.OakCircles, TerrainData.PropCircles })
+        {
+            for (int i = 0; i + 2 < c.Length; i += 3)
+                circles.Add((new Vector2(c[i], c[i + 1]), c[i + 2]));
+        }
+        return circles.ToArray();
     }
 
     /// <summary>The oak's trunk and roots are solid: added to the obstacles every walker steers round.</summary>
