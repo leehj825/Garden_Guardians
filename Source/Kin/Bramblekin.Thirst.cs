@@ -247,6 +247,6 @@ public sealed partial class Bramblekin
     private void DrawWaterCup(Vector2 facing)
     {
         Vector3 cup = Position + new Vector3(facing.X * 0.25f, BodyHeight * 0.55f, facing.Y * 0.25f);
-        VillageModels.Draw(VillageItem.WaterCup, cup - new Vector3(0f, 0.04f, 0f), 0f, 0.3f, Color.White);
+        VillageModels.Draw(VillageItem.WaterCup, cup - new Vector3(0f, 0.04f, 0f), 0f, 0.24f, Color.White);
     }
 }

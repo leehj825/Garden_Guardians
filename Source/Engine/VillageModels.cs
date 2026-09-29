@@ -37,7 +37,7 @@ public static unsafe class VillageModels
     }
 
     /// <summary>Every item is drawn this much larger than the width it is asked for.</summary>
-    public const float Scale = 1.35f;
+    public const float Scale = 1.08f;
 
     /// <summary>The height (m) <paramref name="item"/> stands when drawn <paramref name="width"/> wide.</summary>
     public static float HeightAt(VillageItem item, float width) => VillageItems.Sizes[(int)item].Height * width * Scale / VillageItems.Sizes[(int)item].Width;

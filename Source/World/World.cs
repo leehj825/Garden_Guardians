@@ -478,6 +478,7 @@ public sealed partial class World
         UpdateAnts(deltaTime);
         UpdateOak(deltaTime);
         UpdateTrails(deltaTime);
+        UpdateGoods(deltaTime);
         UpdateBeehive(deltaTime);
         UpdateArrivals(deltaTime);
         UpdateFoodDespawn(deltaTime);

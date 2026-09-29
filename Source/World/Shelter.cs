@@ -137,6 +137,9 @@ public sealed class Shelter
     /// <summary>True if its clan knows tools: a workbench stands by the home (see <see cref="Craft.Tools"/>).</summary>
     public bool HasWorkshop { get; set; }
 
+    /// <summary>True if its clan holds a market: a stall stands by the home (see <see cref="Craft.Markets"/>).</summary>
+    public bool HasMarket { get; set; }
+
     /// <summary>A cistern holds this many sips.</summary>
     public const int CisternSips = 6;
 
@@ -181,7 +184,7 @@ public sealed class Shelter
     /// <summary>Where the hearth sits: out front, off to the side away from the cistern.</summary>
     /// <summary>Where a lived-in House's window is (lit at night — see World.DrawNightLights); null for anything else.</summary>
     public Vector3? WindowPosition => IsBuilt && !IsBurrow && !IsAbandoned && Tier == ShelterTier.House
-        ? Position + new Vector3(0f, 0.02f, 0f) + new Vector3(0f, 0.36f * Radius * 2.6f / PropModels.HouseWidth, -(0.36f * Radius * 2.6f / PropModels.HouseWidth))
+        ? Position + new Vector3(0f, 0.02f, 0f) + new Vector3(0f, 0.36f * Radius * 2.6f * 0.8f / PropModels.HouseWidth, -(0.36f * Radius * 2.6f * 0.8f / PropModels.HouseWidth))
         : null;
 
     public Vector3 HearthPosition => Position + new Vector3(Radius * 0.2f, 0f, -(Radius + 0.5f));
@@ -381,7 +384,7 @@ public sealed class Shelter
         else
         {
             // The acorn house model, its door turned to face out (+X).
-            float scale = radius * 2.6f / PropModels.HouseWidth;
+            float scale = radius * 2.6f * 0.8f / PropModels.HouseWidth;
             PropModels.Draw(PropModels.Prop.House, basePosition, 180f, scale, Tint(Color.White));
             roofTop = basePosition.Y + PropModels.HouseCapTop * scale;
         }
@@ -416,6 +419,22 @@ public sealed class Shelter
             Detail.Sphere(bench + new Vector3(-0.2f, 0.56f, 0f), 0.11f, Tint(FootingColor));
             Raylib.DrawCylinderEx(bench + new Vector3(0.15f, 0.47f, 0.05f), bench + new Vector3(0.35f, 0.5f, 0.12f), 0.025f, 0.025f, 4, Tint(StickColor));
             Raylib.DrawCube(bench + new Vector3(0.38f, 0.52f, 0.13f), 0.12f, 0.08f, 0.08f, Tint(FootingColor));
+        }
+
+        if (HasMarket)
+        {
+            // A market stall by the home: four posts, a striped awning and a table of goods.
+            Vector3 stall = basePosition + new Vector3(-radius * 0.8f, 0f, radius + 1.5f);
+            for (int i = 0; i < 4; i++)
+            {
+                Vector3 post = stall + new Vector3((i % 2 == 0 ? -0.5f : 0.5f), 0f, (i < 2 ? -0.35f : 0.35f));
+                Raylib.DrawCylinderEx(post, post + new Vector3(0f, 0.9f, 0f), 0.03f, 0.025f, 5, Tint(StickColor));
+            }
+            Raylib.DrawCube(stall + new Vector3(0f, 0.95f, -0.12f), 1.2f, 0.04f, 0.5f, Tint(AwningColor));
+            Raylib.DrawCube(stall + new Vector3(0f, 0.93f, 0.2f), 1.2f, 0.04f, 0.3f, Tint(AwningStripeColor));
+            Raylib.DrawCube(stall + new Vector3(0f, 0.38f, 0f), 0.9f, 0.06f, 0.4f, Tint(WorkbenchColor));
+            Detail.Sphere(stall + new Vector3(-0.25f, 0.47f, 0f), 0.09f, Tint(AwningStripeColor));
+            Detail.Sphere(stall + new Vector3(0.2f, 0.46f, 0.05f), 0.08f, Tint(FootingColor));
         }
 
         if (HasHearth)
@@ -562,6 +581,8 @@ public sealed class Shelter
     }
 
     private static readonly Color WorkbenchColor = new(140, 105, 70, 255);
+    private static readonly Color AwningColor = new(190, 70, 60, 255);
+    private static readonly Color AwningStripeColor = new(235, 225, 200, 255);
 
     private static Color Blend(Color a, Color b, float t) => new(
         (byte)(a.R + (b.R - a.R) * t),

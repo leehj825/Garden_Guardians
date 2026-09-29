@@ -179,6 +179,8 @@ public sealed class GroupSave
     public V3? SettleTarget { get; set; }
     public int Dowry { get; set; }
     public int? SeedCorn { get; set; }
+    public int Cloth { get; set; }
+    public int CutStone { get; set; }
     public float NextRaidAt { get; set; }
     public float Martial { get; set; }
     public float Hunting { get; set; }

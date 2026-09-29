@@ -27,6 +27,9 @@ public sealed partial class World
     private bool _trailsDirty = true;
     private bool _roadsKnown;
 
+    /// <summary>Whether any clan can cut stone: paving then starts at 60% of the wear.</summary>
+    private bool _stonecutting;
+
     [NotSaved] // A render cache, rebuilt when a cell crosses a threshold.
     private readonly List<(Vector3 A, Vector3 B, Vector3 C, Vector3 D, bool Paved)> _trailQuads = new();
 
@@ -80,13 +83,15 @@ public sealed partial class World
         float elapsed = _trailTimer;
         _trailTimer = 0f;
         _roadsKnown = Groups.Any(g => Knows(g, Craft.Roads));
+        _stonecutting = Groups.Any(g => Knows(g, Craft.Stonecutting));
+        float paveAt = _stonecutting ? PaveWear * 0.6f : PaveWear;
         for (int i = 0; i < _wear.Length; i++)
         {
             if (_wear[i] <= 0f)
                 continue;
             bool was = _wear[i] >= PathWear;
             _wear[i] = MathF.Max(0f, _wear[i] - WearDecay * elapsed);
-            if (_roadsKnown && !_paved[i] && _wear[i] >= PaveWear)
+            if (_roadsKnown && !_paved[i] && _wear[i] >= paveAt)
             {
                 _paved[i] = true;
                 RoadCells++;

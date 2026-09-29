@@ -12,7 +12,7 @@ public sealed partial class World
     private const float FloodedFraction = 0.15f;
 
     /// <summary>A flood rises at least this far (m) above the pond, however little low ground the terrain has.</summary>
-    private const float MinFloodRise = 1.2f;
+    private const float MinFloodRise = 0.8f;
 
     /// <summary>After the rain stops, the water drains away over this long.</summary>
     private const float FloodRecedeSeconds = 60f;

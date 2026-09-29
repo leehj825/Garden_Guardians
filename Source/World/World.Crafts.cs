@@ -12,7 +12,7 @@ public sealed partial class World
     private static readonly Craft[] LaterCrafts =
     {
         Craft.Granary, Craft.Spears, Craft.Palisade, Craft.Grain, Craft.Mushrooms, Craft.Cress, Craft.Fishing, Craft.Stonework, Craft.Cisterns,
-        Craft.Wells, Craft.Slings, Craft.Hearth, Craft.Snares, Craft.Herbalism, Craft.Herding, Craft.Smoking, Craft.Shields, Craft.Tools, Craft.Roads,
+        Craft.Wells, Craft.Slings, Craft.Hearth, Craft.Snares, Craft.Herbalism, Craft.Herding, Craft.Smoking, Craft.Shields, Craft.Tools, Craft.Roads, Craft.Weaving, Craft.Stonecutting, Craft.Markets,
     };
 
     /// <summary>A clan whose main home is further than this (m) from the water works out cisterns — necessity being the mother of invention.</summary>
@@ -69,6 +69,7 @@ public sealed partial class World
             home.HasCistern = (known & Craft.Cisterns) != 0;
             home.HasHearth = (known & Craft.Hearth) != 0;
             home.HasWorkshop = (known & Craft.Tools) != 0;
+            home.HasMarket = (known & Craft.Markets) != 0;
         }
         UpdateEra(group);
 
@@ -138,6 +139,9 @@ public sealed partial class World
             Craft.Shields => Knows(group, Craft.Spears) && (group.Culture.Hunting >= 0.2f || group.Culture.Martial >= 0.2f),
             Craft.Tools => hasHouse && EraOf(group) >= Era.FarmingAge,
             Craft.Roads => EraOf(group) >= Era.VillageAge,
+            Craft.Weaving => Knows(group, Craft.Tools) && farms,
+            Craft.Stonecutting => Knows(group, Craft.Tools) && Knows(group, Craft.Stonework),
+            Craft.Markets => EraOf(group) >= Era.VillageAge && Knows(group, Craft.Roads) && (Knows(group, Craft.Weaving) || Knows(group, Craft.Stonecutting)),
             _ => false,
         };
     }
@@ -164,6 +168,9 @@ public sealed partial class World
         Craft.Shields => "make shields of beetle shell",
         Craft.Tools => "build a workbench and make tools",
         Craft.Roads => "pave their paths into roads",
+        Craft.Weaving => "weave cloth",
+        Craft.Stonecutting => "cut stone into blocks",
+        Craft.Markets => "hold a market",
         _ => craft.ToString().ToLowerInvariant(),
     };
 

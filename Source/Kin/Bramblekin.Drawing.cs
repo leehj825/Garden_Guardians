@@ -166,7 +166,7 @@ public sealed partial class Bramblekin
     {
         var side = new Vector3(-facing.Y, 0f, facing.X);
         Vector3 at = Position + new Vector3(0f, BodyHeight * 0.5f, 0f) + side * 0.22f + new Vector3(facing.X, 0f, facing.Y) * 0.08f;
-        const float width = 0.5f;
+        const float width = 0.4f;
         float yaw = MathF.Atan2(side.X, side.Z) * 180f / MathF.PI;
         VillageModels.Draw(VillageItem.Shield, at - new Vector3(0f, VillageModels.HeightAt(VillageItem.Shield, width) / 2f, 0f), yaw, width, Color.White);
         if (group?.Color is { } clan)

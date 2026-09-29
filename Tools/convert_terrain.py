@@ -17,7 +17,9 @@ What it does, in order:
      would otherwise fall below that level (the map's edges, gullies) is
      lifted just above it, so only the two ponds hold water;
   4. re-centres the height on the mean ground (the oak excluded), so the
-     ground sits about y = 0 as it did before;
+     ground sits about y = 0 as it did before, and flattens the hills and
+     hollows to RELIEF of their height (the oak, roots, reeds and stones keep
+     theirs, standing on the gentler ground);
   5. decimates to --tris triangles, shrinks the texture to --texture px (and stores it as PNG: this raylib build can't read a
      glb's embedded JPEG), and
      splits the mesh into pieces of under 65,536 vertices (raylib's limit);
@@ -50,6 +52,7 @@ DISH = 0.5  # extra depth at the lowered pond's centre, so a drought leaves a pu
 BANK = 10.0  # the lowered basin's bank eases back to the old ground over this far
 PROP_HEIGHT = 0.4  # a bump this much (m) above the ground round it is a reed clump or a boulder
 PROP_MIN_CELLS = 3
+RELIEF = 0.65  # the ground's hills and hollows are scaled to this; the oak, reeds and stones keep their height
 GUARD = 0.6  # ground is kept at least this far above the water
 SLAB_BOTTOM = 1.0  # downward faces below this (m) are the slab's underside; higher ones (the hollow trunk's, the roots') are kept
 
@@ -162,6 +165,26 @@ def reshape_ponds(ob, h):
     me.vertices.foreach_set("co", co.ravel())
     me.update()
     return high, low
+
+
+def flatten_relief(ob, ground_grid, k):
+    """Scale the ground's hills and hollows by k, keeping the oak, roots, reeds and stones their full height above it."""
+    mask = oak_mask(ground_grid)
+    grown = ndi.binary_dilation(mask, iterations=3)
+    base = ground_grid.copy()
+    base[grown] = np.nan
+    base = fill_nan(base)
+    for _ in range(40):
+        blur = ndi.uniform_filter(base, 3)
+        base[grown] = blur[grown]
+    smooth = ndi.uniform_filter(ndi.grey_opening(base, size=(9, 9)), 5)  # the ground itself, without the small bumps on it
+    me = ob.data
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    co[:, 2] -= (1.0 - k) * sample_grid(smooth, co[:, 0], -co[:, 1])
+    me.vertices.foreach_set("co", co.ravel())
+    me.update()
 
 
 def bmesh_of(ob):
@@ -305,7 +328,9 @@ def main():
     mean_ground = float(h1[~ndi.binary_dilation(oak_mask(h1), iterations=3)].mean())
     ob.data.transform(Matrix.Translation((0, 0, -mean_ground)))
     level = SHARED_LEVEL - mean_ground
-    print("mean ground %.3f, shared pond level %.3f (after re-centring)" % (mean_ground, level))
+    flatten_relief(ob, h1 - mean_ground, RELIEF)
+    level *= RELIEF
+    print("mean ground %.3f, shared pond level %.3f (after re-centring and flattening the relief to %.0f%%)" % (mean_ground, level, RELIEF * 100))
 
     decimate(ob, args.tris)
     shrink_texture(args.texture)

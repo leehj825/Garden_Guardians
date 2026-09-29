@@ -3,7 +3,7 @@ namespace GardenGuardians;
 public sealed partial class World
 {
     /// <summary>Crafts (any kind) a clan needs to know for each age above the Farming Age.</summary>
-    private const int VillageAgeCrafts = 7, KingdomAgeCrafts = 12;
+    private const int VillageAgeCrafts = 9, KingdomAgeCrafts = 15;
 
     /// <summary>Clans that reached each age (for the headless report), indexed by <see cref="Era"/>.</summary>
     public int[] EraTransitions { get; } = new int[4];
@@ -16,19 +16,19 @@ public sealed partial class World
         return n;
     }
 
-    /// <summary>The age <paramref name="group"/> has reached: farming makes the Farming Age; stonework and seven crafts the Village Age; twelve crafts the Kingdom Age.</summary>
+    /// <summary>The age <paramref name="group"/> has reached: farming makes the Farming Age; stonework and nine crafts the Village Age; fifteen crafts including roads and markets the Kingdom Age.</summary>
     public static Era EraOf(KinGroup group)
     {
         Craft known = CraftsOf(group);
         int crafts = CountCrafts(known);
-        if (crafts >= KingdomAgeCrafts && (known & Craft.Stonework) != 0)
+        if (crafts >= KingdomAgeCrafts && (known & (Craft.Stonework | Craft.Roads | Craft.Markets)) == (Craft.Stonework | Craft.Roads | Craft.Markets))
             return Era.KingdomAge;
         if (crafts >= VillageAgeCrafts && (known & Craft.Stonework) != 0)
             return Era.VillageAge;
         return (known & Craft.Farming) != 0 ? Era.FarmingAge : Era.StoneAge;
     }
 
-    private static string EraName(Era era) => era switch
+    public static string EraName(Era era) => era switch
     {
         Era.FarmingAge => "Farming Age",
         Era.VillageAge => "Village Age",
