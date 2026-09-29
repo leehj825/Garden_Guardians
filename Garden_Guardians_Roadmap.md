@@ -1018,7 +1018,9 @@ three fixes:
     full square (same height as the nearest ground, textured from just
     inside the rim).
 *   ✅ **New gardens use the original terrain only for now** (`TerrainData.NewGardenTerrains`); saved gardens keep theirs.
-*   ⬜ **Not yet:** a terrain picker (New garden chooses at random), the
+*   ✅ **New gardens use the original terrain only for now**
+    (`TerrainData.NewGardenTerrains`); a saved garden keeps its own.
+*   ⬜ **Not yet:** a terrain picker (New garden always uses the original for now), the
     ragged raised corner of terrain2's model, terrain-specific tuning of
     where clans start.
 
