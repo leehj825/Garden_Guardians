@@ -221,7 +221,11 @@ public sealed class Crop
                 DrawPlot(PropModels.Prop.CressPlot, grown, winter, withering);
                 break;
             default:
-                DrawPlot(PropModels.Prop.BerryPlot, grown, winter, withering, 4.5f);
+                // A wild bush stays a bush; only a berry patch some clan planted is a plot.
+                if (GroupId is null)
+                    DrawBush(size, winter, withering);
+                else
+                    DrawPlot(PropModels.Prop.BerryPlot, grown, winter, withering, 4.5f);
                 break;
         }
 
