@@ -217,6 +217,10 @@ def write(path, Q, nrm, uv, idx, joints, weights, legs, png):
     views["ibm"] = blob(ibm)
     views["time"] = blob(times)
     track_views = [blob(tracks[i]) for i in range(bones)]
+    # Raylib's loader is happiest when every joint has all three channels, as a Mixamo clip does: rest translation and scale, held.
+    rest = np.array([np.asarray(p) - (np.asarray(positions[parents[i]]) if parents[i] >= 0 else 0) for i, p in enumerate(positions)], np.float32)
+    move_views = [blob(np.tile(rest[i], (FRAMES + 1, 1))) for i in range(bones)]
+    size_views = [blob(np.ones((FRAMES + 1, 3), np.float32)) for i in range(bones)]
     views["png"] = blob(np.frombuffer(png, np.uint8))
     lengths = {"pos": Q.astype(np.float32).nbytes, "nrm": nrm.nbytes, "uv": uv.nbytes, "idx": idx.astype(np.uint16).nbytes,
                "joints": len(joints) * 4, "weights": weights.nbytes, "ibm": ibm.nbytes, "time": times.nbytes, "png": len(png)}
@@ -226,6 +230,8 @@ def write(path, Q, nrm, uv, idx, joints, weights, legs, png):
         buffer_views[i]["byteLength"] = lengths[name]
     for i, v in enumerate(track_views):
         buffer_views[v]["byteLength"] = tracks[i].nbytes
+    for v in move_views + size_views:
+        buffer_views[v]["byteLength"] = (FRAMES + 1) * 12
 
     accessors = [
         {"bufferView": views["pos"], "componentType": 5126, "count": len(Q), "type": "VEC3", "min": Q.min(axis=0).tolist(), "max": Q.max(axis=0).tolist()},
@@ -241,7 +247,11 @@ def write(path, Q, nrm, uv, idx, joints, weights, legs, png):
     for i in range(bones):
         accessors.append({"bufferView": track_views[i], "componentType": 5126, "count": FRAMES + 1, "type": "VEC4"})
         samplers.append({"input": 7, "output": len(accessors) - 1, "interpolation": "LINEAR"})
-        channels.append({"sampler": i, "target": {"node": 1 + i, "path": "rotation"}})
+        channels.append({"sampler": len(samplers) - 1, "target": {"node": 1 + i, "path": "rotation"}})
+        for views_list, kind in ((move_views, "translation"), (size_views, "scale")):
+            accessors.append({"bufferView": views_list[i], "componentType": 5126, "count": FRAMES + 1, "type": "VEC3"})
+            samplers.append({"input": 7, "output": len(accessors) - 1, "interpolation": "LINEAR"})
+            channels.append({"sampler": len(samplers) - 1, "target": {"node": 1 + i, "path": kind}})
 
     nodes = [{"name": "spider", "mesh": 0, "skin": 0}]
     for i, p in enumerate(positions):
@@ -252,10 +262,12 @@ def write(path, Q, nrm, uv, idx, joints, weights, legs, png):
         if children:
             node["children"] = children
         nodes.append(node)
+    # The body bone needs a parent node: this raylib crashes loading the clip of a skeleton whose root hangs straight off the scene.
+    nodes.append({"name": "Armature", "children": [1]})
 
     doc = {
         "asset": {"version": "2.0", "generator": "convert_spider.py"},
-        "scene": 0, "scenes": [{"nodes": [0, 1]}], "nodes": nodes,
+        "scene": 0, "scenes": [{"nodes": [0, len(nodes) - 1]}], "nodes": nodes,
         "meshes": [{"primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2, "JOINTS_0": 4, "WEIGHTS_0": 5}, "indices": 3, "material": 0}]}],
         "skins": [{"joints": [1 + i for i in range(bones)], "inverseBindMatrices": 6, "skeleton": 1}],
         "animations": [{"name": "Walk", "samplers": samplers, "channels": channels}],

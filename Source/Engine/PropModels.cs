@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Runtime.InteropServices;
 using Raylib_cs;
 
 namespace GardenGuardians;
@@ -91,7 +92,14 @@ public static unsafe class PropModels
                 _spiderWalkOk = true;
             }
         }
-        Model model = _full[(int)Prop.Spider];
+        ref Model model = ref _full[(int)Prop.Spider];
+        if (_spiderWalkOk && model.BoneMatrices is null && model.Skeleton.BoneCount > 0)
+        {
+            // Posing needs its own bone buffers (see BramblekinModel.CreatePoseInstance): the loader does not make them.
+            int bones = model.Skeleton.BoneCount;
+            model.BoneMatrices = (Matrix4x4*)NativeMemory.AllocZeroed((nuint)bones, (nuint)sizeof(Matrix4x4));
+            model.CurrentPose = (Transform*)NativeMemory.AllocZeroed((nuint)bones, (nuint)sizeof(Transform));
+        }
         if (!_spiderWalkOk || model.Skeleton.BoneCount == 0)
         {
             Raylib.DrawModelEx(model, position, Vector3.UnitY, yawDegrees, new Vector3(scale), tint);
