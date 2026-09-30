@@ -1234,8 +1234,12 @@ public static partial class Game
     {
         int Count(BramblekinState state) => world.Colony.Count(b => !b.IsDead && b.State == state);
 
-        // The Stats button sits at the bottom-left, just above the stats bar (or the screen's edge when it's hidden),
+        // The Stats button sits at the bottom-left, just above where the stats bar is, whether it shows or not,
         // with the Log button and the log above it.
+        const int statLines = 7;
+        int fontSize = ScaledFontSize(0.8f);
+        int lineHeight = fontSize + fontSize / 6;
+        int barHeight = lineHeight * statLines + 20;
         string statsLabel = _statsView == StatsView.Shown ? "Stats: on" : "Stats: off";
         int statsFont = Math.Max(14, (int)(30 * UiScale));
         int statsPad = Math.Max(6, (int)(14 * UiScale));
@@ -1254,7 +1258,7 @@ public static partial class Game
         }
 
         if (_statsView == StatsView.Hidden)
-            return DrawStatsButton(Raylib.GetScreenHeight());
+            return DrawStatsButton(Raylib.GetScreenHeight() - barHeight);
 
         int living = world.Colony.Count(b => !b.IsDead);
         int solitary = world.Colony.Count(b => !b.IsDead && b.GroupId is null);
@@ -1278,9 +1282,6 @@ public static partial class Game
 
         // UI Text Scaling: a background bar goes underneath, sized off
         // fontSize/lineHeight, so the text stays legible over a busy map.
-        int fontSize = ScaledFontSize(0.8f);
-        int lineHeight = fontSize + fontSize / 6;
-        int barHeight = lineHeight * lines.Length + 20;
         int y = Raylib.GetScreenHeight() - barHeight + 10;
         Raylib.DrawRectangle(0, y - 10, Raylib.GetScreenWidth(), barHeight, new Color(0, 0, 0, 90));
         for (int i = 0; i < lines.Length; i++)
