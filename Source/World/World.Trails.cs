@@ -32,7 +32,10 @@ public sealed partial class World
     private bool _stonecutting;
 
     [NotSaved] // A render cache, rebuilt when a cell crosses a threshold.
-    private readonly List<(Vector3 A, Vector3 B, Vector3 C, Vector3 D, bool Paved)> _trailQuads = new();
+    private readonly List<TrailRenderer.Square> _trailSquares = new();
+
+    [NotSaved] // The textured meshes made from them.
+    private TrailRenderer? _trailRenderer;
 
     /// <summary>Cells paved into road so far.</summary>
     public int RoadCells { get; private set; }
@@ -102,42 +105,58 @@ public sealed partial class World
         }
     }
 
-    /// <summary>Dirt paths and paved roads, laid just over the ground.</summary>
+    /// <summary>Whether the cell at (<paramref name="i"/>, <paramref name="j"/>) is the same kind of trail (road, or dirt path) as asked.</summary>
+    private bool IsTrail(int i, int j, bool paved)
+    {
+        if (i < 0 || j < 0 || i >= TrailCells || j >= TrailCells)
+            return false;
+        int cell = j * TrailCells + i;
+        return paved ? _paved[cell] : !_paved[cell] && _wear[cell] >= PathWear;
+    }
+
+    /// <summary>Dirt paths and paved roads, laid just over the ground: textured, fading out at the edges of a patch.</summary>
     private void DrawTrails(Camera3D camera)
     {
+        _trailRenderer ??= new TrailRenderer();
         if (_trailsDirty)
         {
             _trailsDirty = false;
-            _trailQuads.Clear();
+            _trailSquares.Clear();
             for (int j = 0; j < TrailCells; j++)
             {
                 for (int i = 0; i < TrailCells; i++)
                 {
                     int cell = j * TrailCells + i;
-                    if (!_paved[cell] && _wear[cell] < PathWear)
+                    bool paved = _paved[cell];
+                    if (!paved && _wear[cell] < PathWear)
                         continue;
                     float x = i - TrailCells / 2f, z = j - TrailCells / 2f;
                     Vector3 Corner(float cx, float cz) => new(cx, GetHeightAt(cx, cz) + 0.05f, cz);
-                    _trailQuads.Add((Corner(x, z), Corner(x + 1, z), Corner(x + 1, z + 1), Corner(x, z + 1), _paved[cell]));
+
+                    // A corner is solid when all four squares round it are the same trail, and fades as fewer are.
+                    float most = paved ? 255f : 200f;
+                    byte Fade(int ci, int cj)
+                    {
+                        int n = (IsTrail(ci - 1, cj - 1, paved) ? 1 : 0) + (IsTrail(ci, cj - 1, paved) ? 1 : 0)
+                            + (IsTrail(ci - 1, cj, paved) ? 1 : 0) + (IsTrail(ci, cj, paved) ? 1 : 0);
+                        return (byte)(most * (0.3f + 0.7f * (Math.Max(n, 1) - 1) / 3f));
+                    }
+
+                    _trailSquares.Add(new TrailRenderer.Square(
+                        Corner(x, z), Corner(x + 1, z), Corner(x + 1, z + 1), Corner(x, z + 1), paved,
+                        Fade(i, j), Fade(i + 1, j), Fade(i + 1, j + 1), Fade(i, j + 1)));
                 }
             }
+            _trailRenderer.Rebuild(_trailSquares);
         }
-        if (_trailQuads.Count == 0)
+        if (_trailSquares.Count == 0)
             return;
         Rlgl.DrawRenderBatchActive();
         Rlgl.DisableDepthMask();
         Rlgl.DisableBackfaceCulling();
-        foreach (var (a, b, c, d, paved) in _trailQuads)
-        {
-            Color color = paved ? RoadColor : PathColor;
-            Raylib.DrawTriangle3D(a, d, c, color);
-            Raylib.DrawTriangle3D(a, c, b, color);
-        }
+        _trailRenderer.Draw();
         Rlgl.DrawRenderBatchActive();
         Rlgl.EnableBackfaceCulling();
         Rlgl.EnableDepthMask();
     }
-
-    private static readonly Color PathColor = new(150, 118, 78, 130);
-    private static readonly Color RoadColor = new(150, 148, 142, 200);
 }
