@@ -236,7 +236,7 @@ public sealed partial class World
             DrawFogSquare(x + mid, z + mid, mid, fog, splits - 1);
             return;
         }
-        float lift = 0.12f + worst;
+        float lift = 0.12f + worst + (ProceduralView.GroundTolerance);
         var a = new Vector3(x, h00 + lift, z);
         var b = new Vector3(x + size, h10 + lift, z);
         var d = new Vector3(x, h01 + lift, z + size);

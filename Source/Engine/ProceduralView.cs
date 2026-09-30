@@ -23,6 +23,9 @@ public sealed unsafe class ProceduralView
     public static Vector3 Eye, Focus;
     public static float FovDegrees = 45f, Aspect = 1.6f;
 
+    /// <summary>How far (m) the ground mesh drawn last may stand off the true ground: what an overlay laid on the ground has to clear.</summary>
+    public static float GroundTolerance { get; private set; } = MeshTolerance;
+
     /// <summary>The baked ground texture is this many pixels square (a power of two, so it can be mipmapped).</summary>
     private const int TextureSize = 2048;
 
@@ -319,6 +322,7 @@ public sealed unsafe class ProceduralView
         if (!_lodBuilt[level])
             BuildLod(level);
         Model ground = _lods[level];
+        GroundTolerance = LodTolerance[level];
         Raylib.DrawModel(ground, Vector3.Zero, 1f, multiply);
         if (_set.Props is { } props)
         {
