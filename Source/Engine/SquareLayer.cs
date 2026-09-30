@@ -40,8 +40,8 @@ public sealed unsafe class SquareLayer
         return texture;
     }
 
-    /// <summary>Replaces the meshes with ones for <paramref name="squares"/>, the texture repeating every <paramref name="tileX"/> by <paramref name="tileZ"/> metres.</summary>
-    public void Rebuild(IEnumerable<Square> squares, Texture2D texture, float tileX, float tileZ)
+    /// <summary>Replaces the meshes with ones for <paramref name="squares"/>, the texture repeating every <paramref name="tileX"/> by <paramref name="tileZ"/> metres, darkened or coloured by <paramref name="tint"/> (white when none).</summary>
+    public void Rebuild(IEnumerable<Square> squares, Texture2D texture, float tileX, float tileZ, Color? tint = null)
     {
         Clear();
         var batch = new List<Square>(SquaresPerMesh);
@@ -50,12 +50,12 @@ public sealed unsafe class SquareLayer
             batch.Add(square);
             if (batch.Count == SquaresPerMesh)
             {
-                _models.Add(MakeModel(batch, texture, tileX, tileZ));
+                _models.Add(MakeModel(batch, texture, tileX, tileZ, tint ?? Color.White));
                 batch.Clear();
             }
         }
         if (batch.Count > 0)
-            _models.Add(MakeModel(batch, texture, tileX, tileZ));
+            _models.Add(MakeModel(batch, texture, tileX, tileZ, tint ?? Color.White));
     }
 
     public void Draw()
@@ -75,7 +75,7 @@ public sealed unsafe class SquareLayer
         _models.Clear();
     }
 
-    private static Model MakeModel(List<Square> batch, Texture2D texture, float tileX, float tileZ)
+    private static Model MakeModel(List<Square> batch, Texture2D texture, float tileX, float tileZ, Color tint)
     {
         int vertices = batch.Count * 6;
         Mesh mesh = default;
@@ -97,9 +97,9 @@ public sealed unsafe class SquareLayer
             mesh.Normals[v * 3 + 2] = 0f;
             mesh.TexCoords[v * 2] = p.X / tileX;
             mesh.TexCoords[v * 2 + 1] = p.Z / tileZ;
-            mesh.Colors[v * 4] = 255;
-            mesh.Colors[v * 4 + 1] = 255;
-            mesh.Colors[v * 4 + 2] = 255;
+            mesh.Colors[v * 4] = tint.R;
+            mesh.Colors[v * 4 + 1] = tint.G;
+            mesh.Colors[v * 4 + 2] = tint.B;
             mesh.Colors[v * 4 + 3] = alpha;
             v++;
         }

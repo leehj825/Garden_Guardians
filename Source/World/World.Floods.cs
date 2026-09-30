@@ -20,6 +20,11 @@ public sealed partial class World
     /// <summary>A flooded Tent is swept away with these odds (it always loses its store); a flooded House loses half its store.</summary>
     private const double TentSweptAwayChance = 0.5;
 
+    private static readonly Color WaterColor = new(70, 120, 190, 150);
+
+    /// <summary>The water while it floods: muddy, and a little more solid.</summary>
+    private static readonly Color FloodColor = new(150, 118, 78, 170);
+
     /// <summary>The pond's surface, and how high a flood reaches (see <see cref="FloodedFraction"/>) — the terrain never changes, so worked out once.</summary>
     private static (float Lowest, float Peak) FloodHeights = MeasureFloodHeights();
 
@@ -203,19 +208,6 @@ public sealed partial class World
     [NotSaved]
     private float _waterCellsLevel = float.NaN;
 
-    /// <summary>The water surface as textured squares: rippling pond water, or muddy brown while it floods. Another render cache.</summary>
-    [NotSaved]
-    private SquareLayer? _waterLayer;
-
-    [NotSaved]
-    private bool _waterLayerFlood;
-
-    /// <summary>The water is drawn this opaque (0-255) over the ground it covers, which shows through a little.</summary>
-    private const byte WaterAlpha = 200;
-
-    /// <summary>The water and flood textures repeat every this many metres.</summary>
-    private const float WaterTile = 4f;
-
     /// <summary>
     /// The pond — or, in a flood, the risen water: a surface at
     /// <see cref="WaterLevel"/>, drawn only over the squares of the garden
@@ -226,13 +218,9 @@ public sealed partial class World
     {
         DrawPondBed();
         float level = WaterLevel;
-        _waterLayer ??= new SquareLayer();
-        bool flooding = _flood > 0.02f;
-        bool rebuild = false;
         if (MathF.Abs(level - _waterCellsLevel) > 0.02f || float.IsNaN(_waterCellsLevel))
         {
             _waterCellsLevel = level;
-            rebuild = true;
             _waterCells.Clear();
             float half = Terrain.Size / 2f;
             for (float x = -half; x < half; x += WaterCell)
@@ -245,24 +233,20 @@ public sealed partial class World
                 }
             }
         }
-        if (rebuild || flooding != _waterLayerFlood)
-        {
-            _waterLayerFlood = flooding;
-            var squares = new List<SquareLayer.Square>(_waterCells.Count);
-            foreach (Vector2 cell in _waterCells)
-            {
-                squares.Add(new SquareLayer.Square(
-                    new Vector3(cell.X, level, cell.Y), new Vector3(cell.X + WaterCell, level, cell.Y),
-                    new Vector3(cell.X + WaterCell, level, cell.Y + WaterCell), new Vector3(cell.X, level, cell.Y + WaterCell),
-                    WaterAlpha, WaterAlpha, WaterAlpha, WaterAlpha));
-            }
-            _waterLayer.Rebuild(squares, SquareLayer.Tile(flooding ? "terrain_flood.png" : "terrain_water.png", 256), WaterTile, WaterTile);
-        }
 
+        Color color = _flood > 0.02f ? FloodColor : WaterColor;
         Rlgl.DrawRenderBatchActive();
         Rlgl.DisableDepthMask();
         Rlgl.DisableBackfaceCulling();
-        _waterLayer.Draw();
+        foreach (Vector2 cell in _waterCells)
+        {
+            var a = new Vector3(cell.X, level, cell.Y);
+            var b = new Vector3(cell.X + WaterCell, level, cell.Y);
+            var c = new Vector3(cell.X + WaterCell, level, cell.Y + WaterCell);
+            var d = new Vector3(cell.X, level, cell.Y + WaterCell);
+            Raylib.DrawTriangle3D(a, d, c, color);
+            Raylib.DrawTriangle3D(a, c, b, color);
+        }
         Rlgl.DrawRenderBatchActive();
         Rlgl.EnableBackfaceCulling();
         Rlgl.EnableDepthMask();
