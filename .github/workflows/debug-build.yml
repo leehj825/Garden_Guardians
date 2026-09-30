@@ -14,7 +14,7 @@ permissions:
 jobs:
   build-debug-apk:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
@@ -52,8 +52,6 @@ jobs:
           -f net8.0-android
           -c Debug
           -p:EmbedAssembliesIntoApk=true
-          -p:RuntimeIdentifier=android-arm64
-          -p:RuntimeIdentifiers=android-arm64
 
       # Debug APKs are signed automatically with the SDK's throwaway debug key
       # (Android refuses to install a truly unsigned APK). No release keystore
@@ -62,5 +60,5 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: garden-guardians-debug-apk
-          path: bin/Debug/net8.0-android/**/publish/*-Signed.apk
+          path: bin/Debug/net8.0-android/publish/*-Signed.apk
           if-no-files-found: error

@@ -77,17 +77,7 @@
   <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-android' And '$(Configuration)' == 'Release'">
     <PublishTrimmed>false</PublishTrimmed>
     <AndroidLinkMode>None</AndroidLinkMode>
-  </PropertyGroup>
-
-  <!-- Ahead-of-time compile the game (and the libraries it uses) with LLVM, in
-       Debug and Release alike. Left to the JIT, the phone runs the simulation
-       several times slower than a desktop and fast-forward can't keep up
-       (about 12x when set to 50x on a large garden). Nothing is trimmed, so
-       the save's use of reflection still finds everything. The whole-app
-       profile is not used: it would leave methods to the JIT. -->
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-android'">
-    <RunAOTCompilation>true</RunAOTCompilation>
-    <EnableLLVM>true</EnableLLVM>
+    <RunAOTCompilation>false</RunAOTCompilation>
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
   </PropertyGroup>
 
