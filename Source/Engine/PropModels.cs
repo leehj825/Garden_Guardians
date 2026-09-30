@@ -18,10 +18,10 @@ public static unsafe class PropModels
         : Path.Combine(AppContext.BaseDirectory, "Assets", "Models", "Props") + Path.DirectorySeparatorChar;
 
     /// <summary>Each model is 1 unit tall, at the origin; this is how wide it is (m), for scaling it to a size.</summary>
-    public const float HouseWidth = 0.82f, BushWidth = 0.81f, SpiderWidth = 1.0f, TentWidth = 1.117f;
+    public const float HouseWidth = 0.796f, BushWidth = 0.81f, SpiderWidth = 1.0f, TentWidth = 1.117f;
 
     /// <summary>The acorn house's window (with the leaves) faces +Z, and it has firewood, a sack, a sword and shield round its foot; its cap's top is this fraction of its height (the stem rises above).</summary>
-    public const float HouseCapTop = 0.80f;
+    public const float HouseCapTop = 0.72f;
 
     /// <summary>The props; each has a full model and a cheap one (a fifth or so of the triangles, a 512px texture) for when it is small on screen.</summary>
     public enum Prop { House, Bush, Spider, Tent }
