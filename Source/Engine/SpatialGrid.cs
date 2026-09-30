@@ -33,6 +33,9 @@ public sealed class SpatialGrid<T>
     public SpatialGrid() => _chunks = new List<T>?[Half * 2 * Half * 2];
     private readonly Dictionary<(int X, int Z), List<T>> _outside = new();
 
+    /// <summary>The chunks holding anything since the last <see cref="Clear"/>: only these need emptying, not every chunk of a big map.</summary>
+    private readonly List<List<T>> _used = new();
+
     private static (int X, int Z) ChunkOf(Vector3 position) =>
         ((int)MathF.Floor(position.X / ChunkSize), (int)MathF.Floor(position.Z / ChunkSize));
 
@@ -56,17 +59,19 @@ public sealed class SpatialGrid<T>
     /// <summary>Empties every chunk, ready for this frame's <see cref="Register"/> calls.</summary>
     public void Clear()
     {
-        foreach (List<T>? list in _chunks)
-            list?.Clear();
-        foreach (List<T> list in _outside.Values)
+        foreach (List<T> list in _used)
             list.Clear();
+        _used.Clear();
     }
 
     /// <summary>Registers <paramref name="item"/> under the chunk containing <paramref name="position"/>.</summary>
     public void Register(T item, Vector3 position)
     {
         var (x, z) = ChunkOf(position);
-        Chunk(x, z, create: true)!.Add(item);
+        List<T> list = Chunk(x, z, create: true)!;
+        if (list.Count == 0)
+            _used.Add(list);
+        list.Add(item);
     }
 
     /// <summary>

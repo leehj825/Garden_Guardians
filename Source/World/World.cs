@@ -433,78 +433,131 @@ public sealed partial class World
 
     public void Update(float deltaTime)
     {
+        Prof.Begin();
         ElapsedSeconds += deltaTime;
         UpdateSeason();
+        Prof.Mark("UpdateSeason");
         UpdateWeather(deltaTime);
+        Prof.Mark("UpdateWeather");
         UpdateHistory(deltaTime);
+        Prof.Mark("UpdateHistory");
         AccumulateExposure(deltaTime);
+        Prof.Mark("AccumulateExposure");
         UpdateFoodClaimTimeouts(deltaTime);
+        Prof.Mark("UpdateFoodClaimTimeouts");
         RebuildSpatialGrids();
+        Prof.Mark("RebuildSpatialGrids");
         RebuildGroups();
+        Prof.Mark("RebuildGroups");
         UpdateRelations(deltaTime);
+        Prof.Mark("UpdateRelations");
         UpdateTributes();
+        Prof.Mark("UpdateTributes");
         UpdateGroupHomes(deltaTime);
+        Prof.Mark("UpdateGroupHomes");
         UpdateHearths(deltaTime);
+        Prof.Mark("UpdateHearths");
         UpdateWatchtowers(deltaTime);
+        Prof.Mark("UpdateWatchtowers");
         UpdateCalendar(deltaTime);
+        Prof.Mark("UpdateCalendar");
         UpdateKingdoms(deltaTime);
+        Prof.Mark("UpdateKingdoms");
         UpdateExploration(deltaTime);
+        Prof.Mark("UpdateExploration");
         UpdateSnares();
+        Prof.Mark("UpdateSnares");
         UpdateNight(deltaTime);
+        Prof.Mark("UpdateNight");
         UpdateFeasts();
+        Prof.Mark("UpdateFeasts");
         UpdateGroupDecisions(deltaTime);
+        Prof.Mark("UpdateGroupDecisions");
         UpdateReigns(deltaTime);
+        Prof.Mark("UpdateReigns");
         CountShelterOccupants();
+        Prof.Mark("CountShelterOccupants");
 
         // Wildlife moves before the colony reacts to it this frame. Reverse
         // for-loops: a Bramblekin's strike (below) can kill a Hornet or Grub,
         // which marks it dead but defers the actual list removal.
         for (int i = Hornets.Count - 1; i >= 0; i--)
             Hornets[i].Update(deltaTime, this);
+        Prof.Mark("Hornets");
 
         for (int i = Grubs.Count - 1; i >= 0; i--)
             Grubs[i].Update(deltaTime, this);
+        Prof.Mark("Grubs");
 
         for (int i = Beetles.Count - 1; i >= 0; i--)
             Beetles[i].Update(deltaTime, this);
+        Prof.Mark("Beetles");
 
         UpdatePondLife(deltaTime);
+        Prof.Mark("UpdatePondLife");
         IndexRipeCrops();
+        Prof.Mark("IndexRipeCrops");
 
         // Reverse for-loop: a Bramblekin's own Update() can kill another
         // (combat, robbery) — World.Kill only queues the removal, but
         // walking backwards keeps this loop correct even if that changes.
         for (int i = Colony.Count - 1; i >= 0; i--)
             Colony[i].Update(deltaTime, this);
+        Prof.Mark("Colony.Update");
 
         if (Spider is { IsDead: false } spider)
             spider.Update(deltaTime, this);
+        Prof.Mark("Spider");
 
         ResolveEncounters();
+        Prof.Mark("ResolveEncounters");
 
         UpdateShelters(deltaTime);
+        Prof.Mark("UpdateShelters");
         UpdateFarming(deltaTime);
+        Prof.Mark("UpdateFarming");
         UpdatePens(deltaTime);
+        Prof.Mark("UpdatePens");
         UpdateBerrySpawn(deltaTime);
+        Prof.Mark("UpdateBerrySpawn");
         UpdateWildFood(deltaTime);
+        Prof.Mark("UpdateWildFood");
         UpdateTwigSpawn(deltaTime);
+        Prof.Mark("UpdateTwigSpawn");
         UpdateMaterials(deltaTime);
+        Prof.Mark("UpdateMaterials");
         UpdateCisterns(deltaTime);
+        Prof.Mark("UpdateCisterns");
         UpdatePond(deltaTime);
+        Prof.Mark("UpdatePond");
         UpdateWellOwners();
+        Prof.Mark("UpdateWellOwners");
         UpdateSpiderRespawn(deltaTime);
+        Prof.Mark("UpdateSpiderRespawn");
         UpdateHornetSpawn(deltaTime);
+        Prof.Mark("UpdateHornetSpawn");
         UpdateGrubSpawn(deltaTime);
+        Prof.Mark("UpdateGrubSpawn");
         UpdateBeetleSpawn(deltaTime);
+        Prof.Mark("UpdateBeetleSpawn");
         UpdateAnts(deltaTime);
+        Prof.Mark("UpdateAnts");
         UpdateOak(deltaTime);
+        Prof.Mark("UpdateOak");
         UpdateTrails(deltaTime);
+        Prof.Mark("UpdateTrails");
         UpdateGoods(deltaTime);
+        Prof.Mark("UpdateGoods");
         UpdateBeehive(deltaTime);
+        Prof.Mark("UpdateBeehive");
         UpdateArrivals(deltaTime);
+        Prof.Mark("UpdateArrivals");
         UpdateFoodDespawn(deltaTime);
+        Prof.Mark("UpdateFoodDespawn");
         UpdateEncounterCleanup(deltaTime);
+        Prof.Mark("UpdateEncounterCleanup");
         UpdatePebbles(deltaTime);
+        Prof.Mark("UpdatePebbles");
 
         for (int i = _splats.Count - 1; i >= 0; i--)
         {

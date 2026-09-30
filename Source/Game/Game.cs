@@ -40,11 +40,17 @@ public static partial class Game
     /// <summary>…or at 10x and up, where more speed is worth a few frames a second.</summary>
     private const double FastSimulationBudgetSeconds = 0.045;
 
+    /// <summary>…and at 20x and up (a time-lapse) most of the frame, drawing only a dozen frames a second: the picture matters little at that speed, and this hands nearly all of the phone's time to the simulation.</summary>
+    private const double TimeLapseSimulationBudgetSeconds = 0.08;
+
     /// <summary>Simulated time owed (the chosen speed × real time) but not yet stepped.</summary>
     private static float _simulationBacklog;
 
     /// <summary>The speed the simulation is actually managing (smoothed) — below the chosen one on a slow device.</summary>
     private static float _achievedSpeed = 1f;
+
+    /// <summary>Smoothed real time (ms) a frame spends simulating and drawing, shown in the status line.</summary>
+    private static double _simMs, _drawMs;
 
     /// <summary>Debug Time Scale: the speeds the corner +/- buttons step through, clamped at either end.</summary>
     private static readonly float[] TimeScaleSteps = { 1f, 2f, 5f, 10f, 20f, 50f };
@@ -219,7 +225,7 @@ public static partial class Game
     private static void StepSimulation(World world, float realDeltaTime)
     {
         _simulationBacklog += realDeltaTime * _timeScale;
-        double budget = _timeScale >= 10f ? FastSimulationBudgetSeconds : SimulationBudgetSeconds;
+        double budget = _timeScale >= 20f ? TimeLapseSimulationBudgetSeconds : _timeScale >= 10f ? FastSimulationBudgetSeconds : SimulationBudgetSeconds;
         long start = System.Diagnostics.Stopwatch.GetTimestamp();
         float simulated = 0f;
         while (_simulationBacklog >= SimulationStep)
@@ -435,7 +441,10 @@ public static partial class Game
             director.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture || followCamera.IsBusy);
 
             // 2) Simulation, in fixed steps (see StepSimulation).
+            long simStart = System.Diagnostics.Stopwatch.GetTimestamp();
             StepSimulation(world, rawDeltaTime);
+            _simMs += (System.Diagnostics.Stopwatch.GetElapsedTime(simStart).TotalMilliseconds - _simMs) * 0.05;
+            long drawStart = System.Diagnostics.Stopwatch.GetTimestamp();
             UpdateBanners(world, Raylib.GetFrameTime());
 
             // 3) Rendering.
@@ -477,6 +486,7 @@ public static partial class Game
                 DrawDebugConsole(top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
 
             Raylib.EndDrawing();
+            _drawMs += (System.Diagnostics.Stopwatch.GetElapsedTime(drawStart).TotalMilliseconds - _drawMs) * 0.05;
             if (DebugShot.Finished())
                 break;
 
@@ -535,10 +545,13 @@ public static partial class Game
 
         float endTime = world.ElapsedSeconds + simulatedSeconds;
         float reportTimer = 0f;
+        int steps = 0;
         while (world.ElapsedSeconds < endTime)
         {
             world.Update(step);
             world.CommitPendingChanges();
+            Prof.Mark("Commit");
+            steps++;
 
             reportTimer += step;
             if (reportTimer >= reportInterval)
@@ -548,6 +561,7 @@ public static partial class Game
             }
         }
 
+        Prof.Report(steps);
         Console.WriteLine();
         Console.WriteLine("=== Summary ===");
         PrintReport(world);
@@ -1195,7 +1209,7 @@ public static partial class Game
         // screen at any size (the font scales with UiScale).
         string[] lines =
         {
-            $"Year {world.Year} {world.CurrentSeason}, day {world.DayOfYear} {world.TimeOfDayLabel.ToLowerInvariant()}{(world.WeatherLabel is { } weather ? $" - {weather}" : "")} (food x{world.FoodAbundance:0.0})   Speed {_timeScale}x{(_achievedSpeed < _timeScale * 0.85f ? $" (running {_achievedSpeed:0}x)" : "")}   FPS {Raylib.GetFPS()}   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
+            $"Year {world.Year} {world.CurrentSeason}, day {world.DayOfYear} {world.TimeOfDayLabel.ToLowerInvariant()}{(world.WeatherLabel is { } weather ? $" - {weather}" : "")} (food x{world.FoodAbundance:0.0})   Speed {_timeScale}x{(_achievedSpeed < _timeScale * 0.85f ? $" (running {_achievedSpeed:0}x)" : "")}   FPS {Raylib.GetFPS()} (sim {_simMs:0} ms, draw {_drawMs:0} ms)   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
             $"Homes: {world.Shelters.Count(s => s.IsBuilt && s.Tier == ShelterTier.Tent)} tents, {world.Shelters.Count(s => s.Tier == ShelterTier.House)} houses, " +
             $"{world.Shelters.Count(s => s.IsBuilt && s.IsBurrow)} burrows, {world.Shelters.Count(s => !s.IsBuilt)} being built   Food stored {world.Shelters.Sum(s => s.StoredFood)}   " +
             $"Villages {world.Groups.Count(g => g.Annexes.Count > 0)} (budded {world.Buddings})   Crops {world.Crops.Count}",
