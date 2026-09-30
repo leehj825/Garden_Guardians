@@ -45,7 +45,7 @@ public sealed unsafe class TrailRenderer
         if (_texturesLoaded)
             return;
         _texturesLoaded = true;
-        _roadTexture = LoadTile("cobble_1.jpg", 512);
+        _roadTexture = LoadTile("cobble_1.png", 512);
         _pathTexture = LoadTile("dirt_1.png", 256);
     }
 
