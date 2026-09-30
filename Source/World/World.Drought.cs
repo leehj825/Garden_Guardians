@@ -13,7 +13,8 @@ public sealed partial class World
     /// <summary>…and afterwards it fills back over this long — four times as fast in the rain.</summary>
     private const float PondRefillSeconds = 120f;
 
-    private static readonly Color MudColor = new(96, 78, 56, 255);
+    /// <summary>The cracked mud texture repeats every this many metres.</summary>
+    private const float MudTile = 2.5f;
 
     /// <summary>How far the pond has sunk: 0 as usual, 1 at its lowest.</summary>
     private float _pondLow;
@@ -65,6 +66,9 @@ public sealed partial class World
     [NotSaved] // A render cache, like the water's (see _waterCellsLevel).
     private int _mudCellsLevel = -1;
 
+    [NotSaved]
+    private SquareLayer? _mudLayer;
+
     private void DrawPondBed()
     {
         if (WaterMap.Level == 0)
@@ -86,11 +90,11 @@ public sealed partial class World
                     _mudCells.Add((Corner(x, z), Corner(x + WaterCell, z), Corner(x + WaterCell, z + WaterCell), Corner(x, z + WaterCell)));
                 }
             }
+            _mudLayer ??= new SquareLayer();
+            _mudLayer.Rebuild(
+                _mudCells.Select(c => new SquareLayer.Square(c.Item1, c.Item2, c.Item3, c.Item4, 255, 255, 255, 255)),
+                SquareLayer.Tile("terrain_mud.png", 256), MudTile, MudTile);
         }
-        foreach (var (a, b, c, d) in _mudCells)
-        {
-            Raylib.DrawTriangle3D(a, d, c, MudColor);
-            Raylib.DrawTriangle3D(a, c, b, MudColor);
-        }
+        _mudLayer?.Draw();
     }
 }
