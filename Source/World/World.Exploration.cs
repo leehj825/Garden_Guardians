@@ -198,15 +198,51 @@ public sealed partial class World
                 Vector3 c = clan.Known.CenterOf(cx, cz);
                 if (!IsVisible(c, camera))
                     continue;
-                Vector3 a = Grounded(c + new Vector3(-e, 0f, -e), 0.12f), b = Grounded(c + new Vector3(e, 0f, -e), 0.12f);
-                Vector3 d = Grounded(c + new Vector3(-e, 0f, e), 0.12f), f = Grounded(c + new Vector3(e, 0f, e), 0.12f);
-                Raylib.DrawTriangle3D(a, f, b, fog);
-                Raylib.DrawTriangle3D(a, d, f, fog);
+                DrawFogSquare(c.X - e, c.Z - e, KnownMap.CellSize, fog, 2);
             }
         }
         Rlgl.DrawRenderBatchActive();
         Rlgl.EnableBackfaceCulling();
         Rlgl.EnableDepthMask();
+    }
+
+    /// <summary>
+    /// One square of fog laid over the ground from (<paramref name="x"/>, <paramref name="z"/>), <paramref name="size"/> metres a side. Where the ground
+    /// is lumpy — a hill would poke through a flat square — it is split into four (up to <paramref name="splits"/> times), and what still pokes
+    /// through is covered by lifting the square by the worst of it.
+    /// </summary>
+    private static void DrawFogSquare(float x, float z, float size, Color fog, int splits)
+    {
+        float h00 = GetHeightAt(x, z), h10 = GetHeightAt(x + size, z), h01 = GetHeightAt(x, z + size), h11 = GetHeightAt(x + size, z + size);
+        float mid = size / 2f;
+        // Bumps above the flat square: the centre, the edges' middles, and the points between.
+        float worst = 0f;
+        for (int i = 0; i < 3; i++)
+        {
+            for (int j = 0; j < 3; j++)
+            {
+                if (i is 0 or 2 && j is 0 or 2)
+                    continue;
+                float u = i / 2f, v = j / 2f;
+                float flat = h00 * (1 - u) * (1 - v) + h10 * u * (1 - v) + h01 * (1 - u) * v + h11 * u * v;
+                worst = MathF.Max(worst, GetHeightAt(x + u * size, z + v * size) - flat);
+            }
+        }
+        if (worst > 0.08f && splits > 0)
+        {
+            DrawFogSquare(x, z, mid, fog, splits - 1);
+            DrawFogSquare(x + mid, z, mid, fog, splits - 1);
+            DrawFogSquare(x, z + mid, mid, fog, splits - 1);
+            DrawFogSquare(x + mid, z + mid, mid, fog, splits - 1);
+            return;
+        }
+        float lift = 0.12f + worst;
+        var a = new Vector3(x, h00 + lift, z);
+        var b = new Vector3(x + size, h10 + lift, z);
+        var d = new Vector3(x, h01 + lift, z + size);
+        var f = new Vector3(x + size, h11 + lift, z + size);
+        Raylib.DrawTriangle3D(a, f, b, fog);
+        Raylib.DrawTriangle3D(a, d, f, fog);
     }
 
     // --- Rafts ---------------------------------------------------------------------------------
