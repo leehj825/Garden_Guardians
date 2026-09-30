@@ -52,6 +52,8 @@ jobs:
           -f net8.0-android
           -c Debug
           -p:EmbedAssembliesIntoApk=true
+          -p:RuntimeIdentifier=android-arm64
+          -p:RuntimeIdentifiers=android-arm64
 
       # Debug APKs are signed automatically with the SDK's throwaway debug key
       # (Android refuses to install a truly unsigned APK). No release keystore
