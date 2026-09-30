@@ -8,6 +8,9 @@ cost so the texture stays where it was, and given smooth normals. The plants kee
 unchanged. The oaks' own texture is a patchwork of tiny bark scraps on dark filler, and once the mesh is reduced most of
 it lands on the filler, so the oaks are re-textured with a seamless bark tile (bark_png, in the oak's own browns and
 slate greys, long vertical ridges with cracks across) laid on by box projection at one scale.
+
+That bark looked too dirty, so the oaks are now plain: a flat warm tan with each face shaded (baked into vertex colours,
+because the game draws unlit), on a tiny white texture. The bark tile code is kept (BARK = True) in case it is wanted.
 """
 import io
 import json
@@ -94,6 +97,8 @@ def enhance(png):
     return buf.getvalue()
 
 
+BARK = False  # True: the bark tile instead of plain shaded tan
+OAK_TAN = np.array([182.0, 146.0, 108.0])
 BARK_TILE_METRES = 8.0  # one repeat of the bark covers this much oak
 
 
@@ -152,6 +157,25 @@ def unwelded_box_projected(p, idx):
     return pos, nrm, (uv / BARK_TILE_METRES).reshape(-1, 2), np.arange(len(pos), dtype=np.uint16 if len(pos) < 65536 else np.uint32)
 
 
+def flat_shade_colors(pos):
+    """Per-vertex RGBA (0-255) for unwelded triangles: the oak's tan, each face lit from up and one side, darker toward the roots."""
+    tri = pos.reshape(-1, 3, 3)
+    face = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+    face = face / np.maximum(np.linalg.norm(face, axis=1, keepdims=True), 1e-9)
+    light = np.array([0.4, 0.7, 0.6]) / np.linalg.norm([0.4, 0.7, 0.6])
+    shade = 0.58 + 0.42 * np.clip(face @ light, 0, 1)
+    height = tri[:, :, 1]
+    rise = np.clip((height - height.min()) / max(float(height.max() - height.min()), 1e-6), 0, 1)
+    shade = shade[:, None] * (0.88 + 0.12 * rise)
+    rgb = np.clip(OAK_TAN[None, None, :] * shade[..., None], 0, 255)
+    rgba = np.concatenate([rgb, np.full(rgb.shape[:2] + (1,), 255.0)], axis=-1)
+    return rgba.reshape(-1, 4).astype(np.uint8)
+
+
+def white_png():
+    return png_bytes(Image.new("RGB", (4, 4), (255, 255, 255)))
+
+
 def process(name):
     js, binary = read_glb(os.path.join(SRC, name))
     prim = js["meshes"][0]["primitives"][0]
@@ -173,14 +197,22 @@ def process(name):
     image = js["images"][0]
     bv = js["bufferViews"][image["bufferView"]]
     png = enhance(binary[bv.get("byteOffset", 0):bv.get("byteOffset", 0) + bv["byteLength"]])
+    colors = None
     if kind == "oak":
         p, nrm, u, i = unwelded_box_projected(p, remap)
-        png = bark_png()
+        if BARK:
+            png = bark_png()
+        else:
+            png = white_png()
+            colors = flat_shade_colors(p)
 
     parts = [pad(p.tobytes()), pad(nrm.tobytes()), pad(u.tobytes()), pad(i.tobytes()), pad(png)]
     sizes = [p.nbytes, nrm.nbytes, u.nbytes, i.nbytes, len(png)]
+    if colors is not None:
+        parts.append(pad(colors.tobytes()))
+        sizes.append(colors.nbytes)
     offs = np.cumsum([0] + [len(x) for x in parts])
-    js["bufferViews"] = [{"buffer": 0, "byteOffset": int(offs[k]), "byteLength": sizes[k]} for k in range(5)]
+    js["bufferViews"] = [{"buffer": 0, "byteOffset": int(offs[k]), "byteLength": sizes[k]} for k in range(len(parts))]
     comp = 5123 if i.dtype == np.uint16 else 5125
     js["accessors"] = [
         {"bufferView": 0, "componentType": 5126, "count": len(p), "type": "VEC3", "min": p.min(axis=0).tolist(), "max": p.max(axis=0).tolist()},
@@ -188,7 +220,11 @@ def process(name):
         {"bufferView": 2, "componentType": 5126, "count": len(u), "type": "VEC2"},
         {"bufferView": 3, "componentType": comp, "count": len(i), "type": "SCALAR"},
     ]
-    js["meshes"][0]["primitives"][0] = {"attributes": {"POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2}, "indices": 3, "material": prim.get("material", 0)}
+    attributes = {"POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2}
+    if colors is not None:
+        js["accessors"].append({"bufferView": 5, "componentType": 5121, "normalized": True, "count": len(colors), "type": "VEC4"})
+        attributes["COLOR_0"] = len(js["accessors"]) - 1
+    js["meshes"][0]["primitives"][0] = {"attributes": attributes, "indices": 3, "material": prim.get("material", 0)}
     js["images"][0]["bufferView"] = 4
     js["buffers"] = [{"byteLength": int(offs[-1])}]
     j = pad(json.dumps(js, separators=(",", ":")).encode()).replace(b"\0", b" ")
