@@ -83,52 +83,85 @@ public sealed partial class World
         centre /= homes.Count;
         float radius = homes.Max(h => GroundMover.HorizontalDistance(h.Position, centre) + h.Radius) + WallMargin;
         radius = Math.Clamp(radius, WallMinRadius, WallMaxRadius);
+        PlanWallRing(group, centre, radius);
+    }
 
-        int slots = (int)MathF.Floor(MathF.Tau * radius / WallPiece.StraightLength);
-        if (slots < 8)
-            return;
-        float step = MathF.Tau / slots;
-        float start = (float)(Rng.NextDouble() * MathF.Tau);
-        Vector3 Ring(float angle) => Grounded(new Vector3(centre.X + MathF.Cos(angle) * radius, 0f, centre.Z + MathF.Sin(angle) * radius));
+    /// <summary>True if a wall can't stand at <paramref name="p"/>: water, a rock, the oak, another home or a crop is in the way, or it is off the map.</summary>
+    private bool WallSiteBlocked(Vector3 p) =>
+        !Terrain.Contains(p, 3f) || IsBlocked(p, 1.3f) ||
+        Shelters.Any(s => !s.IsCollapsed && GroundMover.HorizontalDistance(s.Position, p) < s.Radius + 1.3f) ||
+        Crops.Any(c => GroundMover.HorizontalDistance(c.Position, p) < Crop.Radius + 1f);
 
-        // Each slot of the ring is wall, or a gap: water, a rock, the oak, another home or a crop in the way, or a path worn through it.
-        var gap = new bool[slots];
-        var blocked = new bool[slots];
-        var wear = new float[slots];
-        for (int i = 0; i < slots; i++)
+    /// <summary>
+    /// Lays out a wall round <paramref name="centre"/>: not a neat circle but an outline that wobbles with the clan's own whim and is
+    /// pulled in where water, rocks, the oak or another home are in the way, broken (a natural barrier, or a gate) where feet have
+    /// worn a path through it. Each run of wall between the breaks is laid as lengths stretched a little to meet their ends exactly
+    /// (see <see cref="WallPiece.Scale"/>), with an end cap either side of each gap, and follows the lie of the land (see <see cref="DrawWalls"/>).
+    /// </summary>
+    private void PlanWallRing(KinGroup group, Vector3 centre, float radius)
+    {
+        const int Samples = 96;
+        float inner = MathF.Max(3f, radius - WallMargin + 1.5f); // never closer to the homes' middle than this
+        float phase1 = (float)(Rng.NextDouble() * MathF.Tau), phase2 = (float)(Rng.NextDouble() * MathF.Tau), phase3 = (float)(Rng.NextDouble() * MathF.Tau);
+        Vector3 At(float angle, float r) => Grounded(new Vector3(centre.X + MathF.Cos(angle) * r, 0f, centre.Z + MathF.Sin(angle) * r));
+
+        var points = new Vector3[Samples];
+        var solid = new bool[Samples];
+        var wear = new float[Samples];
+        for (int i = 0; i < Samples; i++)
         {
-            float a0 = start + i * step, a1 = a0 + step, mid = a0 + step / 2f;
-            Vector3 p = Ring(mid);
-            blocked[i] = !Terrain.Contains(p, 3f) || IsBlocked(p, 1.3f) || IsBlocked(Ring(a0), 0.8f) || IsBlocked(Ring(a1), 0.8f) ||
-                Shelters.Any(s => !s.IsCollapsed && GroundMover.HorizontalDistance(s.Position, p) < s.Radius + 1.3f) ||
-                Crops.Any(c => GroundMover.HorizontalDistance(c.Position, p) < Crop.Radius + 1f);
-            for (int k = 0; k <= 4; k++)
+            float angle = i * MathF.Tau / Samples;
+            float wobble = 1f + 0.14f * MathF.Sin(2f * angle + phase1) + 0.08f * MathF.Sin(3f * angle + phase2) + 0.05f * MathF.Sin(5f * angle + phase3);
+            for (float r = radius * wobble; r >= inner; r -= 0.8f)
             {
-                Vector3 q = Ring(a0 + step * k / 4f);
-                wear[i] = MathF.Max(wear[i], TrailWearNear(q.X, q.Z));
+                Vector3 p = At(angle, r);
+                if (WallSiteBlocked(p))
+                    continue;
+                points[i] = p;
+                solid[i] = true;
+                wear[i] = TrailWearNear(p.X, p.Z);
+                break;
             }
-            gap[i] = blocked[i] || wear[i] >= PathWear;
         }
 
-        int Next(int i) => (i + 1) % slots;
-        int Prev(int i) => (i + slots - 1) % slots;
-        if (gap.All(g => g) || gap.Count(g => g) > slots * 6 / 10)
+        // Breaks: nowhere to stand, a blocked stretch between two stands, or a worn path — each widened to a gate's width.
+        float spacing = MathF.Tau * radius / Samples;
+        int widen = Math.Max(1, (int)MathF.Ceiling(2.7f / spacing));
+        int Wrap(int i) => ((i % Samples) + Samples) % Samples;
+        var gap = new bool[Samples];
+        var breaks = new bool[Samples];
+        for (int i = 0; i < Samples; i++)
+        {
+            int next = Wrap(i + 1);
+            breaks[i] = !solid[i] || wear[i] >= PathWear || (solid[next] && WallSiteBlocked((points[i] + points[next]) / 2f));
+        }
+        void Open(int at)
+        {
+            for (int k = -widen; k <= widen; k++)
+                gap[Wrap(at + k)] = true;
+        }
+        for (int i = 0; i < Samples; i++)
+        {
+            if (breaks[i])
+                Open(i);
+        }
+        if (gap.All(g => g) || gap.Count(g => g) > Samples * 6 / 10)
             return; // Too much water and clutter for a wall to make sense.
 
         // At least two gates, so nobody is shut in: open the most-walked stretches of wall, well apart.
-        int Gates() => Enumerable.Range(0, slots).Count(i => gap[i] && !gap[Prev(i)]);
+        int Gates() => Enumerable.Range(0, Samples).Count(i => gap[i] && !gap[Wrap(i - 1)]);
         while (Gates() < 2)
         {
             int pick = -1;
-            for (int i = 0; i < slots; i++)
+            for (int i = 0; i < Samples; i++)
             {
                 if (gap[i] || (pick >= 0 && wear[i] <= wear[pick]))
                     continue;
                 bool far = true;
-                for (int j = 0; j < slots && far; j++)
+                for (int j = 0; j < Samples && far; j++)
                 {
-                    int between = Math.Min(Math.Abs(i - j), slots - Math.Abs(i - j));
-                    if (gap[j] && between < slots / 4)
+                    int between = Math.Min(Math.Abs(i - j), Samples - Math.Abs(i - j));
+                    if (gap[j] && between < Samples / 4)
                         far = false;
                 }
                 if (far)
@@ -136,32 +169,53 @@ public sealed partial class World
             }
             if (pick < 0)
                 return;
-            gap[pick] = true;
-        }
-        // A gate is at least two pieces wide.
-        for (int i = 0; i < slots; i++)
-        {
-            if (gap[i] && !gap[Prev(i)] && !gap[Next(i)])
-                gap[Next(i)] = true;
+            Open(pick);
         }
 
-        var pieces = new List<(float Order, WallPiece Piece)>();
-        for (int i = 0; i < slots; i++)
+        // Each run of wall between two gaps: laid from its first point to its last.
+        int laid = 0, runs = 0;
+        int startAt = Enumerable.Range(0, Samples).First(i => gap[i]);
+        for (int n = 0; n < Samples; n++)
         {
-            float a0 = start + i * step, mid = a0 + step / 2f;
-            if (!gap[i])
-                pieces.Add((i + 0.5f, new WallPiece(Ring(mid), mid + MathF.PI / 2f, WallKind.Straight, group.Id, false)));
-            if (gap[i] && !gap[Prev(i)])
-                pieces.Add((i, new WallPiece(Ring(a0), a0 + MathF.PI / 2f, WallKind.EndA, group.Id, false))); // The wall's end, its tip into the gate.
-            if (gap[i] && !gap[Next(i)])
+            int first = Wrap(startAt + n);
+            if (gap[first] || !gap[Wrap(first - 1)])
+                continue;
+            var run = new List<Vector3>();
+            for (int k = first; !gap[Wrap(k)]; k++)
+                run.Add(points[Wrap(k)]);
+            if (run.Count < 2)
+                continue;
+            var length = new float[run.Count];
+            for (int k = 1; k < run.Count; k++)
+                length[k] = length[k - 1] + GroundMover.HorizontalDistance(run[k - 1], run[k]);
+            float total = length[^1];
+            if (total < WallPiece.StraightLength * 0.7f)
+                continue;
+
+            Vector3 Along(float distance)
             {
-                float a1 = a0 + step;
-                pieces.Add((i + 1f, new WallPiece(Ring(a1), a1 + MathF.PI / 2f + MathF.PI, WallKind.EndB, group.Id, false))); // The other end, facing back.
+                int k = 1;
+                while (k < run.Count - 1 && length[k] < distance)
+                    k++;
+                float t = (distance - length[k - 1]) / MathF.Max(length[k] - length[k - 1], 1e-4f);
+                return Vector3.Lerp(run[k - 1], run[k], Math.Clamp(t, 0f, 1f));
             }
+            static float Heading(Vector3 from, Vector3 to) => MathF.Atan2(to.Z - from.Z, to.X - from.X);
+
+            runs++;
+            WallPieces.Add(new WallPiece(run[0], Heading(run[0], run[1]) + MathF.PI, WallKind.EndB, group.Id, false)); // The start's cap, facing back into the gap.
+            int count = Math.Max(1, (int)MathF.Round(total / WallPiece.StraightLength));
+            for (int j = 0; j < count; j++)
+            {
+                Vector3 a = Along(total * j / count), b = Along(total * (j + 1) / count);
+                float span = GroundMover.HorizontalDistance(a, b);
+                WallPieces.Add(new WallPiece(Grounded((a + b) / 2f), Heading(a, b), WallKind.Straight, group.Id, false, span / WallPiece.StraightLength));
+                laid++;
+            }
+            Vector3 end = run[^1];
+            WallPieces.Add(new WallPiece(end, Heading(run[^2], end), WallKind.EndA, group.Id, false)); // The end's cap, facing on into the gap.
         }
-        foreach (var entry in pieces.OrderBy(p => p.Order))
-            WallPieces.Add(entry.Piece);
-        Game.AddEventLog($"[BUILD] {group.CapitalTitle} marked out a stone wall round its homes ({slots - gap.Count(g => g)} lengths, {Gates()} gates where the paths run)");
+        Game.AddEventLog($"[BUILD] {group.CapitalTitle} marked out a stone wall round its homes ({laid} lengths in {runs} runs, {Gates()} gates where the paths run)");
     }
 
     /// <summary>Each few seconds, every clan with a wall planned and enough grown kin raises its next piece.</summary>
@@ -217,7 +271,13 @@ public sealed partial class World
             if (!IsVisible(piece.Position, camera))
                 continue;
             if (piece.IsBuilt)
-                WallModels.Draw(piece.Kind, piece.Position, piece.Yaw, Color.White);
+            {
+                // Along the lie of the land: leaning with the slope under it, and set a touch into the ground.
+                (Vector2 from, Vector2 to) = piece.Segment;
+                float rise = GetHeightAt(to.X, to.Y) - GetHeightAt(from.X, from.Y);
+                float pitch = MathF.Atan2(rise, piece.Length);
+                WallModels.Draw(piece.Kind, piece.Position + new Vector3(0f, -0.08f, 0f), piece.Yaw, Color.White, pitch, piece.Kind == WallKind.Straight ? piece.Scale : 1f);
+            }
             else
                 Raylib.DrawCylinderEx(piece.Position, piece.Position + new Vector3(0f, 0.55f, 0f), 0.06f, 0.03f, 4, WallStakeColor);
         }

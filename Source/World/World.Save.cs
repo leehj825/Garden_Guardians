@@ -56,7 +56,7 @@ public sealed partial class World
             Food = FoodShards.Where(f => f is { IsActive: true, IsCarried: false })
                 .Select(f => new LooseSave { Position = f.Position, Kind = f.Kind, DespawnTimer = f.DespawnTimer }).ToList(),
             Wells = Wells.Select(w => new WellSave { Position = w.Position, GroupId = w.GroupId, StonesNeeded = w.StonesNeeded, StonesLaid = w.StonesLaid }).ToList(),
-            Walls = WallPieces.Select(w => new WallSave { Position = w.Position, Yaw = w.Yaw, Kind = (int)w.Kind, GroupId = w.GroupId, Built = w.IsBuilt }).ToList(),
+            Walls = WallPieces.Select(w => new WallSave { Position = w.Position, Yaw = w.Yaw, Kind = (int)w.Kind, GroupId = w.GroupId, Built = w.IsBuilt, Scale = w.Scale }).ToList(),
             Snares = Snares.Select(s => new SnareSave { Position = s.Position, GroupId = s.GroupId, IsSet = s.IsSet }).ToList(),
             Pens = Pens.Select(p => new PenSave { Position = p.Position, GroupId = p.GroupId, Aphids = p.Aphids, HoneydewTimer = p.HoneydewTimer, BreedTimer = p.BreedTimer }).ToList(),
             Materials = Materials.Where(m => m is { IsActive: true, IsCarried: false })
@@ -158,7 +158,7 @@ public sealed partial class World
             Wells.Add(new Well(w.Position, w.GroupId, w.StonesNeeded) { StonesLaid = w.StonesLaid });
         foreach (WallSave w in save.Walls ?? new List<WallSave>())
         {
-            WallPieces.Add(new WallPiece(w.Position, w.Yaw, (WallKind)w.Kind, w.GroupId, w.Built));
+            WallPieces.Add(new WallPiece(w.Position, w.Yaw, (WallKind)w.Kind, w.GroupId, w.Built, w.Scale <= 0f ? 1f : w.Scale));
             if (w.GroupId is { } wallClan)
                 _wallsPlanned.Add(wallClan);
             if (w.Built)

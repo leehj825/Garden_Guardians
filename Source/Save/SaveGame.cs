@@ -224,6 +224,7 @@ public sealed class WallSave
     public int Kind { get; set; }
     public Guid? GroupId { get; set; }
     public bool Built { get; set; }
+    public float Scale { get; set; } = 1f;
 }
 
 public sealed class SnareSave

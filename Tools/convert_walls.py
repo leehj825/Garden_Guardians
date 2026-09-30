@@ -94,7 +94,7 @@ def main():
             p[:, 0] = hi[0] - p[:, 0]                       # turned half a circle about y: join edge at the origin, tip towards +x
             p[:, 2] = -p[:, 2]
             n[:, 0], n[:, 2] = -n[:, 0], -n[:, 2]
-        meshes.append((p * SCALE, n.astype(np.float32), u, remap.astype(np.uint16)))
+        meshes.append((p * SCALE, n.astype(np.float32), u, remap.reshape(-1).astype(np.uint16)))
         ext = (p * SCALE)
         print(which, "tris", len(t), "length %.2f  height %.2f  thickness %.2f" % (np.ptp(ext[:, 0]), np.ptp(ext[:, 1]), np.ptp(ext[:, 2])))
 

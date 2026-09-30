@@ -26,8 +26,9 @@ public sealed class WallPiece
     /// <summary>Lengths (m) of the model's three pieces, its thickness, and how tall it stands (see Tools/convert_walls.py).</summary>
     public const float StraightLength = 3.38f, EndALength = 1.61f, EndBLength = 1.17f, Thickness = 0.56f, Height = 1.1f;
 
-    public WallPiece(Vector3 position, float yaw, WallKind kind, Guid? groupId, bool isBuilt)
+    public WallPiece(Vector3 position, float yaw, WallKind kind, Guid? groupId, bool isBuilt, float scale = 1f)
     {
+        Scale = scale;
         Position = position;
         Yaw = yaw;
         Kind = kind;
@@ -48,7 +49,10 @@ public sealed class WallPiece
 
     public bool IsBuilt { get; set; }
 
-    public float Length => Kind switch { WallKind.Straight => StraightLength, WallKind.EndA => EndALength, _ => EndBLength };
+    /// <summary>How much longer (or shorter) than the model a straight length is stretched, so a run of wall meets its ends exactly (ends are not stretched).</summary>
+    public float Scale { get; }
+
+    public float Length => Kind switch { WallKind.Straight => StraightLength * Scale, WallKind.EndA => EndALength, _ => EndBLength };
 
     private Vector2 Direction => new(MathF.Cos(Yaw), MathF.Sin(Yaw));
 
