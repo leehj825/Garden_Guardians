@@ -988,6 +988,89 @@ three fixes:
     the oak, roots, reeds and stones keep their height; drought drop and
     flood rise scaled to match.
 
+## Phase 36: Cleaner Map, Easier Taps
+*   ✅ **Crops keep clear of homes:** a crop is planted outside a home's
+    palisade ring (3.8-7.5m out), and crops left inside a home's yard after a
+    tent grows into a house are ploughed under.
+*   ✅ **Map guide toggles:** Clans (clan range), Links (follower tethers and
+    ally/war lines) and Range (the selected kin's detection ring) buttons
+    down the left edge, each on its own and remembered between runs.
+*   ✅ **Easier stat taps:** tapping a clan's name tag opens its clan card;
+    taps on homes and kin forgive more the farther the camera is zoomed out.
+
+## Phase 37: More Gardens (Terrains)
+*   ✅ **Four terrains:** the original and three more (from
+    `terrain2/3/4.glb`), each with its own ponds (one or two), Giant Oak,
+    reed clumps and boulders, and creek. A new garden picks one at random;
+    a saved garden keeps its own (saved as "terrain"; older saves stay on the
+    original). Each garden slot can be on a different terrain.
+*   ✅ **Flatter ground:** the new terrains keep 40% of their hills and
+    hollows (the original keeps 65%); rocks and plants keep their height.
+*   ✅ **Tools:** `Tools/detect_terrain.py` finds a model's ponds, oak
+    roots, rocks and plants (with overlays under `Tools/terrain_features/`);
+    `Tools/convert_terrain.py --features ... --relief ... --index N` turns a
+    model into `Assets/Models/Terrain/*.glb` and `Terrains/TerrainN.cs`
+    (ground heights, one shared water level, oak and hive, footprint circles,
+    and where the creek rises, picked so the brook runs downhill).
+*   ✅ **Ground fills the whole square:** the new models' slabs fall short
+    of the 100 m square along their ragged rims, so kin could stand on
+    ground that wasn't drawn; the converter now extends the ground to the
+    full square (same height as the nearest ground, textured from just
+    inside the rim).
+*   ✅ **New gardens use the original terrain only for now** (`TerrainData.NewGardenTerrains`); saved gardens keep theirs.
+*   ✅ **New gardens use the original terrain only for now**
+    (`TerrainData.NewGardenTerrains`); a saved garden keeps its own.
+*   ⬜ **Not yet:** a terrain picker (New garden always uses the original for now), the
+    ragged raised corner of terrain2's model, terrain-specific tuning of
+    where clans start.
+
+## Phase 38: Procedural Terrain (plan, not started)
+Goal: a new garden gets its own ground from a seed — ponds, oak, rocks and
+plants in different places, a chosen size, and a mesh with far fewer
+triangles. The four baked terrains stay as they are.
+*   ✅ **Stage A (offline, game unchanged):** `Tools/procedural/`:
+    `extract_tiles.py` cuts seamless grass (4) and dirt (3) tiles out of the
+    models' textures (no clean sand patch turned up; dirt stands in);
+    `extract_props.py` cuts each model's oak, boulders and plant clumps out
+    as a prop kit (`kit/`, 3 oaks, 11 rocks, 15 plants, with footprint
+    circles); `generate_terrain.py --seeds 1-12` makes seeded gardens
+    (rolling ground with ~4 degrees mean slope, 1-3 ponds at one water
+    level, an oak on a levelled patch, boulders and plant rings on the banks,
+    a creek spring) and draws them with the real tiles
+    (`preview_seeds.png`). Not yet: sand tile, more kit variety (terrain2
+    has no ferns), tile repeat still visible up close.
+*   ✅ **Stage B:** make the map size a setting (`TerrainData.Half`) in the
+    ~15 places that assume ±50 m (height lookup, obstacle grid, water map,
+    known map, flood scan, map-edge drawing, walkers' limits).
+*   ✅ **Stage C:** `TerrainGenerator` (C#, its own seeded `SeededRandom`, so
+    a seed always regrows the same garden) makes a terrain number 1,000,001
+    and up from its seed: ground, 1-3 ponds, the oak and its hive, rocks and
+    plants from the prop kit (`ProceduralKit`, 21 prop models in
+    `Assets/Models/Procedural/props`, each with its own cropped texture), the
+    creek's spring. It fills the same `TerrainSet` the baked terrains use, so
+    water, routes, building and the rest are unchanged. `ProceduralView`
+    draws it: the ground mesh simplified by `TerrainMesh` (right-triangulated
+    network, within 4 cm of the height grid, cracks-free), one 2048 px texture
+    baked at start from the models' own grass and dirt tiles
+    (`Assets/Textures/Ground`), and the props as models. A **Fixed/Random**
+    button beside Garden on the History screen picks what a new garden gets
+    (Fixed is the default: the original terrain); the terrain number is saved
+    with the garden. `--check-terrains N` grows and checks N terrains;
+    `GARDEN_TERRAIN=n` forces one for a new garden or headless run;
+    `GARDEN_SCREENSHOT`/`GARDEN_CAMERA` take a picture without a person
+    (`DebugShot`, works under Xvfb). Not yet: sand tile, more kit variety,
+    a smaller kit (14 MB), the extra pass that pins props to steep ground.
+*   ✅ **Start menu:** the game opens on a menu: pick one of the three kept
+    gardens (year, Bramblekin and clans, terrain kind, when saved), then
+    Resume it, or start a new garden on the original terrain or a random
+    grown one (over a kept garden it asks for a second tap). The ground
+    texture of a grown terrain is baked on another thread (the ground shows
+    plain green for a moment), which stopped Android's "isn't responding"
+    prompt at garden start. The oak's dark shade circle is gone.
+*   ✅ **Stage D:** bigger gardens. The start menu picks Small 100 m, Medium 150 m or Large 200 m; ponds, Bramblekin, food, hornets and grubs scale with the map area, and a progress bar shows while the ground is grown.
+*   ✅ **Distance detail:** Bramblekin status bars are hidden when they would be tiny, and far Bramblekin use simpler pegs.
+    and camera limits with the area; check speed on a phone.
+
 ## Phases 35+: Advancing Civilizations (ideas, not scheduled)
 Ideas for the clans to grow past today's crafts, farming, herding,
 fishing, wells, palisades, shrines, feasts, alliances and wars. Suggested
@@ -1018,23 +1101,61 @@ first picks: roads, workshops with tools, and the tech tree with eras.
     at most every 30s, reported in the headless summary. Goods are saved
     with the garden. Not yet: coins, caravans that walk between markets
     and can be raided, prices that follow scarcity.
-*   ⬜ **Writing and history:** runes carved on a standing stone record a
-    clan's deeds, feed the chronicle, improve teaching between clans and
-    make culture last.
-*   ⬜ **Kingdoms and vassals:** big clans absorb small ones, with tribute,
-    a capital and a leader title; wars gain territory stakes (building on
-    conquest and tribute).
-*   ⬜ **Defense and siege:** watchtowers with alarm horns, gates in the
-    palisade, siege tools (sling catapults, battering logs), organized
-    traps for the spider and owl.
-*   ⬜ **Seasonal calendar and festivals:** a sundial or calendar stone to
-    plan planting and hunting; solstice festivals with morale and
-    diplomacy chances.
-*   ⬜ **Medicine and disease:** herb gardens, healer huts, quarantine,
-    epidemics along trade routes (building on sickness and healing).
-*   ⬜ **Exploration and expeditions:** scouts map beyond the known bank;
-    the pond's far side becomes a discoverable region; small rafts cross
-    the pond.
+*   🟡 **Writing and history:** Done (first slice): Writing (Village Age and
+    Stonecutting) puts a runed standing stone by the main home; from then on
+    the clan's discoveries and new ages are carved into the chronicle, and it
+    teaches allies 1.5x as readily. Not yet: runes that improve teaching
+    beyond crafts, lore that outlives a clan, readable stone text in-game.
+*   🟡 **Kingdoms and vassals:** Done (first slice): a clan that loses a war
+    and agrees to tribute is its conqueror's vassal while it pays; a Kingdom
+    Age clan can also win a small allied neighbour's fealty (tribute each
+    season, no end); vassals are taught the liege's crafts 1.5x as readily.
+    A clan with vassals is a kingdom's capital (shown on the clan card and
+    Stats tab); gold lines join liege and vassal homes (Links toggle). A
+    vassal that grows as big as its liege breaks free, and one whose term
+    is served is released. Not yet: a leader title, liege protection of
+    vassals in war, a capital model, territory taken in conquest.
+*   🟡 **Defense and siege:** Done (first slice): Watchtowers (Village Age,
+    Palisade and Spears) raise a lookout with an alarm horn by the main home;
+    it spots the Wolf Spider, chasing Hornets or a warring clan's fighters
+    within 30m, sounds the horn (waking and warning the clan) and kin near
+    home see 6m farther. Not yet: gates in the palisade, siege tools (sling
+    catapults, battering logs), organized traps for the spider and owl.
+*   🟡 **Seasonal calendar and festivals:** Done (first slice): Calendar
+    (needs Writing and farming) puts a sundial by the main home; the clan
+    keeps midsummer and midwinter with a solstice festival — loyalty rises,
+    grudges with neighbours at peace within 40m ease, and a neutral
+    neighbour may become an ally. Not yet: planting and hunting plans that
+    follow the calendar, a calendar-stone model, festivals with games.
+*   🟡 **Medicine and disease:** Done (first slice): Medicine (herb-lore,
+    a House and the Village Age) grows a herb garden by the main home; the
+    clan's sick recover 1.5x as fast and pass it on only about a third as
+    often (quarantine). Sickness can still travel: when allies trade goods
+    and the seller has sick folk it may reach the buyer (a third as likely if
+    the buyer knows Medicine). Not yet: healer huts, quarantined homes the
+    sick are moved to, wider epidemics along caravans, a herb-garden yield.
+*   🟡 **Exploration and expeditions:** Done (first slice, scouts and the
+    known map): every clan keeps a 20x20 grid of the garden it has seen
+    (5m cells, marked round its homes and wherever its people walk). The
+    Exploration craft (Farming Age and a House) puts one bold, clever
+    Gatherer of a clan of four or more out as a Scout, walking to the
+    nearest unseen ground within 45m of home and mapping 16m round it; the
+    clan card shows how much of the garden it knows, mapping milestones
+    (a quarter, half, three quarters) reach the chronicle, and pioneers
+    prefer settling on ground their clan knows. A Fog toggle greys out what
+    the selected clan hasn't seen. The map isn't saved (a loaded garden
+    re-marks round homes and people). Also done: the pond's far side is a
+    place to discover — the bank farthest from a clan's main home (at least
+    20m from all its homes) gives a cache of food, more for the first clan
+    ever, with a headline and chronicle entry; scouts head for it half the
+    time while unseen, and clans that know it count ground within 14m of it
+    as good for a new village. Rafts: Fishing, Tools and Exploration let a
+    clan lash logs into rafts; a scout whose target lies across the pond,
+    where walking round is 1.6x the straight way or more (and the banks
+    are within 40m), walks to the bank, poles straight across at 1.3 m/s
+    (a small chance per second of capsizing back to the launch) and
+    carries on. Not yet: rafts for settling parties, moored rafts on the
+    bank, other finds beyond the far shore.
 *   ⬜ **Religion and culture branches:** beliefs (Oak, Pond, Spider, Moon)
     gain temples, priests, holy days and schisms; culture traits (warlike,
     farming, scholarly) shape each clan's tech choices.

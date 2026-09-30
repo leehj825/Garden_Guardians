@@ -48,7 +48,7 @@ public sealed class GroundMover
     /// walk off the map, rather than relying on the terrain clamp alone to
     /// silently teleport it back onto the edge every frame.
     /// </summary>
-    private const float MapBoundaryLimit = 48.0f;
+    private const float MapBoundaryMargin = 2.0f;
 
     private readonly Random _rng;
     private readonly float _edgeMargin;
@@ -167,6 +167,7 @@ public sealed class GroundMover
     {
         IReadOnlyList<Obstacle> obstacles = world.ObstaclesNear(Position);
         float step = speed * deltaTime;
+        float MapBoundaryLimit = world.Terrain.Size / 2f - MapBoundaryMargin;
         CheckIfStuck(target, step, deltaTime, world, isSafeSpot);
 
         // Head for the detour waypoint first, if we're working our way round

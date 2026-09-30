@@ -71,6 +71,9 @@ public sealed class TouchCameraController
     /// </summary>
     private const float RotationSensitivity = 0.3f;
 
+    /// <summary>How much of a two-finger twist turns the view (a twist by the angle turns it by this share): the turning knob, separate from the tilt's <see cref="RotationSensitivity"/>.</summary>
+    private const float TwistSensitivity = 0.75f;
+
     // Camera-gesture state, tracked frame to frame. One controller is
     // constructed once in Game.Run and lives for the whole session, so
     // instance fields here serve exactly the same purpose static fields
@@ -229,7 +232,7 @@ public sealed class TouchCameraController
 
             // Negated: dragging clockwise should turn the world clockwise
             // beneath the camera, not the reverse.
-            Rotate(ref camera, -angleDelta * RotationSensitivity);
+            Rotate(ref camera, -angleDelta * TwistSensitivity);
             Zoom(ref camera, distance - _lastPinchDistance, worldHalfSize);
             Tilt(ref camera, midpointY - _lastTwoFingerMidpointY);
         }

@@ -320,6 +320,12 @@ public sealed partial class World
             members.Where(m => m.Job == KinJob.Gatherer && !m.NeedsCare)
                 .MaxBy(m => m.Personality.Intelligence + m.Personality.Sociability + m.SkillAt(Skill.Healing))?.AssignJob(KinJob.Healer);
 
+        // A clan that maps the garden keeps one bold, clever Gatherer scouting the ground it hasn't seen.
+        if (group.Goal is not (GroupGoal.Defend or GroupGoal.Raid) && group.Home is { IsBuilt: true } && members.Count >= 4 &&
+            World.Knows(group, Craft.Exploration) && group.Known.Fraction < ScoutingDoneFraction)
+            members.Where(m => m.Job == KinJob.Gatherer && m.Health > Bramblekin.MaxHealth * 0.6f)
+                .MaxBy(m => m.Personality.Courage + m.Personality.Intelligence)?.AssignJob(KinJob.Scout);
+
         // A clan with a well, a footing or a palisade to finish keeps its most diligent Gatherer fetching stones and branches
         // (a well — water — even in a clan of two).
         if (group.Goal is not (GroupGoal.Defend or GroupGoal.Raid) && group.Home is { IsBuilt: true } home &&

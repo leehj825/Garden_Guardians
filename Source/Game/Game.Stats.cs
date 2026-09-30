@@ -119,6 +119,13 @@ public static partial class Game
             $"Hearths: {KnowCraft(Craft.Hearth)} ({world.Shelters.Count(s => s.IsHearthLit)} lit, {world.CookedMeals} meals cooked)",
             $"Snares: {KnowCraft(Craft.Snares)} ({world.SnareCatches} grubs caught)",
             $"Herb-lore: {KnowCraft(Craft.Herbalism)} ({world.Tendings} tendings)",
+            $"Writing: {KnowCraft(Craft.Writing)} ({world.RunesCarved} deeds carved)",
+            $"Exploration: {KnowCraft(Craft.Exploration)} ({world.Groups.Count(g => g.Members.Any(m => m.Job == KinJob.Scout))} clans with scouts out, {world.CellsMapped} cells mapped, {world.FarShoresFound} reached the far shore)",
+            $"Rafts: {KnowCraft(Craft.Rafts)} ({world.RaftCrossings} crossings, {world.RaftMishaps} capsized)",
+            $"Kingdoms: {world.Groups.Count(g => world.IsKingdom(g))} ({world.FealtiesSworn} fealties sworn, {world.VassalsFreed} vassals freed)",
+            $"Medicine: {KnowCraft(Craft.Medicine)} ({world.TradeInfections} caught along trade roads)",
+            $"Calendar: {KnowCraft(Craft.Calendar)} ({world.SolsticesKept} solstices kept)",
+            $"Watchtowers: {KnowCraft(Craft.Watchtowers)} ({world.HornsSounded} horns sounded)",
         }));
 
         sections.Add(("Pests & plagues", new List<string>
@@ -186,6 +193,10 @@ public static partial class Game
         lines.RemoveAll(string.IsNullOrEmpty);
         if (world.FoundingOf(clan.Id) is { } founding)
             lines.Insert(2, $"Founded: year {founding.Year}");
+        if (World.Knows(clan, Craft.Exploration))
+            lines.Add($"Explored: {World.ExploredPercent(clan)}% of the garden");
+        if (world.DescribeRealm(clan) is { } realm)
+            lines.Add(realm);
         if (world.DescribeRelations(clan) is { } relations)
             lines.Add(char.ToUpperInvariant(relations[0]) + relations[1..]);
         return lines;

@@ -10,7 +10,8 @@ public sealed partial class World
     // slowly when unused. Worn cells are dirt paths (a little faster to walk); once any clan
     // knows Roads, cells worn hard enough are paved with set stones for good (faster still).
 
-    private const int TrailCells = 100;
+    /// <summary>Metre-square cells along each side of the garden.</summary>
+    private static int TrailCells => (int)(2f * TerrainData.Half);
 
     /// <summary>Wear (seconds of footfalls) at which a cell shows as a path, and at which it can be paved.</summary>
     private const float PathWear = 4f, PaveWear = 14f;

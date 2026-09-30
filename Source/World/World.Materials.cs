@@ -7,18 +7,18 @@ public sealed partial class World
 {
     // --- Stones and branches ------------------------------------------------------------------
 
-    private const int MaterialPoolCapacity = 80;
+    private static int MaterialPoolCapacity => Scaled(80);
 
     /// <summary>Stones lying at the foot of the rocks when the garden begins…</summary>
-    private const int InitialStones = 16;
+    private static int InitialStones => Scaled(16);
 
     /// <summary>…and at most this many at once, one more working loose every <see cref="StoneSpawnInterval"/> seconds.</summary>
-    private const int MaxLooseStones = 24;
+    private static int MaxLooseStones => Scaled(24);
 
     private const float StoneSpawnInterval = 12f;
 
     /// <summary>At most this many branches lie about at once.</summary>
-    private const int MaxLooseBranches = 10;
+    private static int MaxLooseBranches => Scaled(10);
 
     /// <summary>In a storm the oak sheds a branch this often (s)…</summary>
     private const float StormBranchInterval = 6f;

@@ -53,8 +53,8 @@ public sealed partial class World
         var (seasonTint, seasonAmount) = SeasonTint;
         Terrain.Draw(seasonTint, seasonAmount);
         DrawTrails(camera);
-        DrawTerritories(camera);
-        DrawOak();
+        if (Overlays.HasFlag(MapOverlays.ClanRange))
+            DrawTerritories(camera);
         for (int i = _splats.Count - 1; i >= 0; i--)
         {
             var (position, timeLeft) = _splats[i];
@@ -78,7 +78,13 @@ public sealed partial class World
             shelter.Draw(flag);
         }
 
-        DrawRelations(camera);
+        if (Overlays.HasFlag(MapOverlays.Fog))
+            DrawFog(camera);
+        if (Overlays.HasFlag(MapOverlays.KinLinks))
+        {
+            DrawRelations(camera);
+            DrawRealms(camera);
+        }
         DrawRain(camera);
         bool winter = CurrentSeason == Season.Winter;
         foreach (Crop bush in Crops)
@@ -139,7 +145,7 @@ public sealed partial class World
         // Group tethers: a faint line in the group's colour from every
         // follower's head to its Leader's, so who runs with whom reads at a
         // glance.
-        foreach (KinGroup group in _groups.Values)
+        foreach (KinGroup group in Overlays.HasFlag(MapOverlays.KinLinks) ? _groups.Values : Enumerable.Empty<KinGroup>())
         {
             if (group.Leader is not { IsDead: false } leader)
                 continue;
@@ -157,7 +163,7 @@ public sealed partial class World
         for (int i = Colony.Count - 1; i >= 0; i--)
         {
             Bramblekin b = Colony[i];
-            if (!b.IsDead && IsKinVisible(b, camera))
+            if (!b.IsDead && !b.IsOnRaft && IsKinVisible(b, camera))
                 b.Draw(this);
         }
 
@@ -166,6 +172,7 @@ public sealed partial class World
         DrawPebbles();
 
         DrawWater();
+        DrawRafts();
         DrawCreek();
 
         // Kin Inspector: ring the selected Bramblekin, and trace its
@@ -173,7 +180,8 @@ public sealed partial class World
         if (SelectedKin is { IsDead: false } selected)
         {
             DrawTerrainRing(selected.Position, 0.5f, new Color(255, 230, 60, 255));
-            DrawTerrainRing(selected.Position, selected.DetectionRadius, new Color(255, 255, 255, 140));
+            if (Overlays.HasFlag(MapOverlays.KinRange))
+                DrawTerrainRing(selected.Position, selected.DetectionRadius, new Color(255, 255, 255, 140));
         }
     }
 
@@ -234,7 +242,7 @@ public sealed partial class World
         Vector3 Around(float radius, float angle) =>
             Grounded(center + new Vector3(MathF.Cos(angle) * radius, 0f, MathF.Sin(angle) * radius), 0.06f);
 
-        static bool OnMap(Vector3 p) => MathF.Abs(p.X) <= 50f && MathF.Abs(p.Z) <= 50f;
+        static bool OnMap(Vector3 p) => MathF.Abs(p.X) <= TerrainData.Half && MathF.Abs(p.Z) <= TerrainData.Half;
     }
 
     /// <summary>A circle of <paramref name="radius"/> around <paramref name="center"/>, drawn as line segments that follow the terrain's height.</summary>

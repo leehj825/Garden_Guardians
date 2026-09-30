@@ -635,6 +635,8 @@ public sealed partial class Bramblekin : ICombatant
             return;
         if (UpdateSickness(deltaTime, world))
             return;
+        if (_onRaft && PoleAcross(deltaTime, world))
+            return; // Out on the water: nothing else can be done until it lands.
 
         _perceptionTimer -= deltaTime;
         if (_perceptionTimer <= 0f)
@@ -736,6 +738,11 @@ public sealed partial class Bramblekin : ICombatant
                 world.RaiseAlarm(woken, Position); // Attacked in its sleep: its cry wakes the clan.
             return;
         }
+
+        // A watchtower's lookout spots trouble for everyone near home, calling out farther than they could see.
+        if (Home is { HasWatchtower: true, IsCollapsed: false } tower &&
+            GroundMover.HorizontalDistanceSquared(Position, tower.Position) <= World.TowerCoverRange * World.TowerCoverRange)
+            radius += World.TowerSightBonus;
 
         // Asleep, only something right on top of it wakes it — and a raider creeping in, not even that.
         bool sleeping = IsAsleep && !world.IsAlarmed(world.GroupOf(this));

@@ -202,7 +202,7 @@ public sealed partial class World
         }
         household.ElectLeader();
         NameGroup(household);
-        household.SettleTarget = FindOpenGround(kin.Position);
+        household.SettleTarget = FindOpenGround(kin.Position, GroupOf(kin));
         return household;
     }
 

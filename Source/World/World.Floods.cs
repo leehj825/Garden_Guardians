@@ -23,7 +23,7 @@ public sealed partial class World
     private static readonly Color WaterColor = new(70, 120, 190, 150);
 
     /// <summary>The pond's surface, and how high a flood reaches (see <see cref="FloodedFraction"/>) — the terrain never changes, so worked out once.</summary>
-    private static readonly (float Lowest, float Peak) FloodHeights = MeasureFloodHeights();
+    private static (float Lowest, float Peak) FloodHeights = MeasureFloodHeights();
 
     /// <summary>
     /// The pond: water standing in the model's two hollows, both at one level
@@ -63,9 +63,10 @@ public sealed partial class World
     private static (float Lowest, float Peak) MeasureFloodHeights()
     {
         var heights = new List<float>();
-        for (float x = -49f; x <= 49f; x += 2f)
+        float reach = TerrainData.Half - 1f;
+        for (float x = -reach; x <= reach; x += 2f)
         {
-            for (float z = -49f; z <= 49f; z += 2f)
+            for (float z = -reach; z <= reach; z += 2f)
                 heights.Add(GetHeightAt(x, z));
         }
         heights.Sort();
@@ -174,6 +175,8 @@ public sealed partial class World
     private static void DrawCreek()
     {
         Vector2[] course = WaterMap.Creek;
+        if (course.Length == 0)
+            return;
         for (int i = 0; i + 1 < course.Length; i++)
         {
             Vector2 a = course[i], b = course[i + 1];

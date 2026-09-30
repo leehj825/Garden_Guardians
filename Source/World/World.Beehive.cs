@@ -47,7 +47,7 @@ public sealed partial class World
     private static Vector3 HiveFacing => new(MathF.Cos(TerrainData.HiveAngle), 0f, MathF.Sin(TerrainData.HiveAngle));
 
     /// <summary>How far from the oak's centre the trunk's surface is, that way.</summary>
-    private const float HiveSurface = TerrainData.HiveSurface;
+    private static float HiveSurface => TerrainData.HiveSurface;
 
     /// <summary>The hive itself, hanging on the trunk a little above a Bramblekin's reach.</summary>
     public static Vector3 HivePosition => OakCenter + HiveFacing * (HiveSurface + 0.35f) + new Vector3(0f, 2.6f, 0f);

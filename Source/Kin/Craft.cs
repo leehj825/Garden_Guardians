@@ -79,4 +79,22 @@ public enum Craft
 
     /// <summary>A market stall by the main home where allied clans swap cloth and cut stone for food (see World.Goods). Needs the Village Age, Roads and a trade good.</summary>
     Markets = 4194304,
+
+    /// <summary>Runes carved on a standing stone by the main home: the clan's discoveries are set down in the chronicle and its allies learn from it faster (see World.Crafts). Needs the Village Age and Stonecutting.</summary>
+    Writing = 8388608,
+
+    /// <summary>A watchtower by the main home with an alarm horn: it sees trouble coming from far off, and the horn wakes and warns the clan (see World.Watchtowers). Needs the Village Age, Palisade and Spears.</summary>
+    Watchtowers = 16777216,
+
+    /// <summary>A sundial calendar stone by the main home: the clan keeps the solstices with a festival that lifts spirits and eases grudges with neighbours (see World.Calendar). Needs Writing and farming.</summary>
+    Calendar = 33554432,
+
+    /// <summary>Medicine: a herb garden by the main home, sick clanmates recover faster and sickness spreads far less within the clan (quarantine), but trade can still carry it in (see World.Sickness). Needs herb-lore, a House and the Village Age.</summary>
+    Medicine = 67108864,
+
+    /// <summary>Scouts who walk out beyond the known ground and map it; pioneers settle on ground the clan knows (see World.Exploration). Needs the Farming Age and a House.</summary>
+    Exploration = 134217728,
+
+    /// <summary>Log rafts poled across the pond: a scout takes one straight over the water instead of walking round it (see Bramblekin.Scouting). Needs Fishing, Tools and Exploration.</summary>
+    Rafts = 268435456,
 }

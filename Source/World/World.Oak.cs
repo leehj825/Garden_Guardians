@@ -14,10 +14,10 @@ public sealed partial class World
     /// and in autumn it drops acorns: food for whoever gathers them. Where
     /// it stands and how wide it is are measured off the model (TerrainData).
     /// </summary>
-    public static readonly Vector3 OakCenter = Grounded(new Vector3(TerrainData.OakX, 0f, TerrainData.OakZ));
+    public static Vector3 OakCenter { get; private set; } = Grounded(new Vector3(TerrainData.OakX, 0f, TerrainData.OakZ));
 
     /// <summary>The trunk's radius (a solid obstacle).</summary>
-    public const float OakRadius = TerrainData.OakTrunkRadius;
+    public static float OakRadius => TerrainData.OakTrunkRadius;
 
     /// <summary>In autumn an acorn falls this often (s)…</summary>
     private const float AcornDropInterval = 4f;
@@ -28,14 +28,24 @@ public sealed partial class World
     /// <summary>Acorns land between the trunk and this far from it.</summary>
     private const float AcornFallReach = 16f;
 
-    private static readonly Color OakShadeColor = new(10, 30, 10, 45);
-
     /// <summary>
     /// The oak's footprint on the ground, as circles walkers can't enter:
     /// the trunk and every root, plus the reed clumps and boulders on the
     /// ponds' banks, covered by circles measured off the model.
     /// </summary>
-    public static readonly (Vector2 Center, float Radius)[] OakFootprint = MakeOakFootprint();
+    public static (Vector2 Center, float Radius)[] OakFootprint { get; private set; } = MakeOakFootprint();
+
+    /// <summary>
+    /// A different terrain has been chosen (see <see cref="TerrainData.Select"/>): the oak, the pond's
+    /// heights and everything measured off the ground are worked out again for it.
+    /// </summary>
+    public static void OnTerrainChanged()
+    {
+        OakCenter = Grounded(new Vector3(TerrainData.OakX, 0f, TerrainData.OakZ));
+        OakFootprint = MakeOakFootprint();
+        FloodHeights = MeasureFloodHeights();
+        WaterMap.Reload();
+    }
 
     private float _acornTimer;
 
@@ -120,17 +130,5 @@ public sealed partial class World
             return;
         _pendingFoodSpawns.Add((spot, FoodShardKind.Acorn));
         AcornsFallen++;
-    }
-
-    /// <summary>The shade the oak casts on the lawn (the trunk and roots themselves are part of the terrain model).</summary>
-    private void DrawOak()
-    {
-        Rlgl.DrawRenderBatchActive();
-        Rlgl.DisableDepthMask();
-        Rlgl.DisableBackfaceCulling();
-        DrawTerrainBand(OakCenter, OakRadius, OakRadius + 22f, OakShadeColor);
-        Rlgl.DrawRenderBatchActive();
-        Rlgl.EnableBackfaceCulling();
-        Rlgl.EnableDepthMask();
     }
 }

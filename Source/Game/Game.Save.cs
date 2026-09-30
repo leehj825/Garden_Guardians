@@ -15,6 +15,8 @@ public static partial class Game
 
     /// <summary>Preferences key for the garden being played (see <see cref="GardenSlot"/>).</summary>
     private const string GardenSetting = "garden";
+    private const string TerrainSetting = "terrain";
+    private const string MapSizeSetting = "mapsize";
 
     /// <summary>Which kept garden is open, 1 to <see cref="SaveSystem.Slots"/>.</summary>
     private static int _gardenSlot = 1;
@@ -31,6 +33,18 @@ public static partial class Game
             return saved;
         }
         return NewWorld();
+    }
+
+    /// <summary>The terrain button, shown beside the garden button while the History screen is open: tapping it switches whether a new garden gets the fixed terrain or one grown from a random seed.</summary>
+    private static UiButton TerrainModeButton(UiButton gardenSlotButton, int margin) =>
+        new(new Rectangle(gardenSlotButton.Bounds.X + gardenSlotButton.Bounds.Width + margin, gardenSlotButton.Bounds.Y,
+            (int)(250 * UiScale), gardenSlotButton.Bounds.Height));
+
+    private static void ToggleTerrainMode()
+    {
+        TerrainData.GrowNewGardens = !TerrainData.GrowNewGardens;
+        Preferences.Set(TerrainSetting, TerrainData.GrowNewGardens ? TerrainMode.Random : TerrainMode.Fixed);
+        AddEventLog(TerrainData.GrowNewGardens ? "[SAVE] New gardens will grow a fresh terrain" : "[SAVE] New gardens will use the fixed terrain");
     }
 
     /// <summary>The garden button, shown beside "New" while the History screen is open: tapping it keeps this garden and opens the next.</summary>
@@ -63,7 +77,11 @@ public static partial class Game
         return fresh;
     }
 
-    private static World NewWorld() => new(new Terrain(size: 100f), new Random(), InitialKinCount);
+    private static World NewWorld()
+    {
+        var rng = new Random();
+        return new World(new Terrain(ForcedTerrain ?? TerrainData.RandomIndex(rng)), rng, InitialKinCount);
+    }
 
     /// <summary>The "New" (garden) button, shown beside History while the History screen is open.</summary>
     private static UiButton NewGardenButton(UiButton historyButton, int margin) =>

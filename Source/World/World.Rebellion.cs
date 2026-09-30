@@ -151,7 +151,7 @@ public sealed partial class World
         }
         splinter.ElectLeader();
         NameGroup(splinter);
-        splinter.SettleTarget = FindOpenGround(instigator.Position); // Well away from the group they left.
+        splinter.SettleTarget = FindOpenGround(instigator.Position, group); // Well away from the group they left.
         splinter.Culture.CopyFrom(group.Culture);
         splinter.Belief = group.Belief;
         AddGrievance(group.Id, splinter.Id, SplinterGrievance);

@@ -15,6 +15,9 @@ public sealed partial class Bramblekin
     /// </summary>
     private bool UpdateSafety(float deltaTime, World world)
     {
+        if (_onRaft)
+            return false; // Poling across: nothing to do but keep going.
+
         ICombatant? threat = _perceivedThreat;
         _guardedRetreat = MathF.Max(0f, _guardedRetreat - deltaTime);
 

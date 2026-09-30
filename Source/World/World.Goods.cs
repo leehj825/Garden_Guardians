@@ -95,6 +95,7 @@ public sealed partial class World
             buyer.CutStone += 2;
         }
         seller.TradeCooldown = TradeEvery;
+        CarryInfectionAlongTrade(seller, buyer);
         GoodsTraded++;
         GoodsFoodPaid += paid;
         string what = cloth ? "cloth" : "cut stone";

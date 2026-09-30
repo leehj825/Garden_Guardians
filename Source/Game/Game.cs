@@ -40,11 +40,17 @@ public static partial class Game
     /// <summary>…or at 10x and up, where more speed is worth a few frames a second.</summary>
     private const double FastSimulationBudgetSeconds = 0.045;
 
+    /// <summary>…and at 20x and up (a time-lapse) most of the frame, drawing only a dozen frames a second: the picture matters little at that speed, and this hands nearly all of the phone's time to the simulation.</summary>
+    private const double TimeLapseSimulationBudgetSeconds = 0.08;
+
     /// <summary>Simulated time owed (the chosen speed × real time) but not yet stepped.</summary>
     private static float _simulationBacklog;
 
     /// <summary>The speed the simulation is actually managing (smoothed) — below the chosen one on a slow device.</summary>
     private static float _achievedSpeed = 1f;
+
+    /// <summary>Smoothed real time (ms) a frame spends simulating and drawing, shown in the status line.</summary>
+    private static double _simMs, _drawMs;
 
     /// <summary>Debug Time Scale: the speeds the corner +/- buttons step through, clamped at either end.</summary>
     private static readonly float[] TimeScaleSteps = { 1f, 2f, 5f, 10f, 20f, 50f };
@@ -121,8 +127,55 @@ public static partial class Game
     /// <summary>Where the Log button was drawn last frame, for taps.</summary>
     private static Rectangle _logButtonBounds;
 
+    private const string OverlaySetting = "overlays";
+
+    /// <summary>Where each clan's name tag was drawn last frame, for tapping it to open the clan card.</summary>
+    private static readonly List<(Rectangle Bounds, KinGroup Clan)> _clanLabelBounds = new();
+
+    /// <summary>The three map-guide toggles (clan range, kin links, kin range), stacked under the top buttons.</summary>
+    private static (UiButton Button, string Label, MapOverlays Flag)[] OverlayButtons(float uiScale, int top, int margin)
+    {
+        int width = (int)(250 * uiScale), height = (int)(96 * uiScale), gap = (int)(10 * uiScale);
+        (string, MapOverlays)[] rows = { ("Clans", MapOverlays.ClanRange), ("Links", MapOverlays.KinLinks), ("Range", MapOverlays.KinRange), ("Fog", MapOverlays.Fog) };
+        var buttons = new (UiButton, string, MapOverlays)[rows.Length];
+        for (int i = 0; i < rows.Length; i++)
+            buttons[i] = (new UiButton(new Rectangle(margin, top + i * (height + gap), width, height)), rows[i].Item1, rows[i].Item2);
+        return buttons;
+    }
+
+    /// <summary>A tap on a clan's name tag opens its card. Returns true if it landed on one.</summary>
+    private static bool TapClanLabel(Vector2 point, World world)
+    {
+        foreach (var (bounds, clan) in _clanLabelBounds)
+        {
+            if (!Raylib.CheckCollisionPointRec(point, bounds))
+                continue;
+            world.SelectClan(clan);
+            return true;
+        }
+        return false;
+    }
+
     /// <summary>True while <see cref="RunHeadless"/> is driving the simulation — event logs go to stdout instead of the on-screen console.</summary>
     private static bool _isHeadless;
+
+    /// <summary>True when a development run (a screenshot, or GARDEN_MENU=0) goes straight to the garden instead of the start menu; GARDEN_MENU=1 shows the menu even for a screenshot.</summary>
+    private static bool SkipMenu => Environment.GetEnvironmentVariable("GARDEN_MENU") is { } menu
+        ? menu == "0"
+        : Environment.GetEnvironmentVariable("GARDEN_SCREENSHOT") is not null;
+
+    /// <summary>The whole-garden camera: pulled back and up far enough to take in the whole square map (centred on the origin) at once.</summary>
+    private static Camera3D OverviewCamera(float mapSize) => new()
+    {
+        Target = Vector3.Zero,
+        Position = new Vector3(0f, 1.2f * mapSize, mapSize),
+        Up = Vector3.UnitY,
+        FovY = 45f,
+        Projection = CameraProjection.Perspective,
+    };
+
+    /// <summary>The terrain number in the GARDEN_TERRAIN environment variable, if there is one (0-3 baked; 1000000 and up grown from a seed): a development aid that overrides the choice for a new garden and headless runs.</summary>
+    private static int? ForcedTerrain => int.TryParse(Environment.GetEnvironmentVariable("GARDEN_TERRAIN"), out int terrain) ? terrain : null;
 
     /// <summary>
     /// Appends <paramref name="message"/> to the on-screen debug console
@@ -172,7 +225,7 @@ public static partial class Game
     private static void StepSimulation(World world, float realDeltaTime)
     {
         _simulationBacklog += realDeltaTime * _timeScale;
-        double budget = _timeScale >= 10f ? FastSimulationBudgetSeconds : SimulationBudgetSeconds;
+        double budget = _timeScale >= 20f ? TimeLapseSimulationBudgetSeconds : _timeScale >= 10f ? FastSimulationBudgetSeconds : SimulationBudgetSeconds;
         long start = System.Diagnostics.Stopwatch.GetTimestamp();
         float simulated = 0f;
         while (_simulationBacklog >= SimulationStep)
@@ -209,7 +262,13 @@ public static partial class Game
         if (platform == GamePlatform.Android)
             Raylib.InitWindow(0, 0, "Garden Guardians");
         else
+        {
             Raylib.InitWindow(ScreenWidth, ScreenHeight, "Garden Guardians");
+            Image icon = Raylib.LoadImage("Assets/icon.png");
+            if (icon.Width > 0)
+                Raylib.SetWindowIcon(icon);
+            Raylib.UnloadImage(icon);
+        }
         Raylib.SetTargetFPS(TargetFps);
 
         // --- Build the world -------------------------------------------------
@@ -228,13 +287,38 @@ public static partial class Game
         // Save/Load: the garden carries on where it was left (see SaveSystem).
         Preferences.Load(Preferences.DefaultPath);
         _logView = Preferences.Get(LogViewSetting, LogView.Brief);
+        World.Overlays = Preferences.Get(OverlaySetting, MapOverlays.All);
         _gardenSlot = (int)Preferences.Get(GardenSetting, GardenSlot.Garden1);
-        World world = LoadOrCreateWorld(GardenPath);
+        TerrainData.GrowNewGardens = Preferences.Get(TerrainSetting, TerrainMode.Fixed) == TerrainMode.Random;
+        TerrainData.NewGardenSize = (int)Preferences.Get(MapSizeSetting, MapSize.Small);
+        World world;
+        if (SkipMenu)
+            world = LoadOrCreateWorld(GardenPath);
+        else
+        {
+            MenuChoice? choice = ShowMenu();
+            if (choice is null)
+            {
+                Raylib.CloseWindow();
+                return;
+            }
+            _gardenSlot = choice.Slot;
+            Preferences.Set(GardenSetting, (GardenSlot)_gardenSlot);
+            if (!choice.Resume)
+            {
+                TerrainData.GrowNewGardens = choice.GrowTerrain;
+                Preferences.Set(TerrainSetting, choice.GrowTerrain ? TerrainMode.Random : TerrainMode.Fixed);
+            }
+            TerrainData.NewGardenSize = choice.Size;
+            world = MakeWorld(() => choice.Resume ? LoadOrCreateWorld(GardenPath) : StartNewGarden(GardenPath));
+        }
+        camera = OverviewCamera(world.Terrain.Size);
         var input = new WorldTapInput();
         var touchCamera = new TouchCameraController();
         var followCamera = new FollowCamera(camera);
         var director = new Director();
         Camera3D overview = camera;
+        DebugShot.Place(ref camera);
         float autosaveTimer = AutosaveInterval;
 
         // --- Main loop -------------------------------------------------------
@@ -273,6 +357,8 @@ public static partial class Game
             UiButton? followButton = _showChronicle ? null : FollowButton(world);
             UiButton? newGardenButton = _showChronicle ? NewGardenButton(historyButton, speedButtonMargin) : null;
             UiButton? gardenSlotButton = newGardenButton is null ? null : GardenSlotButton(newGardenButton, speedButtonMargin);
+            UiButton? terrainButton = gardenSlotButton is null ? null : TerrainModeButton(gardenSlotButton, speedButtonMargin);
+            var overlayButtons = _showChronicle ? null : OverlayButtons(uiScale, speedButtonMargin * 2 + speedButtonHeight, speedButtonMargin);
             _newGardenConfirm = MathF.Max(0f, _newGardenConfirm - Raylib.GetFrameTime());
 
             // 1) Input: the player has no lever on the world. The only tap
@@ -303,18 +389,23 @@ public static partial class Game
             {
                 if (ConfirmNewGarden())
                 {
-                    world = StartNewGarden(GardenPath);
+                    world = MakeWorld(() => StartNewGarden(GardenPath));
                     ClearBanners();
+                    overview = OverviewCamera(world.Terrain.Size);
                     camera = overview;
                     followCamera = new FollowCamera(overview);
                     director.Stop();
                     autosaveTimer = AutosaveInterval;
                 }
             }
+            else if (mousePressed && terrainButton is not null && terrainButton.Contains(mousePosition))
+                ToggleTerrainMode();
             else if (mousePressed && gardenSlotButton is not null && gardenSlotButton.Contains(mousePosition))
             {
-                world = SwitchGarden(world);
+                World leaving = world;
+                world = MakeWorld(() => SwitchGarden(leaving));
                 ClearBanners();
+                overview = OverviewCamera(world.Terrain.Size);
                 camera = overview;
                 followCamera = new FollowCamera(overview);
                 director.Stop();
@@ -327,6 +418,15 @@ public static partial class Game
             else if (mousePressed && TapLogButton(mousePosition))
             {
                 // Showed more, less or none of the log.
+            }
+            else if (mousePressed && overlayButtons is not null && overlayButtons.Any(o => o.Button.Contains(mousePosition)))
+            {
+                World.Overlays ^= overlayButtons.First(o => o.Button.Contains(mousePosition)).Flag;
+                Preferences.Set(OverlaySetting, World.Overlays);
+            }
+            else if (mousePressed && TapClanLabel(mousePosition, world))
+            {
+                // Opened the clan card from its name tag.
             }
             else if (mousePressed && mapButton.Contains(mousePosition))
             {
@@ -341,7 +441,10 @@ public static partial class Game
             director.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture || followCamera.IsBusy);
 
             // 2) Simulation, in fixed steps (see StepSimulation).
+            long simStart = System.Diagnostics.Stopwatch.GetTimestamp();
             StepSimulation(world, rawDeltaTime);
+            _simMs += (System.Diagnostics.Stopwatch.GetElapsedTime(simStart).TotalMilliseconds - _simMs) * 0.05;
+            long drawStart = System.Diagnostics.Stopwatch.GetTimestamp();
             UpdateBanners(world, Raylib.GetFrameTime());
 
             // 3) Rendering.
@@ -349,6 +452,10 @@ public static partial class Game
             Raylib.ClearBackground(world.SkyColor);
 
             Raylib.BeginMode3D(camera);
+            ProceduralView.Eye = camera.Position;
+            ProceduralView.Focus = camera.Target;
+            ProceduralView.FovDegrees = camera.FovY;
+            ProceduralView.Aspect = Raylib.GetScreenWidth() / (float)Math.Max(1, Raylib.GetScreenHeight());
             world.Draw(camera);
             Raylib.EndMode3D();
             DrawNight(camera, world);
@@ -363,9 +470,13 @@ public static partial class Game
             speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
             mapButton.Draw("Map", highlighted: false);
             historyButton.Draw("History", highlighted: _showChronicle);
+            if (overlayButtons is not null)
+                foreach (var (button, label, flag) in overlayButtons)
+                    button.Draw(label, highlighted: World.Overlays.HasFlag(flag));
             autoButton?.Draw("Auto", highlighted: director.IsOn);
             newGardenButton?.Draw(_newGardenConfirm > 0f ? "Sure?" : "New", highlighted: _newGardenConfirm > 0f);
             gardenSlotButton?.Draw($"Garden {_gardenSlot}", highlighted: false);
+            terrainButton?.Draw(TerrainData.GrowNewGardens ? "Random" : "Fixed", highlighted: TerrainData.GrowNewGardens);
             if (!_showChronicle)
                 DrawKinPanel(world); // The History screen covers it (its header names the selected clan).
             followButton?.Draw(followCamera.IsFollowing ? "Following" : "Follow", highlighted: followCamera.IsFollowing);
@@ -379,6 +490,9 @@ public static partial class Game
                 DrawDebugConsole(top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
 
             Raylib.EndDrawing();
+            _drawMs += (System.Diagnostics.Stopwatch.GetElapsedTime(drawStart).TotalMilliseconds - _drawMs) * 0.05;
+            if (DebugShot.Finished())
+                break;
 
             // 4) Deferred spawns/removals: applied once here, after this
             //    frame's Update() and Draw() have both fully run, so no
@@ -418,7 +532,7 @@ public static partial class Game
         World world;
         if (loadPath is null)
         {
-            world = new World(new Terrain(size: 100f), rng, InitialKinCount);
+            world = new World(new Terrain(ForcedTerrain ?? 0), rng, InitialKinCount);
         }
         else if (SaveSystem.TryLoad(loadPath, rng) is { } loaded)
         {
@@ -435,10 +549,13 @@ public static partial class Game
 
         float endTime = world.ElapsedSeconds + simulatedSeconds;
         float reportTimer = 0f;
+        int steps = 0;
         while (world.ElapsedSeconds < endTime)
         {
             world.Update(step);
             world.CommitPendingChanges();
+            Prof.Mark("Commit");
+            steps++;
 
             reportTimer += step;
             if (reportTimer >= reportInterval)
@@ -448,6 +565,7 @@ public static partial class Game
             }
         }
 
+        Prof.Report(steps);
         Console.WriteLine();
         Console.WriteLine("=== Summary ===");
         PrintReport(world);
@@ -471,7 +589,7 @@ public static partial class Game
             $"Ants: {(world.Anthill is { } hill ? $"a hill with {hill.Stock} food" : "none yet")}; {world.AntThefts} food stolen from stores, {world.AntsKilled} ants swatted. " +
             $"The oak dropped {world.AcornsFallen} acorns. Ways found round the pond: {WaterMap.RoutesFound}.");
         Console.WriteLine(
-            $"Eras: {world.Groups.Count(g => World.EraOf(g) == Era.StoneAge)} clans in the Stone Age, {world.Groups.Count(g => World.EraOf(g) == Era.FarmingAge)} Farming, {world.Groups.Count(g => World.EraOf(g) == Era.VillageAge)} Village, {world.Groups.Count(g => World.EraOf(g) == Era.KingdomAge)} Kingdom; ages reached: {world.EraTransitions[1]} Farming, {world.EraTransitions[2]} Village, {world.EraTransitions[3]} Kingdom. Paths: {world.PathCells} worn cells, {world.RoadCells} paved. {world.Groups.Count(g => World.Knows(g, Craft.Tools))} clans have tools, {world.Groups.Count(g => World.Knows(g, Craft.Roads))} roads.\n" +
+            $"Eras: {world.Groups.Count(g => World.EraOf(g) == Era.StoneAge)} clans in the Stone Age, {world.Groups.Count(g => World.EraOf(g) == Era.FarmingAge)} Farming, {world.Groups.Count(g => World.EraOf(g) == Era.VillageAge)} Village, {world.Groups.Count(g => World.EraOf(g) == Era.KingdomAge)} Kingdom; ages reached: {world.EraTransitions[1]} Farming, {world.EraTransitions[2]} Village, {world.EraTransitions[3]} Kingdom. Paths: {world.PathCells} worn cells, {world.RoadCells} paved. {world.Groups.Count(g => World.Knows(g, Craft.Tools))} clans have tools, {world.Groups.Count(g => World.Knows(g, Craft.Roads))} roads, {world.Groups.Count(g => World.Knows(g, Craft.Writing))} writing ({world.RunesCarved} deeds carved), {world.Groups.Count(g => World.Knows(g, Craft.Watchtowers))} watchtowers ({world.HornsSounded} horns), {world.Groups.Count(g => World.Knows(g, Craft.Calendar))} calendars ({world.SolsticesKept} solstices), {world.Groups.Count(g => World.Knows(g, Craft.Medicine))} medicine ({world.TradeInfections} trade infections), {world.Groups.Count(g => world.IsKingdom(g))} kingdoms ({world.FealtiesSworn} fealties, {world.VassalsFreed} vassals freed), {world.Groups.Count(g => World.Knows(g, Craft.Exploration))} exploring ({world.CellsMapped} cells mapped by scouts, {world.FarShoresFound} far shores reached), {world.Groups.Count(g => World.Knows(g, Craft.Rafts))} rafts ({world.RaftCrossings} crossings, {world.RaftMishaps} capsized).\n" +
             $"Crafts: {world.CraftsDiscovered} worked out, {world.CraftsTaught} taught; at the end {world.Groups.Count(g => World.Knows(g, Craft.Granary))} clans have granaries, " +
             $"{world.Groups.Count(g => World.Knows(g, Craft.Spears))} spears, {world.Groups.Count(g => World.Knows(g, Craft.Palisade))} palisades, " +
             $"{world.Groups.Count(g => World.Knows(g, Craft.Grain))} grain, {world.Groups.Count(g => World.Knows(g, Craft.Mushrooms))} mushrooms, " +
@@ -751,6 +869,8 @@ public static partial class Game
 
             Vector3 barAnchor = b.Position + new Vector3(0, Bramblekin.BodyHeight + 0.15f, 0);
             float width = BarWidth(camera, barAnchor, Bramblekin.BodyRadius * 2f);
+            if (BodyPixels(camera, barAnchor, Bramblekin.BodyRadius * 2f) < HideBarsBelowPixels)
+                continue; // too far to read a bar: leave it out
             if (b.Health < Bramblekin.MaxHealth)
                 DrawBar(camera, barAnchor, 0f, width, (float)b.Health / Bramblekin.MaxHealth, Color.Green);
             float below = width * 0.21f;
@@ -768,6 +888,18 @@ public static partial class Game
             Vector3 anchor = spider.Position + new Vector3(0, WolfSpider.BodyRadius * 2f + 0.3f, 0);
             DrawBar(camera, anchor, 0f, BarWidth(camera, anchor, WolfSpider.BodyRadius * 2f), (float)spider.Health / WolfSpider.MaxHealth, Color.Green);
         }
+    }
+
+    /// <summary>Below this many pixels across, a Bramblekin's status bars are left out.</summary>
+    private const float HideBarsBelowPixels = 9f;
+
+    /// <summary>How wide (px) something <paramref name="bodyWidth"/> metres across looks at <paramref name="anchor"/>.</summary>
+    private static float BodyPixels(Camera3D camera, Vector3 anchor, float bodyWidth)
+    {
+        Vector3 forward = Vector3.Normalize(camera.Target - camera.Position);
+        Vector3 right = Vector3.Cross(forward, camera.Up);
+        right = right.LengthSquared() > 1e-6f ? Vector3.Normalize(right) : Vector3.UnitX;
+        return Vector2.Distance(Raylib.GetWorldToScreen(anchor, camera), Raylib.GetWorldToScreen(anchor + right * bodyWidth, camera));
     }
 
     /// <summary>A status bar is never narrower than this (px, at the reference screen width)…</summary>
@@ -908,6 +1040,7 @@ public static partial class Game
     {
         int fontSize = ScaledFontSize(0.42f);
         KinGroup? highlighted = world.SelectedKin is { IsDead: false } kin ? world.GroupOf(kin) : world.SelectedClan;
+        _clanLabelBounds.Clear();
         foreach (KinGroup group in world.Groups)
         {
             if (group.Name is null || group.Home is not { IsCollapsed: false } home)
@@ -920,6 +1053,8 @@ public static partial class Game
             int width = Raylib.MeasureText(text, fontSize);
             int x = (int)(screen.X - width / 2f), y = (int)(screen.Y - fontSize);
             byte alpha = group == highlighted ? (byte)240 : (byte)190;
+            int pad = fontSize / 2; // A generous tap target, well past the tag itself.
+            _clanLabelBounds.Add((new Rectangle(x - pad, y - pad, width + pad * 2, fontSize + pad * 2), group));
             Raylib.DrawRectangle(x - 6, y - 3, width + 12, fontSize + 6, PanelFill with { A = alpha });
             Raylib.DrawRectangle(x - 6, y + fontSize + 1, width + 12, 3, group.Color);
             if (group == highlighted)
@@ -1078,7 +1213,7 @@ public static partial class Game
         // screen at any size (the font scales with UiScale).
         string[] lines =
         {
-            $"Year {world.Year} {world.CurrentSeason}, day {world.DayOfYear} {world.TimeOfDayLabel.ToLowerInvariant()}{(world.WeatherLabel is { } weather ? $" - {weather}" : "")} (food x{world.FoodAbundance:0.0})   Speed {_timeScale}x{(_achievedSpeed < _timeScale * 0.85f ? $" (running {_achievedSpeed:0}x)" : "")}   FPS {Raylib.GetFPS()}   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
+            $"Year {world.Year} {world.CurrentSeason}, day {world.DayOfYear} {world.TimeOfDayLabel.ToLowerInvariant()}{(world.WeatherLabel is { } weather ? $" - {weather}" : "")} (food x{world.FoodAbundance:0.0})   Speed {_timeScale}x{(_achievedSpeed < _timeScale * 0.85f ? $" (running {_achievedSpeed:0}x)" : "")}   FPS {Raylib.GetFPS()} (sim {_simMs:0} ms, draw {_drawMs:0} ms)   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
             $"Homes: {world.Shelters.Count(s => s.IsBuilt && s.Tier == ShelterTier.Tent)} tents, {world.Shelters.Count(s => s.Tier == ShelterTier.House)} houses, " +
             $"{world.Shelters.Count(s => s.IsBuilt && s.IsBurrow)} burrows, {world.Shelters.Count(s => !s.IsBuilt)} being built   Food stored {world.Shelters.Sum(s => s.StoredFood)}   " +
             $"Villages {world.Groups.Count(g => g.Annexes.Count > 0)} (budded {world.Buddings})   Crops {world.Crops.Count}",

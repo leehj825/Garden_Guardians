@@ -8,15 +8,15 @@ public sealed partial class World
     // --- Twigs ---------------------------------------------------------------------
 
     /// <summary>Object Pooling: fixed number of Twig slots, constructed once and reused.</summary>
-    private const int TwigPoolCapacity = 150;
+    private static int TwigPoolCapacity => Scaled(150);
 
-    private const int InitialTwigs = 30;
+    private static int InitialTwigs => Scaled(30);
 
     /// <summary>Fallen twigs stop appearing once this many are lying loose.</summary>
-    public const int MaxLooseTwigs = 50;
+    public static int MaxLooseTwigs => Scaled(50);
 
     /// <summary>Seconds between fallen twigs.</summary>
-    public const float TwigSpawnInterval = 1.5f;
+    public static float TwigSpawnInterval => 1.5f / MapArea;
 
     /// <summary>How far (m) from a big Twig prop a fallen twig may land.</summary>
     private const float TwigPatchRadius = 3f;

@@ -140,16 +140,85 @@ def signed_distance(mask):
     return (ndi.distance_transform_edt(mask) - ndi.distance_transform_edt(~mask)) * GRID_STEP
 
 
-def reshape_ponds(ob, h):
-    """Lower the higher pond to the shared level and keep all other ground dry. Returns the new pond masks."""
-    high = basin(h, POND_HIGH)
-    low = basin(h, POND_LOW)
-    sd_high = signed_distance(high)
-    sd_low = signed_distance(low)
-    lower = smoothstep((sd_high + BANK) / BANK)  # 1 in the basin, easing to 0 over the bank
-    dish = DISH * smoothstep(sd_high / 5.0)
-    drop = (POND_HIGH["shore"] - SHARED_LEVEL) * lower + dish
-    near_pond = smoothstep((np.maximum(sd_high, sd_low) + 4.0) / 3.0)  # 1 within a metre of a basin
+def cover_holes(ob):
+    """Extend the ground to the whole square. These models are a slab with a ragged rim, so along some edges (and in
+    corners) there is nothing under a walker standing inside the 100 m square: fill those cells with a flat-ish
+    patch at the nearest ground's height, textured with the nearest ground inside the rim (so not its dark edge)."""
+    bm = bmesh_of(ob)
+    bmesh.ops.triangulate(bm, faces=bm.faces[:])
+    bm.faces.ensure_lookup_table()
+    uv_layer = bm.loops.layers.uv.active
+    bvh = BVHTree.FromBMesh(bm)
+    height = np.full((GRID_N, GRID_N), np.nan)
+    uv = np.zeros((GRID_N, GRID_N, 2))
+    down = Vector((0, 0, -1))
+    for j in range(GRID_N):
+        z = -HALF + j * GRID_STEP
+        for i in range(GRID_N):
+            hit = bvh.ray_cast(Vector((-HALF + i * GRID_STEP, -z, 1000.0)), down)
+            if hit[0] is None:
+                continue
+            face = bm.faces[hit[2]]
+            w = mathutils_interpolate(face, hit[0])
+            height[j, i] = hit[0].z
+            uv[j, i] = (sum(wt * loop[uv_layer].uv.x for wt, loop in zip(w, face.loops)),
+                        sum(wt * loop[uv_layer].uv.y for wt, loop in zip(w, face.loops)))
+    hole = np.isnan(height)
+    print("ground missing under %d of %d cells (%.0f m2); covering it" % (hole.sum(), hole.size, hole.sum() * GRID_STEP ** 2))
+    if not hole.any():
+        bm.free()
+        return
+    inner = ndi.binary_erosion(~hole, iterations=5)
+    if not inner.any():
+        inner = ~hole
+    near_h = ndi.distance_transform_edt(hole, return_distances=False, return_indices=True)
+    near_uv = ndi.distance_transform_edt(~inner, return_distances=False, return_indices=True)
+    filled_h = height[tuple(near_h)]
+    patch = bmesh.new()
+    patch_uv = patch.loops.layers.uv.new("UVMap") if not bm.loops.layers.uv.keys() else patch.loops.layers.uv.new(bm.loops.layers.uv.active.name)
+    for j in range(GRID_N - 1):
+        for i in range(GRID_N - 1):
+            if not (hole[j, i] or hole[j, i + 1] or hole[j + 1, i] or hole[j + 1, i + 1]):
+                continue
+            # Game z runs down Blender's y, so this order goes anticlockwise seen from above: the face looks up (raylib culls the back).
+            corners = [(j + 1, i), (j + 1, i + 1), (j, i + 1), (j, i)]
+            verts = [patch.verts.new((-HALF + ci * GRID_STEP, -(-HALF + cj * GRID_STEP), filled_h[cj, ci])) for cj, ci in corners]
+            face = patch.faces.new(verts)
+            for loop, (cj, ci) in zip(face.loops, corners):
+                u, v = uv[tuple(near_uv[:, cj, ci])]
+                loop[patch_uv].uv = (u, v)
+    bm.free()
+    added = bpy.data.meshes.new("patch")
+    patch.to_mesh(added)
+    patch.free()
+    for mat in ob.data.materials:
+        added.materials.append(mat)
+    extra = bpy.data.objects.new("patch", added)
+    bpy.context.collection.objects.link(extra)
+    bpy.ops.object.select_all(action="DESELECT")
+    extra.select_set(True)
+    ob.select_set(True)
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.join()
+
+
+def mathutils_interpolate(face, point):
+    from mathutils.interpolate import poly_3d_calc
+    return poly_3d_calc([v.co for v in face.verts], point)
+
+
+def reshape_ponds(ob, h, ponds=None, shared=None):
+    """Lower every pond above the shared level to it and keep all other ground dry. Returns the new pond masks."""
+    ponds = ponds or [POND_HIGH, POND_LOW]
+    shared = SHARED_LEVEL if shared is None else shared
+    masks = [basin(h, pond) for pond in ponds]
+    sds = [signed_distance(mask) for mask in masks]
+    drop = np.zeros_like(h)
+    for pond, sd in zip(ponds, sds):
+        if pond["shore"] > shared + 0.05:  # a higher pond is lowered to the shared level (and dished a little at its centre)
+            lower = smoothstep((sd + BANK) / BANK)  # 1 in the basin, easing to 0 over the bank
+            drop = drop + (pond["shore"] - shared) * lower + DISH * smoothstep(sd / 5.0)
+    near_pond = smoothstep((np.max(sds, axis=0) + 4.0) / 3.0)  # 1 within a metre of a basin
 
     me = ob.data
     co = np.empty(len(me.vertices) * 3)
@@ -157,14 +226,30 @@ def reshape_ponds(ob, h):
     co = co.reshape(-1, 3)
     x, z_game, y = co[:, 0], -co[:, 1], co[:, 2]
     y = y - sample_grid(drop, x, z_game)
-    floor = SHARED_LEVEL + GUARD
+    floor = shared + GUARD
     k = 0.5
     soft = floor + 0.5 * ((y - floor) + np.sqrt((y - floor) ** 2 + k * k))  # a smooth max(y, floor)
     keep = sample_grid(near_pond, x, z_game)
     co[:, 2] = y * keep + soft * (1 - keep)
     me.vertices.foreach_set("co", co.ravel())
     me.update()
-    return high, low
+    return masks
+
+
+def keep_dry(ob, masks, level, guard=0.5):
+    """After flattening, lift any ground away from the ponds (the map's edges, gullies) to at least `guard` above the water, so only the ponds hold water."""
+    near_pond = smoothstep((np.max([signed_distance(mask) for mask in masks], axis=0) + 4.0) / 3.0)
+    me = ob.data
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    y = co[:, 2]
+    floor = level + guard
+    soft = floor + 0.5 * ((y - floor) + np.sqrt((y - floor) ** 2 + 0.25))
+    keep = sample_grid(near_pond, co[:, 0], -co[:, 1])
+    co[:, 2] = y * keep + soft * (1 - keep)
+    me.vertices.foreach_set("co", co.ravel())
+    me.update()
 
 
 def flatten_relief(ob, ground_grid, k):
@@ -298,6 +383,18 @@ def build_ground_and_oak(final):
     return raw, ground, mask, props
 
 
+def ponds_from_features(path):
+    """Ponds of another terrain model, from detect_terrain's json: each with a seed, a box round it and a shore level a little above its water; the shared level is the lowest pond's."""
+    import json
+    with open(path) as f:
+        found = json.load(f)["ponds"]
+    ponds = []
+    for pond in found:
+        x0, x1, z0, z1 = pond["bbox"]
+        ponds.append(dict(seed=(pond["x"], pond["z"]), box=(x0 - 6.0, x1 + 6.0, z0 - 6.0, z1 + 6.0), shore=pond["level"] + max(0.3, pond["spread"])))
+    return ponds, min(p["level"] + max(0.3, p["spread"]) for p in found)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("src")
@@ -305,7 +402,11 @@ def main():
     ap.add_argument("--scale", type=float, default=100.0)
     ap.add_argument("--tris", type=int, default=60000)
     ap.add_argument("--texture", type=int, default=2048)
-    ap.add_argument("--csharp", default=os.path.join(os.path.dirname(__file__), "..", "Source", "World", "TerrainData.cs"))
+    ap.add_argument("--relief", type=float, default=RELIEF, help="how much of the ground's hills and hollows to keep (0..1)")
+    ap.add_argument("--features", help="ponds of a new model, from Tools/detect_terrain.py --json (default: the original model's two ponds)")
+    ap.add_argument("--index", type=int, default=1, help="the terrain number this becomes (Terrain<N>.cs)")
+    ap.add_argument("--model-file", help="the glb's name under Assets/Models/Terrain (default: the output's)")
+    ap.add_argument("--csharp", default=os.path.join(os.path.dirname(__file__), "..", "Source", "World", "Terrains", "Terrain1.cs"))
     args = ap.parse_args()
 
     ob = import_model(args.src)
@@ -317,20 +418,27 @@ def main():
     bm.to_mesh(ob.data)
     bm.free()
 
+    cover_holes(ob)
+    ob = bpy.context.view_layer.objects.active
+
     bm = bmesh_of(ob)
     h0 = fill_nan(grid_of(bm))
     bm.free()
-    reshape_ponds(ob, h0)
+    ponds, shared = None, SHARED_LEVEL
+    if args.features:
+        ponds, shared = ponds_from_features(args.features)
+    pond_masks = reshape_ponds(ob, h0, ponds, shared)
 
     bm = bmesh_of(ob)
     h1 = fill_nan(grid_of(bm))
     bm.free()
     mean_ground = float(h1[~ndi.binary_dilation(oak_mask(h1), iterations=3)].mean())
     ob.data.transform(Matrix.Translation((0, 0, -mean_ground)))
-    level = SHARED_LEVEL - mean_ground
-    flatten_relief(ob, h1 - mean_ground, RELIEF)
-    level *= RELIEF
-    print("mean ground %.3f, shared pond level %.3f (after re-centring and flattening the relief to %.0f%%)" % (mean_ground, level, RELIEF * 100))
+    level = shared - mean_ground
+    flatten_relief(ob, h1 - mean_ground, args.relief)
+    level *= args.relief
+    keep_dry(ob, pond_masks, level)
+    print("mean ground %.3f, shared pond level %.3f (after re-centring and flattening the relief to %.0f%%)" % (mean_ground, level, args.relief * 100))
 
     decimate(ob, args.tris)
     shrink_texture(args.texture)
@@ -343,10 +451,60 @@ def main():
     export(pieces, args.dst)
     print("wrote", args.dst, "in", len(pieces), "pieces,", sum(len(p.data.polygons) for p in pieces), "triangles")
 
-    write_csharp(args.csharp, ground, raw, mask, level, props)
+    write_csharp(args.csharp, ground, raw, mask, level, props, args.index, args.model_file or os.path.basename(args.dst))
 
 
-def write_csharp(path, ground, raw, mask, level, props):
+def creek_length(g, x, z):
+    """How many one-metre steps the game's creek trace (WaterMap.TraceCreek) takes downhill from (x, z) on height grid g."""
+    def height(px, pz):
+        fx = min(max((px + HALF) / GRID_STEP, 0.0), GRID_N - 1.001)
+        fz = min(max((pz + HALF) / GRID_STEP, 0.0), GRID_N - 1.001)
+        ix, iz = int(fx), int(fz)
+        tx, tz = fx - ix, fz - iz
+        return (g[iz, ix] * (1 - tx) * (1 - tz) + g[iz, ix + 1] * tx * (1 - tz) +
+                g[iz + 1, ix] * (1 - tx) * tz + g[iz + 1, ix + 1] * tx * tz)
+
+    steps = 0
+    for _ in range(60):
+        e = 0.05
+        sx = (height(x + e, z) - height(x - e, z)) / (2 * e)
+        sz = (height(x, z + e) - height(x, z - e)) / (2 * e)
+        norm = math.hypot(sx, sz)
+        if norm < 0.02:
+            break
+        nx, nz = x - sx / norm, z - sz / norm
+        if height(nx, nz) >= height(x, z) - 0.005 or abs(nx) > 46 or abs(nz) > 46:
+            break
+        x, z = nx, nz
+        steps += 1
+    return steps
+
+
+def pick_spring(ground, level, oak_mask_):
+    """Where the creek rises: in the map's outer band, well away from every pond and the oak, where the game's own trace (see creek_length) runs longest downhill."""
+    xs = -HALF + np.arange(GRID_N) * GRID_STEP
+    gx, gz = np.meshgrid(xs, xs)
+    wet = ground < level
+    far_water = ndi.distance_transform_edt(~wet) * GRID_STEP
+    far_oak = ndi.distance_transform_edt(~oak_mask_) * GRID_STEP
+    edge = np.maximum(np.abs(gx), np.abs(gz))
+    ok = (edge >= 30.0) & (edge <= 45.0) & (far_water > 20.0) & (far_oak > 14.0)
+    if not ok.any():
+        ok = (edge >= 30.0) & (edge <= 45.0) & (far_water > 8.0)
+    quantized = np.round(ground * 100) / 100  # the game reads the heights in whole centimetres
+    best, best_score = None, -1.0
+    for j, i in zip(*np.nonzero(ok)):
+        if (i + j) % 3:  # every third cell is plenty
+            continue
+        steps = creek_length(quantized, xs[i], xs[j])
+        score = steps + 0.001 * ground[j, i]  # the longer the run, the higher the ground on a tie
+        if score > best_score:
+            best, best_score = (float(xs[i]), float(xs[j]), steps), score
+    print("creek: %d steps downhill from the spring" % best[2])
+    return best[0], best[1]
+
+
+def write_csharp(path, ground, raw, mask, level, props, index, model_file):
     import base64
     cm = np.round(ground * 100).astype("<i2")
     blob = base64.b64encode(cm.tobytes()).decode()
@@ -389,56 +547,40 @@ def write_csharp(path, ground, raw, mask, level, props):
     print(len(circles), "footprint circles")
     prop_circles = oak_circles(ground, props, min_radius=0.0)
     print(len(prop_circles), "prop circles")
+    spring = pick_spring(ground, level, mask)
+    print("creek spring at (%.1f, %.1f)" % spring)
     lines = [
         "// <auto-generated> by Tools/convert_terrain.py from the terrain model. Do not edit by hand.",
         "namespace GardenGuardians;",
         "",
-        "/// <summary>The terrain model's ground, sampled onto a grid so headless and Android builds need no model to walk on (see <see cref=\"World.GetHeightAt\"/>).</summary>",
-        "public static class TerrainData",
+        "/// <summary>Terrain %d (Assets/Models/Terrain/%s): its ground sampled onto a grid so headless and Android builds need no model to walk on (see <see cref=\"TerrainData\"/>).</summary>" % (index, model_file),
+        "internal static class Terrain%d" % index,
         "{",
-        "    /// <summary>Metres between samples.</summary>",
-        "    public const float Step = %sf;" % GRID_STEP,
-        "    public const int Size = %d;" % GRID_N,
-        "    /// <summary>The one water level both ponds share (world Y).</summary>",
-        "    public const float PondLevel = %.3ff;" % level,
-        "    public const float OakX = %.2ff, OakZ = %.2ff;" % (cx, cz),
-        "    /// <summary>The trunk's radius at the height of a Bramblekin's head, and the top of its broken crown above the ground.</summary>",
-        "    /// <summary>The way the hive faces (radians from +x towards +z) and how far out from the oak's centre the trunk's bare surface is that way, 2.6 m up.</summary>",
-        "    public const float HiveAngle = %.3ff, HiveSurface = %.2ff;" % (hive_angle, hive_surface),
-        "    public const float OakTrunkRadius = %.2ff, OakTrunkHeight = %.2ff;" % (radius, top - base),
-        "",
-        "    /// <summary>Circles (x, z, radius) covering the reed clumps and boulders round the ponds: where walkers may not go.</summary>",
-        "    public static readonly float[] PropCircles =",
+        "    public static TerrainSet Make() => new()",
         "    {",
-    ] + ["        %.2ff, %.2ff, %.2ff," % c for c in prop_circles] + [
-        "    };",
-        "",
-        "    /// <summary>Circles (x, z, radius) covering the trunk and roots: where walkers may not go.</summary>",
-        "    public static readonly float[] OakCircles =",
-        "    {",
+        "        ModelFile = \"%s\"," % model_file,
+        "        PondLevel = %.3ff," % level,
+        "        OakX = %.2ff, OakZ = %.2ff," % (cx, cz),
+        "        HiveAngle = %.3ff, HiveSurface = %.2ff," % (hive_angle, hive_surface),
+        "        OakTrunkRadius = %.2ff, OakTrunkHeight = %.2ff," % (radius, top - base),
+        "        SpringX = %.1ff, SpringZ = %.1ff," % spring,
+        "        PropCircles = new[]",
+        "        {",
+    ] + ["            %.2ff, %.2ff, %.2ff," % c for c in prop_circles] + [
+        "        },",
+        "        OakCircles = new[]",
+        "        {",
     ]
     for c in circles:
-        lines.append("        %.2ff, %.2ff, %.2ff," % c)
+        lines.append("            %.2ff, %.2ff, %.2ff," % c)
     lines += [
-        "    };",
-        "",
-        "    /// <summary>Ground height in centimetres, row by row (z from -50 m, then x from -50 m), little-endian shorts, base64.</summary>",
-        "    private const string Encoded =",
+        "        },",
+        "        Encoded =",
     ]
     for i in range(0, len(blob), 120):
-        lines.append('        "%s"%s' % (blob[i:i + 120], ";" if i + 120 >= len(blob) else " +"))
+        lines.append('            "%s"%s' % (blob[i:i + 120], "," if i + 120 >= len(blob) else " +"))
     lines += [
-        "",
-        "    public static readonly float[] Heights = Decode();",
-        "",
-        "    private static float[] Decode()",
-        "    {",
-        "        byte[] bytes = Convert.FromBase64String(Encoded);",
-        "        var heights = new float[Size * Size];",
-        "        for (int i = 0; i < heights.Length; i++)",
-        "            heights[i] = BitConverter.ToInt16(bytes, i * 2) / 100f;",
-        "        return heights;",
-        "    }",
+        "    };",
         "}",
         "",
     ]

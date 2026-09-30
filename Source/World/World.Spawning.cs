@@ -163,8 +163,10 @@ public sealed partial class World
     /// <summary>Dibs failsafe — see <see cref="FoodClaimTimeoutSeconds"/>.</summary>
     private void UpdateFoodClaimTimeouts(float deltaTime)
     {
-        foreach (FoodShard food in FoodShards)
+        int end = Math.Min(FoodShards.Count - 1, _lastFoodSlot);
+        for (int i = 0; i <= end; i++)
         {
+            FoodShard food = FoodShards[i];
             if (!food.IsActive || food.ClaimedBy is null)
                 continue;
 
@@ -180,8 +182,10 @@ public sealed partial class World
     /// <summary>Loose Food that nobody picks up rots away after <see cref="FoodShard.DespawnLifespan"/> seconds; carried Food never does.</summary>
     private void UpdateFoodDespawn(float deltaTime)
     {
-        foreach (FoodShard food in FoodShards)
+        int end = Math.Min(FoodShards.Count - 1, _lastFoodSlot);
+        for (int i = 0; i <= end; i++)
         {
+            FoodShard food = FoodShards[i];
             if (!food.IsActive || food.IsCarried)
                 continue;
 

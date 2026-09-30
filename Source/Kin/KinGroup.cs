@@ -54,6 +54,27 @@ public sealed class KinGroup
     /// <summary>The year it last held a harvest feast (see World.Feasts).</summary>
     public int LastFeastYear { get; set; }
 
+    /// <summary>Year × 4 + season of the last solstice festival kept (see World.Calendar).</summary>
+    public int LastSolstice { get; set; }
+
+    /// <summary>True while someone in the clan knows Medicine (see World.Crafts); refreshed at each Leader decision.</summary>
+    public bool HasMedicine { get; set; }
+
+    /// <summary>The clan this one owes fealty to, if any (see World.Kingdoms).</summary>
+    public Guid? LiegeId { get; set; }
+
+    /// <summary>The ground the clan has seen (see World.Exploration); not saved.</summary>
+    public KnownMap Known { get; } = new(TerrainData.Half);
+
+    /// <summary>Quarters of the garden known when last announced (0..4).</summary>
+    public int ExploredMilestone { get; set; }
+
+    /// <summary>The bank of the pond farthest from the clan's main home, once worked out (see World.Exploration); not saved.</summary>
+    public Vector3? FarShore { get; set; }
+
+    /// <summary>True once someone of the clan has reached the far shore (not saved: a loaded garden finds it again quietly).</summary>
+    public bool FarShoreFound { get; set; }
+
     /// <summary>What the clan reveres (see World.Beliefs).</summary>
     public Belief Belief { get; set; }
 

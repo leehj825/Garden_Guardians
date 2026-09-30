@@ -17,7 +17,15 @@ public sealed class Terrain
     /// <summary>Edge length of the square terrain, in meters.</summary>
     public float Size { get; }
 
-    public Terrain(float size) => Size = size;
+    /// <summary>The ground of terrain <paramref name="terrainIndex"/> (see <see cref="TerrainData"/>) — choosing it, if it isn't the one in use.</summary>
+    public Terrain(int terrainIndex = 0)
+    {
+        TerrainData.Select(terrainIndex);
+        Size = 2f * TerrainData.Half;
+        _modelFile = TerrainData.Current.ModelFile;
+        if (TerrainData.Current.IsProcedural)
+            _procedural = new ProceduralView(TerrainData.Current);
+    }
 
     /// <summary>True if the (x, z) point lies on the terrain surface.</summary>
     public bool Contains(Vector3 point)
@@ -76,13 +84,22 @@ public sealed class Terrain
     }
 
     /// <summary>
-    /// Where the terrain model lives: on Android the packaged asset (the
+    /// Where a terrain model lives: on Android the packaged asset (the
     /// "Assets/" prefix is dropped), on desktop next to the executable — see
     /// <c>BramblekinModel.AssetPath</c> for why.
     /// </summary>
-    private static readonly string ModelPath = OperatingSystem.IsAndroid()
-        ? "Models/Terrain/terrain.glb"
-        : Path.Combine(AppContext.BaseDirectory, "Assets", "Models", "Terrain", "terrain.glb");
+    private static string ModelPathOf(string file) => OperatingSystem.IsAndroid()
+        ? "Models/Terrain/" + file
+        : Path.Combine(AppContext.BaseDirectory, "Assets", "Models", "Terrain", file);
+
+    /// <summary>Models already loaded, by file, so a garden that starts over (or another garden's) reuses one rather than loading it again.</summary>
+    private static readonly Dictionary<string, Model> LoadedModels = new();
+
+    /// <summary>The model file of the terrain this ground was made for.</summary>
+    private readonly string _modelFile;
+
+    /// <summary>How a generated terrain is drawn (null for a baked one, drawn from its model).</summary>
+    private readonly ProceduralView? _procedural;
 
     /// <summary>How much of a season's tint is also added over the lawn (a multiply alone can't frost it white).</summary>
     private const float SeasonGlow = 0.3f;
@@ -95,7 +112,11 @@ public sealed class Terrain
     {
         if (_modelReady)
             return;
-        _model = Raylib.LoadModel(ModelPath);
+        if (!LoadedModels.TryGetValue(_modelFile, out _model))
+        {
+            _model = Raylib.LoadModel(ModelPathOf(_modelFile));
+            LoadedModels[_modelFile] = _model;
+        }
         _modelReady = true;
     }
 
@@ -107,9 +128,17 @@ public sealed class Terrain
     /// </summary>
     public void Draw(Color seasonTint, float seasonAmount)
     {
-        EnsureModel();
         seasonAmount = Math.Clamp(seasonAmount, 0f, 1f);
         Color multiply = LerpColor(Color.White, seasonTint, seasonAmount);
+        if (_procedural is not null)
+        {
+            _procedural.Draw(multiply, seasonAmount <= 0f ? null : new Color(
+                (byte)(seasonTint.R * seasonAmount * SeasonGlow),
+                (byte)(seasonTint.G * seasonAmount * SeasonGlow),
+                (byte)(seasonTint.B * seasonAmount * SeasonGlow), (byte)255));
+            return;
+        }
+        EnsureModel();
         Raylib.DrawModel(_model, Vector3.Zero, 1f, multiply);
         if (seasonAmount <= 0f)
             return;

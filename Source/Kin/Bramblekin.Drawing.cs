@@ -128,23 +128,26 @@ public sealed partial class Bramblekin
                 DrawSleep(world);
         }
 
-        _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
-        DrawSack(facing);
-        if (_carriedTwig is not null)
-            Twig.DrawCarried(Position + new Vector3(0, BodyHeight * 0.55f, 0), facing);
-        _carriedMaterial?.DrawCarried(Position, BodyHeight, facing);
-        if (_carryingWater)
-            DrawWaterCup(facing);
+        if (props) // what it carries is too small to see from far off
+        {
+            _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
+            DrawSack(facing);
+            if (_carriedTwig is not null)
+                Twig.DrawCarried(Position + new Vector3(0, BodyHeight * 0.55f, 0), facing);
+            _carriedMaterial?.DrawCarried(Position, BodyHeight, facing);
+            if (_carryingWater)
+                DrawWaterCup(facing);
+        }
     }
 
     /// <summary>Below this many pixels tall on screen, a Bramblekin is drawn as a bare peg.</summary>
-    private const float SpeckPixels = 14f;
+    private const float SpeckPixels = 22f;
 
     /// <summary>The least height, in pixels, a peg is drawn at.</summary>
     private const float SpeckMinPixels = 7f;
 
     /// <summary>From this many pixels tall, the full-detail model (~50,000 triangles); from <see cref="MidPixels"/> the ~9,000-triangle one; below that the ~2,500-triangle one.</summary>
-    private const float FinePixels = 150f, MidPixels = 60f;
+    private const float FinePixels = 150f, MidPixels = 90f;
 
     /// <summary>From this many pixels tall, the small props (thorn, shield, rod, poultice…) are drawn.</summary>
     private const float PropPixels = 40f;

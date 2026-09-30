@@ -44,6 +44,9 @@ public enum KinJob
 
     /// <summary>Tends the clan's sick and wounded with herbs (once the clan knows <see cref="Craft.Herbalism"/>).</summary>
     Healer,
+
+    /// <summary>Walks out to ground the clan hasn't seen and maps it (once the clan knows <see cref="Craft.Exploration"/>).</summary>
+    Scout,
 }
 
 /// <summary>Who may eat from a group's shared store — set by its Leader's personality.</summary>

@@ -5,7 +5,7 @@ namespace GardenGuardians;
 
 public sealed partial class World
 {
-    public const int MaxBeetlesOnMap = 2;
+    public static int MaxBeetlesOnMap => Scaled(2);
 
     /// <summary>Seconds between checks that top the Stag Beetle population back up toward <see cref="MaxBeetlesOnMap"/>.</summary>
     public const float BeetleSpawnInterval = 40f;

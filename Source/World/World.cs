@@ -18,6 +18,12 @@ namespace GardenGuardians;
 /// </summary>
 public sealed partial class World
 {
+    /// <summary>How many times the area of the original 100 m garden this garden covers: 1 for a small map, 2.25 for a medium one, 4 for a large one.</summary>
+    public static float MapArea => TerrainData.Half * TerrainData.Half / 2500f;
+
+    /// <summary>A count that suits the original 100 m garden, made to suit this one's area.</summary>
+    public static int Scaled(int count) => Math.Max(1, (int)MathF.Round(count * MapArea));
+
     /// <summary>
     /// The Terrain Height Function: the ground's elevation at any (x, z),
     /// bilinearly sampled from the height grid taken from the terrain model
@@ -31,15 +37,17 @@ public sealed partial class World
         if (!float.IsFinite(x) || !float.IsFinite(z))
             return 0f;
 
-        const float max = TerrainData.Size - 1.001f;
-        float fx = Math.Clamp((x + 50f) / TerrainData.Step, 0f, max);
-        float fz = Math.Clamp((z + 50f) / TerrainData.Step, 0f, max);
+        int size = TerrainData.Size;
+        float max = size - 1.001f;
+        float half = TerrainData.Half;
+        float fx = Math.Clamp((x + half) / TerrainData.Step, 0f, max);
+        float fz = Math.Clamp((z + half) / TerrainData.Step, 0f, max);
         int ix = (int)fx, iz = (int)fz;
         float tx = fx - ix, tz = fz - iz;
         float[] h = TerrainData.Heights;
-        int i = iz * TerrainData.Size + ix;
+        int i = iz * size + ix;
         float near = h[i] + (h[i + 1] - h[i]) * tx;
-        float far = h[i + TerrainData.Size] + (h[i + TerrainData.Size + 1] - h[i + TerrainData.Size]) * tx;
+        float far = h[i + size] + (h[i + size + 1] - h[i + size]) * tx;
         return near + (far - near) * tz;
     }
 
@@ -78,16 +86,16 @@ public sealed partial class World
     // --- Food ------------------------------------------------------------------
 
     /// <summary>Object Pooling: fixed number of Food slots, constructed once and reused — see <see cref="ActivateFood"/>.</summary>
-    private const int FoodPoolCapacity = 400;
+    private static int FoodPoolCapacity => Scaled(400);
 
     /// <summary>Berries already on the ground when the world is created, so the first arrivals have something to find.</summary>
-    private const int InitialBerries = 45;
+    private static int InitialBerries => Scaled(45);
 
     /// <summary>Passive Foraging: seconds between wild Berry spawns in a normal season — divided by the season's abundance (see <see cref="AbundanceOf"/>).</summary>
-    public const float BerrySpawnInterval = 0.8f;
+    public static float BerrySpawnInterval => 0.8f / MapArea;
 
     /// <summary>Wild Berries stop spawning once this many are on the ground in a normal season — scaled by the season's abundance.</summary>
-    public const int MaxBerries = 75;
+    public static int MaxBerries => Scaled(75);
 
     /// <summary>
     /// Berry Patches: how many fixed spots (preferably Dandelions) most
@@ -95,7 +103,7 @@ public sealed partial class World
     /// converge on the same places — which is where encounters, alliances
     /// and robberies happen.
     /// </summary>
-    private const int BerryPatchCount = 8;
+    private static int BerryPatchCount => Scaled(8);
 
     /// <summary>How far (m) from its patch's anchor a patch Berry may grow.</summary>
     private const float BerryPatchRadius = 4f;
@@ -122,14 +130,14 @@ public sealed partial class World
 
     private const float SplatDuration = 6f;
 
-    public const int MaxHornetsOnMap = 12;
+    public static int MaxHornetsOnMap => Scaled(12);
 
     public const int HornetSwarmMinSize = 3, HornetSwarmMaxSize = 5;
 
     /// <summary>Seconds between checks that top the Hornet population back up toward <see cref="MaxHornetsOnMap"/>, one whole swarm at a time.</summary>
     public const float HornetSpawnInterval = 10f;
 
-    public const int MaxGrubsOnMap = 4;
+    public static int MaxGrubsOnMap => Scaled(4);
 
     /// <summary>Seconds between checks that top the Grub population back up toward <see cref="MaxGrubsOnMap"/>.</summary>
     public const float GrubSpawnInterval = 20f;
@@ -141,7 +149,7 @@ public sealed partial class World
     /// many living Bramblekin. In practice the Food supply keeps the
     /// population well below it.
     /// </summary>
-    public const int MaxPopulation = 150;
+    public static int MaxPopulation => Scaled(150);
 
     /// <summary>Wandering Arrivals only come while fewer than this many Bramblekin are alive — once the world is busy, growth has to come from births.</summary>
     public const int ArrivalPopulationLimit = 30;
@@ -157,6 +165,9 @@ public sealed partial class World
 
     /// <summary>How close (m) a tap has to land to a Bramblekin to select it for the Kin Inspector.</summary>
     public const float KinSelectionRadius = 2f;
+
+    /// <summary>Which map guides are drawn (clan range, kin links, kin range) — set from the buttons on the map.</summary>
+    public static MapOverlays Overlays { get; set; } = MapOverlays.All;
 
     // --- Encounters & groups ------------------------------------------------------
 
@@ -178,7 +189,7 @@ public sealed partial class World
     public const float FloatingTextDuration = 1.5f;
 
     /// <summary>Oversized Garden Props: how many static decorations to scatter across the map.</summary>
-    private const int GardenPropCount = 40;
+    private static int GardenPropCount => Scaled(40);
 
     private static readonly Color FriendlyTextColor = new(60, 170, 80, 255);
     private static readonly Color HostileTextColor = new(210, 50, 40, 255);
@@ -250,17 +261,20 @@ public sealed partial class World
     /// <summary>…and each lists every obstacle within this far (m) of it — room for a walker's look-ahead and body.</summary>
     private const float ObstacleCellReach = 3f;
 
-    private const int ObstacleCells = 20;
+    /// <summary>Obstacle cells along each side of the garden.</summary>
+    private static int ObstacleSide => (int)MathF.Ceiling(2f * TerrainData.Half / ObstacleCellSize);
+
+    private readonly int _obstacleSide = ObstacleSide;
 
     /// <summary>The obstacles near each 5m cell of the garden (see <see cref="ObstaclesNear"/>).</summary>
-    private readonly List<Obstacle>[] _obstacleCells = Enumerable.Range(0, ObstacleCells * ObstacleCells).Select(_ => new List<Obstacle>()).ToArray();
+    private readonly List<Obstacle>[] _obstacleCells = Enumerable.Range(0, ObstacleSide * ObstacleSide).Select(_ => new List<Obstacle>()).ToArray();
 
     /// <summary>The obstacles a walker at <paramref name="point"/> could bump into or need to steer round — the handful near it, not all of them.</summary>
     public IReadOnlyList<Obstacle> ObstaclesNear(Vector3 point)
     {
-        int x = Math.Clamp((int)((point.X + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
-        int z = Math.Clamp((int)((point.Z + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
-        return _obstacleCells[x * ObstacleCells + z];
+        int x = Math.Clamp((int)((point.X + TerrainData.Half) / ObstacleCellSize), 0, _obstacleSide - 1);
+        int z = Math.Clamp((int)((point.Z + TerrainData.Half) / ObstacleCellSize), 0, _obstacleSide - 1);
+        return _obstacleCells[x * _obstacleSide + z];
     }
     public IReadOnlyList<(Vector3 Position, string Text, Color Color, float TimeLeft)> FloatingTexts => _floatingTexts;
 
@@ -307,6 +321,8 @@ public sealed partial class World
         // Every starting Bramblekin is solitary, with its own freshly
         // rolled Personality (see the Bramblekin constructor) — groups only
         // ever form later, out of encounters.
+        Loading.Report(0.94f, "Settling the Bramblekin");
+        initialKinCount = Scaled(initialKinCount); // A bigger garden starts with more of them.
         for (int i = 0; i < initialKinCount; i++)
             Colony.Add(Newcomer(RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin)));
         foreach (Bramblekin kin in Colony)
@@ -354,14 +370,15 @@ public sealed partial class World
         foreach (Obstacle obstacle in _obstacles)
         {
             float reach = obstacle.Radius + ObstacleCellReach;
-            int x0 = Math.Clamp((int)((obstacle.Center.X - reach + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
-            int x1 = Math.Clamp((int)((obstacle.Center.X + reach + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
-            int z0 = Math.Clamp((int)((obstacle.Center.Y - reach + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
-            int z1 = Math.Clamp((int)((obstacle.Center.Y + reach + 50f) / ObstacleCellSize), 0, ObstacleCells - 1);
+            float half = TerrainData.Half;
+            int x0 = Math.Clamp((int)((obstacle.Center.X - reach + half) / ObstacleCellSize), 0, _obstacleSide - 1);
+            int x1 = Math.Clamp((int)((obstacle.Center.X + reach + half) / ObstacleCellSize), 0, _obstacleSide - 1);
+            int z0 = Math.Clamp((int)((obstacle.Center.Y - reach + half) / ObstacleCellSize), 0, _obstacleSide - 1);
+            int z1 = Math.Clamp((int)((obstacle.Center.Y + reach + half) / ObstacleCellSize), 0, _obstacleSide - 1);
             for (int x = x0; x <= x1; x++)
             {
                 for (int z = z0; z <= z1; z++)
-                    _obstacleCells[x * ObstacleCells + z].Add(obstacle);
+                    _obstacleCells[x * _obstacleSide + z].Add(obstacle);
             }
         }
     }
@@ -401,89 +418,151 @@ public sealed partial class World
     /// <summary>Activates the first inactive slot in <see cref="FoodShards"/> at <paramref name="position"/> and returns it, or returns null if the pool is exhausted.</summary>
     private FoodShard? ActivateFood(Vector3 position, FoodShardKind kind)
     {
-        foreach (FoodShard food in FoodShards)
+        for (int i = 0; i < FoodShards.Count; i++)
         {
+            FoodShard food = FoodShards[i];
             if (!food.IsActive)
             {
                 food.Activate(position, kind);
+                _lastFoodSlot = Math.Max(_lastFoodSlot, i);
                 return food;
             }
         }
         return null;
     }
 
+    /// <summary>No pool slot after this one holds Food (slots are handed out lowest first, so the live ones sit at the front): the per-step passes over the pool stop here, not at the pool's far end. Worked out again in <see cref="RebuildSpatialGrids"/>; MaxValue = "scan it all".</summary>
+    private int _lastFoodSlot = int.MaxValue;
+
     // --- The frame -------------------------------------------------------------------
 
     public void Update(float deltaTime)
     {
+        Prof.Begin();
         ElapsedSeconds += deltaTime;
         UpdateSeason();
+        Prof.Mark("UpdateSeason");
         UpdateWeather(deltaTime);
+        Prof.Mark("UpdateWeather");
         UpdateHistory(deltaTime);
+        Prof.Mark("UpdateHistory");
         AccumulateExposure(deltaTime);
+        Prof.Mark("AccumulateExposure");
         UpdateFoodClaimTimeouts(deltaTime);
+        Prof.Mark("UpdateFoodClaimTimeouts");
         RebuildSpatialGrids();
+        Prof.Mark("RebuildSpatialGrids");
         RebuildGroups();
+        Prof.Mark("RebuildGroups");
         UpdateRelations(deltaTime);
+        Prof.Mark("UpdateRelations");
         UpdateTributes();
+        Prof.Mark("UpdateTributes");
         UpdateGroupHomes(deltaTime);
+        Prof.Mark("UpdateGroupHomes");
         UpdateHearths(deltaTime);
+        Prof.Mark("UpdateHearths");
+        UpdateWatchtowers(deltaTime);
+        Prof.Mark("UpdateWatchtowers");
+        UpdateCalendar(deltaTime);
+        Prof.Mark("UpdateCalendar");
+        UpdateKingdoms(deltaTime);
+        Prof.Mark("UpdateKingdoms");
+        UpdateExploration(deltaTime);
+        Prof.Mark("UpdateExploration");
         UpdateSnares();
+        Prof.Mark("UpdateSnares");
         UpdateNight(deltaTime);
+        Prof.Mark("UpdateNight");
         UpdateFeasts();
+        Prof.Mark("UpdateFeasts");
         UpdateGroupDecisions(deltaTime);
+        Prof.Mark("UpdateGroupDecisions");
         UpdateReigns(deltaTime);
+        Prof.Mark("UpdateReigns");
         CountShelterOccupants();
+        Prof.Mark("CountShelterOccupants");
 
         // Wildlife moves before the colony reacts to it this frame. Reverse
         // for-loops: a Bramblekin's strike (below) can kill a Hornet or Grub,
         // which marks it dead but defers the actual list removal.
         for (int i = Hornets.Count - 1; i >= 0; i--)
             Hornets[i].Update(deltaTime, this);
+        Prof.Mark("Hornets");
 
         for (int i = Grubs.Count - 1; i >= 0; i--)
             Grubs[i].Update(deltaTime, this);
+        Prof.Mark("Grubs");
 
         for (int i = Beetles.Count - 1; i >= 0; i--)
             Beetles[i].Update(deltaTime, this);
+        Prof.Mark("Beetles");
 
         UpdatePondLife(deltaTime);
+        Prof.Mark("UpdatePondLife");
         IndexRipeCrops();
+        Prof.Mark("IndexRipeCrops");
 
         // Reverse for-loop: a Bramblekin's own Update() can kill another
         // (combat, robbery) — World.Kill only queues the removal, but
         // walking backwards keeps this loop correct even if that changes.
         for (int i = Colony.Count - 1; i >= 0; i--)
             Colony[i].Update(deltaTime, this);
+        Prof.Mark("Colony.Update");
 
         if (Spider is { IsDead: false } spider)
             spider.Update(deltaTime, this);
+        Prof.Mark("Spider");
 
         ResolveEncounters();
+        Prof.Mark("ResolveEncounters");
 
         UpdateShelters(deltaTime);
+        Prof.Mark("UpdateShelters");
         UpdateFarming(deltaTime);
+        Prof.Mark("UpdateFarming");
         UpdatePens(deltaTime);
+        Prof.Mark("UpdatePens");
         UpdateBerrySpawn(deltaTime);
+        Prof.Mark("UpdateBerrySpawn");
         UpdateWildFood(deltaTime);
+        Prof.Mark("UpdateWildFood");
         UpdateTwigSpawn(deltaTime);
+        Prof.Mark("UpdateTwigSpawn");
         UpdateMaterials(deltaTime);
+        Prof.Mark("UpdateMaterials");
         UpdateCisterns(deltaTime);
+        Prof.Mark("UpdateCisterns");
         UpdatePond(deltaTime);
+        Prof.Mark("UpdatePond");
         UpdateWellOwners();
+        Prof.Mark("UpdateWellOwners");
         UpdateSpiderRespawn(deltaTime);
+        Prof.Mark("UpdateSpiderRespawn");
         UpdateHornetSpawn(deltaTime);
+        Prof.Mark("UpdateHornetSpawn");
         UpdateGrubSpawn(deltaTime);
+        Prof.Mark("UpdateGrubSpawn");
         UpdateBeetleSpawn(deltaTime);
+        Prof.Mark("UpdateBeetleSpawn");
         UpdateAnts(deltaTime);
+        Prof.Mark("UpdateAnts");
         UpdateOak(deltaTime);
+        Prof.Mark("UpdateOak");
         UpdateTrails(deltaTime);
+        Prof.Mark("UpdateTrails");
         UpdateGoods(deltaTime);
+        Prof.Mark("UpdateGoods");
         UpdateBeehive(deltaTime);
+        Prof.Mark("UpdateBeehive");
         UpdateArrivals(deltaTime);
+        Prof.Mark("UpdateArrivals");
         UpdateFoodDespawn(deltaTime);
+        Prof.Mark("UpdateFoodDespawn");
         UpdateEncounterCleanup(deltaTime);
+        Prof.Mark("UpdateEncounterCleanup");
         UpdatePebbles(deltaTime);
+        Prof.Mark("UpdatePebbles");
 
         for (int i = _splats.Count - 1; i >= 0; i--)
         {
@@ -584,14 +663,21 @@ public sealed partial class World
     {
         _foodGrid.Clear();
         int looseFood = 0;
-        foreach (FoodShard food in FoodShards)
+        int lastActive = -1;
+        int foodEnd = Math.Min(FoodShards.Count - 1, _lastFoodSlot);
+        for (int i = 0; i <= foodEnd; i++)
         {
-            if (food.IsActive && !food.IsCarried)
+            FoodShard food = FoodShards[i];
+            if (!food.IsActive)
+                continue;
+            lastActive = i;
+            if (!food.IsCarried)
             {
                 _foodGrid.Register(food, food.Position);
                 looseFood++;
             }
         }
+        _lastFoodSlot = lastActive;
         LooseFoodCount = looseFood;
 
         _colonyGrid.Clear();
@@ -765,13 +851,13 @@ public sealed partial class World
     /// within <see cref="KinSelectionRadius"/>, or clears the selection on a
     /// tap at empty ground.
     /// </summary>
-    public void TrySelectAt(Vector3 groundPoint)
+    public void TrySelectAt(Vector3 groundPoint, float slack = 0f)
     {
-        Bramblekin? kin = NearestKinTo(groundPoint);
+        Bramblekin? kin = NearestKinTo(groundPoint, slack);
         Shelter? home = Shelters
-            .Where(s => !s.IsCollapsed && GroundMover.HorizontalDistance(groundPoint, s.Position) <= s.Radius + 0.3f)
+            .Where(s => !s.IsCollapsed && GroundMover.HorizontalDistance(groundPoint, s.Position) <= s.Radius + 0.9f + slack)
             .MinBy(s => GroundMover.HorizontalDistanceSquared(groundPoint, s.Position));
-        bool onKin = kin is not null && GroundMover.HorizontalDistance(groundPoint, kin.Position) <= DirectTapRadius;
+        bool onKin = kin is not null && GroundMover.HorizontalDistance(groundPoint, kin.Position) <= DirectTapRadius + slack * 0.5f;
         if (home is not null && !onKin)
         {
             if (home.GroupId is { } clan && _groups.ContainsKey(clan))
@@ -792,14 +878,21 @@ public sealed partial class World
 
     private Guid? _selectedClanId;
 
+    /// <summary>Selects <paramref name="clan"/> as if its home had been tapped (a tap on its name tag).</summary>
+    public void SelectClan(KinGroup clan)
+    {
+        SelectedKin = null;
+        _selectedClanId = clan.Id;
+    }
+
     /// <summary>The clan picked by tapping one of its homes (see <see cref="TrySelectAt"/>), while it lasts.</summary>
     public KinGroup? SelectedClan => _selectedClanId is { } id && _groups.TryGetValue(id, out KinGroup? clan) ? clan : null;
 
     /// <summary>The living Bramblekin nearest <paramref name="groundPoint"/> within <see cref="KinSelectionRadius"/>, if any.</summary>
-    private Bramblekin? NearestKinTo(Vector3 groundPoint)
+    private Bramblekin? NearestKinTo(Vector3 groundPoint, float slack = 0f)
     {
         Bramblekin? best = null;
-        float bestDistanceSquared = KinSelectionRadius * KinSelectionRadius;
+        float bestDistanceSquared = (KinSelectionRadius + slack) * (KinSelectionRadius + slack);
         foreach (Bramblekin kin in Colony)
         {
             if (kin.IsDead)
