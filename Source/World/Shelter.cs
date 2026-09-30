@@ -391,8 +391,9 @@ public sealed class Shelter
         {
             // The tent model: an acorn cap propped on twigs and leaves.
             float tentWidth = radius * 2.2f;
-            VillageModels.Draw(VillageItem.Tent, basePosition, 0f, tentWidth, Tint(Color.White));
-            roofTop = basePosition.Y + VillageModels.HeightAt(VillageItem.Tent, tentWidth);
+            float tentScale = tentWidth * VillageModels.Scale / PropModels.TentWidth;
+            PropModels.Draw(PropModels.Prop.Tent, basePosition, 0f, tentScale, Tint(Color.White));
+            roofTop = basePosition.Y + tentScale; // The model is 1 unit tall.
             if (IsUpgrading)
                 DrawSticks(basePosition, HouseRadius, TwigsDelivered, HouseUpgradeTwigCost);
         }

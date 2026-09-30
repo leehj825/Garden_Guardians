@@ -532,8 +532,8 @@ public sealed class WolfSpider : ICombatant
             SpiderState.Tumbled => new Color(200, 210, 235, 255),
             _ => Color.White,
         };
-        float bob = _mover.IsMoving ? MathF.Abs(MathF.Sin(_walkCycle)) * 0.04f : 0f;
-        PropModels.Draw(PropModels.Prop.Spider, new Vector3(0f, bob, 0f), 180f, ModelScale, mood);
+        // Its eight legs walk in time with the ground it covers (_walkCycle runs 12 or 30 a second: a loop is 2π of it).
+        PropModels.DrawSpider(Vector3.Zero, 180f, ModelScale, mood, _walkCycle / MathF.Tau, _mover.IsMoving);
 
         Rlgl.PopMatrix();
 
