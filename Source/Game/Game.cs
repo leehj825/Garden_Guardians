@@ -1234,28 +1234,27 @@ public static partial class Game
     {
         int Count(BramblekinState state) => world.Colony.Count(b => !b.IsDead && b.State == state);
 
-        // The Stats button sits at the bottom-right, on the bar when it shows.
+        // The Stats button sits at the bottom-left, just above the stats bar (or the screen's edge when it's hidden),
+        // with the Log button and the log above it.
         string statsLabel = _statsView == StatsView.Shown ? "Stats: on" : "Stats: off";
         int statsFont = Math.Max(14, (int)(30 * UiScale));
         int statsPad = Math.Max(6, (int)(14 * UiScale));
         int statsWidth = Raylib.MeasureText("Stats: off", statsFont) + statsPad * 2;
         int statsHeight = statsFont + statsPad * 2;
-        _statsButtonBounds = new Rectangle(
-            Raylib.GetScreenWidth() - statsWidth - 10, Raylib.GetScreenHeight() - statsHeight - 10, statsWidth, statsHeight);
-        bool statsHovered = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), _statsButtonBounds);
 
-        void DrawStatsButton()
+        // Places and draws the button above <barTop>; returns its top edge, for the panels above to stay clear of.
+        int DrawStatsButton(int barTop)
         {
+            _statsButtonBounds = new Rectangle(10, barTop - 10 - statsHeight, statsWidth, statsHeight);
+            bool statsHovered = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), _statsButtonBounds);
             Raylib.DrawRectangleRec(_statsButtonBounds, new Color(0, 0, 0, statsHovered ? 190 : 150));
             Raylib.DrawRectangleLinesEx(_statsButtonBounds, 2f, new Color(255, 255, 255, 110));
             Raylib.DrawText(statsLabel, (int)_statsButtonBounds.X + statsPad, (int)_statsButtonBounds.Y + statsPad, statsFont, Color.RayWhite);
+            return (int)_statsButtonBounds.Y;
         }
 
         if (_statsView == StatsView.Hidden)
-        {
-            DrawStatsButton();
-            return Raylib.GetScreenHeight();
-        }
+            return DrawStatsButton(Raylib.GetScreenHeight());
 
         int living = world.Colony.Count(b => !b.IsDead);
         int solitary = world.Colony.Count(b => !b.IsDead && b.GroupId is null);
@@ -1286,8 +1285,7 @@ public static partial class Game
         Raylib.DrawRectangle(0, y - 10, Raylib.GetScreenWidth(), barHeight, new Color(0, 0, 0, 90));
         for (int i = 0; i < lines.Length; i++)
             Raylib.DrawText(lines[i], 20, y + lineHeight * i, fontSize, Color.RayWhite);
-        DrawStatsButton();
-        return y - 10;
+        return DrawStatsButton(y - 10);
     }
 
     private static string SpiderStatus(World world) =>
