@@ -97,6 +97,7 @@ public sealed partial class World
             TryHoldFeast(group, leader);
             UpdateBelief(group, leader);
             UpdateWells(group);
+            UpdateWalls(group);
             UpdateCulture(group);
             group.Counsel = Counsel(group, leader);
             ConsiderNeighbours(group, leader);

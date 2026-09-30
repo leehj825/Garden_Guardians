@@ -166,6 +166,7 @@ public static class WaterMap
         Cost = new float[Cells * Cells];
         CameFrom = new int[Cells * Cells];
         Stamp = new int[Cells * Cells];
+        Wall = new bool[Cells * Cells];
         Loading.Report(0.78f, "Measuring the water");
         Creek = TraceCreek();
         CreekBounds = Creek.Length == 0
@@ -342,7 +343,40 @@ public static class WaterMap
 
     private static int CellOf(float coordinate) => Math.Clamp((int)MathF.Floor((coordinate + HalfSize) / CellSize), 0, Cells - 1);
 
-    private static bool IsOpen(int x, int z) => x >= 0 && z >= 0 && x < Cells && z < Cells && !Blocked[Level][x * Cells + z];
+    private static bool IsOpen(int x, int z) => x >= 0 && z >= 0 && x < Cells && z < Cells && !Blocked[Level][x * Cells + z] && !Wall[x * Cells + z];
+
+    // --- Walls -------------------------------------------------------------------------
+    // A clan's stone wall (see World.Walls) blocks the walkers' routes like the water does, so they find their way round it, through its gates.
+
+    /// <summary>Route cells a built wall covers.</summary>
+    private static bool[] Wall = new bool[Cells * Cells];
+
+    /// <summary>Marks the route cells within <paramref name="clearance"/> of each wall <paramref name="segments"/> (x, z) as blocked, and has every walker look again at its way.</summary>
+    public static void SetWalls(IEnumerable<(Vector2 A, Vector2 B)> segments, float clearance)
+    {
+        if (Wall.Length != Cells * Cells)
+            Wall = new bool[Cells * Cells];
+        else
+            Array.Clear(Wall);
+        foreach ((Vector2 a, Vector2 b) in segments)
+        {
+            int x0 = CellOf(MathF.Min(a.X, b.X) - clearance - CellSize), x1 = CellOf(MathF.Max(a.X, b.X) + clearance + CellSize);
+            int z0 = CellOf(MathF.Min(a.Y, b.Y) - clearance - CellSize), z1 = CellOf(MathF.Max(a.Y, b.Y) + clearance + CellSize);
+            Vector2 ab = b - a;
+            float length2 = MathF.Max(Vector2.Dot(ab, ab), 1e-6f);
+            for (int x = x0; x <= x1; x++)
+            {
+                for (int z = z0; z <= z1; z++)
+                {
+                    var centre = new Vector2(CellCenter(x), CellCenter(z));
+                    float t = Math.Clamp(Vector2.Dot(centre - a, ab) / length2, 0f, 1f);
+                    if (Vector2.DistanceSquared(centre, a + ab * t) <= clearance * clearance)
+                        Wall[x * Cells + z] = true;
+                }
+            }
+        }
+        Generation++;
+    }
 
     /// <summary>True if (x, z) is under water now — a quick lookup, for every step a walker takes.</summary>
     public static bool IsWet(float x, float z)

@@ -364,6 +364,7 @@ public sealed partial class World
         AddOakObstacle();
         foreach (Well well in Wells)
             _obstacles.Add(new Obstacle(new Vector2(well.Position.X, well.Position.Z), Well.Radius));
+        AddWallObstacles();
 
         foreach (List<Obstacle> cell in _obstacleCells)
             cell.Clear();
@@ -551,6 +552,8 @@ public sealed partial class World
         Prof.Mark("UpdateOak");
         UpdateTrails(deltaTime);
         Prof.Mark("UpdateTrails");
+        UpdateWallBuilding(deltaTime);
+        Prof.Mark("UpdateWallBuilding");
         UpdateGoods(deltaTime);
         Prof.Mark("UpdateGoods");
         UpdateBeehive(deltaTime);

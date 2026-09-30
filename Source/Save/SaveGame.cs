@@ -39,6 +39,9 @@ public sealed class SaveGame
     public List<MaterialSave>? Materials { get; set; }
 
     public List<WellSave> Wells { get; set; } = new();
+
+    /// <summary>Pieces of stone wall; null in a save from before walls.</summary>
+    public List<WallSave>? Walls { get; set; }
     public List<SnareSave> Snares { get; set; } = new();
 
     /// <summary>Aphid pens; null in a save from before herding.</summary>
@@ -212,6 +215,15 @@ public sealed class WellSave
     public Guid? GroupId { get; set; }
     public int StonesNeeded { get; set; }
     public int StonesLaid { get; set; }
+}
+
+public sealed class WallSave
+{
+    public V3 Position { get; set; }
+    public float Yaw { get; set; }
+    public int Kind { get; set; }
+    public Guid? GroupId { get; set; }
+    public bool Built { get; set; }
 }
 
 public sealed class SnareSave

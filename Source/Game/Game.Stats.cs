@@ -101,6 +101,7 @@ public static partial class Game
             $"  a {(world.DrinksAtPond > 0 ? world.WaterTrekMeters / world.DrinksAtPond : 0):0}m walk on average",
             $"From cisterns: {world.CisternDrinks}",
             $"Cupfuls carried home: {world.CupfulsCarried}",
+            $"Stone walls: {world.WallsRaised} pieces raised ({world.WallPieces.Count(w => !w.IsBuilt)} still to do)",
             $"Wells: {world.WellsDug} dug ({world.Wells.Count(w => !w.IsDug)} being dug), {world.WellDrinks} drinks",
             $"Died of thirst: {world.DeathsByThirst}",
         }));
