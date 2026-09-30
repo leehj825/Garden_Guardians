@@ -553,6 +553,7 @@ public sealed partial class World
         UpdateTrails(deltaTime);
         Prof.Mark("UpdateTrails");
         UpdateWallBuilding(deltaTime);
+        UpdateWallRuin(deltaTime);
         Prof.Mark("UpdateWallBuilding");
         UpdateGoods(deltaTime);
         Prof.Mark("UpdateGoods");

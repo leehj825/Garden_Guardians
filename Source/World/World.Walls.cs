@@ -43,6 +43,12 @@ public sealed partial class World
     /// <summary>Pieces of wall raised so far.</summary>
     public int WallsRaised { get; private set; }
 
+    /// <summary>A wall nobody keeps up (its clan is gone) crumbles: each piece sinks and slumps over about this long (s), varying a little from piece to piece, then falls.</summary>
+    private const float WallRuinSeconds = 480f;
+
+    private float _wallRuinCheck;
+    private readonly HashSet<Guid> _wallsCrumbling = new();
+
     private static readonly Color WallStakeColor = new(120, 90, 60, 255);
 
     /// <summary>
@@ -249,6 +255,46 @@ public sealed partial class World
             RebuildObstacles();
     }
 
+    /// <summary>True if nobody is left to keep up the wall that <paramref name="owner"/> raised: the clan is disbanded or all its people are dead.</summary>
+    private bool WallOwnerGone(Guid? owner) =>
+        owner is not { } id || !_groups.TryGetValue(id, out KinGroup? clan) || !clan.Members.Any(m => !m.IsDead);
+
+    /// <summary>A kingdom that dies out leaves its walls to the weather: they sink and slump slowly, and fall piece by piece.</summary>
+    private void UpdateWallRuin(float deltaTime)
+    {
+        if (WallPieces.Count == 0)
+            return;
+        _wallRuinCheck -= deltaTime;
+        bool check = _wallRuinCheck <= 0f;
+        if (check)
+            _wallRuinCheck = 2f;
+
+        bool fell = false;
+        for (int i = WallPieces.Count - 1; i >= 0; i--)
+        {
+            WallPiece piece = WallPieces[i];
+            if (piece.Ruin <= 0f && !(check && WallOwnerGone(piece.GroupId)))
+                continue;
+            if (!piece.IsBuilt)
+            {
+                WallPieces.RemoveAt(i); // Only stakes: the wind takes them.
+                continue;
+            }
+            if (piece.GroupId is { } id && _wallsCrumbling.Add(id))
+                Game.AddEventLog("[DECAY] With nobody left to keep it up, a clan's stone wall begins to crumble");
+            // Each piece holds out a little differently.
+            float hold = 0.75f + 0.5f * (((piece.Position.X * 12.9898f + piece.Position.Z * 78.233f) % 1f + 1f) % 1f);
+            piece.Ruin += deltaTime / (WallRuinSeconds * hold);
+            if (piece.Ruin >= 1f)
+            {
+                WallPieces.RemoveAt(i);
+                fell = true;
+            }
+        }
+        if (fell)
+            RebuildObstacles();
+    }
+
     /// <summary>The walls' pieces as solid circles for <see cref="RebuildObstacles"/>, and as blocked ground for the walkers' routes.</summary>
     private void AddWallObstacles()
     {
@@ -276,7 +322,10 @@ public sealed partial class World
                 (Vector2 from, Vector2 to) = piece.Segment;
                 float rise = GetHeightAt(to.X, to.Y) - GetHeightAt(from.X, from.Y);
                 float pitch = MathF.Atan2(rise, piece.Length);
-                WallModels.Draw(piece.Kind, piece.Position + new Vector3(0f, -0.08f, 0f), piece.Yaw, Color.White, pitch, piece.Kind == WallKind.Straight ? piece.Scale : 1f);
+                float ruin = piece.Ruin * piece.Ruin * (3f - 2f * piece.Ruin);
+                float sink = 0.08f + ruin * WallPiece.Height * 0.85f;
+                float roll = ruin * 0.35f * (MathF.Sin(piece.Position.X * 3.7f + piece.Position.Z * 1.9f) >= 0f ? 1f : -1f);
+                WallModels.Draw(piece.Kind, piece.Position + new Vector3(0f, -sink, 0f), piece.Yaw, Color.White, pitch, piece.Kind == WallKind.Straight ? piece.Scale : 1f, roll);
             }
             else
                 Raylib.DrawCylinderEx(piece.Position, piece.Position + new Vector3(0f, 0.55f, 0f), 0.06f, 0.03f, 4, WallStakeColor);

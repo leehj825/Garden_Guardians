@@ -34,7 +34,7 @@ public static unsafe class WallModels
     }
 
     /// <summary>Draws one piece standing at <paramref name="position"/>, its length running along <paramref name="yaw"/> (radians from +x towards +z).</summary>
-    public static void Draw(WallKind kind, Vector3 position, float yaw, Color tint, float pitch = 0f, float stretch = 1f)
+    public static void Draw(WallKind kind, Vector3 position, float yaw, Color tint, float pitch = 0f, float stretch = 1f, float roll = 0f)
     {
         EnsureLoaded();
         int mesh = (int)kind;
@@ -47,6 +47,8 @@ public static unsafe class WallModels
         Rlgl.Rotatef(-yaw * 180f / MathF.PI, 0f, 1f, 0f); // Raylib turns the other way about y than the x-z plane's angle runs.
         if (pitch != 0f)
             Rlgl.Rotatef(pitch * 180f / MathF.PI, 0f, 0f, 1f); // Leaning up or down the slope it runs along.
+        if (roll != 0f)
+            Rlgl.Rotatef(roll * 180f / MathF.PI, 1f, 0f, 0f); // Slumping to one side along its length.
         if (stretch != 1f)
             Rlgl.Scalef(stretch, 1f, 1f);
         Raylib.DrawMesh(_model.Meshes[mesh], material, Matrix4x4.Identity);

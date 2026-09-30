@@ -49,6 +49,9 @@ public sealed class WallPiece
 
     public bool IsBuilt { get; set; }
 
+    /// <summary>How far gone it is, 0 sound to 1 fallen: a wall nobody keeps up crumbles, sinking and slumping, then is gone (see World.Walls).</summary>
+    public float Ruin { get; set; }
+
     /// <summary>How much longer (or shorter) than the model a straight length is stretched, so a run of wall meets its ends exactly (ends are not stretched).</summary>
     public float Scale { get; }
 
