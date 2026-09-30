@@ -15,6 +15,14 @@ public sealed unsafe class ProceduralView
     /// <summary>The ground mesh may be off the height grid by this much (m).</summary>
     private const float MeshTolerance = 0.04f;
 
+    /// <summary>Coarser ground meshes, for when the camera is far off: allowed this far (m) off the height grid, from this far (m) from where the camera looks.</summary>
+    private static readonly float[] LodTolerance = { MeshTolerance, 0.25f, 1.0f };
+    private static readonly float[] LodFrom = { 0f, 60f, 130f };
+
+    /// <summary>Where the camera is, what it looks at and how wide it sees (vertical field of view in degrees, width over height), set before the world is drawn: picks the ground's level of detail and which props are out of sight.</summary>
+    public static Vector3 Eye, Focus;
+    public static float FovDegrees = 45f, Aspect = 1.6f;
+
     /// <summary>The baked ground texture is this many pixels square (a power of two, so it can be mipmapped).</summary>
     private const int TextureSize = 2048;
 
@@ -24,7 +32,9 @@ public sealed unsafe class ProceduralView
     private const int Grasses = 4, Dirts = 2;
 
     private readonly TerrainSet _set;
-    private Model _ground;
+    private readonly Model[] _lods = new Model[3];
+    private readonly bool[] _lodBuilt = new bool[3];
+    private Texture2D _groundTexture;
     private Texture2D _flat;
     private bool _ready;
     private Task<byte[]>? _bake;
@@ -48,7 +58,32 @@ public sealed unsafe class ProceduralView
             return;
         _built?.Release();
         _built = this;
-        var mesh = new TerrainMesh(_set.Heights, TerrainData.Size, TerrainData.Half, MeshTolerance);
+        BuildLod(0);
+
+        Image plain = Raylib.GenImageColor(2, 2, new Color(95, 120, 55, 255));
+        _flat = Raylib.LoadTextureFromImage(plain);
+        Raylib.UnloadImage(plain);
+        _groundTexture = _flat;
+        _lods[0].Materials[0].Maps[(int)MaterialMapIndex.Albedo].Texture = _flat;
+
+        // The tiles are read here (they're files); the mixing of them, the slow part, runs on another thread.
+        var grass = new (byte[] Pixels, int Width)[Grasses];
+        var dirt = new (byte[] Pixels, int Width)[Dirts];
+        for (int k = 0; k < Grasses; k++)
+            grass[k] = LoadTile($"grass_{k + 1}.png");
+        for (int k = 0; k < Dirts; k++)
+            dirt[k] = LoadTile($"dirt_{k + 1}.png");
+        float[] heights = _set.Heights;
+        int size = TerrainData.Size, seed = _set.Seed;
+        float half = TerrainData.Half, level = _set.PondLevel;
+        _bake = Task.Run(() => BakePixels(grass, dirt, heights, size, half, level, seed));
+        _ready = true;
+    }
+
+    /// <summary>Builds the ground mesh of one level of detail, with the ground's texture on it.</summary>
+    private void BuildLod(int level)
+    {
+        var mesh = new TerrainMesh(_set.Heights, TerrainData.Size, TerrainData.Half, LodTolerance[level]);
         Mesh raw = default;
         raw.VertexCount = mesh.VertexCount;
         raw.TriangleCount = mesh.TriangleCount;
@@ -66,25 +101,11 @@ public sealed unsafe class ProceduralView
         for (int i = 0; i < mesh.Indices.Length; i++)
             raw.Indices[i] = mesh.Indices[i];
         Raylib.UploadMesh(ref raw, false);
-        _ground = Raylib.LoadModelFromMesh(raw);
+        _lods[level] = Raylib.LoadModelFromMesh(raw);
+        _lodBuilt[level] = true;
+        if (_groundTexture.Id != 0)
+            _lods[level].Materials[0].Maps[(int)MaterialMapIndex.Albedo].Texture = _groundTexture;
 
-        Image plain = Raylib.GenImageColor(2, 2, new Color(95, 120, 55, 255));
-        _flat = Raylib.LoadTextureFromImage(plain);
-        Raylib.UnloadImage(plain);
-        _ground.Materials[0].Maps[(int)MaterialMapIndex.Albedo].Texture = _flat;
-
-        // The tiles are read here (they're files); the mixing of them, the slow part, runs on another thread.
-        var grass = new (byte[] Pixels, int Width)[Grasses];
-        var dirt = new (byte[] Pixels, int Width)[Dirts];
-        for (int k = 0; k < Grasses; k++)
-            grass[k] = LoadTile($"grass_{k + 1}.png");
-        for (int k = 0; k < Dirts; k++)
-            dirt[k] = LoadTile($"dirt_{k + 1}.png");
-        float[] heights = _set.Heights;
-        int size = TerrainData.Size, seed = _set.Seed;
-        float half = TerrainData.Half, level = _set.PondLevel;
-        _bake = Task.Run(() => BakePixels(grass, dirt, heights, size, half, level, seed));
-        _ready = true;
     }
 
     private void Release()
@@ -92,7 +113,12 @@ public sealed unsafe class ProceduralView
         if (!_ready)
             return;
         _bake = null; // Its result, if it ever finishes, is not wanted.
-        Raylib.UnloadModel(_ground);
+        for (int i = 0; i < _lods.Length; i++)
+        {
+            if (_lodBuilt[i])
+                Raylib.UnloadModel(_lods[i]);
+            _lodBuilt[i] = false;
+        }
         _ready = false;
     }
 
@@ -115,7 +141,12 @@ public sealed unsafe class ProceduralView
         Raylib.UnloadImage(image);
         Raylib.GenTextureMipmaps(ref texture);
         Raylib.SetTextureFilter(texture, TextureFilter.Trilinear);
-        _ground.Materials[0].Maps[(int)MaterialMapIndex.Albedo].Texture = texture;
+        _groundTexture = texture;
+        for (int i = 0; i < _lods.Length; i++)
+        {
+            if (_lodBuilt[i])
+                _lods[i].Materials[0].Maps[(int)MaterialMapIndex.Albedo].Texture = texture;
+        }
         Raylib.UnloadTexture(_flat);
     }
 
@@ -281,18 +312,44 @@ public sealed unsafe class ProceduralView
     {
         EnsureBuilt();
         ApplyBake();
-        Raylib.DrawModel(_ground, Vector3.Zero, 1f, multiply);
+        int level = LodTolerance.Length - 1;
+        float focusDistance = Vector3.Distance(Eye, Focus);
+        while (level > 0 && focusDistance < LodFrom[level])
+            level--;
+        if (!_lodBuilt[level])
+            BuildLod(level);
+        Model ground = _lods[level];
+        Raylib.DrawModel(ground, Vector3.Zero, 1f, multiply);
         if (_set.Props is { } props)
         {
+            Vector3 forward = Vector3.Normalize(Focus - Eye);
+            // A cone round the view's axis reaching the screen's far corners; a prop wholly outside it is behind or beside the picture.
+            float halfView = MathF.Atan(MathF.Tan(FovDegrees * MathF.PI / 360f) * MathF.Sqrt(1f + Aspect * Aspect));
             foreach (PlacedProp prop in props)
+            {
+                if (!InView(prop, forward, halfView))
+                    continue;
                 DrawProp(prop, multiply);
+            }
         }
         if (additive is not { } glow)
             return;
         Rlgl.DrawRenderBatchActive();
         Raylib.BeginBlendMode(BlendMode.Additive);
-        Raylib.DrawModel(_ground, Vector3.Zero, 1f, glow);
+        Raylib.DrawModel(ground, Vector3.Zero, 1f, glow);
         Raylib.EndBlendMode();
+    }
+
+    /// <summary>False if <paramref name="prop"/> (a sphere of its own reach) lies entirely outside the camera's view cone.</summary>
+    private static bool InView(PlacedProp prop, Vector3 forward, float halfView)
+    {
+        var to = new Vector3(prop.X - Eye.X, prop.Base + prop.Item.Height * prop.Scale * 0.5f - Eye.Y, prop.Z - Eye.Z);
+        float distance = to.Length();
+        float radius = MathF.Max(prop.Item.Reach, prop.Item.Height) * prop.Scale;
+        if (distance <= radius)
+            return true; // The camera is at or in it.
+        float angle = MathF.Acos(Math.Clamp(Vector3.Dot(to / distance, forward), -1f, 1f));
+        return angle - MathF.Asin(Math.Min(1f, radius / distance)) <= halfView;
     }
 
     private static Model PropModel(KitItem item)

@@ -452,6 +452,10 @@ public static partial class Game
             Raylib.ClearBackground(world.SkyColor);
 
             Raylib.BeginMode3D(camera);
+            ProceduralView.Eye = camera.Position;
+            ProceduralView.Focus = camera.Target;
+            ProceduralView.FovDegrees = camera.FovY;
+            ProceduralView.Aspect = Raylib.GetScreenWidth() / (float)Math.Max(1, Raylib.GetScreenHeight());
             world.Draw(camera);
             Raylib.EndMode3D();
             DrawNight(camera, world);
