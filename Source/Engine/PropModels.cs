@@ -11,7 +11,7 @@ namespace GardenGuardians;
 /// On Android the packaged asset path drops the "Assets/" prefix — see
 /// <c>BramblekinModel.AssetPath</c> for why.
 /// </summary>
-public static class PropModels
+public static unsafe class PropModels
 {
     private static readonly string AssetPath = OperatingSystem.IsAndroid()
         ? "Models/Props/"
