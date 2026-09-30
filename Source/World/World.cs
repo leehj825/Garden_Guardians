@@ -813,6 +813,24 @@ public sealed partial class World
         return _kinPerceptionBuffer;
     }
 
+    /// <summary>
+    /// True if <paramref name="point"/> sits in a pocket of the oak's roots, rocks and water that a walker can't get into or out of: too close to an
+    /// obstacle to stand beside, or with most of the ring 1.5 m round it blocked.
+    /// </summary>
+    public bool IsCramped(Vector3 point)
+    {
+        if (IsBlocked(point, Bramblekin.BodyRadius + 0.5f))
+            return true;
+        int shut = 0;
+        for (int i = 0; i < 8; i++)
+        {
+            float a = i * MathF.PI / 4f;
+            if (IsBlocked(point + new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * 1.5f, Bramblekin.BodyRadius))
+                shut++;
+        }
+        return shut > 3;
+    }
+
     /// <summary>A uniformly random unblocked ground point, keeping <paramref name="edgeMargin"/> meters from the edges.</summary>
     public Vector3 RandomFreePoint(float clearance, float edgeMargin)
     {
@@ -820,7 +838,7 @@ public sealed partial class World
         for (int attempt = 0; attempt < 30; attempt++)
         {
             candidate = Terrain.RandomPoint(Rng, edgeMargin);
-            if (!IsBlocked(candidate, clearance))
+            if (!IsBlocked(candidate, clearance) && !IsCramped(candidate))
                 return candidate;
         }
         return candidate; // Practically unreachable: obstacles cover a tiny fraction of the map.

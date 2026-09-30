@@ -126,7 +126,7 @@ public sealed partial class World
         float angle = (float)(Rng.NextDouble() * MathF.Tau);
         float distance = OakRadius + 1f + (float)Rng.NextDouble() * (AcornFallReach - OakRadius);
         Vector3 spot = OakCenter + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * distance;
-        if (!Terrain.Contains(spot, 1f) || IsBlocked(spot, FoodShard.Radius + 0.1f))
+        if (!Terrain.Contains(spot, 1f) || IsBlocked(spot, FoodShard.Radius + 0.1f) || IsCramped(spot))
             return;
         _pendingFoodSpawns.Add((spot, FoodShardKind.Acorn));
         AcornsFallen++;
