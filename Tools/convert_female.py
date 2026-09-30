@@ -26,7 +26,6 @@ import sys
 import tempfile
 import os
 
-import bpy  # noqa: I001 (bpy first: it registers the other Blender modules)
 import numpy as np
 from PIL import Image
 
@@ -61,6 +60,8 @@ def accessor(doc, binary, index):
 
 
 def decimate_female(src, tris, texture, out):
+    import bpy  # only this step needs Blender; the helpers below can be imported without it
+
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=src)
     ob = next(o for o in bpy.data.objects if o.type == "MESH")
