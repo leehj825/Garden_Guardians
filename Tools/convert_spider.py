@@ -212,14 +212,14 @@ def write(path, Q, nrm, uv, idx, joints, weights, legs, png):
     views["nrm"] = blob(nrm)
     views["uv"] = blob(uv)
     views["idx"] = blob(idx.astype(np.uint16))
-    views["joints"] = blob(joints)
+    views["joints"] = blob(joints.astype(np.uint8))
     views["weights"] = blob(weights)
     views["ibm"] = blob(ibm)
     views["time"] = blob(times)
     track_views = [blob(tracks[i]) for i in range(bones)]
     views["png"] = blob(np.frombuffer(png, np.uint8))
     lengths = {"pos": Q.astype(np.float32).nbytes, "nrm": nrm.nbytes, "uv": uv.nbytes, "idx": idx.astype(np.uint16).nbytes,
-               "joints": joints.nbytes, "weights": weights.nbytes, "ibm": ibm.nbytes, "time": times.nbytes, "png": len(png)}
+               "joints": len(joints) * 4, "weights": weights.nbytes, "ibm": ibm.nbytes, "time": times.nbytes, "png": len(png)}
     offsets = np.cumsum([0] + [len(b) for b in blobs])
     buffer_views = [{"buffer": 0, "byteOffset": int(offsets[i]), "byteLength": 0} for i in range(len(blobs))]
     for name, i in views.items():
@@ -232,7 +232,7 @@ def write(path, Q, nrm, uv, idx, joints, weights, legs, png):
         {"bufferView": views["nrm"], "componentType": 5126, "count": len(nrm), "type": "VEC3"},
         {"bufferView": views["uv"], "componentType": 5126, "count": len(uv), "type": "VEC2"},
         {"bufferView": views["idx"], "componentType": 5123, "count": len(idx), "type": "SCALAR"},
-        {"bufferView": views["joints"], "componentType": 5123, "count": len(joints), "type": "VEC4"},
+        {"bufferView": views["joints"], "componentType": 5121, "count": len(joints), "type": "VEC4"},
         {"bufferView": views["weights"], "componentType": 5126, "count": len(weights), "type": "VEC4"},
         {"bufferView": views["ibm"], "componentType": 5126, "count": bones, "type": "MAT4"},
         {"bufferView": views["time"], "componentType": 5126, "count": FRAMES + 1, "type": "SCALAR", "min": [0.0], "max": [DURATION]},

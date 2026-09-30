@@ -71,7 +71,7 @@ public static unsafe class PropModels
     }
 
     private static ModelAnimation _spiderWalk;
-    private static bool _spiderWalkLoaded;
+    private static bool _spiderWalkLoaded, _spiderWalkOk;
 
     /// <summary>
     /// The wolf spider, walking: <paramref name="cycle"/> is how far through its eight-legged walk it is (one loop per whole number), held on
@@ -83,13 +83,20 @@ public static unsafe class PropModels
         EnsureLoaded(Prop.Spider);
         if (!_spiderWalkLoaded)
         {
+            _spiderWalkLoaded = true; // Once, even if it fails: a spider that cannot walk stands still instead of the game stopping.
             Span<ModelAnimation> clips = Raylib.LoadModelAnimations(AssetPath + "Spider.glb");
-            if (clips.Length == 0)
-                throw new InvalidOperationException("No walk found in Spider.glb — is the Assets folder missing or not copied next to the app?");
-            _spiderWalk = clips[0];
-            _spiderWalkLoaded = true;
+            if (clips.Length > 0)
+            {
+                _spiderWalk = clips[0];
+                _spiderWalkOk = true;
+            }
         }
         Model model = _full[(int)Prop.Spider];
+        if (!_spiderWalkOk || model.Skeleton.BoneCount == 0)
+        {
+            Raylib.DrawModelEx(model, position, Vector3.UnitY, yawDegrees, new Vector3(scale), tint);
+            return;
+        }
         float through = walking ? cycle - MathF.Floor(cycle) : 0f;
         int frame = Math.Clamp((int)(through * _spiderWalk.KeyFrameCount), 0, Math.Max(_spiderWalk.KeyFrameCount - 1, 0));
         Raylib.UpdateModelAnimation(model, _spiderWalk, frame);
