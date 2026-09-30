@@ -418,16 +418,21 @@ public sealed partial class World
     /// <summary>Activates the first inactive slot in <see cref="FoodShards"/> at <paramref name="position"/> and returns it, or returns null if the pool is exhausted.</summary>
     private FoodShard? ActivateFood(Vector3 position, FoodShardKind kind)
     {
-        foreach (FoodShard food in FoodShards)
+        for (int i = 0; i < FoodShards.Count; i++)
         {
+            FoodShard food = FoodShards[i];
             if (!food.IsActive)
             {
                 food.Activate(position, kind);
+                _lastFoodSlot = Math.Max(_lastFoodSlot, i);
                 return food;
             }
         }
         return null;
     }
+
+    /// <summary>No pool slot after this one holds Food (slots are handed out lowest first, so the live ones sit at the front): the per-step passes over the pool stop here, not at the pool's far end. Worked out again in <see cref="RebuildSpatialGrids"/>; MaxValue = "scan it all".</summary>
+    private int _lastFoodSlot = int.MaxValue;
 
     // --- The frame -------------------------------------------------------------------
 
@@ -658,14 +663,21 @@ public sealed partial class World
     {
         _foodGrid.Clear();
         int looseFood = 0;
-        foreach (FoodShard food in FoodShards)
+        int lastActive = -1;
+        int foodEnd = Math.Min(FoodShards.Count - 1, _lastFoodSlot);
+        for (int i = 0; i <= foodEnd; i++)
         {
-            if (food.IsActive && !food.IsCarried)
+            FoodShard food = FoodShards[i];
+            if (!food.IsActive)
+                continue;
+            lastActive = i;
+            if (!food.IsCarried)
             {
                 _foodGrid.Register(food, food.Position);
                 looseFood++;
             }
         }
+        _lastFoodSlot = lastActive;
         LooseFoodCount = looseFood;
 
         _colonyGrid.Clear();
