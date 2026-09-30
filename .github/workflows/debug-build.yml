@@ -62,5 +62,5 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: garden-guardians-debug-apk
-          path: bin/Debug/net8.0-android/publish/*-Signed.apk
+          path: bin/Debug/net8.0-android/**/publish/*-Signed.apk
           if-no-files-found: error
