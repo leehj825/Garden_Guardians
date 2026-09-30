@@ -17,6 +17,10 @@ public static partial class Game
     private const string GardenSetting = "garden";
     private const string TerrainSetting = "terrain";
     private const string MapSizeSetting = "mapsize";
+    private const string StartAgeSetting = "startage";
+
+    /// <summary>The age a new garden starts in (chosen on the start menu).</summary>
+    private static Era _startEra;
 
     /// <summary>Which kept garden is open, 1 to <see cref="SaveSystem.Slots"/>.</summary>
     private static int _gardenSlot = 1;
@@ -80,7 +84,9 @@ public static partial class Game
     private static World NewWorld()
     {
         var rng = new Random();
-        return new World(new Terrain(ForcedTerrain ?? TerrainData.RandomIndex(rng)), rng, InitialKinCount);
+        var world = new World(new Terrain(ForcedTerrain ?? TerrainData.RandomIndex(rng)), rng, InitialKinCount);
+        world.GrantEra(_startEra);
+        return world;
     }
 
     /// <summary>The "New" (garden) button, shown beside History while the History screen is open.</summary>

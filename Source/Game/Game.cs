@@ -335,6 +335,7 @@ public static partial class Game
                 Preferences.Set(TerrainSetting, choice.GrowTerrain ? TerrainMode.Random : TerrainMode.Fixed);
             }
             TerrainData.NewGardenSize = choice.Size;
+            _startEra = choice.StartEra;
             world = MakeWorld(() => choice.Resume ? LoadOrCreateWorld(GardenPath) : StartNewGarden(GardenPath));
         }
         camera = OverviewCamera(world.Terrain.Size);
