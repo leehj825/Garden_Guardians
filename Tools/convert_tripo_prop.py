@@ -16,6 +16,7 @@ import numpy as np
 from PIL import Image
 
 Image.MAX_IMAGE_PIXELS = None
+NAME = "acorn_house"
 
 
 def read_glb(path):
@@ -44,11 +45,11 @@ def write(path, pos, nrm, uv, idx, png):
     offsets = np.cumsum([0] + [len(p) for p in parts])
     doc = {
         "asset": {"version": "2.0", "generator": "convert_tripo_prop.py"},
-        "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0, "name": "acorn_house"}],
+        "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0, "name": NAME}],
         "meshes": [{"primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2}, "indices": 3, "material": 0}]}],
-        "materials": [{"name": "acorn_house", "doubleSided": True, "pbrMetallicRoughness": {"baseColorTexture": {"index": 0}, "metallicFactor": 0.0, "roughnessFactor": 0.5}}],
+        "materials": [{"name": NAME, "doubleSided": True, "pbrMetallicRoughness": {"baseColorTexture": {"index": 0}, "metallicFactor": 0.0, "roughnessFactor": 0.5}}],
         "textures": [{"source": 0, "sampler": 0}], "samplers": [{"magFilter": 9729, "minFilter": 9987, "wrapS": 10497, "wrapT": 10497}],
-        "images": [{"bufferView": 4, "mimeType": "image/png", "name": "acorn_house_basecolor"}],
+        "images": [{"bufferView": 4, "mimeType": "image/png", "name": NAME + "_basecolor"}],
         "accessors": [
             {"bufferView": 0, "componentType": 5126, "count": len(pos), "type": "VEC3", "min": pos.min(axis=0).tolist(), "max": pos.max(axis=0).tolist()},
             {"bufferView": 1, "componentType": 5126, "count": len(nrm), "type": "VEC3"},
@@ -74,7 +75,11 @@ def main():
     ap.add_argument("--texture", type=int, default=2048)
     ap.add_argument("--lod")
     ap.add_argument("--lod-texture", type=int, default=512)
+    ap.add_argument("--height", type=float, default=1.0, help="stand this tall (m); the default 1 suits the acorn house, which the game scales itself")
+    ap.add_argument("--name", default="acorn_house")
     args = ap.parse_args()
+    global NAME
+    NAME = args.name
 
     doc, binary = read_glb(args.src)
     prim = doc["meshes"][0]["primitives"][0]
@@ -87,7 +92,7 @@ def main():
     offset = view.get("byteOffset", 0)
     picture = Image.open(io.BytesIO(binary[offset:offset + view["byteLength"]])).convert("RGB")
 
-    pos = (pos - [0.0, pos[:, 1].min(), 0.0]) / (pos[:, 1].max() - pos[:, 1].min())  # 1 unit tall, base at y = 0
+    pos = (pos - [0.0, pos[:, 1].min(), 0.0]) / (pos[:, 1].max() - pos[:, 1].min()) * args.height  # --height tall, base at y = 0
     pos = pos.astype(np.float32)
 
     def png(size):
