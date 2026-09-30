@@ -121,6 +121,30 @@ public static partial class Game
 
     private static LogView _logView = LogView.Brief;
 
+    /// <summary>Whether the stats bar along the bottom is showing (tap the Stats button to change it; kept in <see cref="Preferences"/>).</summary>
+    private enum StatsView
+    {
+        Shown,
+        Hidden,
+    }
+
+    private const string StatsViewSetting = "stats";
+
+    private static StatsView _statsView = StatsView.Shown;
+
+    /// <summary>Where the Stats button was drawn last frame, for taps.</summary>
+    private static Rectangle _statsButtonBounds;
+
+    /// <summary>A tap on the Stats button shows or hides the stats bar, and remembers the choice. Returns true if the tap was on it.</summary>
+    private static bool TapStatsButton(Vector2 point)
+    {
+        if (!Raylib.CheckCollisionPointRec(point, _statsButtonBounds))
+            return false;
+        _statsView = _statsView == StatsView.Shown ? StatsView.Hidden : StatsView.Shown;
+        Preferences.Set(StatsViewSetting, _statsView);
+        return true;
+    }
+
     /// <summary>Entries logged while the log was hidden, shown on the Log button.</summary>
     private static int _unseenLogs;
 
@@ -287,6 +311,7 @@ public static partial class Game
         // Save/Load: the garden carries on where it was left (see SaveSystem).
         Preferences.Load(Preferences.DefaultPath);
         _logView = Preferences.Get(LogViewSetting, LogView.Brief);
+        _statsView = Preferences.Get(StatsViewSetting, StatsView.Shown);
         World.Overlays = Preferences.Get(OverlaySetting, MapOverlays.All);
         _gardenSlot = (int)Preferences.Get(GardenSetting, GardenSlot.Garden1);
         TerrainData.GrowNewGardens = Preferences.Get(TerrainSetting, TerrainMode.Fixed) == TerrainMode.Random;
@@ -418,6 +443,10 @@ public static partial class Game
             else if (mousePressed && TapLogButton(mousePosition))
             {
                 // Showed more, less or none of the log.
+            }
+            else if (mousePressed && TapStatsButton(mousePosition))
+            {
+                // Showed or hid the stats bar.
             }
             else if (mousePressed && overlayButtons is not null && overlayButtons.Any(o => o.Button.Contains(mousePosition)))
             {
@@ -1205,6 +1234,29 @@ public static partial class Game
     {
         int Count(BramblekinState state) => world.Colony.Count(b => !b.IsDead && b.State == state);
 
+        // The Stats button sits at the bottom-right, on the bar when it shows.
+        string statsLabel = _statsView == StatsView.Shown ? "Stats: on" : "Stats: off";
+        int statsFont = Math.Max(14, (int)(30 * UiScale));
+        int statsPad = Math.Max(6, (int)(14 * UiScale));
+        int statsWidth = Raylib.MeasureText("Stats: off", statsFont) + statsPad * 2;
+        int statsHeight = statsFont + statsPad * 2;
+        _statsButtonBounds = new Rectangle(
+            Raylib.GetScreenWidth() - statsWidth - 10, Raylib.GetScreenHeight() - statsHeight - 10, statsWidth, statsHeight);
+        bool statsHovered = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), _statsButtonBounds);
+
+        void DrawStatsButton()
+        {
+            Raylib.DrawRectangleRec(_statsButtonBounds, new Color(0, 0, 0, statsHovered ? 190 : 150));
+            Raylib.DrawRectangleLinesEx(_statsButtonBounds, 2f, new Color(255, 255, 255, 110));
+            Raylib.DrawText(statsLabel, (int)_statsButtonBounds.X + statsPad, (int)_statsButtonBounds.Y + statsPad, statsFont, Color.RayWhite);
+        }
+
+        if (_statsView == StatsView.Hidden)
+        {
+            DrawStatsButton();
+            return Raylib.GetScreenHeight();
+        }
+
         int living = world.Colony.Count(b => !b.IsDead);
         int solitary = world.Colony.Count(b => !b.IsDead && b.GroupId is null);
         int largestGroup = world.Groups.Count > 0 ? world.Groups.Max(g => g.Members.Count) : 0;
@@ -1234,6 +1286,7 @@ public static partial class Game
         Raylib.DrawRectangle(0, y - 10, Raylib.GetScreenWidth(), barHeight, new Color(0, 0, 0, 90));
         for (int i = 0; i < lines.Length; i++)
             Raylib.DrawText(lines[i], 20, y + lineHeight * i, fontSize, Color.RayWhite);
+        DrawStatsButton();
         return y - 10;
     }
 
