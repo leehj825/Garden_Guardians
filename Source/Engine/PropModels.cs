@@ -25,15 +25,15 @@ public static unsafe class PropModels
     public const float HouseCapTop = 0.72f;
 
     /// <summary>The props; each has a full model and a cheap one (a fifth or so of the triangles, a 512px texture) for when it is small on screen.</summary>
-    public enum Prop { House, Bush, Spider, Tent }
+    public enum Prop { House, Bush, Spider, Tent, BerryPlot, CressPlot, MushroomPlot }
 
-    private static readonly string[] Files = { "AcornHouse", "BerryFarm", "Spider", "Tent" };
+    private static readonly string[] Files = { "AcornHouse", "BerryFarm", "Spider", "Tent", "BerryPlot", "CressPlot", "MushroomPlot" };
 
     /// <summary>Below this many pixels across, the cheap model.</summary>
     private const float FullPixels = 110f;
 
-    private static readonly Model[] _full = new Model[4], _cheap = new Model[4];
-    private static readonly bool[] _ready = new bool[4];
+    private static readonly Model[] _full = new Model[7], _cheap = new Model[7];
+    private static readonly bool[] _ready = new bool[7];
 
     private static void EnsureLoaded(Prop prop)
     {
@@ -42,7 +42,7 @@ public static unsafe class PropModels
             return;
         _full[i] = Raylib.LoadModel(AssetPath + Files[i] + ".glb");
         _cheap[i] = prop == Prop.Spider ? _full[i] : Raylib.LoadModel(AssetPath + Files[i] + "_lod.glb"); // The spider is light already (and rigged): one model.
-        if (prop is Prop.House or Prop.Tent)
+        if (prop is Prop.House or Prop.Tent or Prop.BerryPlot or Prop.CressPlot or Prop.MushroomPlot)
         {
             // The house's pictures are big and painterly: smoothed and mipmapped, they don't shimmer or show as pixels.
             Smooth(_full[i]);
@@ -66,9 +66,29 @@ public static unsafe class PropModels
     public static void Draw(Prop prop, Vector3 position, float yawDegrees, float scale, Color tint)
     {
         EnsureLoaded(prop);
-        float pixels = Detail.Pixels(position, scale * (prop switch { Prop.House => HouseWidth, Prop.Bush => BushWidth, Prop.Tent => TentWidth, _ => SpiderWidth }));
+        float pixels = Detail.Pixels(position, scale * (prop switch { Prop.House => HouseWidth, Prop.Bush => BushWidth, Prop.Tent => TentWidth, Prop.Spider => SpiderWidth, _ => 1f }));
         Model model = pixels >= FullPixels ? _full[(int)prop] : _cheap[(int)prop];
         Raylib.DrawModelEx(model, position, Vector3.UnitY, yawDegrees, new Vector3(scale), tint);
+    }
+
+    /// <summary>
+    /// Draws a farm plot lying <paramref name="width"/> wide on the ground at <paramref name="position"/>, tilted to the slope under it
+    /// (measured over the plot's own width, so a big plot follows the hill rather than one bump). The plot models are 1 unit across.
+    /// </summary>
+    public static void DrawOnGround(Prop plot, Vector3 position, float width, Color tint)
+    {
+        float reach = Math.Max(0.75f, width / 2f);
+        float dx = World.GetHeightAt(position.X + reach, position.Z) - World.GetHeightAt(position.X - reach, position.Z);
+        float dz = World.GetHeightAt(position.X, position.Z + reach) - World.GetHeightAt(position.X, position.Z - reach);
+        Vector3 normal = Vector3.Normalize(new Vector3(-dx, 2f * reach, -dz));
+        Vector3 axis = Vector3.Cross(Vector3.UnitY, normal);
+        float angle = MathF.Acos(Math.Clamp(normal.Y, -1f, 1f)) * 180f / MathF.PI;
+        Rlgl.PushMatrix();
+        Rlgl.Translatef(position.X, position.Y, position.Z);
+        if (axis.LengthSquared() > 1e-8f)
+            Rlgl.Rotatef(angle, axis.X, axis.Y, axis.Z);
+        Draw(plot, Vector3.Zero, 0f, width, tint);
+        Rlgl.PopMatrix();
     }
 
     private static ModelAnimation _spiderWalk;

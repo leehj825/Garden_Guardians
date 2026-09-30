@@ -212,16 +212,16 @@ public sealed class Crop
         switch (Kind)
         {
             case CropKind.Grain:
-                DrawPlot(VillageItem.GrainPlot, grown, winter, withering);
+                DrawGrainPlot(grown, winter, withering);
                 break;
             case CropKind.Mushroom:
-                DrawPlot(VillageItem.MushroomPlot, grown, false, withering);
+                DrawPlot(PropModels.Prop.MushroomPlot, grown, false, withering);
                 break;
             case CropKind.Cress:
-                DrawPlot(VillageItem.CressPlot, grown, winter, withering);
+                DrawPlot(PropModels.Prop.CressPlot, grown, winter, withering);
                 break;
             default:
-                DrawBush(size, winter, withering);
+                DrawPlot(PropModels.Prop.BerryPlot, grown, winter, withering, 4.5f);
                 break;
         }
 
@@ -242,10 +242,17 @@ public sealed class Crop
     }
 
     /// <summary>A plot of grain, mushrooms or cress: the model, small while it grows and fading toward its winter colour as it withers or the year turns.</summary>
-    private void DrawPlot(VillageItem item, float grown, bool winter, float withering)
+    private void DrawPlot(PropModels.Prop plot, float grown, bool winter, float withering, float reach = 7.5f)
     {
         Color tint = Blend(winter ? Blend(Color.White, WinterLeafColor, 0.6f) : Color.White, WinterLeafColor, withering);
-        VillageModels.DrawOnGround(item, Position, Radius * 7.5f * (0.6f + 0.4f * grown), tint);
+        PropModels.DrawOnGround(plot, Position, Radius * reach * (0.6f + 0.4f * grown), tint);
+    }
+
+    /// <summary>A plot of grain (still the village sheet's model).</summary>
+    private void DrawGrainPlot(float grown, bool winter, float withering)
+    {
+        Color tint = Blend(winter ? Blend(Color.White, WinterLeafColor, 0.6f) : Color.White, WinterLeafColor, withering);
+        VillageModels.DrawOnGround(VillageItem.GrainPlot, Position, Radius * 7.5f * (0.6f + 0.4f * grown), tint);
     }
 
     /// <summary>A tuft of tall stalks, green while growing and golden once they bear, each ripe one nodding under a seed head; stubble in winter.</summary>
