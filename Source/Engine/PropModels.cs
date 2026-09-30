@@ -25,15 +25,15 @@ public static unsafe class PropModels
     public const float HouseCapTop = 0.72f;
 
     /// <summary>The props; each has a full model and a cheap one (a fifth or so of the triangles, a 512px texture) for when it is small on screen.</summary>
-    public enum Prop { House, Bush, Spider, Tent, BerryPlot, CressPlot, MushroomPlot }
+    public enum Prop { House, Bush, Spider, Tent, BerryPlot, CressPlot, MushroomPlot, GrainPlot }
 
-    private static readonly string[] Files = { "AcornHouse", "BerryFarm", "Spider", "Tent", "BerryPlot", "CressPlot", "MushroomPlot" };
+    private static readonly string[] Files = { "AcornHouse", "BerryFarm", "Spider", "Tent", "BerryPlot", "CressPlot", "MushroomPlot", "GrainPlot" };
 
     /// <summary>Below this many pixels across, the cheap model.</summary>
     private const float FullPixels = 110f;
 
-    private static readonly Model[] _full = new Model[7], _cheap = new Model[7];
-    private static readonly bool[] _ready = new bool[7];
+    private static readonly Model[] _full = new Model[8], _cheap = new Model[8];
+    private static readonly bool[] _ready = new bool[8];
 
     private static void EnsureLoaded(Prop prop)
     {
@@ -42,7 +42,7 @@ public static unsafe class PropModels
             return;
         _full[i] = Raylib.LoadModel(AssetPath + Files[i] + ".glb");
         _cheap[i] = prop == Prop.Spider ? _full[i] : Raylib.LoadModel(AssetPath + Files[i] + "_lod.glb"); // The spider is light already (and rigged): one model.
-        if (prop is Prop.House or Prop.Tent or Prop.BerryPlot or Prop.CressPlot or Prop.MushroomPlot)
+        if (prop is Prop.House or Prop.Tent or Prop.BerryPlot or Prop.CressPlot or Prop.MushroomPlot or Prop.GrainPlot)
         {
             // The house's pictures are big and painterly: smoothed and mipmapped, they don't shimmer or show as pixels.
             Smooth(_full[i]);

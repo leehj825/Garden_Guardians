@@ -212,7 +212,7 @@ public sealed class Crop
         switch (Kind)
         {
             case CropKind.Grain:
-                DrawGrainPlot(grown, winter, withering);
+                DrawPlot(PropModels.Prop.GrainPlot, grown, winter, withering);
                 break;
             case CropKind.Mushroom:
                 DrawPlot(PropModels.Prop.MushroomPlot, grown, false, withering);
@@ -250,13 +250,6 @@ public sealed class Crop
     {
         Color tint = Blend(winter ? Blend(Color.White, WinterLeafColor, 0.6f) : Color.White, WinterLeafColor, withering);
         PropModels.DrawOnGround(plot, Position, Radius * reach * (0.6f + 0.4f * grown), tint);
-    }
-
-    /// <summary>A plot of grain (still the village sheet's model).</summary>
-    private void DrawGrainPlot(float grown, bool winter, float withering)
-    {
-        Color tint = Blend(winter ? Blend(Color.White, WinterLeafColor, 0.6f) : Color.White, WinterLeafColor, withering);
-        VillageModels.DrawOnGround(VillageItem.GrainPlot, Position, Radius * 7.5f * (0.6f + 0.4f * grown), tint);
     }
 
     /// <summary>A tuft of tall stalks, green while growing and golden once they bear, each ripe one nodding under a seed head; stubble in winter.</summary>
