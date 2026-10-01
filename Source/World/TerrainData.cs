@@ -40,8 +40,8 @@ public static class TerrainData
     public static float Half { get; private set; } = 50f;
     public static int Size { get; private set; } = 201;
 
-    /// <summary>The terrains, by number: 0 the original; the rest from Tools/convert_terrain.py.</summary>
-    private static readonly Func<TerrainSet>[] Makers = { Terrain0.Make, Terrain1.Make, Terrain2.Make, Terrain3.Make };
+    /// <summary>The terrains, by number: 0 the original (from Tools/convert_terrain.py).</summary>
+    private static readonly Func<TerrainSet>[] Makers = { Terrain0.Make };
 
     private static TerrainSet? _current;
 
@@ -54,7 +54,7 @@ public static class TerrainData
     /// <summary>The terrain in use (the original until another is chosen).</summary>
     public static TerrainSet Current => _current ??= Makers[CurrentIndex]();
 
-    /// <summary>The terrains a new garden may be given, by number. For now only the original: the others are baked and ship with the game, but aren't offered yet.</summary>
+    /// <summary>The terrains a new garden may be given, by number. Only the original is baked.</summary>
     private static readonly int[] NewGardenTerrains = { 0 };
 
     /// <summary>A terrain number picked at random from those a new garden may have.</summary>
