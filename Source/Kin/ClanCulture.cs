@@ -105,6 +105,7 @@ public sealed class ClanCulture
             child.Rebelliousness,
             child.Persuasiveness,
             Toward(child.Courage, 0.27f * Martial + 0.33f * Hunting),
-            Toward(child.Diligence, 0.33f * Farming));
+            Toward(child.Diligence, 0.33f * Farming),
+            Toward(child.Strength, 0.25f * Martial));
     }
 }

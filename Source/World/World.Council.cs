@@ -58,6 +58,6 @@ public sealed partial class World
             Blend(own.Intelligence, m => m.Personality.Intelligence),
             own.Rebelliousness, own.Persuasiveness,
             Blend(own.Courage, m => m.Personality.Courage),
-            own.Diligence);
+            own.Diligence, own.Strength);
     }
 }

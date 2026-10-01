@@ -36,6 +36,11 @@ public sealed class Crop
     /// <summary>Its footprint (m), for spacing and picking.</summary>
     public const float Radius = 0.45f;
 
+    /// <summary>How far a crop of this kind reaches when grown, picture and all (m): a planted berry patch, a wild bush, or one of the big plots. Placement keeps other things this far off.</summary>
+    public static float FootprintFor(CropKind kind, bool wild) => kind == CropKind.Berry ? (wild ? 0.8f : 1.05f) : Radius * 3.8f;
+
+    public float Footprint => FootprintFor(Kind, GroupId is null);
+
     private static readonly Color LeafColor = new(55, 125, 50, 255);
     private static readonly Color WinterLeafColor = new(110, 100, 70, 255);
     private static readonly Color BerryColor = new(200, 35, 60, 255);
@@ -212,16 +217,20 @@ public sealed class Crop
         switch (Kind)
         {
             case CropKind.Grain:
-                DrawPlot(VillageItem.GrainPlot, grown, winter, withering);
+                DrawPlot(PropModels.Prop.GrainPlot, grown, winter, withering);
                 break;
             case CropKind.Mushroom:
-                DrawPlot(VillageItem.MushroomPlot, grown, false, withering);
+                DrawPlot(PropModels.Prop.MushroomPlot, grown, false, withering);
                 break;
             case CropKind.Cress:
-                DrawPlot(VillageItem.CressPlot, grown, winter, withering);
+                DrawPlot(PropModels.Prop.CressPlot, grown, winter, withering);
                 break;
             default:
-                DrawBush(size, winter, withering);
+                // A wild bush stays a bush; only a berry patch some clan planted is a plot.
+                if (GroupId is null)
+                    DrawBush(size, winter, withering);
+                else
+                    DrawPlot(PropModels.Prop.BerryPlot, grown, winter, withering, 4.5f);
                 break;
         }
 
@@ -242,10 +251,10 @@ public sealed class Crop
     }
 
     /// <summary>A plot of grain, mushrooms or cress: the model, small while it grows and fading toward its winter colour as it withers or the year turns.</summary>
-    private void DrawPlot(VillageItem item, float grown, bool winter, float withering)
+    private void DrawPlot(PropModels.Prop plot, float grown, bool winter, float withering, float reach = 7.5f)
     {
         Color tint = Blend(winter ? Blend(Color.White, WinterLeafColor, 0.6f) : Color.White, WinterLeafColor, withering);
-        VillageModels.DrawOnGround(item, Position, Radius * 7.5f * (0.6f + 0.4f * grown), tint);
+        PropModels.DrawOnGround(plot, Position, Radius * reach * (0.6f + 0.4f * grown), tint);
     }
 
     /// <summary>A tuft of tall stalks, green while growing and golden once they bear, each ripe one nodding under a seed head; stubble in winter.</summary>

@@ -47,6 +47,9 @@ public enum KinJob
 
     /// <summary>Walks out to ground the clan hasn't seen and maps it (once the clan knows <see cref="Craft.Exploration"/>).</summary>
     Scout,
+
+    /// <summary>Fishes the shore all day for the clan's stores (once it knows <see cref="Craft.Fishing"/>), instead of only when nothing else is to hand.</summary>
+    Fisher,
 }
 
 /// <summary>Who may eat from a group's shared store — set by its Leader's personality.</summary>

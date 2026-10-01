@@ -361,6 +361,18 @@ public sealed unsafe class ProceduralView
         if (!PropModels.TryGetValue(item.File, out Model model))
         {
             model = Raylib.LoadModel(AssetPath("Models/Procedural/" + item.File));
+            if (item.Kind != KitKind.Rock)
+            {
+                // Oaks and plants wear big pictures: smoothed and mipmapped, they don't show as stair-stepped pixels
+                // (raylib draws textures sharp by default). The rocks keep the sharp, rough look.
+                for (int m = 0; m < model.MaterialCount; m++)
+                {
+                    Texture2D texture = model.Materials[m].Maps[(int)MaterialMapIndex.Albedo].Texture;
+                    Raylib.GenTextureMipmaps(ref texture);
+                    Raylib.SetTextureFilter(texture, TextureFilter.Trilinear);
+                    model.Materials[m].Maps[(int)MaterialMapIndex.Albedo].Texture = texture;
+                }
+            }
             PropModels[item.File] = model;
         }
         return model;

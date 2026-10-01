@@ -106,6 +106,7 @@ public sealed partial class World
         }
         DrawMaterials(camera);
         DrawWells(camera);
+        DrawWalls(camera);
 
         // Object Pooling: most Food slots sit inactive at any given time, so
         // every loop over the pool must skip anything with IsActive false.
@@ -123,6 +124,12 @@ public sealed partial class World
         {
             if (!Hornets[i].IsDead && IsVisible(Hornets[i].Position, camera))
                 Hornets[i].Draw();
+        }
+
+        for (int i = Invaders.Count - 1; i >= 0; i--)
+        {
+            if (!Invaders[i].IsDead && IsVisible(Invaders[i].Position, camera))
+                Invaders[i].Draw();
         }
 
         for (int i = Grubs.Count - 1; i >= 0; i--)

@@ -163,6 +163,7 @@ public sealed partial class World
                     GardenGuardians.Owl => "was taken by the owl in the night",
                     BeeSwarm => "was stung to death by bees",
                     Ant => "was bitten to death by ants",
+                    InvaderSpider => "was bitten to death by invading spiders",
                     _ => "was killed by a predator",
                 };
                 break;

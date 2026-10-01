@@ -57,7 +57,10 @@ public static partial class Game
             $"Tents built: {world.TentsBuilt}",
             $"Houses built: {world.HousesBuilt}",
             $"Fell to ruin: {world.SheltersCollapsed}",
-            $"Villages founded: {world.VillagesFounded}",
+            $"Village jobs: {world.Villages.Sum(v => v.Soldiers)} soldiers, {world.Villages.Sum(v => v.Builders)} builders, {world.Villages.Sum(v => v.Healers)} healers, {world.Villages.Sum(v => v.Scouts)} scouts; {world.Villages.Sum(v => v.Paid)} fed by villages now (room for {world.Villages.Sum(v => v.AllowedPaid)}); {world.RationMeals} meals eaten from village stores",
+            $"Invasions: {world.InvasionsStarted} sent ({world.InvasionsRepelled} beaten, {world.InvasionsWithdrawn} withdrew), {world.InvaderSpidersSlain} small spiders slain; {world.Invaders.Count(s => !s.IsDead)} out now",
+            $"Kingdoms: {world.Realms.Count} now ({world.KingdomsFounded} founded, {world.KingsCrowned} kings crowned); {world.Realms.Sum(k => k.VillageIds.Count)} villages in them, {world.Realms.Sum(k => k.TributePaid)} tribute sent, {world.Realms.Sum(k => k.Pledged)} soldiers pledged",
+            $"Villages: {world.Villages.Count} now ({world.VillagesNamed} named, {world.HeadmenChosen} headmen chosen); clans that budded a second home: {world.VillagesFounded}",
             $"Daughter clans: {world.Buddings}",
         }));
 
@@ -101,6 +104,7 @@ public static partial class Game
             $"  a {(world.DrinksAtPond > 0 ? world.WaterTrekMeters / world.DrinksAtPond : 0):0}m walk on average",
             $"From cisterns: {world.CisternDrinks}",
             $"Cupfuls carried home: {world.CupfulsCarried}",
+            $"Stone walls: {world.WallsRaised} pieces raised ({world.WallPieces.Count(w => !w.IsBuilt)} still to do)",
             $"Wells: {world.WellsDug} dug ({world.Wells.Count(w => !w.IsDug)} being dug), {world.WellDrinks} drinks",
             $"Died of thirst: {world.DeathsByThirst}",
         }));

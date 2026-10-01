@@ -2,7 +2,7 @@
 
 **Status key:** ✅ Done · 🟡 In progress (partly done) · ⬜ Not started · ❌ Removed/superseded
 
-*Last updated: 2026-09-29*
+*Last updated: 2026-09-30*
 
 ## Progress Snapshot
 The game is an **Emergent Survival** simulation (Phase 7) that has grown
@@ -1070,6 +1070,21 @@ triangles. The four baked terrains stay as they are.
 *   ✅ **Stage D:** bigger gardens. The start menu picks Small 100 m, Medium 150 m or Large 200 m; ponds, Bramblekin, food, hornets and grubs scale with the map area, and a progress bar shows while the ground is grown.
 *   ✅ **Distance detail:** Bramblekin status bars are hidden when they would be tiny, and far Bramblekin use simpler pegs.
     and camera limits with the area; check speed on a phone.
+
+## Phase 39: Low-poly Look, Textured Ground and Stone Walls
+*   ✅ **Textured ground:** dirt paths (trampled earth) and paved roads (cobblestones built from the game's own rock texture,
+    `Tools/make_road_tile.py`) are textured meshes (`SquareLayer`, `TrailRenderer`) fading out at their edges; drought mud is the terrain's
+    dirt tile, darkened; the pond stays the translucent blue over the terrain's own pond (brown in a flood). The atlas tiles are cut by
+    `Tools/make_ground_tiles.py` (kept for later: grass, sand, pond bed, snow).
+*   ✅ **Low-poly models** (Tripo, converted without Blender): the male and female Bramblekin (~950 triangles, rigged to the game's skeleton by
+    `Tools/convert_tripo_kin.py`; the female's hair follows head and spine only), the acorn house (`Tools/convert_tripo_prop.py`), the
+    kit's rocks (pebbles use them too) and plants (decimated, `Tools/procedural/decimate_props.py`), and the oak for generated gardens
+    (`Tools/procedural/measure_oak.py` measures its trunk, hive and keep-out circles). Oaks and plants are smoothed and mipmapped.
+*   ✅ **Stone walls (Kingdom Age):** a clan in the Kingdom Age marks out a ring of wall round all its homes (stakes first), leaves a gate
+    wherever feet have worn a path through the line (and at least two), caps each gate with the model's two wall ends, and raises a
+    piece every 8 s while three grown kin are about. Built pieces are solid obstacles and blocked cells in the walkers' route grid
+    (`WaterMap.SetWalls`), so everything that walks goes round, through the gates. Saved with the garden.
+    *Not yet:* stone cost for the wall, enemy clans besieging it, gates that close at night, walls following later-built homes.
 
 ## Phases 35+: Advancing Civilizations (ideas, not scheduled)
 Ideas for the clans to grow past today's crafts, farming, herding,

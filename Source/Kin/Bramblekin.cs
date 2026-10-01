@@ -107,6 +107,15 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>Hunger removed by eating one piece of Food.</summary>
     private const float FoodNourishment = 40f;
 
+    /// <summary>Pieces of food one kin eats a second, at the usual pace (a village's rations are worked out from it).</summary>
+    public const float MealsPerSecond = HungerPerSecond / FoodNourishment;
+
+    /// <summary>True while its village feeds it for its job (see World.Rations): it eats from the village's stores rather than foraging.</summary>
+    public bool IsPaid { get; set; }
+
+    /// <summary>A job its village's headman gave it (a soldier, healer, builder or scout, fed from the village's stores); it takes over from the clan's own say in what it does. None when it has none. Not saved: the headman re-gives them.</summary>
+    public KinJob VillageJob { get; set; }
+
     /// <summary>Health restored by eating one piece of Food — the only way to heal.</summary>
     private const int FoodHealing = 6;
 
@@ -191,6 +200,7 @@ public sealed partial class Bramblekin : ICombatant
         StagBeetle => StagBeetle.BiteDamage,
         Hornet => Hornet.BiteDamage,
         Ant => Ant.BiteDamage,
+        InvaderSpider => InvaderSpider.BiteDamage,
         Bramblekin kin => kin.StrikeDamage,
         _ => 0,
     };
@@ -393,7 +403,7 @@ public sealed partial class Bramblekin : ICombatant
     public float DetectionRadius => BaseDetectionRadius + DetectionRadiusPerIntelligence * Personality.Intelligence;
 
     /// <summary>True if it can currently see a living Wolf Spider or Hornet — see <see cref="World.ResolveEncounter"/>'s Alliance rule.</summary>
-    public bool IsThreatenedByPredator => _perceivedThreat is { IsDead: false } threat && threat is WolfSpider or Hornet;
+    public bool IsThreatenedByPredator => _perceivedThreat is { IsDead: false } threat && threat is WolfSpider or Hornet or InvaderSpider;
 
     /// <summary>True if it can currently see loose Food it could take — a starving Bramblekin that can doesn't need to rob anyone.</summary>
     public bool SeesFood => _perceivedFood is { IsActive: true, IsCarried: false };
@@ -402,7 +412,30 @@ public sealed partial class Bramblekin : ICombatant
     public bool IsVibrating => !IsDead && (State is BramblekinState.Foraging or BramblekinState.Eating or BramblekinState.Hunting
         or BramblekinState.Attacking or BramblekinState.Raiding or BramblekinState.Farming || IsDrinkingAtPond);
 
-    private int StrikeDamage => (int)MathF.Round((BaseStrikeDamage + StrikeDamagePerAggression * Personality.Aggression) * (IsElder ? ElderStrikeFactor : 1f));
+    /// <summary>A strong kin hits harder (±<see cref="StrikeDamagePerStrength"/>/2 around the average) and a trained soldier harder again.</summary>
+    private const float StrikeDamagePerStrength = 4f;
+
+    /// <summary>A Guard (a soldier) strikes this much harder for its training — a Raider a little less.</summary>
+    private const float GuardStrikeFactor = 1.3f, RaiderStrikeFactor = 1.15f;
+
+    private int StrikeDamage => (int)MathF.Round(
+        (BaseStrikeDamage + StrikeDamagePerAggression * Personality.Aggression + StrikeDamagePerStrength * (Personality.Strength - 0.5f)) *
+        (IsElder ? ElderStrikeFactor : 1f) * (Job == KinJob.Guard ? GuardStrikeFactor : Job == KinJob.Raider ? RaiderStrikeFactor : 1f));
+
+    /// <summary>
+    /// Armed with a shield: a clan that knows <see cref="Craft.Shields"/> issues them to those whose job is fighting — Guards (soldiers),
+    /// Raiders and Hunters — not to everyone.
+    /// </summary>
+    /// <summary>Soldiers and raiders (grown) look the part: the guard model, its own sword-and-shield walk.</summary>
+    public bool WearsGuardKit => !IsYoung && Job is KinJob.Guard or KinJob.Raider;
+
+    public bool HasShield => Knows(Craft.Shields) && !IsYoung && Job is KinJob.Guard or KinJob.Raider;
+
+    /// <summary>A Guard holds its shield up and stands in the front: it takes this much less than another shield-bearer.</summary>
+    private const float GuardBlockFactor = 0.85f;
+
+    /// <summary>A strong kin shrugs off a little of every blow (±<see cref="ToughnessPerStrength"/>/2 around the average), and a Guard's training toughens it.</summary>
+    private const float ToughnessPerStrength = 0.2f, GuardToughness = 0.9f;
 
     /// <summary>A blow against a creature: half as hard again with <see cref="Craft.Spears"/>, and up to half as hard again for a master hunter.</summary>
     private int HuntingDamage => (int)MathF.Round((Knows(Craft.Spears) ? StrikeDamage * 1.5f : StrikeDamage) * (1f + 0.5f * SkillAt(Skill.Hunting)));
@@ -519,8 +552,15 @@ public sealed partial class Bramblekin : ICombatant
             return;
 
         // A beetle-shell shield takes the edge off every blow and bite.
-        if (Knows(Craft.Shields) && !IsYoung && cause is DeathCause.Kin or DeathCause.Predator)
-            amount = Math.Max(1, (int)MathF.Round(amount * ShieldFactor));
+        if (cause is DeathCause.Kin or DeathCause.Predator)
+        {
+            float factor = 1f - ToughnessPerStrength * (Personality.Strength - 0.5f);
+            if (Job == KinJob.Guard)
+                factor *= GuardToughness;
+            if (HasShield)
+                factor *= ShieldFactor * (Job == KinJob.Guard ? GuardBlockFactor : 1f);
+            amount = Math.Max(1, (int)MathF.Round(amount * factor));
+        }
         Health = Math.Max(0, Health - amount);
 
         // A leadership duel is a contest, not a feud: no lingering threat, no enmity.
@@ -531,7 +571,7 @@ public sealed partial class Bramblekin : ICombatant
             return;
         }
 
-        if (source is WolfSpider or Hornet)
+        if (source is WolfSpider or Hornet or InvaderSpider)
             RememberDanger(source.Position, world);
 
         if (source is not null)
@@ -770,6 +810,11 @@ public sealed partial class Bramblekin : ICombatant
         {
             if (!hornet.IsDead)
                 Consider(hornet, allyDefense: false);
+        }
+        foreach (InvaderSpider invader in world.Invaders)
+        {
+            if (!invader.IsDead)
+                Consider(invader, allyDefense: false);
         }
         // The Heron: wading, it's plain to see; standing stock still, only close up.
         if (world.Heron is { IsLanded: true } heron &&

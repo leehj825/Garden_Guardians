@@ -10,6 +10,8 @@ public enum BramblekinClip
     /// <summary>Held on the Walking clip's first frame: no need in particular, standing, eating, asleep.</summary>
     Idle,
     Walking,
+    /// <summary>The guard's own walk, sword and shield at the ready (Sword_And_Shield_Walk): played whenever a guard or soldier moves.</summary>
+    GuardWalking,
     Fishing,
     Gathering,
     Combat,
@@ -67,7 +69,7 @@ internal static unsafe class BramblekinModel
     private static Model _femaleModel;
 
     /// <summary>Every mesh: [male 0 / female 1, level of detail].</summary>
-    private static readonly Model[,] _lods = new Model[2, Lods];
+    private static readonly Model[,] _lods = new Model[4, Lods];
     private static readonly Dictionary<BramblekinClip, ModelAnimation> _clips = new();
     private static bool _ready;
 
@@ -85,15 +87,21 @@ internal static unsafe class BramblekinModel
         _femaleModel = Raylib.LoadModel(AssetPath + "Walking_female.glb");
         _lods[0, 0] = _baseModel;
         _lods[1, 0] = _femaleModel;
+        // The guard (soldier) versions, 2 male / 3 female: they wear their sword and shield in the mesh.
+        _lods[2, 0] = Raylib.LoadModel(AssetPath + "Guard_male.glb");
+        _lods[3, 0] = Raylib.LoadModel(AssetPath + "Guard_female.glb");
         for (int lod = 1; lod < Lods; lod++)
         {
             _lods[0, lod] = Raylib.LoadModel(AssetPath + $"Walking_lod{lod}.glb");
             _lods[1, lod] = Raylib.LoadModel(AssetPath + $"Walking_female_lod{lod}.glb");
+            _lods[2, lod] = Raylib.LoadModel(AssetPath + $"Guard_male_lod{lod}.glb");
+            _lods[3, lod] = Raylib.LoadModel(AssetPath + $"Guard_female_lod{lod}.glb");
         }
         // Same skeleton, ~2,000 triangles and a 256px texture instead of ~50,000 and 2048px.
 
         _clips[BramblekinClip.Walking] = LoadClip("Walking.glb");
         _clips[BramblekinClip.Fishing] = LoadClip("FishingCast.glb");
+        _clips[BramblekinClip.GuardWalking] = LoadClip("SwordWalk.glb");
         _clips[BramblekinClip.Combat] = LoadClip("SwordAndShieldSlash.glb");
         _clips[BramblekinClip.Gathering] = LoadClip("GatheringObjects.glb");
         // No separate idle clip was supplied: holding Walking's first frame stands in for one.
@@ -122,16 +130,16 @@ internal static unsafe class BramblekinModel
     /// Gathering clip's stationary reach-and-lift motion while visibly still
     /// walking toward it.
     /// </summary>
-    public static BramblekinClip ClipFor(BramblekinState state, bool isMoving)
+    public static BramblekinClip ClipFor(BramblekinState state, bool isMoving, bool guard = false)
     {
         if (isMoving)
-            return BramblekinClip.Walking;
+            return guard ? BramblekinClip.GuardWalking : BramblekinClip.Walking;
 
         return state switch
         {
             BramblekinState.Fishing => BramblekinClip.Fishing,
             BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or
-                BramblekinState.Dueling or BramblekinState.Guarding => BramblekinClip.Combat,
+                BramblekinState.Dueling => BramblekinClip.Combat,
             BramblekinState.Collecting or BramblekinState.Building or BramblekinState.Farming or
                 BramblekinState.Foraging or BramblekinState.Stockpiling or BramblekinState.GatheringHoney or
                 BramblekinState.Raiding => BramblekinClip.Gathering,
@@ -180,9 +188,9 @@ internal static unsafe class BramblekinModel
     /// (bone matrices), but a cheaper mesh and smaller texture. Every level shares the one skeleton (they are the same
     /// glb with the mesh swapped), so the same pose drives any of them.
     /// </summary>
-    public static Model LodView(in Model instance, Sex sex, int lod)
+    public static Model LodView(in Model instance, Sex sex, int lod, bool guard = false)
     {
-        Model source = _lods[sex == Sex.Female ? 1 : 0, Math.Clamp(lod, 0, Lods - 1)];
+        Model source = _lods[(guard ? 2 : 0) + (sex == Sex.Female ? 1 : 0), Math.Clamp(lod, 0, Lods - 1)];
         Model view = instance;
         view.MeshCount = source.MeshCount;
         view.MaterialCount = source.MaterialCount;
@@ -201,5 +209,41 @@ internal static unsafe class BramblekinModel
             NativeMemory.Free(instance.CurrentPose);
         instance.BoneMatrices = null;
         instance.CurrentPose = null;
+    }
+
+    private static readonly Dictionary<string, int> _boneIndex = new();
+
+    /// <summary>The index of the bone called <paramref name="name"/> ("mixamorig:RightHand") in the skeleton, or -1.</summary>
+    public static int BoneIndex(in Model pose, string name)
+    {
+        if (_boneIndex.TryGetValue(name, out int cached))
+            return cached;
+        int found = -1;
+        for (int i = 0; i < pose.Skeleton.BoneCount && found < 0; i++)
+        {
+            if ((System.Runtime.InteropServices.Marshal.PtrToStringAnsi((nint)pose.Skeleton.Bones[i].Name) ?? "") == name)
+                found = i;
+        }
+        _boneIndex[name] = found;
+        return found;
+    }
+
+    /// <summary>The skeleton's bones are set out in units about 2.92 tall where the mesh is 1 tall: its poses are this many metres per bone unit.</summary>
+    private const float SkeletonScale = 0.3425f;
+
+    /// <summary>The world matrix of bone <paramref name="index"/> in the current pose, in the mesh's own units (row-vector order): its frame, with its place worked up through its parents.</summary>
+    public static Matrix4x4 BoneWorld(in Model pose, int index)
+    {
+        Matrix4x4 world = Chain(pose, index);
+        world.Translation *= SkeletonScale;
+        return world;
+    }
+
+    private static Matrix4x4 Chain(in Model pose, int index)
+    {
+        Transform t = pose.CurrentPose[index];
+        Matrix4x4 local = Matrix4x4.CreateScale(t.Scale) * Matrix4x4.CreateFromQuaternion(t.Rotation) * Matrix4x4.CreateTranslation(t.Translation);
+        int parent = pose.Skeleton.Bones[index].Parent;
+        return parent >= 0 ? local * Chain(pose, parent) : local;
     }
 }

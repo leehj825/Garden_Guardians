@@ -48,24 +48,50 @@ public sealed partial class Bramblekin
             KinJob.Raider => DoRaidDuty(group, deltaTime, world),
             KinJob.Healer => DoHealerDuty(group, deltaTime, world),
             KinJob.Scout => DoScoutDuty(group, deltaTime, world),
+            KinJob.Fisher => DoFisherDuty(deltaTime, world),
             _ => false,
         };
     }
 
-    /// <summary>Guard: attacks the threat the Leader rallied the group against; otherwise keeps close to home.</summary>
+    /// <summary>A soldier in a village loiters this long (s) at each waypoint of its patrol, looking about.</summary>
+    private const float PatrolLookSeconds = 3f;
+
+    /// <summary>…and picks up food lying within this far (m) of where it is, to carry to the stores (never leaving the route for more).</summary>
+    private const float PatrolPickupRange = 4f;
+
+    private int _patrolIndex = -1;
+    private float _patrolLook;
+
+    /// <summary>
+    /// Guard: attacks the threat the Leader rallied the group against (in a village, any of its clans' alarms near any of its homes);
+    /// in a village it is a soldier: it patrols the village's edge, picks up food lying by the route and takes it to the stores; elsewhere
+    /// it keeps close to home.
+    /// </summary>
     private bool DoGuardDuty(KinGroup group, float deltaTime, World world)
     {
         if (Health <= MaxHealth * DutyStandDownHealthFraction || Home is not { IsBuilt: true } home)
             return false;
 
-        if (group.DefendTarget is { IsDead: false } threat &&
-            GroundMover.HorizontalDistanceSquared(threat.Position, home.Position) <= World.HomeDefenseRadius * World.HomeDefenseRadius * 1.5f)
+        Village? village = World.SocietyJobsEnabled ? world.VillageOf(group) : null;
+        if (world.AlarmFor(group, village) is { } threat)
         {
             SetState(BramblekinState.Fighting);
             CombatTarget = threat;
             PursueAndStrike(threat, WalkSpeed * PursuitSpeedMultiplier, deltaTime, world);
             return true;
         }
+
+        if (village is not null && world.IsPledged(this) && world.RealmAlarmFor(village) is { } realmThreat)
+        {
+            // Sworn to the kingdom: march to a sister village's defence.
+            SetState(BramblekinState.Fighting);
+            CombatTarget = realmThreat;
+            PursueAndStrike(realmThreat, WalkSpeed * PursuitSpeedMultiplier, deltaTime, world);
+            return true;
+        }
+
+        if (village is not null)
+            return DoPatrol(village, group, deltaTime, world);
 
         if (GroundMover.HorizontalDistanceSquared(Position, home.Position) > GuardPostRadius * GuardPostRadius)
         {
@@ -76,6 +102,54 @@ public sealed partial class Bramblekin
 
         // On post: let Settle/Social keep it busy close by (resting, stocking the store).
         return false;
+    }
+
+    /// <summary>A soldier's round: food it is carrying goes to the stores first; food within reach of the route is picked up; otherwise on to the next waypoint round the village's edge.</summary>
+    private bool DoPatrol(Village village, KinGroup group, float deltaTime, World world)
+    {
+        if (_carried is not null && StoreToStock(world) is { } store)
+        {
+            CarryFoodHome(store, deltaTime, world);
+            return true;
+        }
+
+        if (ValidPerceivedFood(world) is { } food && GroundMover.HorizontalDistanceSquared(food.Position, Position) <= PatrolPickupRange * PatrolPickupRange &&
+            GroundMover.HorizontalDistanceSquared(food.Position, village.Centre) <= (village.PatrolRadius + PatrolPickupRange) * (village.PatrolRadius + PatrolPickupRange))
+        {
+            ApproachFood(food, WalkSpeed, deltaTime, world, eatOnArrival: false);
+            return true;
+        }
+
+        if (_patrolIndex < 0)
+            _patrolIndex = ID % World.PatrolPoints; // Soldiers start spread round the ring.
+        Vector3 waypoint = world.PatrolWaypoint(village, _patrolIndex);
+        SetState(BramblekinState.Guarding);
+        if (GroundMover.HorizontalDistanceSquared(Position, waypoint) > 1.2f * 1.2f)
+        {
+            _patrolLook = 0f;
+            MoveTo(waypoint, WalkSpeed * 0.8f, deltaTime, world);
+            return true;
+        }
+        _patrolLook += deltaTime;
+        if (_patrolLook >= PatrolLookSeconds)
+        {
+            _patrolLook = 0f;
+            _patrolIndex = (_patrolIndex + 1) % World.PatrolPoints;
+        }
+        return true;
+    }
+
+    /// <summary>Fisher: carries a catch to the stores, else fishes the shore near home (a Gatherer with no shore near gathers instead).</summary>
+    private bool DoFisherDuty(float deltaTime, World world)
+    {
+        if (Home is not { IsBuilt: true } home || StoreToStock(world) is not { } store)
+            return false;
+        if (_carried is not null)
+        {
+            CarryFoodHome(store, deltaTime, world);
+            return true;
+        }
+        return TryFishing(home, deltaTime, world) || DoGatherDuty(deltaTime, world);
     }
 
     /// <summary>Hunter: goes after the Stag Beetle the Leader picked, or else small game it can see (a Grub, or a frog on the bank).</summary>

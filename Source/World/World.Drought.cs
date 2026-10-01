@@ -13,7 +13,10 @@ public sealed partial class World
     /// <summary>…and afterwards it fills back over this long — four times as fast in the rain.</summary>
     private const float PondRefillSeconds = 120f;
 
-    private static readonly Color MudColor = new(96, 78, 56, 255);
+    /// <summary>The terrain's own dirt tile, darkened to damp earth, repeats every this many metres.</summary>
+    private const float MudTile = 4f;
+
+    private static readonly Color MudTint = new(140, 125, 110, 255);
 
     /// <summary>How far the pond has sunk: 0 as usual, 1 at its lowest.</summary>
     private float _pondLow;
@@ -60,10 +63,11 @@ public sealed partial class World
     private void SyncPondLevel() => WaterMap.SetLevel(PondLevelIndex);
 
     /// <summary>The garden's mud: the pond's bed, laid bare as the water sinks — squares that follow the ground, drawn only while it's down.</summary>
-    private readonly List<(Vector3, Vector3, Vector3, Vector3)> _mudCells = new();
-
     [NotSaved] // A render cache, like the water's (see _waterCellsLevel).
     private int _mudCellsLevel = -1;
+
+    [NotSaved]
+    private SquareLayer? _mudLayer;
 
     private void DrawPondBed()
     {
@@ -72,25 +76,48 @@ public sealed partial class World
         if (_mudCellsLevel != WaterMap.Level)
         {
             _mudCellsLevel = WaterMap.Level;
-            _mudCells.Clear();
+            var cells = new HashSet<(int, int)>();
             float half = Terrain.Size / 2f;
             float surface = WaterMap.SurfaceHeight;
-            for (float x = -half; x < half; x += WaterCell)
+            int n = (int)MathF.Ceiling(Terrain.Size / WaterCell);
+            for (int i = 0; i < n; i++)
             {
-                for (float z = -half; z < half; z += WaterCell)
+                for (int j = 0; j < n; j++)
                 {
+                    float x = -half + i * WaterCell, z = -half + j * WaterCell;
                     float middle = GetHeightAt(x + WaterCell / 2f, z + WaterCell / 2f);
                     if (middle >= PondLevel || middle < surface - 0.05f)
                         continue;
-                    Vector3 Corner(float cx, float cz) => new(cx, GetHeightAt(cx, cz) + 0.04f, cz);
-                    _mudCells.Add((Corner(x, z), Corner(x + WaterCell, z), Corner(x + WaterCell, z + WaterCell), Corner(x, z + WaterCell)));
+                    cells.Add((i, j));
                 }
             }
+
+            // Each corner is as solid as the number of mud squares round it, so the patch fades out at its rim.
+            byte Fade(int ci, int cj)
+            {
+                int count = (cells.Contains((ci - 1, cj - 1)) ? 1 : 0) + (cells.Contains((ci, cj - 1)) ? 1 : 0)
+                    + (cells.Contains((ci - 1, cj)) ? 1 : 0) + (cells.Contains((ci, cj)) ? 1 : 0);
+                return (byte)(255 * (0.15f + 0.85f * (Math.Max(count, 1) - 1) / 3f));
+            }
+
+            var squares = new List<SquareLayer.Square>(cells.Count);
+            foreach (var (i, j) in cells)
+            {
+                float x = -half + i * WaterCell, z = -half + j * WaterCell;
+                Vector3 Corner(float cx, float cz) => new(cx, GetHeightAt(cx, cz) + 0.04f, cz);
+                squares.Add(new SquareLayer.Square(
+                    Corner(x, z), Corner(x + WaterCell, z), Corner(x + WaterCell, z + WaterCell), Corner(x, z + WaterCell),
+                    Fade(i, j), Fade(i + 1, j), Fade(i + 1, j + 1), Fade(i, j + 1)));
+            }
+            _mudLayer ??= new SquareLayer();
+            _mudLayer.Rebuild(squares, SquareLayer.Tile("dirt_1.png", 256), MudTile, MudTile, MudTint);
         }
-        foreach (var (a, b, c, d) in _mudCells)
-        {
-            Raylib.DrawTriangle3D(a, d, c, MudColor);
-            Raylib.DrawTriangle3D(a, c, b, MudColor);
-        }
+        Rlgl.DrawRenderBatchActive();
+        Rlgl.DisableDepthMask();
+        Rlgl.DisableBackfaceCulling();
+        _mudLayer?.Draw();
+        Rlgl.DrawRenderBatchActive();
+        Rlgl.EnableBackfaceCulling();
+        Rlgl.EnableDepthMask();
     }
 }

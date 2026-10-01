@@ -15,6 +15,15 @@ public enum MapSize
     Large,
 }
 
+/// <summary>The age a new garden's first Bramblekin start in (a testing aid, chosen on the start menu): they already know that age's crafts.</summary>
+public enum StartAge
+{
+    Stone,
+    Farming,
+    Village,
+    Kingdom,
+}
+
 /// <summary>Which of the kept gardens (see <see cref="SaveSystem.Slots"/>) is being played.</summary>
 public enum GardenSlot
 {

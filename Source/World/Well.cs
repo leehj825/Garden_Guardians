@@ -16,6 +16,9 @@ public sealed class Well
     /// <summary>Its ring of stones (m) — solid, like a rock.</summary>
     public const float Radius = 0.6f;
 
+    /// <summary>How far the well's picture reaches (m): nothing else is set down closer than this.</summary>
+    public const float DrawRadius = 0.9f;
+
     private static readonly Color StoneColor = new(140, 140, 146, 255);
     private static readonly Color DarkStoneColor = new(110, 110, 116, 255);
     private static readonly Color WaterColor = new(40, 70, 110, 255);

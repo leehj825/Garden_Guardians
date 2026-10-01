@@ -121,6 +121,30 @@ public static partial class Game
 
     private static LogView _logView = LogView.Brief;
 
+    /// <summary>Whether the stats bar along the bottom is showing (tap the Stats button to change it; kept in <see cref="Preferences"/>).</summary>
+    private enum StatsView
+    {
+        Shown,
+        Hidden,
+    }
+
+    private const string StatsViewSetting = "stats";
+
+    private static StatsView _statsView = StatsView.Shown;
+
+    /// <summary>Where the Stats button was drawn last frame, for taps.</summary>
+    private static Rectangle _statsButtonBounds;
+
+    /// <summary>A tap on the Stats button shows or hides the stats bar, and remembers the choice. Returns true if the tap was on it.</summary>
+    private static bool TapStatsButton(Vector2 point)
+    {
+        if (!Raylib.CheckCollisionPointRec(point, _statsButtonBounds))
+            return false;
+        _statsView = _statsView == StatsView.Shown ? StatsView.Hidden : StatsView.Shown;
+        Preferences.Set(StatsViewSetting, _statsView);
+        return true;
+    }
+
     /// <summary>Entries logged while the log was hidden, shown on the Log button.</summary>
     private static int _unseenLogs;
 
@@ -287,6 +311,7 @@ public static partial class Game
         // Save/Load: the garden carries on where it was left (see SaveSystem).
         Preferences.Load(Preferences.DefaultPath);
         _logView = Preferences.Get(LogViewSetting, LogView.Brief);
+        _statsView = Preferences.Get(StatsViewSetting, StatsView.Shown);
         World.Overlays = Preferences.Get(OverlaySetting, MapOverlays.All);
         _gardenSlot = (int)Preferences.Get(GardenSetting, GardenSlot.Garden1);
         TerrainData.GrowNewGardens = Preferences.Get(TerrainSetting, TerrainMode.Fixed) == TerrainMode.Random;
@@ -310,6 +335,7 @@ public static partial class Game
                 Preferences.Set(TerrainSetting, choice.GrowTerrain ? TerrainMode.Random : TerrainMode.Fixed);
             }
             TerrainData.NewGardenSize = choice.Size;
+            _startEra = choice.StartEra;
             world = MakeWorld(() => choice.Resume ? LoadOrCreateWorld(GardenPath) : StartNewGarden(GardenPath));
         }
         camera = OverviewCamera(world.Terrain.Size);
@@ -418,6 +444,10 @@ public static partial class Game
             else if (mousePressed && TapLogButton(mousePosition))
             {
                 // Showed more, less or none of the log.
+            }
+            else if (mousePressed && TapStatsButton(mousePosition))
+            {
+                // Showed or hid the stats bar.
             }
             else if (mousePressed && overlayButtons is not null && overlayButtons.Any(o => o.Button.Contains(mousePosition)))
             {
@@ -883,6 +913,14 @@ public static partial class Game
                 DrawBar(camera, barAnchor, below, width, 1f - b.Thirst / Bramblekin.MaxThirst, ThirstBarColor);
         }
 
+        foreach (InvaderSpider invader in world.Invaders)
+        {
+            if (invader.IsDead || invader.Health >= InvaderSpider.MaxHealth)
+                continue;
+            Vector3 invaderAnchor = invader.Position + new Vector3(0, InvaderSpider.BodyRadius * 2f + 0.2f, 0);
+            DrawBar(camera, invaderAnchor, 0f, BarWidth(camera, invaderAnchor, InvaderSpider.BodyRadius * 2f), (float)invader.Health / InvaderSpider.MaxHealth, Color.Green);
+        }
+
         if (world.Spider is { IsDead: false } spider && spider.Health < WolfSpider.MaxHealth)
         {
             Vector3 anchor = spider.Position + new Vector3(0, WolfSpider.BodyRadius * 2f + 0.3f, 0);
@@ -1061,6 +1099,25 @@ public static partial class Game
                 Raylib.DrawRectangleLines(x - 7, y - 4, width + 14, fontSize + 9, group.Color);
             Raylib.DrawText(text, x, y, fontSize, PanelInk);
         }
+
+        // Each village's name, on a gold-edged tag higher over its middle: a village is more than any one clan in it.
+        int villageFont = (int)(fontSize * 1.2f);
+        foreach (Village village in world.Villages)
+        {
+            Vector3 anchor = village.Centre + new Vector3(0f, 5.2f, 0f);
+            if (!IsPointOnScreen(camera, anchor))
+                continue;
+            Vector2 screen = Raylib.GetWorldToScreen(anchor, camera);
+            string headman = world.HeadmanOf(village) is { } h ? $", headman {h.Name}" : "";
+            string siege = world.InvasionAt(village) is not null ? $", UNDER ATTACK by {world.InvadersAt(village)} spiders" : "";
+            string realm = world.RealmOf(village) is { } kingdom ? (village.Id == kingdom.Capital ? $", capital of {kingdom.Name}" : $", in {kingdom.Name}") : "";
+            string text = $"{village.Name} ({village.ClanIds.Count} {(village.ClanIds.Count == 1 ? "clan" : "clans")}{headman}{realm}{siege})";
+            int width = Raylib.MeasureText(text, villageFont);
+            int x = (int)(screen.X - width / 2f), y = (int)(screen.Y - villageFont);
+            Raylib.DrawRectangle(x - 8, y - 4, width + 16, villageFont + 8, PanelFill with { A = 215 });
+            Raylib.DrawRectangle(x - 8, y + villageFont + 3, width + 16, 4, new Color(230, 190, 60, 255));
+            Raylib.DrawText(text, x, y, villageFont, PanelInk);
+        }
     }
 
     /// <summary>The right edge (at the reference screen width) of the buttons along the top — speed, Map and History.</summary>
@@ -1121,6 +1178,7 @@ public static partial class Game
                 (kin.GuardianNames is { } guardians ? $", raised by {guardians.A} & {guardians.B}" : ""), ink),
             (kin.DescribeFamily(), kin.Partner is not null ? new Color(190, 70, 120, 255) : ink),
             ($"State: {kin.State}   Health: {kin.Health} / {Bramblekin.MaxHealth}", ink),
+            ($"Job: {(kin.IsYoung ? "none (young)" : group is null ? "none (on its own)" : kin.Job.ToString())}{(kin.VillageJob != KinJob.None ? $"  (village: {kin.VillageJob}{(kin.IsPaid ? ", paid" : ", unpaid")})" : "")}{(world.Realms.FirstOrDefault(k => k.KingId == kin.ID) is { } crown ? $"  KING of {crown.Name}" : "")}", ink),
             ($"Hunger: {(int)kin.Hunger}%{(kin.IsStarving ? " STARVING" : kin.IsHungry ? " (hungry)" : "")}{(kin.HasFood ? "  +food" : "")}{(kin.IsSick ? "  SICK" : "")}",
                 kin.IsStarving || kin.IsSick ? new Color(170, 60, 40, 255) : ink),
             ($"Thirst: {(int)kin.Thirst}%{(kin.Thirst >= Bramblekin.MaxThirst ? " PARCHED" : kin.IsThirsty ? " (thirsty)" : "")}   " +
@@ -1205,6 +1263,32 @@ public static partial class Game
     {
         int Count(BramblekinState state) => world.Colony.Count(b => !b.IsDead && b.State == state);
 
+        // The Stats button sits at the bottom-left, just above where the stats bar is, whether it shows or not,
+        // with the Log button and the log above it.
+        const int statLines = 7;
+        int fontSize = ScaledFontSize(0.8f);
+        int lineHeight = fontSize + fontSize / 6;
+        int barHeight = lineHeight * statLines + 20;
+        string statsLabel = _statsView == StatsView.Shown ? "Stats: on" : "Stats: off";
+        int statsFont = Math.Max(14, (int)(30 * UiScale));
+        int statsPad = Math.Max(6, (int)(14 * UiScale));
+        int statsWidth = Raylib.MeasureText("Stats: off", statsFont) + statsPad * 2;
+        int statsHeight = statsFont + statsPad * 2;
+
+        // Places and draws the button above <barTop>; returns its top edge, for the panels above to stay clear of.
+        int DrawStatsButton(int barTop)
+        {
+            _statsButtonBounds = new Rectangle(10, barTop - 10 - statsHeight, statsWidth, statsHeight);
+            bool statsHovered = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), _statsButtonBounds);
+            Raylib.DrawRectangleRec(_statsButtonBounds, new Color(0, 0, 0, statsHovered ? 190 : 150));
+            Raylib.DrawRectangleLinesEx(_statsButtonBounds, 2f, new Color(255, 255, 255, 110));
+            Raylib.DrawText(statsLabel, (int)_statsButtonBounds.X + statsPad, (int)_statsButtonBounds.Y + statsPad, statsFont, Color.RayWhite);
+            return (int)_statsButtonBounds.Y;
+        }
+
+        if (_statsView == StatsView.Hidden)
+            return DrawStatsButton(Raylib.GetScreenHeight() - barHeight);
+
         int living = world.Colony.Count(b => !b.IsDead);
         int solitary = world.Colony.Count(b => !b.IsDead && b.GroupId is null);
         int largestGroup = world.Groups.Count > 0 ? world.Groups.Max(g => g.Members.Count) : 0;
@@ -1216,7 +1300,7 @@ public static partial class Game
             $"Year {world.Year} {world.CurrentSeason}, day {world.DayOfYear} {world.TimeOfDayLabel.ToLowerInvariant()}{(world.WeatherLabel is { } weather ? $" - {weather}" : "")} (food x{world.FoodAbundance:0.0})   Speed {_timeScale}x{(_achievedSpeed < _timeScale * 0.85f ? $" (running {_achievedSpeed:0}x)" : "")}   FPS {Raylib.GetFPS()} (sim {_simMs:0} ms, draw {_drawMs:0} ms)   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
             $"Homes: {world.Shelters.Count(s => s.IsBuilt && s.Tier == ShelterTier.Tent)} tents, {world.Shelters.Count(s => s.Tier == ShelterTier.House)} houses, " +
             $"{world.Shelters.Count(s => s.IsBuilt && s.IsBurrow)} burrows, {world.Shelters.Count(s => !s.IsBuilt)} being built   Food stored {world.Shelters.Sum(s => s.StoredFood)}   " +
-            $"Villages {world.Groups.Count(g => g.Annexes.Count > 0)} (budded {world.Buddings})   Crops {world.Crops.Count}",
+            $"Villages {world.Villages.Count} (budded {world.Buddings})   Crops {world.Crops.Count}",
             $"Bramblekin {living}: {solitary} solitary, {world.Groups.Count} groups (largest {largestGroup}, {world.Groups.Count(World.KnowsFarming)} farming)   " +
             $"Alliances {world.CurrentAlliances}   Wars {world.CurrentWars}",
             $"Foraging {Count(BramblekinState.Foraging) + Count(BramblekinState.Hunting)}   Eating {Count(BramblekinState.Eating)}   Drinking {Count(BramblekinState.Drinking)}   " +
@@ -1227,14 +1311,11 @@ public static partial class Game
 
         // UI Text Scaling: a background bar goes underneath, sized off
         // fontSize/lineHeight, so the text stays legible over a busy map.
-        int fontSize = ScaledFontSize(0.8f);
-        int lineHeight = fontSize + fontSize / 6;
-        int barHeight = lineHeight * lines.Length + 20;
         int y = Raylib.GetScreenHeight() - barHeight + 10;
         Raylib.DrawRectangle(0, y - 10, Raylib.GetScreenWidth(), barHeight, new Color(0, 0, 0, 90));
         for (int i = 0; i < lines.Length; i++)
             Raylib.DrawText(lines[i], 20, y + lineHeight * i, fontSize, Color.RayWhite);
-        return y - 10;
+        return DrawStatsButton(y - 10);
     }
 
     private static string SpiderStatus(World world) =>

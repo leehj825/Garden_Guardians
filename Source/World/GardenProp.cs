@@ -111,22 +111,31 @@ public sealed class GardenProp
         Rlgl.Translatef(0, halfHeight, 0);
     }
 
-    /// <summary>A large gray hemisphere-ish rock, oversized against a Bramblekin.</summary>
+    /// <summary>The low-poly boulder (one of the procedural kit's rocks: 80 faces, plain stone texture) a Pebble is drawn as; loaded the first time one is drawn.</summary>
+    private static Model _rock;
+    private static bool _rockLoaded;
+
+    private static readonly string RockPath = OperatingSystem.IsAndroid()
+        ? "Models/Procedural/props/terrain2_rock_1.glb"
+        : Path.Combine(AppContext.BaseDirectory, "Assets", "Models", "Procedural", "props", "terrain2_rock_1.glb");
+
+    /// <summary>That rock's mean radius (m) — it is scaled to the pebble's size from this.</summary>
+    private const float RockRadius = 1.25f;
+
+    /// <summary>A large gray low-poly rock, oversized against a Bramblekin.</summary>
     private void DrawPebble()
     {
+        if (!_rockLoaded)
+        {
+            _rock = Raylib.LoadModel(RockPath);
+            _rockLoaded = true;
+        }
         float radius = 0.5f * _scale;
-        var stone = new Color(130, 130, 135, 255);
-        var stoneEdge = new Color(80, 80, 85, 200);
+        float size = radius / RockRadius;
 
-        PushGroundedTiltMatrix(radius * 0.55f);
-
-        // Squash a full sphere into a rock-like dome via Rlgl scaling.
-        Rlgl.PushMatrix();
-        Rlgl.Scalef(1f, 0.6f, 1f);
-        Detail.Sphere(Vector3.Zero, radius, stone, Position);
-        Raylib.DrawSphereWires(Vector3.Zero, radius, 8, 8, stoneEdge);
-        Rlgl.PopMatrix();
-
+        // Sunk a touch into the ground, and turned (every pebble the same way would look copied).
+        PushGroundedTiltMatrix(-radius * 0.1f);
+        Raylib.DrawModelEx(_rock, Vector3.Zero, Vector3.UnitY, _rotation * (180f / MathF.PI), new Vector3(size, size * 0.85f, size), Color.White);
         Rlgl.PopMatrix();
     }
 

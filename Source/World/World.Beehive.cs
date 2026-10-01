@@ -53,7 +53,21 @@ public sealed partial class World
     public static Vector3 HivePosition => OakCenter + HiveFacing * (HiveSurface + 0.35f) + new Vector3(0f, 2.6f, 0f);
 
     /// <summary>Where a honey-taker stands to climb up to it.</summary>
-    public static Vector3 HiveFoot => Grounded(OakCenter + HiveFacing * (HiveSurface + 0.9f));
+    public static Vector3 HiveFoot
+    {
+        get
+        {
+            // Step out from the trunk until clear of roots (solid to walkers) and out of the water.
+            float reach = HiveSurface + 0.9f;
+            Vector3 foot = Grounded(OakCenter + HiveFacing * reach);
+            for (int i = 0; i < 80 && (IsOnOak(foot, 0.7f) || IsWater(foot)); i++)
+            {
+                reach += 0.5f;
+                foot = Grounded(OakCenter + HiveFacing * reach);
+            }
+            return foot;
+        }
+    }
 
     /// <summary>The bees make honey from spring to autumn; roused swarms chase and sting.</summary>
     private void UpdateBeehive(float deltaTime)

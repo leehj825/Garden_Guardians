@@ -6,7 +6,7 @@ namespace GardenGuardians;
 public static partial class Game
 {
     /// <summary>What the start menu decided: which kept garden, and whether to carry on with it or begin a new one (with the fixed or a grown terrain).</summary>
-    private sealed record MenuChoice(int Slot, bool Resume, bool GrowTerrain, int Size);
+    private sealed record MenuChoice(int Slot, bool Resume, bool GrowTerrain, int Size, Era StartEra = Era.StoneAge);
 
     /// <summary>A second tap within this many seconds confirms starting a new garden over a kept one.</summary>
     private const float MenuConfirmSeconds = 4f;
@@ -36,20 +36,21 @@ public static partial class Game
         string? auto = Environment.GetEnvironmentVariable("GARDEN_MENU_AUTO"); // A development aid: "resume", "original" or "random" picks after a few frames.
         int frames = 0;
         int size = Math.Clamp((int)Preferences.Get(MapSizeSetting, MapSize.Small), 0, TerrainData.MapSizes.Length - 1);
+        int startAge = Math.Clamp((int)Preferences.Get(StartAgeSetting, StartAge.Stone), 0, 3);
         int armed = 0; // 0 nothing, 1 new (fixed), 2 new (grown): tapped once over a kept garden.
         float armedFor = 0f;
         while (!Raylib.WindowShouldClose())
         {
             float uiScale = UiScale;
             int width = Raylib.GetScreenWidth(), height = Raylib.GetScreenHeight();
-            int buttonHeight = (int)(96 * uiScale), gap = (int)(18 * uiScale);
+            int buttonHeight = (int)(96 * uiScale), gap = (int)(18 * uiScale), chipHeight = (int)(68 * uiScale);
             int wide = Math.Min((int)(width * 0.8f), (int)(1000 * uiScale));
             int left = (width - wide) / 2;
             int titleSize = ScaledFontSize(2.6f), subtitleSize = ScaledFontSize(0.8f);
 
             int y = (int)(height * 0.08f);
             int titleY = y;
-            y += titleSize + gap * 3;
+            y += titleSize + gap * 2;
 
             // The kept gardens, side by side.
             int chipWidth = (wide - gap * (SaveSystem.Slots - 1)) / SaveSystem.Slots;
@@ -65,8 +66,15 @@ public static partial class Game
             var sizeChips = new UiButton[TerrainData.MapSizes.Length];
             int sizeWidth = (wide - gap * (sizeChips.Length - 1)) / sizeChips.Length;
             for (int k = 0; k < sizeChips.Length; k++)
-                sizeChips[k] = new UiButton(new Rectangle(left + k * (sizeWidth + gap), y, sizeWidth, buttonHeight));
-            y += buttonHeight + gap * 2;
+                sizeChips[k] = new UiButton(new Rectangle(left + k * (sizeWidth + gap), y, sizeWidth, chipHeight));
+            y += chipHeight + gap;
+            int ageCaptionY = y;
+            y += subtitleSize + gap / 2;
+            var ageChips = new UiButton[4];
+            int ageWidth = (wide - gap * (ageChips.Length - 1)) / ageChips.Length;
+            for (int k = 0; k < ageChips.Length; k++)
+                ageChips[k] = new UiButton(new Rectangle(left + k * (ageWidth + gap), y, ageWidth, chipHeight));
+            y += chipHeight + gap * 2;
 
             var resume = new UiButton(new Rectangle(left, y, wide, buttonHeight));
             y += buttonHeight + gap;
@@ -100,6 +108,15 @@ public static partial class Game
                         Preferences.Set(MapSizeSetting, (MapSize)k);
                     }
                 }
+                for (int k = 0; k < ageChips.Length; k++)
+                {
+                    if (ageChips[k].Contains(mouse) && k != startAge)
+                    {
+                        startAge = k;
+                        armed = 0;
+                        Preferences.Set(StartAgeSetting, (StartAge)k);
+                    }
+                }
                 if (kept is not null && resume.Contains(mouse))
                     return new MenuChoice(chosen, Resume: true, GrowTerrain: false, size);
                 foreach ((UiButton button, int which) in new[] { (newFixed, 1), (newGrown, 2) })
@@ -107,14 +124,14 @@ public static partial class Game
                     if (!button.Contains(mouse))
                         continue;
                     if (kept is null || armed == which)
-                        return new MenuChoice(chosen, Resume: false, GrowTerrain: which == 2, size);
+                        return new MenuChoice(chosen, Resume: false, GrowTerrain: which == 2, size, (Era)startAge);
                     armed = which;
                     armedFor = MenuConfirmSeconds;
                 }
             }
 
             if (auto is not null && ++frames > 5)
-                return new MenuChoice(chosen, Resume: auto == "resume", GrowTerrain: auto == "random", size);
+                return new MenuChoice(chosen, Resume: auto == "resume", GrowTerrain: auto == "random", size, (Era)startAge);
 
             Raylib.BeginDrawing();
             Raylib.DrawRectangleGradientV(0, 0, width, height, new Color(150, 200, 235, 255), new Color(95, 150, 80, 255));
@@ -129,6 +146,10 @@ public static partial class Game
             DrawCentred("Size of a random terrain", width / 2, sizeCaptionY, subtitleSize, ink);
             for (int k = 0; k < sizeChips.Length; k++)
                 sizeChips[k].Draw(TerrainData.MapSizes[k].Name, highlighted: k == size);
+ DrawCentred("Age a new garden starts in (for testing)", width / 2, ageCaptionY, subtitleSize, ink);
+            string[] ageNames = { "Stone", "Farming", "Village", "Kingdom" };
+            for (int k = 0; k < ageChips.Length; k++)
+                ageChips[k].Draw(ageNames[k], highlighted: k == startAge);
             resume.Draw(kept is null ? "Resume" : $"Resume garden {chosen}", highlighted: kept is not null, disabled: kept is null);
             string erase = kept is null ? "" : $"Erase garden {chosen}? Tap again";
             newFixed.Draw(armed == 1 ? erase : "New garden: original terrain", highlighted: armed == 1);

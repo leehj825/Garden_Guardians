@@ -56,6 +56,9 @@ public sealed partial class World
             Food = FoodShards.Where(f => f is { IsActive: true, IsCarried: false })
                 .Select(f => new LooseSave { Position = f.Position, Kind = f.Kind, DespawnTimer = f.DespawnTimer }).ToList(),
             Wells = Wells.Select(w => new WellSave { Position = w.Position, GroupId = w.GroupId, StonesNeeded = w.StonesNeeded, StonesLaid = w.StonesLaid }).ToList(),
+            Kingdoms = Realms.Select(k => new KingdomSave { Id = k.Id, Name = k.Name, Capital = k.Capital, King = k.KingId, FoundedAt = k.FoundedAt, Villages = k.VillageIds.ToList(), TributePaid = k.TributePaid }).ToList(),
+            Villages = Villages.Select(v => new VillageSave { Id = v.Id, Name = v.Name, Centre = v.Centre, FoundedAt = v.FoundedAt, Clans = v.ClanIds.ToList(), Headman = v.HeadmanId }).ToList(),
+            Walls = WallPieces.Select(w => new WallSave { Position = w.Position, Yaw = w.Yaw, Kind = (int)w.Kind, GroupId = w.GroupId, Built = w.IsBuilt, Scale = w.Scale, Ruin = w.Ruin }).ToList(),
             Snares = Snares.Select(s => new SnareSave { Position = s.Position, GroupId = s.GroupId, IsSet = s.IsSet }).ToList(),
             Pens = Pens.Select(p => new PenSave { Position = p.Position, GroupId = p.GroupId, Aphids = p.Aphids, HoneydewTimer = p.HoneydewTimer, BreedTimer = p.BreedTimer }).ToList(),
             Materials = Materials.Where(m => m is { IsActive: true, IsCarried: false })
@@ -155,6 +158,28 @@ public sealed partial class World
         }
         foreach (WellSave w in save.Wells)
             Wells.Add(new Well(w.Position, w.GroupId, w.StonesNeeded) { StonesLaid = w.StonesLaid });
+        foreach (WallSave w in save.Walls ?? new List<WallSave>())
+        {
+            WallPieces.Add(new WallPiece(w.Position, w.Yaw, (WallKind)w.Kind, w.GroupId, w.Built, w.Scale <= 0f ? 1f : w.Scale) { Ruin = w.Ruin });
+            if (w.GroupId is { } wallClan)
+                _wallsPlanned.Add(wallClan);
+            if (w.Built)
+                WallsRaised++;
+        }
+        foreach (VillageSave v in save.Villages ?? new List<VillageSave>())
+        {
+            var village = new Village(v.Id, v.Name, v.Centre, v.FoundedAt) { HeadmanId = v.Headman };
+            village.ClanIds.AddRange(v.Clans);
+            Villages.Add(village);
+        }
+        foreach (KingdomSave k in save.Kingdoms ?? new List<KingdomSave>())
+        {
+            var kingdom = new Kingdom(k.Id, k.Name, k.Capital, k.FoundedAt) { KingId = k.King, TributePaid = k.TributePaid };
+            kingdom.VillageIds.AddRange(k.Villages);
+            Realms.Add(kingdom);
+            foreach (Village member in Villages.Where(v => k.Villages.Contains(v.Id)))
+                member.KingdomId = k.Id;
+        }
         foreach (SnareSave s in save.Snares)
             Snares.Add(new Snare(s.Position, s.GroupId, s.IsSet));
         foreach (PenSave p in save.Pens ?? new List<PenSave>())

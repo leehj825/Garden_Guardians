@@ -11,6 +11,10 @@ public sealed partial class World
     /// <summary>A threat within this many meters of home (or of a homeless group's Leader) is the group's business.</summary>
     public const float HomeDefenseRadius = 10f;
 
+    /// <summary>A clan keeps a Fisher for every this many of its people, if there is shore within this far (m) of home.</summary>
+    private const int FishersPerMembers = 6;
+    private const float FishingShoreReach = 20f;
+
     /// <summary>A Leader sends Hunters after a Stag Beetle within this many meters of home at Aggression 0…</summary>
     public const float BaseHuntSearchRadius = 20f;
 
@@ -97,6 +101,7 @@ public sealed partial class World
             TryHoldFeast(group, leader);
             UpdateBelief(group, leader);
             UpdateWells(group);
+            UpdateWalls(group);
             UpdateCulture(group);
             group.Counsel = Counsel(group, leader);
             ConsiderNeighbours(group, leader);
@@ -302,7 +307,7 @@ public sealed partial class World
 
             default:
                 if (members.Count >= 4 && group.Home is { IsBuilt: true })
-                    members.MaxBy(m => m.Personality.Courage + 0.5f * m.Personality.Aggression)!.AssignJob(KinJob.Guard);
+                    members.MaxBy(m => m.Personality.Courage + 0.5f * m.Personality.Aggression + 0.5f * m.Personality.Strength)!.AssignJob(KinJob.Guard);
                 break;
         }
 
@@ -313,6 +318,24 @@ public sealed partial class World
             int farmers = Math.Max(1, members.Count / perFarmer);
             foreach (Bramblekin member in members.Where(m => m.Job == KinJob.Gatherer).OrderByDescending(m => m.Personality.Intelligence + m.SkillAt(Skill.Farming)).Take(farmers))
                 member.AssignJob(KinJob.Farmer);
+        }
+
+        // A clan that fishes keeps a Fisher on the shore for every few of its people, if there is shore near its home.
+        if (SocietyJobsEnabled && group.Goal is not (GroupGoal.Defend or GroupGoal.Raid) && group.Home is { IsBuilt: true } fishHome && World.Knows(group, Craft.Fishing) && members.Count >= 3 &&
+            RandomShoreSpot(fishHome.Position, FishingShoreReach) is not null)
+        {
+            int fishers = Math.Max(1, members.Count / FishersPerMembers);
+            foreach (Bramblekin member in members.Where(m => m.Job == KinJob.Gatherer).OrderByDescending(m => m.SkillAt(Skill.Fishing) + m.Personality.Diligence).Take(fishers))
+                member.AssignJob(KinJob.Fisher);
+        }
+
+        // A clan with spears keeps a bold Gatherer out hunting game for every few of its people, whether or not a Stag Beetle is about.
+        if (group.Goal is not (GroupGoal.Defend or GroupGoal.Raid or GroupGoal.Hunt) && group.Home is { IsBuilt: true } && World.Knows(group, Craft.Spears) && members.Count >= 3)
+        {
+            int hunters = Math.Max(1, members.Count / 5);
+            foreach (Bramblekin member in members.Where(m => m.Job == KinJob.Gatherer && m.Health > Bramblekin.MaxHealth * 0.6f)
+                         .OrderByDescending(m => m.Personality.Courage + 0.5f * m.Personality.Aggression + m.SkillAt(Skill.Hunting)).Take(hunters))
+                member.AssignJob(KinJob.Hunter);
         }
 
         // A clan with herb-lore keeps someone kind and clever tending its sick and wounded.
@@ -337,6 +360,10 @@ public sealed partial class World
         if (group.Goal is not (GroupGoal.Defend or GroupGoal.Raid) && members.Count >= 2 && !members.Any(m => m.Job == KinJob.Builder) &&
             AnyHearthNeedsFuel(group))
             members.Where(m => m.Job == KinJob.Gatherer).MaxBy(m => m.Personality.Diligence + m.SkillAt(Skill.Building))?.AssignJob(KinJob.Builder);
+
+        // The headman of the clan's village has the last word: whoever he has given a job (soldier, healer, builder, scout) does it.
+        foreach (Bramblekin member in members.Where(m => m.VillageJob != KinJob.None))
+            member.AssignJob(member.VillageJob);
     }
 
     /// <summary>A farming group makes one Farmer for every this many grown members (at least one).</summary>
@@ -367,6 +394,11 @@ public sealed partial class World
         {
             if (!hornet.IsDead && hornet.IsChasing)
                 Consider(hornet);
+        }
+        foreach (InvaderSpider invader in Invaders)
+        {
+            if (!invader.IsDead && !invader.IsWithdrawing)
+                Consider(invader);
         }
         foreach (Bramblekin kin in _possibleThreats)
         {

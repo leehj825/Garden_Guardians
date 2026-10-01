@@ -63,6 +63,9 @@ public sealed class KinGroup
     /// <summary>The clan this one owes fealty to, if any (see World.Kingdoms).</summary>
     public Guid? LiegeId { get; set; }
 
+    /// <summary>The village this clan's homes are part of, if any (worked out by World.Villages each few seconds; not saved).</summary>
+    public Guid? VillageId { get; set; }
+
     /// <summary>The ground the clan has seen (see World.Exploration); not saved.</summary>
     public KnownMap Known { get; } = new(TerrainData.Half);
 

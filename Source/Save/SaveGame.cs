@@ -39,6 +39,11 @@ public sealed class SaveGame
     public List<MaterialSave>? Materials { get; set; }
 
     public List<WellSave> Wells { get; set; } = new();
+
+    /// <summary>Pieces of stone wall; null in a save from before walls.</summary>
+    public List<WallSave>? Walls { get; set; }
+    public List<VillageSave>? Villages { get; set; }
+    public List<KingdomSave>? Kingdoms { get; set; }
     public List<SnareSave> Snares { get; set; } = new();
 
     /// <summary>Aphid pens; null in a save from before herding.</summary>
@@ -103,6 +108,7 @@ public sealed class KinSave
     public float? Persuasiveness { get; set; }
     public float? Courage { get; set; }
     public float? Diligence { get; set; }
+    public float? Strength { get; set; }
     public V3 Position { get; set; }
     public int Health { get; set; }
     public float Hunger { get; set; }
@@ -212,6 +218,38 @@ public sealed class WellSave
     public Guid? GroupId { get; set; }
     public int StonesNeeded { get; set; }
     public int StonesLaid { get; set; }
+}
+
+public sealed class VillageSave
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = "";
+    public V3 Centre { get; set; }
+    public float FoundedAt { get; set; }
+    public List<Guid> Clans { get; set; } = new();
+    public int? Headman { get; set; }
+}
+
+public sealed class KingdomSave
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = "";
+    public Guid Capital { get; set; }
+    public int? King { get; set; }
+    public float FoundedAt { get; set; }
+    public List<Guid> Villages { get; set; } = new();
+    public int TributePaid { get; set; }
+}
+
+public sealed class WallSave
+{
+    public V3 Position { get; set; }
+    public float Yaw { get; set; }
+    public int Kind { get; set; }
+    public Guid? GroupId { get; set; }
+    public bool Built { get; set; }
+    public float Scale { get; set; } = 1f;
+    public float Ruin { get; set; }
 }
 
 public sealed class SnareSave

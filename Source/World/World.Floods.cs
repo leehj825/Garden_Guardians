@@ -22,6 +22,9 @@ public sealed partial class World
 
     private static readonly Color WaterColor = new(70, 120, 190, 150);
 
+    /// <summary>The water while it floods: muddy, and a little more solid.</summary>
+    private static readonly Color FloodColor = new(150, 118, 78, 170);
+
     /// <summary>The pond's surface, and how high a flood reaches (see <see cref="FloodedFraction"/>) — the terrain never changes, so worked out once.</summary>
     private static (float Lowest, float Peak) FloodHeights = MeasureFloodHeights();
 
@@ -231,6 +234,7 @@ public sealed partial class World
             }
         }
 
+        Color color = _flood > 0.02f ? FloodColor : WaterColor;
         Rlgl.DrawRenderBatchActive();
         Rlgl.DisableDepthMask();
         Rlgl.DisableBackfaceCulling();
@@ -240,8 +244,8 @@ public sealed partial class World
             var b = new Vector3(cell.X + WaterCell, level, cell.Y);
             var c = new Vector3(cell.X + WaterCell, level, cell.Y + WaterCell);
             var d = new Vector3(cell.X, level, cell.Y + WaterCell);
-            Raylib.DrawTriangle3D(a, d, c, WaterColor);
-            Raylib.DrawTriangle3D(a, c, b, WaterColor);
+            Raylib.DrawTriangle3D(a, d, c, color);
+            Raylib.DrawTriangle3D(a, c, b, color);
         }
         Rlgl.DrawRenderBatchActive();
         Rlgl.EnableBackfaceCulling();

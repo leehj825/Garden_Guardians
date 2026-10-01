@@ -31,9 +31,13 @@ public readonly struct Personality
     /// <summary>Diligent (high) or idle (low): how briskly it goes about its work, and how long it dawdles and rests between jobs.</summary>
     public float Diligence { get; }
 
+    /// <summary>Born strong (high) or frail (low): how hard it hits and how well it stands a blow. A soldier's job, and a shield, build on it (see Bramblekin.StrikeDamage).</summary>
+    public float Strength { get; }
+
     public Personality(float aggression, float sociability, float intelligence,
-                       float rebelliousness = 0.5f, float persuasiveness = 0.5f, float courage = 0.5f, float diligence = 0.5f)
+                       float rebelliousness = 0.5f, float persuasiveness = 0.5f, float courage = 0.5f, float diligence = 0.5f, float strength = 0.5f)
     {
+        Strength = Math.Clamp(strength, 0f, 1f);
         Aggression = Math.Clamp(aggression, 0f, 1f);
         Sociability = Math.Clamp(sociability, 0f, 1f);
         Intelligence = Math.Clamp(intelligence, 0f, 1f);
@@ -46,7 +50,7 @@ public readonly struct Personality
     /// <summary>A fresh, uniformly random Personality.</summary>
     public static Personality Roll(Random rng) =>
         new((float)rng.NextDouble(), (float)rng.NextDouble(), (float)rng.NextDouble(),
-            (float)rng.NextDouble(), (float)rng.NextDouble(), (float)rng.NextDouble(), (float)rng.NextDouble());
+            (float)rng.NextDouble(), (float)rng.NextDouble(), (float)rng.NextDouble(), (float)rng.NextDouble(), (float)rng.NextDouble());
 
     /// <summary>How far (±) a child's trait may stray from its parents' average.</summary>
     public const float InheritanceVariation = 0.15f;
@@ -58,7 +62,7 @@ public readonly struct Personality
         return new Personality(
             Mix(a.Aggression, b.Aggression), Mix(a.Sociability, b.Sociability), Mix(a.Intelligence, b.Intelligence),
             Mix(a.Rebelliousness, b.Rebelliousness), Mix(a.Persuasiveness, b.Persuasiveness), Mix(a.Courage, b.Courage),
-            Mix(a.Diligence, b.Diligence));
+            Mix(a.Diligence, b.Diligence), Mix(a.Strength, b.Strength));
     }
 
     /// <summary>A trait this far from the middle (either way) is worth a word — see <see cref="Describe"/>.</summary>
@@ -82,6 +86,7 @@ public readonly struct Personality
         Word(Persuasiveness, "persuasive", "passive");
         Word(Courage, "brave", "cautious");
         Word(Diligence, "diligent", "idle");
+        Word(Strength, "strong", "frail");
         return words.Count > 0 ? string.Join(", ", words) : "even-tempered";
     }
 

@@ -28,6 +28,27 @@ public sealed partial class World
         return (known & Craft.Farming) != 0 ? Era.FarmingAge : Era.StoneAge;
     }
 
+    /// <summary>The crafts a clan has worked out by the time it is in <paramref name="era"/> (enough of them that <see cref="EraOf"/> says so).</summary>
+    private static Craft CraftsForEra(Era era)
+    {
+        Craft crafts = Craft.None;
+        if (era >= Era.FarmingAge)
+            crafts |= Craft.Farming;
+        if (era >= Era.VillageAge)
+            crafts |= Craft.Granary | Craft.Spears | Craft.Palisade | Craft.Grain | Craft.Mushrooms | Craft.Cress | Craft.Fishing | Craft.Stonework;
+        if (era >= Era.KingdomAge)
+            crafts |= Craft.Cisterns | Craft.Wells | Craft.Hearth | Craft.Tools | Craft.Roads | Craft.Weaving | Craft.Stonecutting | Craft.Markets;
+        return crafts;
+    }
+
+    /// <summary>A testing aid: every Bramblekin alive now already knows the crafts of <paramref name="era"/> (the start menu's choice of age for a new garden).</summary>
+    public void GrantEra(Era era)
+    {
+        Craft crafts = CraftsForEra(era);
+        foreach (Bramblekin kin in Colony)
+            kin.Learn(crafts);
+    }
+
     public static string EraName(Era era) => era switch
     {
         Era.FarmingAge => "Farming Age",

@@ -99,7 +99,7 @@ public sealed partial class World
             float angle = (float)(Rng.NextDouble() * MathF.Tau);
             float radius = MathF.Sqrt((float)Rng.NextDouble()) * TwigPatchRadius;
             Vector3 spot = anchor + new Vector3(MathF.Cos(angle) * radius, 0f, MathF.Sin(angle) * radius);
-            if (Terrain.Contains(spot, 1f) && !IsBlocked(spot, 0.2f))
+            if (Terrain.Contains(spot, 1f) && !IsBlocked(spot, 0.2f) && !IsCramped(spot))
                 return spot;
         }
         return RandomFreePoint(0.3f, edgeMargin: 1f);
@@ -373,6 +373,7 @@ public sealed partial class World
         if (!shelter.TryDeposit())
             return false;
         _foodByKind[(int)food.Kind]++;
+        NoteDeposited(shelter);
         StoreHoneyExtra(shelter, food);
         food.Deactivate();
         return true;

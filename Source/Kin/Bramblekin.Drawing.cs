@@ -49,10 +49,11 @@ public sealed partial class Bramblekin
         // feet (baked in when it was rigged), so — like the cylinder it
         // replaced — it pivots flush on the ground at Position.
         EnsureAnimModel();
-        BramblekinClip clip = BramblekinModel.ClipFor(State, _mover.IsMoving);
+        bool guardLook = WearsGuardKit;
+        BramblekinClip clip = BramblekinModel.ClipFor(State, _mover.IsMoving, guardLook);
         // Skinning is done on the CPU into the mesh being drawn, so it is done on the mesh of the level of detail in
         // use (a cheaper mesh skins faster too) — skinning the full one and drawing another would draw the other unposed.
-        Model pose = lod == 0 ? _animModel : BramblekinModel.LodView(_animModel, Sex, lod);
+        Model pose = BramblekinModel.LodView(_animModel, Sex, lod, guardLook);
         if (!speck)
             BramblekinModel.Play(ref pose, clip, clip == BramblekinClip.Idle ? 0f : _animTime);
 
@@ -92,6 +93,9 @@ public sealed partial class Bramblekin
         else
             Raylib.DrawModelEx(pose, Position, axis, angleDegrees, new Vector3(scale), color);
 
+        if (props && !speck)
+            DrawGear(pose, axis, angleDegrees, scale);
+
         var top = Position + new Vector3(0, (BodyHeight - BodyRadius) * scale, 0);
         if (props)
             DrawSickness(top);
@@ -107,11 +111,9 @@ public sealed partial class Bramblekin
 
         if (props)
         {
-            if (State is BramblekinState.Fighting or BramblekinState.Dueling or BramblekinState.Guarding or BramblekinState.Raiding &&
-                !IsYoung && Knows(Craft.Shields))
-                DrawShield(facing, group);
 
-            if (State is BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or BramblekinState.Dueling)
+
+            if (State is BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or BramblekinState.Dueling && Job is not (KinJob.Guard or KinJob.Raider))
             {
                 Color thornColor = State == BramblekinState.Attacking ? BloodyThornColor : ThornColor;
                 var grip = Position + new Vector3(0, BodyHeight * 0.6f, 0);
@@ -162,17 +164,32 @@ public sealed partial class Bramblekin
             (byte)255);
     }
 
+    // --- What it carries ------------------------------------------------------------------------
+
+    /// <summary>The sword and shield of a soldier or raider, a hunter's bow and quiver: hung on the bones of the pose (see <see cref="KinGear"/>), so they walk and swing with it.</summary>
+    private void DrawGear(in Model pose, Vector3 axis, float angleDegrees, float scale)
+    {
+        bool hunter = Job == KinJob.Hunter;
+        if (IsYoung || !hunter)
+            return; // A guard's sword and shield are part of its own (guard) model.
+        Matrix4x4 body = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateFromAxisAngle(Vector3.Normalize(axis), angleDegrees * MathF.PI / 180f) * Matrix4x4.CreateTranslation(Position);
+        KinGear.Draw(pose, body, sword: false, shield: false, bow: hunter, quiver: hunter);
+    }
+
     private static readonly Color ShieldColor = new(95, 55, 35, 255);
 
-    /// <summary>A round shield of glossy beetle shell on its arm, with a boss in its clan's colour.</summary>
+    /// <summary>A round shield of glossy beetle shell held out in front of the arm, face forward — big enough to read from the camera — with a boss in its clan's colour.</summary>
     private void DrawShield(Vector2 facing, KinGroup? group)
     {
+        float body = BodyHeight * BodyScale;
         var side = new Vector3(-facing.Y, 0f, facing.X);
-        Vector3 at = Position + new Vector3(0f, BodyHeight * 0.5f, 0f) + side * 0.22f + new Vector3(facing.X, 0f, facing.Y) * 0.08f;
-        const float width = 0.4f;
-        float yaw = MathF.Atan2(side.X, side.Z) * 180f / MathF.PI;
+        var forward = new Vector3(facing.X, 0f, facing.Y);
+        float width = 0.55f * body;
+        // Out beyond the arm and ahead of the chest, so the body does not hide it; face forward, like a soldier's.
+        Vector3 at = Position + new Vector3(0f, body * 0.5f, 0f) + side * (0.42f * body) + forward * (0.3f * body);
+        float yaw = MathF.Atan2(forward.X, forward.Z) * 180f / MathF.PI;
         VillageModels.Draw(VillageItem.Shield, at - new Vector3(0f, VillageModels.HeightAt(VillageItem.Shield, width) / 2f, 0f), yaw, width, Color.White);
         if (group?.Color is { } clan)
-            Detail.Sphere(at + side * 0.06f, 0.04f, clan);
+            Detail.Sphere(at + forward * (0.06f * body), 0.05f * body, clan);
     }
 }
