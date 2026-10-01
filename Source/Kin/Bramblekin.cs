@@ -678,6 +678,11 @@ public sealed partial class Bramblekin : ICombatant
             return;
         if (_onRaft && PoleAcross(deltaTime, world))
             return; // Out on the water: nothing else can be done until it lands.
+        if (IsPlayerControlled)
+        {
+            UpdatePlayerControl(deltaTime, world); // The player is at the wheel: no mind of its own.
+            return;
+        }
 
         UpdateShaken(world);
         _perceptionTimer -= deltaTime;

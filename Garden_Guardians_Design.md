@@ -103,6 +103,34 @@ overhead camera:
     what it's showing in a strip under the top buttons. A pan, the Map
     button, a banner tap or picking a Bramblekin hands the camera back.
 
+## Playing a Bramblekin
+*   **Taking the wheel:** with a Bramblekin selected, the **Control**
+    button (left of **Follow**, under the Kin Inspector) hands it to the
+    player: its own mind stops (no job, no fleeing, no sleeping, no
+    errands) and the game runs at 1x. It still gets hungry and thirsty,
+    sick, and hurt, and it can die — then control ends. **Exit** (or Esc)
+    gives it back to its own mind and flies the camera up over it again.
+*   **The view:** a third-person camera 4.8m behind it, over its shoulder,
+    like an action game, kept above the ground.
+*   **Controls (touch):** a stick on the lower left walks it, relative to
+    where the camera looks (it jogs 35% faster than it walks, slides along
+    obstacles, the water's edge and the map's edge); a drag anywhere else
+    turns the camera (sideways) and tilts it (up and down); **Attack** on
+    the right swings. A **Kin: off/on** switch beside it lets the swing hit
+    Bramblekin of other clans (always off to begin with); wildlife, ants
+    and the like are always fair game. Desktop: W A S D or the arrows to
+    move, Q/E or the mouse to turn, Space to attack.
+*   **The swing:** it strikes the nearest thing in front within about 1.4m
+    of its edge, with the blow it would deal in a hunt (a Bramblekin takes
+    its fighting blow), every 0.7s, and plays the combat animation. A
+    hill guard takes 1 from anyone not in an assault.
+*   **Eating and drinking:** stand still by loose food, at your store (its
+    own home or its clan's) or at the water's edge while hungry or thirsty
+    and it eats or drinks on its own; the HUD says so.
+*   **Showing it:** the HUD shows its name, Health, Hunger and Thirst and
+    what it needs; the garden carries on around it. Not saved: a loaded
+    garden starts with nobody controlled.
+
 ## Player Interaction (what's left of it)
 *   **Kin inspection & the follow camera:** tapping a Bramblekin selects
     it: the camera swoops in (to 18m) and follows it as it goes about its

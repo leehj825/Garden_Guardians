@@ -869,6 +869,13 @@ public sealed partial class World
         return candidate;
     }
 
+    /// <summary>Selects <paramref name="kin"/> as if it had been tapped.</summary>
+    public void SelectKin(Bramblekin kin)
+    {
+        SelectedKin = kin;
+        _selectedClanId = null;
+    }
+
     /// <summary>
     /// A tap on the map: a tap right on a home (with nobody standing on the
     /// spot) selects its clan — or, for a loner's tent, its owner; otherwise

@@ -63,6 +63,7 @@ public static partial class Game
     /// </summary>
     private static float _timeScale = 1f;
     private static bool _lootTestDone;
+    private static bool _playTestDone;
 
     /// <summary>
     /// Responsive UI: the screen width every hardcoded UI pixel constant
@@ -350,6 +351,7 @@ public static partial class Game
         var touchCamera = new TouchCameraController();
         var followCamera = new FollowCamera(camera);
         var director = new Director();
+        var play = new PlayControl();
         Camera3D overview = camera;
         DebugShot.Place(ref camera);
         float autosaveTimer = AutosaveInterval;
@@ -364,7 +366,14 @@ public static partial class Game
             //    Target and pinch to zoom. Runs before the tap input below
             //    so the rest of the frame sees an already-settled camera.
             // (The History screen takes over touches and drags while it's open.)
-            if (!_showChronicle)
+            if (!_playTestDone && Environment.GetEnvironmentVariable("GARDEN_PLAY_TEST") == "1" && world.Colony.FirstOrDefault(k => !k.IsDead && !k.IsYoung) is { } testKin)
+            {
+                _playTestDone = true; // A development aid: start out controlling a kin.
+                world.SelectKin(testKin);
+                play.Begin(testKin, camera);
+            }
+            bool playing = play.IsActive;
+            if (!_showChronicle && !playing)
                 touchCamera.Update(ref camera, world.Terrain.Size / 2f);
 
             // Responsive UI: the Debug Time Scale buttons' geometry (and the
@@ -387,7 +396,8 @@ public static partial class Game
                 (int)(290 * uiScale), speedButtonHeight));
             UiButton? autoButton = _showChronicle ? null : new UiButton(new Rectangle(historyButton.Bounds.X + historyButton.Bounds.Width + speedButtonMargin, speedButtonMargin,
                 (int)(190 * uiScale), speedButtonHeight));
-            UiButton? followButton = _showChronicle ? null : FollowButton(world);
+            UiButton? followButton = _showChronicle || playing ? null : FollowButton(world);
+            UiButton? controlButton = followButton is null ? null : ControlButton(world, followButton);
             UiButton? newGardenButton = _showChronicle ? NewGardenButton(historyButton, speedButtonMargin) : null;
             UiButton? gardenSlotButton = newGardenButton is null ? null : GardenSlotButton(newGardenButton, speedButtonMargin);
             UiButton? terrainButton = gardenSlotButton is null ? null : TerrainModeButton(gardenSlotButton, speedButtonMargin);
@@ -402,7 +412,11 @@ public static partial class Game
             //    ground tap.
             bool mousePressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
             Vector2 mousePosition = Raylib.GetMousePosition();
-            if (mousePressed && TapBanner(mousePosition, followCamera))
+            if (playing)
+            {
+                // PlayControl reads the touches itself (below).
+            }
+            else if (mousePressed && TapBanner(mousePosition, followCamera))
             {
                 director.Stop(); // Flew to the banner's big moment.
             }
@@ -470,12 +484,36 @@ public static partial class Game
                 director.Stop();
                 followCamera.ShowWholeMap();
             }
+            else if (mousePressed && controlButton is not null && controlButton.Contains(mousePosition))
+            {
+                if (world.SelectedKin is { IsDead: false } chosen)
+                {
+                    director.Stop();
+                    followCamera.Release();
+                    _timeScale = 1f;
+                    play.Begin(chosen, camera);
+                    playing = true;
+                }
+            }
             else if (mousePressed && followButton is not null && followButton.Contains(mousePosition))
                 followCamera.ToggleFollow(world);
             else
                 input.Update(camera, world);
-            followCamera.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture);
-            director.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture || followCamera.IsBusy);
+            if (playing)
+            {
+                play.Update(ref camera, world, rawDeltaTime);
+                if (!play.IsActive)
+                {
+                    playing = false;
+                    if (!followCamera.IsFollowing)
+                        followCamera.ToggleFollow(world); // Back to watching it from above.
+                }
+            }
+            else
+            {
+                followCamera.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture);
+                director.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture || followCamera.IsBusy);
+            }
 
             // 2) Simulation, in fixed steps (see StepSimulation).
             long simStart = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -502,6 +540,16 @@ public static partial class Game
             DrawStatusBars(camera, world);
             DrawNameTag(camera, world);
             DrawFloatingTexts(camera, world);
+            if (playing)
+            {
+                play.DrawHud(world);
+                Raylib.EndDrawing();
+                _drawMs += (System.Diagnostics.Stopwatch.GetElapsedTime(drawStart).TotalMilliseconds - _drawMs) * 0.05;
+                if (DebugShot.Finished())
+                    break;
+                world.CommitPendingChanges();
+                continue;
+            }
             speedDownButton.Draw("-", highlighted: false, disabled: _timeScale <= TimeScaleSteps[0]);
             DrawSpeedLabel(speedLabelBounds, uiScale);
             speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
@@ -517,6 +565,7 @@ public static partial class Game
             if (!_showChronicle)
                 DrawKinPanel(world); // The History screen covers it (its header names the selected clan).
             followButton?.Draw(followCamera.IsFollowing ? "Following" : "Follow", highlighted: followCamera.IsFollowing);
+            controlButton?.Draw("Control", highlighted: false);
             int hudTop = DrawHud(world);
             DrawBanner(hudTop);
             if (!_showChronicle)
@@ -1167,6 +1216,10 @@ public static partial class Game
         float y = topPadding + KinPanelHeight(lineCount) + 10 * UiScale;
         return new UiButton(new Rectangle(x, y, width, height));
     }
+
+    /// <summary>The "Control" button, just left of "Follow": take the selected Bramblekin's wheel (see <see cref="PlayControl"/>).</summary>
+    private static UiButton ControlButton(World world, UiButton follow) =>
+        new(new Rectangle(follow.Bounds.X - follow.Bounds.Width - 10 * UiScale, follow.Bounds.Y, follow.Bounds.Width, follow.Bounds.Height));
 
     /// <summary>What the Kin Inspector says about <paramref name="kin"/>, line by line.</summary>
     private static List<(string Text, Color Color)> KinPanelLines(World world, Bramblekin kin, Color ink)

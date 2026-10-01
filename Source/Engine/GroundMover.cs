@@ -139,6 +139,28 @@ public sealed class GroundMover
     public void Idle() => IsMoving = false;
 
     /// <summary>
+    /// Free movement for a body under direct control: steps <paramref name="direction"/> (any length up to 1 — the stick's push) at
+    /// <paramref name="speed"/>, sliding along obstacles, the water's edge, and the map's edge; no steering or detours of its own.
+    /// </summary>
+    public void Step(Vector2 direction, float speed, float deltaTime, World world)
+    {
+        float length = direction.Length();
+        if (length < 1e-4f)
+        {
+            IsMoving = false;
+            return;
+        }
+        Vector2 unit = direction / length;
+        Heading = unit;
+        Vector3 before = Position;
+        Position += new Vector3(unit.X, 0f, unit.Y) * (speed * MathF.Min(1f, length) * deltaTime);
+        PushOutOfObstacles(world.ObstaclesNear(Position));
+        ClampToTerrain(world.Terrain);
+        KeepOutOfWater(before);
+        IsMoving = Vector3.DistanceSquared(before, Position) > 1e-8f;
+    }
+
+    /// <summary>
     /// Instantly displaces the body by <paramref name="offset"/> — e.g. a
     /// Warning Shove — then re-clamps it to the terrain and pushes it back
     /// out of any obstacle the displacement landed it inside, exactly as
