@@ -49,10 +49,11 @@ public sealed partial class Bramblekin
         // feet (baked in when it was rigged), so — like the cylinder it
         // replaced — it pivots flush on the ground at Position.
         EnsureAnimModel();
-        BramblekinClip clip = BramblekinModel.ClipFor(State, _mover.IsMoving);
+        bool guardLook = WearsGuardKit;
+        BramblekinClip clip = BramblekinModel.ClipFor(State, _mover.IsMoving, guardLook);
         // Skinning is done on the CPU into the mesh being drawn, so it is done on the mesh of the level of detail in
         // use (a cheaper mesh skins faster too) — skinning the full one and drawing another would draw the other unposed.
-        Model pose = lod == 0 ? _animModel : BramblekinModel.LodView(_animModel, Sex, lod);
+        Model pose = BramblekinModel.LodView(_animModel, Sex, lod, guardLook);
         if (!speck)
             BramblekinModel.Play(ref pose, clip, clip == BramblekinClip.Idle ? 0f : _animTime);
 
@@ -168,12 +169,11 @@ public sealed partial class Bramblekin
     /// <summary>The sword and shield of a soldier or raider, a hunter's bow and quiver: hung on the bones of the pose (see <see cref="KinGear"/>), so they walk and swing with it.</summary>
     private void DrawGear(in Model pose, Vector3 axis, float angleDegrees, float scale)
     {
-        bool fighter = Job is KinJob.Guard or KinJob.Raider;
         bool hunter = Job == KinJob.Hunter;
-        if (IsYoung || (!fighter && !hunter))
-            return;
+        if (IsYoung || !hunter)
+            return; // A guard's sword and shield are part of its own (guard) model.
         Matrix4x4 body = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateFromAxisAngle(Vector3.Normalize(axis), angleDegrees * MathF.PI / 180f) * Matrix4x4.CreateTranslation(Position);
-        KinGear.Draw(pose, body, sword: fighter, shield: HasShield, bow: hunter, quiver: hunter);
+        KinGear.Draw(pose, body, sword: false, shield: false, bow: hunter, quiver: hunter);
     }
 
     private static readonly Color ShieldColor = new(95, 55, 35, 255);

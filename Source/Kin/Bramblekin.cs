@@ -425,6 +425,9 @@ public sealed partial class Bramblekin : ICombatant
     /// Armed with a shield: a clan that knows <see cref="Craft.Shields"/> issues them to those whose job is fighting — Guards (soldiers),
     /// Raiders and Hunters — not to everyone.
     /// </summary>
+    /// <summary>Soldiers and raiders (grown) look the part: the guard model, its own sword-and-shield walk.</summary>
+    public bool WearsGuardKit => !IsYoung && Job is KinJob.Guard or KinJob.Raider;
+
     public bool HasShield => Knows(Craft.Shields) && !IsYoung && Job is KinJob.Guard or KinJob.Raider;
 
     /// <summary>A Guard holds its shield up and stands in the front: it takes this much less than another shield-bearer.</summary>
