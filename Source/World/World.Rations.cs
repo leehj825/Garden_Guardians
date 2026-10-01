@@ -68,11 +68,78 @@ public sealed partial class World
         float fromStock = MathF.Max(0f, stock - reserve) / (Bramblekin.MealsPerSecond * RationHorizonSeconds);
         village.AllowedPaid = RationsEnabled ? (int)MathF.Floor(fromIncome + fromStock) : 0;
 
-        // Its Guards, in a steady order: the first few it can afford are paid.
-        var guards = ClansOf(village).SelectMany(c => c.Members).Where(m => !m.IsDead && !m.IsYoung && m.Job == KinJob.Guard).OrderBy(m => m.ID).ToList();
-        village.Paid = Math.Min(guards.Count, village.AllowedPaid);
-        for (int i = 0; i < guards.Count; i++)
-            guards[i].IsPaid = i < village.AllowedPaid;
+        UpdateVillageJobs(village);
+
+        // The fed are the first few of those with a village job, soldiers first.
+        KinJob[] priority = { KinJob.Guard, KinJob.Healer, KinJob.Builder, KinJob.Scout };
+        var holders = ClansOf(village).SelectMany(c => c.Members)
+            .Where(m => !m.IsDead && !m.IsYoung && m.VillageJob != KinJob.None)
+            .OrderBy(m => Array.IndexOf(priority, m.VillageJob)).ThenBy(m => m.ID).ToList();
+        village.Paid = Math.Min(holders.Count, village.AllowedPaid);
+        for (int i = 0; i < holders.Count; i++)
+            holders[i].IsPaid = i < village.AllowedPaid;
+    }
+
+    /// <summary>VillageJobs are on: the headman gives jobs out to the clans' people (a testing aid; off, the clans choose as before step 4).</summary>
+    public static bool VillageJobsEnabled { get; set; } = true;
+
+    /// <summary>
+    /// The headman sets the village's jobs, from the food it can feed people on (<see cref="Village.AllowedPaid"/>): most to soldiers, then
+    /// a healer while someone needs care, builders while there is building (a wall, a home), a scout while there is ground to map.
+    /// He picks the best of any clan's people for each, keeps those who are doing well, and gives up the rest. With no headman, no one is given orders.
+    /// </summary>
+    private void UpdateVillageJobs(Village village)
+    {
+        List<KinGroup> clans = ClansOf(village).ToList();
+        List<Bramblekin> adults = clans.SelectMany(c => c.Members).Where(m => !m.IsDead && !m.IsYoung).ToList();
+        Bramblekin? headman = HeadmanOf(village);
+        if (!VillageJobsEnabled || headman is null || !SocietyJobsEnabled)
+        {
+            foreach (Bramblekin kin in adults)
+                kin.VillageJob = KinJob.None;
+            village.Soldiers = village.Builders = village.Healers = village.Scouts = 0;
+            return;
+        }
+
+        int slots = village.AllowedPaid;
+        int soldiers = slots > 0 ? Math.Min(Math.Max(1, (int)MathF.Ceiling(slots * 0.6f)), Math.Max(1, adults.Count * 2 / 5)) : 0;
+        int left = Math.Max(0, slots - soldiers);
+        int healers = left > 0 && clans.Any(c => Knows(c, Craft.Herbalism)) && adults.Any(m => m.NeedsCare) ? 1 : 0;
+        left -= healers;
+        bool building = WallPieces.Any(p => !p.IsBuilt && p.GroupId is { } g && village.ClanIds.Contains(g)) ||
+                        clans.Any(c => GroupHomes(c).Any(h => !h.IsBuilt || h.NeedsTwigs));
+        int builders = left > 0 && building ? Math.Min(2, left) : 0;
+        left -= builders;
+        int scouts = left > 0 && clans.Any(c => Knows(c, Craft.Exploration)) ? 1 : 0;
+
+        float Score(Bramblekin m, KinJob job) => job switch
+        {
+            KinJob.Guard => m.Personality.Courage + 0.5f * m.Personality.Aggression + 0.5f * m.Personality.Strength,
+            KinJob.Healer => m.Personality.Intelligence + m.Personality.Sociability + m.SkillAt(Skill.Healing),
+            KinJob.Builder => m.Personality.Intelligence + m.Personality.Diligence + m.SkillAt(Skill.Building),
+            _ => m.Personality.Courage + m.Personality.Intelligence,
+        };
+
+        foreach ((KinJob job, int want) in new[] { (KinJob.Guard, soldiers), (KinJob.Healer, healers), (KinJob.Builder, builders), (KinJob.Scout, scouts) })
+        {
+            List<Bramblekin> have = adults.Where(m => m.VillageJob == job).ToList();
+            foreach (Bramblekin extra in have.OrderBy(m => Score(m, job)).Take(Math.Max(0, have.Count - want)))
+                extra.VillageJob = KinJob.None; // Too many (or someone fell sick): the lowest are let go.
+            foreach (Bramblekin gone in have.Where(m => m.Health <= Bramblekin.MaxHealth / 2 || m == headman))
+                gone.VillageJob = KinJob.None;
+            int missing = want - adults.Count(m => m.VillageJob == job);
+            if (missing <= 0)
+                continue;
+            foreach (Bramblekin pick in adults.Where(m => m.VillageJob == KinJob.None && m != headman && m.Job is not (KinJob.Farmer or KinJob.Fisher) &&
+                                                          m.Health > Bramblekin.MaxHealth / 2 && !m.IsSick)
+                         .OrderByDescending(m => Score(m, job)).Take(missing))
+                pick.VillageJob = job;
+        }
+
+        village.Soldiers = adults.Count(m => m.VillageJob == KinJob.Guard);
+        village.Builders = adults.Count(m => m.VillageJob == KinJob.Builder);
+        village.Healers = adults.Count(m => m.VillageJob == KinJob.Healer);
+        village.Scouts = adults.Count(m => m.VillageJob == KinJob.Scout);
     }
 
     /// <summary>Clears the deposit counts for the next look, and un-pays anyone whose village is gone or whose job changed.</summary>
@@ -81,7 +148,13 @@ public sealed partial class World
         _depositsByClan.Clear();
         foreach (Bramblekin kin in Colony)
         {
-            if (kin.IsPaid && (kin.IsDead || kin.Job != KinJob.Guard || kin.GroupId is not { } id || !_groups.TryGetValue(id, out KinGroup? clan) || VillageOf(clan) is null))
+            bool inVillage = !kin.IsDead && kin.GroupId is { } id && _groups.TryGetValue(id, out KinGroup? clan) && VillageOf(clan) is not null;
+            if (!inVillage)
+            {
+                kin.IsPaid = false;
+                kin.VillageJob = KinJob.None;
+            }
+            else if (kin.VillageJob == KinJob.None)
                 kin.IsPaid = false;
         }
     }

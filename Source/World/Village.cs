@@ -47,6 +47,12 @@ public sealed class Village
     public int AllowedPaid { get; set; }
     public int Paid { get; set; }
 
+    /// <summary>The jobs its headman has given out.</summary>
+    public int Soldiers { get; set; }
+    public int Builders { get; set; }
+    public int Healers { get; set; }
+    public int Scouts { get; set; }
+
     /// <summary>Meals its paid soldiers have eaten from its stores.</summary>
     public int RationMeals { get; set; }
 

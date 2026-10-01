@@ -38,7 +38,7 @@ public sealed partial class World
     /// <summary>Clans that have laid out their wall (so one that could not is not looked at again and again).</summary>
     private readonly HashSet<Guid> _wallsPlanned = new();
 
-    private float _wallTimer;
+    private readonly Dictionary<Guid, float> _wallProgress = new();
 
     /// <summary>Pieces of wall raised so far.</summary>
     public int WallsRaised { get; private set; }
@@ -229,11 +229,6 @@ public sealed partial class World
     {
         if (WallPieces.Count == 0)
             return;
-        _wallTimer += deltaTime;
-        if (_wallTimer < WallPieceSeconds)
-            return;
-        _wallTimer = 0f;
-
         bool changed = false;
         foreach (Guid id in WallPieces.Where(p => !p.IsBuilt && p.GroupId is not null).Select(p => p.GroupId!.Value).Distinct().ToList())
         {
@@ -242,6 +237,15 @@ public sealed partial class World
             WallPiece? next = WallPieces.FirstOrDefault(p => p.GroupId == id && !p.IsBuilt);
             if (next is null)
                 continue;
+            // A piece takes WallPieceSeconds of the clan's work; each fed builder the village has set to it adds another pair of hands.
+            int builders = group.Members.Count(m => !m.IsDead && m.VillageJob == KinJob.Builder && m.IsPaid);
+            float progress = _wallProgress.GetValueOrDefault(id) + deltaTime * (1 + builders);
+            if (progress < WallPieceSeconds)
+            {
+                _wallProgress[id] = progress;
+                continue;
+            }
+            _wallProgress[id] = 0f;
             bool first = !WallPieces.Any(p => p.GroupId == id && p.IsBuilt);
             next.IsBuilt = true;
             WallsRaised++;

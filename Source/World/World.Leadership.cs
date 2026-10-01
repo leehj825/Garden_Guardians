@@ -329,18 +329,6 @@ public sealed partial class World
                 member.AssignJob(KinJob.Fisher);
         }
 
-        // A village's garrison: as many soldiers as it can feed, the sturdiest and boldest of its clans' Gatherers.
-        if (SocietyJobsEnabled && group.Goal is not (GroupGoal.Raid or GroupGoal.Settle) && VillageOf(group) is { } village && village.AllowedPaid > 0)
-        {
-            int adults = ClansOf(village).Sum(c => c.Members.Count(m => !m.IsDead && !m.IsYoung));
-            int quota = (int)MathF.Ceiling(village.AllowedPaid * members.Count / (float)Math.Max(1, adults));
-            quota = Math.Min(quota, Math.Max(1, members.Count * 2 / 5)); // never more than two in five.
-            int have = members.Count(m => m.Job == KinJob.Guard);
-            foreach (Bramblekin member in members.Where(m => m.Job == KinJob.Gatherer && m.Health > Bramblekin.MaxHealth / 2)
-                         .OrderByDescending(m => m.Personality.Courage + 0.5f * m.Personality.Aggression + 0.5f * m.Personality.Strength).Take(Math.Max(0, quota - have)))
-                member.AssignJob(KinJob.Guard);
-        }
-
         // A clan with herb-lore keeps someone kind and clever tending its sick and wounded.
         if (group.Goal != GroupGoal.Raid && World.Knows(group, Craft.Herbalism) && members.Count >= 2 && members.Any(m => m.NeedsCare))
             members.Where(m => m.Job == KinJob.Gatherer && !m.NeedsCare)
@@ -363,6 +351,10 @@ public sealed partial class World
         if (group.Goal is not (GroupGoal.Defend or GroupGoal.Raid) && members.Count >= 2 && !members.Any(m => m.Job == KinJob.Builder) &&
             AnyHearthNeedsFuel(group))
             members.Where(m => m.Job == KinJob.Gatherer).MaxBy(m => m.Personality.Diligence + m.SkillAt(Skill.Building))?.AssignJob(KinJob.Builder);
+
+        // The headman of the clan's village has the last word: whoever he has given a job (soldier, healer, builder, scout) does it.
+        foreach (Bramblekin member in members.Where(m => m.VillageJob != KinJob.None))
+            member.AssignJob(member.VillageJob);
     }
 
     /// <summary>A farming group makes one Farmer for every this many grown members (at least one).</summary>

@@ -113,6 +113,9 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>True while its village feeds it for its job (see World.Rations): it eats from the village's stores rather than foraging.</summary>
     public bool IsPaid { get; set; }
 
+    /// <summary>A job its village's headman gave it (a soldier, healer, builder or scout, fed from the village's stores); it takes over from the clan's own say in what it does. None when it has none. Not saved: the headman re-gives them.</summary>
+    public KinJob VillageJob { get; set; }
+
     /// <summary>Health restored by eating one piece of Food — the only way to heal.</summary>
     private const int FoodHealing = 6;
 
