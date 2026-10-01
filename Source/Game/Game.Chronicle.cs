@@ -107,6 +107,7 @@ public static partial class Game
             ? $"Garden {_gardenSlot}, year {world.Year}: {world.Colony.Count(k => !k.IsDead)} Bramblekin in {world.Groups.Count} groups"
             : $"{clan.CapitalTitle}{(clan.Culture.Label is { } label ? $" ({label})" : "")}: {clan.Members.Count} members, led by {clan.Leader?.Name ?? "nobody"}" +
               (world.FoundingOf(clan.Id) is { } founding ? $", founded year {founding.Year}" : "") +
+              (world.DescribeVillage(clan) is { } village ? $", village {village}" : "") +
               (world.DescribeRelations(clan) is { } relations ? $", {relations}" : "");
         Raylib.DrawText(Fit(header, headerSize, width - tabWidth * tabs.Length - margin), x, y, headerSize, PanelInk);
         y += Math.Max(headerSize, tabHeight - margin / 4) + margin / 2;

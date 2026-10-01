@@ -73,4 +73,19 @@ public static class Names
         }
         return $"{family} clan {Guid.NewGuid().ToString("N")[..3]}";
     }
+
+    private static readonly string[] VillageStart = { "Moss", "Fern", "Bramble", "Acorn", "Dew", "Thistle", "Clover", "Hazel", "Willow", "Pebble", "Briar", "Sorrel", "Linden", "Marigold", "Tansy", "Alder" };
+    private static readonly string[] VillageEnd = { "hollow", "bridge", "stead", "ford", "wick", "dale", "mere", "gate", "croft", "cross" };
+
+    /// <summary>A village's name ("Mossbridge", "Thistlecroft"), one not <paramref name="taken"/>.</summary>
+    public static string Village(Random rng, Func<string, bool> taken)
+    {
+        for (int attempt = 0; attempt < 60; attempt++)
+        {
+            string name = VillageStart[rng.Next(VillageStart.Length)] + VillageEnd[rng.Next(VillageEnd.Length)];
+            if (!taken(name))
+                return name;
+        }
+        return VillageStart[rng.Next(VillageStart.Length)] + VillageEnd[rng.Next(VillageEnd.Length)] + " " + Guid.NewGuid().ToString("N")[..3];
+    }
 }

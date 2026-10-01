@@ -56,6 +56,7 @@ public sealed partial class World
             Food = FoodShards.Where(f => f is { IsActive: true, IsCarried: false })
                 .Select(f => new LooseSave { Position = f.Position, Kind = f.Kind, DespawnTimer = f.DespawnTimer }).ToList(),
             Wells = Wells.Select(w => new WellSave { Position = w.Position, GroupId = w.GroupId, StonesNeeded = w.StonesNeeded, StonesLaid = w.StonesLaid }).ToList(),
+            Villages = Villages.Select(v => new VillageSave { Id = v.Id, Name = v.Name, Centre = v.Centre, FoundedAt = v.FoundedAt, Clans = v.ClanIds.ToList(), Headman = v.HeadmanId }).ToList(),
             Walls = WallPieces.Select(w => new WallSave { Position = w.Position, Yaw = w.Yaw, Kind = (int)w.Kind, GroupId = w.GroupId, Built = w.IsBuilt, Scale = w.Scale, Ruin = w.Ruin }).ToList(),
             Snares = Snares.Select(s => new SnareSave { Position = s.Position, GroupId = s.GroupId, IsSet = s.IsSet }).ToList(),
             Pens = Pens.Select(p => new PenSave { Position = p.Position, GroupId = p.GroupId, Aphids = p.Aphids, HoneydewTimer = p.HoneydewTimer, BreedTimer = p.BreedTimer }).ToList(),
@@ -163,6 +164,12 @@ public sealed partial class World
                 _wallsPlanned.Add(wallClan);
             if (w.Built)
                 WallsRaised++;
+        }
+        foreach (VillageSave v in save.Villages ?? new List<VillageSave>())
+        {
+            var village = new Village(v.Id, v.Name, v.Centre, v.FoundedAt) { HeadmanId = v.Headman };
+            village.ClanIds.AddRange(v.Clans);
+            Villages.Add(village);
         }
         foreach (SnareSave s in save.Snares)
             Snares.Add(new Snare(s.Position, s.GroupId, s.IsSet));

@@ -1,6 +1,6 @@
 # Garden Guardians — Society & Jobs Design (draft for review)
 
-Status: **design only — nothing here is built yet.** Written 2026-10-01 after the discussion about villages, kingdoms and paid jobs.
+Status: **step 1 (the village object) is built; steps 2-6 are not.** The open questions below were answered with the recommendations. Written 2026-10-01 after the discussion about villages, kingdoms and paid jobs.
 Please mark up the **Open questions** at the end; the plan in section 9 starts once they are answered.
 
 ---
@@ -140,6 +140,9 @@ Each has a banner/colour and a line in the Clans and History views.
 * Existing `VillagesFounded` counter stays for stats but is replaced as the source of truth by `_villages.Count`.
 
 ## 9. Build plan (each step independently testable)
+
+*Step 1 done (2026-10-01):* `Village` objects (`Source/World/Village.cs`, `World.Villages.cs`): formed from homes within 14 m of each other (clans not at war), at least one clan in the Farming Age; a clan belongs to the village its main home stands in; a name, middle and headman chosen from the clans' chiefs (claim to lead + clan size + friends' votes); merge/abandon handling; saved; shown as a gold-edged tag over the village and in the clan card, stats and History. Headless runs: 3 seeds x 50 min of game time give 2-4 stable villages each, multi-clan ones included, no renaming churn.
+
 
 1. **Village object** — formation, name, centre, headman election, dissolve; shown in the Clans view and as a banner on the map. *Test:* headless run: villages form/dissolve sensibly; no kin lose their clan.
 2. **Village store + rations** — pooled store, paid kin eat from it, cap formula. Start with Guard only. *Test:* with rations on, guards guard longer, village food stays ≥ reserve, no new starvation deaths vs. baseline.

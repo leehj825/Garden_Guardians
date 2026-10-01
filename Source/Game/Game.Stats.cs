@@ -57,7 +57,7 @@ public static partial class Game
             $"Tents built: {world.TentsBuilt}",
             $"Houses built: {world.HousesBuilt}",
             $"Fell to ruin: {world.SheltersCollapsed}",
-            $"Villages founded: {world.VillagesFounded}",
+            $"Villages: {world.Villages.Count} now ({world.VillagesNamed} named, {world.HeadmenChosen} headmen chosen); clans that budded a second home: {world.VillagesFounded}",
             $"Daughter clans: {world.Buddings}",
         }));
 

@@ -554,6 +554,7 @@ public sealed partial class World
         Prof.Mark("UpdateTrails");
         UpdateWallBuilding(deltaTime);
         UpdateWallRuin(deltaTime);
+        UpdateVillages(deltaTime);
         Prof.Mark("UpdateWallBuilding");
         UpdateGoods(deltaTime);
         Prof.Mark("UpdateGoods");

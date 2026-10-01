@@ -1091,6 +1091,23 @@ public static partial class Game
                 Raylib.DrawRectangleLines(x - 7, y - 4, width + 14, fontSize + 9, group.Color);
             Raylib.DrawText(text, x, y, fontSize, PanelInk);
         }
+
+        // Each village's name, on a gold-edged tag higher over its middle: a village is more than any one clan in it.
+        int villageFont = (int)(fontSize * 1.2f);
+        foreach (Village village in world.Villages)
+        {
+            Vector3 anchor = village.Centre + new Vector3(0f, 5.2f, 0f);
+            if (!IsPointOnScreen(camera, anchor))
+                continue;
+            Vector2 screen = Raylib.GetWorldToScreen(anchor, camera);
+            string headman = world.HeadmanOf(village) is { } h ? $", headman {h.Name}" : "";
+            string text = $"{village.Name} ({village.ClanIds.Count} {(village.ClanIds.Count == 1 ? "clan" : "clans")}{headman})";
+            int width = Raylib.MeasureText(text, villageFont);
+            int x = (int)(screen.X - width / 2f), y = (int)(screen.Y - villageFont);
+            Raylib.DrawRectangle(x - 8, y - 4, width + 16, villageFont + 8, PanelFill with { A = 215 });
+            Raylib.DrawRectangle(x - 8, y + villageFont + 3, width + 16, 4, new Color(230, 190, 60, 255));
+            Raylib.DrawText(text, x, y, villageFont, PanelInk);
+        }
     }
 
     /// <summary>The right edge (at the reference screen width) of the buttons along the top — speed, Map and History.</summary>
@@ -1272,7 +1289,7 @@ public static partial class Game
             $"Year {world.Year} {world.CurrentSeason}, day {world.DayOfYear} {world.TimeOfDayLabel.ToLowerInvariant()}{(world.WeatherLabel is { } weather ? $" - {weather}" : "")} (food x{world.FoodAbundance:0.0})   Speed {_timeScale}x{(_achievedSpeed < _timeScale * 0.85f ? $" (running {_achievedSpeed:0}x)" : "")}   FPS {Raylib.GetFPS()} (sim {_simMs:0} ms, draw {_drawMs:0} ms)   Food on map {world.LooseFoodCount}   Spider: {SpiderStatus(world)}",
             $"Homes: {world.Shelters.Count(s => s.IsBuilt && s.Tier == ShelterTier.Tent)} tents, {world.Shelters.Count(s => s.Tier == ShelterTier.House)} houses, " +
             $"{world.Shelters.Count(s => s.IsBuilt && s.IsBurrow)} burrows, {world.Shelters.Count(s => !s.IsBuilt)} being built   Food stored {world.Shelters.Sum(s => s.StoredFood)}   " +
-            $"Villages {world.Groups.Count(g => g.Annexes.Count > 0)} (budded {world.Buddings})   Crops {world.Crops.Count}",
+            $"Villages {world.Villages.Count} (budded {world.Buddings})   Crops {world.Crops.Count}",
             $"Bramblekin {living}: {solitary} solitary, {world.Groups.Count} groups (largest {largestGroup}, {world.Groups.Count(World.KnowsFarming)} farming)   " +
             $"Alliances {world.CurrentAlliances}   Wars {world.CurrentWars}",
             $"Foraging {Count(BramblekinState.Foraging) + Count(BramblekinState.Hunting)}   Eating {Count(BramblekinState.Eating)}   Drinking {Count(BramblekinState.Drinking)}   " +
