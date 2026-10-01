@@ -29,6 +29,8 @@ from convert_female import (EPSILON, FITTED_ARM, NEIGHBOURS, POWER, accessor, bi
 
 Image.MAX_IMAGE_PIXELS = None
 ARM_RADIUS = 0.07      # beyond this far from every arm bone a vertex is not arm (hair, skirt)
+CLOTH_LEG_PULL = 1.8   # the dress feels a leg this much farther off than it is, so the hem stays with her hips instead of streaming out behind a raised leg
+CLOTH_GREEN = 1.1      # a vertex whose texture is this much greener than it is red (and more than that than blue) is cloth (her dress): no arm bone carries it
 GUARD_OUTSIDE = 0.2    # beyond this far to the side (bind space) a guard vertex is shield or sword
 LEG_TOP = 0.28         # above this height (bind space) nothing follows the legs (hair, dress)
 
@@ -53,13 +55,25 @@ def png_of(picture, size):
     return buf.getvalue()
 
 
-def skin(points, names, segs, female, guard=False, outside_x=GUARD_OUTSIDE):
+def cloth_mask(uv, picture):
+    """True where the texture under a vertex is green: the dress, whose hem hangs by her hands but must not follow them."""
+    small = np.asarray(picture.resize((512, 512), Image.LANCZOS).convert("RGB"), dtype=np.float64)
+    u = np.clip((uv[:, 0] * 511).astype(int), 0, 511)
+    v = np.clip((uv[:, 1] * 511).astype(int), 0, 511)
+    r, g, b = small[v, u, 0], small[v, u, 1], small[v, u, 2]
+    return (g > r * CLOTH_GREEN) & (g > b * 1.2) & (g > 20)
+
+
+def skin(points, names, segs, female, guard=False, outside_x=GUARD_OUTSIDE, cloth=None):
     owners = list(segs)
     dist = np.stack([np.min([point_segment_distance(points, a, b) for a, b in segs[n]], axis=0) for n in owners], axis=1)
     if female:
         arm = np.array([any(k in n for k in ("Shoulder", "Arm", "Hand")) for n in owners])
         leg = np.array([any(k in n for k in ("UpLeg", "Leg", "Foot", "Toe")) for n in owners])
         not_arm = dist[:, arm].min(axis=1) > ARM_RADIUS
+        if cloth is not None:
+            not_arm |= cloth
+            dist[np.ix_(cloth, np.where(leg)[0])] *= CLOTH_LEG_PULL
         dist[np.ix_(not_arm, np.where(arm)[0])] = np.inf
         high = points[:, 2] > LEG_TOP
         dist[np.ix_(high, np.where(leg)[0])] = np.inf
@@ -108,7 +122,10 @@ def main():
     doc, binary = read_glb(args.skeleton)
     names, position, parent = bind_joints(doc, binary)
     segs = segments(names, position, parent, FITTED_ARM if args.female else {})
-    joints_idx, w = skin(pos, names, segs, args.female, args.guard, args.outside)
+    cloth = cloth_mask(uv, picture) if args.female and not args.guard else None  # (a guard's green is a tunic and a shield, which follow her arms)
+    if cloth is not None:
+        print(int(cloth.sum()), "of", len(cloth), "vertices are cloth")
+    joints_idx, w = skin(pos, names, segs, args.female, args.guard, args.outside, cloth)
     joints4 = np.zeros((len(pos), 4), "u1")
     weights4 = np.zeros((len(pos), 4), "<f4")
     joints4[:, :NEIGHBOURS] = joints_idx
