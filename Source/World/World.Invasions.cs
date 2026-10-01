@@ -16,6 +16,18 @@ public sealed class Invasion
     public int Size { get; init; }
     public int Slain { get; set; }
     public bool Withdrawing { get; set; }
+
+    /// <summary>The spiders still to come, wave by wave (the sizes), and when the next wave sets out.</summary>
+    public Queue<int> WavesToCome { get; } = new();
+    public float NextWaveAt { get; set; }
+    public int WavesTotal { get; set; } = 1;
+    public int WaveNumber { get; set; }
+
+    /// <summary>When the latest wave set out (the clock for giving up runs from it).</summary>
+    public float LastWaveAt { get; set; }
+
+    /// <summary>The villages it is aimed at, the capital first.</summary>
+    public List<Guid> Targets { get; } = new();
     public bool IsHard => KingdomId is not null;
 }
 
@@ -72,6 +84,12 @@ public sealed partial class World
     /// <summary>Spiders appear this far (m) from their village's middle, if there is room.</summary>
     private const float InvaderSpawnDistance = 38f;
 
+    /// <summary>A hard invasion comes in this many waves; a light one in two once it is big enough (<see cref="TwoWaveSize"/>), else one.</summary>
+    private const int HardWaves = 3, TwoWaveSize = 6;
+
+    /// <summary>The next wave sets out this long (s) after the last, or a few seconds after the last was wiped out, whichever is first.</summary>
+    private const float WaveGapSeconds = 45f, WaveAfterClearSeconds = 8f;
+
     private float _invasionTimer = FirstInvasionAt;
 
     public List<Invasion> Invasions { get; } = new();
@@ -98,7 +116,17 @@ public sealed partial class World
         {
             Invasion invasion = Invasions[i];
             int alive = Invaders.Count(s => !s.IsDead && s.InvasionId == invasion.Id);
-            if (alive == 0)
+            if (!invasion.Withdrawing && invasion.WavesToCome.Count > 0)
+            {
+                if (alive == 0)
+                    invasion.NextWaveAt = MathF.Min(invasion.NextWaveAt, ElapsedSeconds + WaveAfterClearSeconds);
+                if (ElapsedSeconds >= invasion.NextWaveAt)
+                {
+                    SendWave(invasion);
+                    continue;
+                }
+            }
+            if (alive == 0 && invasion.WavesToCome.Count == 0 || alive == 0 && invasion.Withdrawing)
             {
                 Invasions.RemoveAt(i);
                 if (invasion.Withdrawing)
@@ -113,7 +141,7 @@ public sealed partial class World
                     Chronicle($"{Capitalize(invasion.TargetName)} beat back an invasion of {invasion.Size} spiders", VillageClans(invasion).ToArray());
                 }
             }
-            else if (!invasion.Withdrawing && ElapsedSeconds - invasion.StartedAt > InvasionLingerSeconds)
+            else if (!invasion.Withdrawing && invasion.WavesToCome.Count == 0 && ElapsedSeconds - invasion.LastWaveAt > InvasionLingerSeconds)
             {
                 invasion.Withdrawing = true;
                 foreach (InvaderSpider spider in Invaders.Where(s => s.InvasionId == invasion.Id))
@@ -156,13 +184,11 @@ public sealed partial class World
             count = LightInvasionSize(village);
         var invasion = new Invasion { TargetName = $"the village of {village.Name}", StartedAt = ElapsedSeconds, Size = count };
         invasion.VillageIds.Add(village.Id);
-        Spawn(invasion, village, count);
-        Invasions.Add(invasion);
-        Announce(invasion, village.Centre, count);
-        return invasion;
+        invasion.Targets.Add(village.Id);
+        return Launch(invasion, count, count >= TwoWaveSize ? 2 : 1, village.Centre);
     }
 
-    /// <summary>A hard invasion: <paramref name="count"/> spiders against <paramref name="kingdom"/>, most at its capital, the rest at its other villages.</summary>
+    /// <summary>A hard invasion: <paramref name="count"/> spiders in waves against <paramref name="kingdom"/>, most at its capital, the rest at its other villages.</summary>
     public Invasion StartKingdomInvasion(Kingdom kingdom, int count = -1)
     {
         if (count < 0)
@@ -170,24 +196,60 @@ public sealed partial class World
         List<Village> targets = VillagesOf(kingdom).ToList();
         Village capital = CapitalOf(kingdom) ?? targets[0];
         var invasion = new Invasion { TargetName = $"the kingdom of {kingdom.Name}", StartedAt = ElapsedSeconds, Size = count, KingdomId = kingdom.Id };
-        int atCapital = targets.Count == 1 ? count : (int)MathF.Ceiling(count * 0.4f);
-        int remaining = count - atCapital;
-        Spawn(invasion, capital, atCapital);
-        invasion.VillageIds.Add(capital.Id);
-        List<Village> others = targets.Where(v => v != capital).ToList();
-        for (int i = 0; i < others.Count; i++)
+        invasion.Targets.Add(capital.Id);
+        invasion.Targets.AddRange(targets.Where(v => v != capital).Select(v => v.Id));
+        foreach (Guid id in invasion.Targets)
+            invasion.VillageIds.Add(id);
+        return Launch(invasion, count, HardWaves, capital.Centre);
+    }
+
+    /// <summary>Splits <paramref name="count"/> into waves, sends the first now and announces it.</summary>
+    private Invasion Launch(Invasion invasion, int count, int waves, Vector3 where)
+    {
+        invasion.WavesTotal = waves;
+        int left = count;
+        for (int w = 0; w < waves; w++)
         {
-            int share = remaining / (others.Count - i);
-            remaining -= share;
-            if (share > 0)
-            {
-                Spawn(invasion, others[i], share);
-                invasion.VillageIds.Add(others[i].Id);
-            }
+            int share = left / (waves - w);
+            left -= share;
+            invasion.WavesToCome.Enqueue(Math.Max(1, share));
         }
         Invasions.Add(invasion);
-        Announce(invasion, capital.Centre, count);
+        InvasionsStarted++;
+        SendWave(invasion);
+        string size = invasion.IsHard ? "A great swarm" : "A swarm";
+        string inWaves = waves > 1 ? $", in {waves} waves" : "";
+        Game.AddEventLog($"[INVASION] {size} of {count} small spiders marches on {invasion.TargetName}{inWaves}");
+        Headline(invasion.IsHard ? "Invasion!" : "Spiders!", $"{size} of {count} small spiders marches on {invasion.TargetName}{inWaves}", where, true, VillageClans(invasion).ToArray());
         return invasion;
+    }
+
+    /// <summary>Sets the next wave out: its spiders split over the target villages, the capital (first) taking two fifths.</summary>
+    private void SendWave(Invasion invasion)
+    {
+        if (!invasion.WavesToCome.TryDequeue(out int count))
+            return;
+        invasion.WaveNumber++;
+        invasion.LastWaveAt = ElapsedSeconds;
+        invasion.NextWaveAt = ElapsedSeconds + WaveGapSeconds;
+        List<Village> targets = invasion.Targets.Select(id => Villages.FirstOrDefault(v => v.Id == id)).Where(v => v is not null).Select(v => v!).ToList();
+        if (targets.Count == 0)
+        {
+            invasion.WavesToCome.Clear();
+            return;
+        }
+        int atFirst = targets.Count == 1 ? count : (int)MathF.Ceiling(count * 0.4f);
+        int remaining = count - atFirst;
+        Spawn(invasion, targets[0], atFirst);
+        for (int i = 1; i < targets.Count; i++)
+        {
+            int share = remaining / (targets.Count - i);
+            remaining -= share;
+            if (share > 0)
+                Spawn(invasion, targets[i], share);
+        }
+        if (invasion.WaveNumber > 1)
+            Game.AddEventLog($"[INVASION] Wave {invasion.WaveNumber} of {invasion.WavesTotal}: {count} more spiders against {invasion.TargetName}");
     }
 
     private void Spawn(Invasion invasion, Village village, int count)
@@ -227,14 +289,6 @@ public sealed partial class World
     private bool NearHomesOrKin(Vector3 point, float distance) =>
         Shelters.Any(h => h is { IsBuilt: true, IsCollapsed: false } && GroundMover.HorizontalDistance(h.Position, point) < distance) ||
         Colony.Any(k => !k.IsDead && GroundMover.HorizontalDistance(k.Position, point) < distance * 0.6f);
-
-    private void Announce(Invasion invasion, Vector3 where, int count)
-    {
-        InvasionsStarted++;
-        string size = invasion.IsHard ? "A great swarm" : "A swarm";
-        Game.AddEventLog($"[INVASION] {size} of {count} small spiders marches on {invasion.TargetName}");
-        Headline(invasion.IsHard ? "Invasion!" : "Spiders!", $"{size} of {count} small spiders marches on {invasion.TargetName}", where, true, VillageClans(invasion).ToArray());
-    }
 
     /// <summary>A spider is struck dead by <paramref name="attacker"/>.</summary>
     public void KillInvader(InvaderSpider spider, Bramblekin attacker)
