@@ -938,7 +938,7 @@ next hill tougher and the reward richer.
     clan treats it as a standing danger. The only way in is a Kingdom
     assault.
 *   **Guards:** the hill's level L (1 to start) sets how many guard it:
-    **5 × L ants** — 5, 10, 15, 20 and so on, with no cap. A guard (10
+    **5 × L ants** — 5, 10, 15, 20 and so on, with no cap. A guard (12
     Health, bites for 3 every 1.1s, walks at 2 m/s, about 1m long) stands
     about the hill, falls on any Bramblekin that enters the zone and chases
     it until it is dead or 6m clear of the zone. They fight to the death.
@@ -1008,10 +1008,13 @@ next hill tougher and the reward richer.
     a loaded garden starts with none, like invasions).
 *   **Tuning:** headless `--assault N [--assault-at S]` sends a test
     assault on a level-N hill at S seconds (default 60): the strongest
-    grown kin there are, as many as the hill needs, made Guards. Over 16
-    seeds in a young garden (no shields or spears, and hornets and the
-    Wolf Spider about) it won about 70% at level 1, 80% at 2, 45% at 3 and
-    55% at 5. Still first guesses, to tune by watching real fights: the
+    grown kin there are, as many as the hill needs, made Guards. In a
+    mature garden (12 seeds each, hornets and the Wolf Spider about) it
+    won about 75% at level 1, 65% at 3, 65% at 6 and 50% at 8; a real
+    kingdom's picked soldiers, shielded and with spears, did better still
+    (nearly every assault up to level 8 in the long runs, usually with no
+    losses) — so the guards may need to be tougher in later levels. Still
+    first guesses, to tune by watching real fights: the
     zone's 20m, the guards' strength, the retreat and flee numbers, the
     party size and the egg numbers.
 

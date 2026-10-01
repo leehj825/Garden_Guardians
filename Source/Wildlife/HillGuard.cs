@@ -14,7 +14,7 @@ public sealed class HillGuard : ICombatant
     private const float ModelScale = 1.0f;
 
     public const float BodyRadius = 0.38f;
-    public const int MaxHealth = 10;
+    public const int MaxHealth = 12;
     public const int BiteDamage = 3;
 
     private const float Speed = 2.0f;
