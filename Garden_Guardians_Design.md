@@ -941,10 +941,13 @@ next hill tougher and the reward richer.
     clan treats it as a standing danger. The only way in is a Kingdom
     assault.
 *   **Guards:** the hill's level L (1 to start) sets how many guard it:
-    **5 × L ants** — 5, 10, 15, 20 and so on, with no cap. A guard (12
-    Health, bites for 3 every 1.1s, walks at 2 m/s, about 1m long) stands
+    **5 × L ants** — 5, 10, 15, 20 and so on, with no cap. A guard (24
+    Health, bites for 4 every 1s, walks at 2 m/s, about 1m long) stands
     falls on any Bramblekin that enters the zone and chases
-    it until it is dead or 6m clear of the zone. They fight to the death.
+    it until it is dead or 6m clear of the zone. They fight to the death. Only an army can kill them: a Bramblekin
+    that is not in a Kingdom's assault scratches a guard for 1 at most
+    (a bystander that wanders in can't clear a hill, only die), so the
+    guards are only ever brought down by a Kingdom's picked soldiers.
 *   **Sentries and alert:** in quiet times only 2 guards (the sentries)
     roam about the hill, within 6m of its foot; all the rest wait inside.
     When any Bramblekin comes within 6m of the zone's edge the hill is on
@@ -974,7 +977,11 @@ next hill tougher and the reward richer.
     king and enough fit soldiers (Guards and Hunters of any of its
     villages, grown, not elderly or sick, at 80% Health or more and not
     hungry) — **half as many as there are guards, rounded up**: 3 for 5,
-    5 for 10, 8 for 15, 10 for 20 — in daylight and not in winter. After a
+    5 for 10, 8 for 15, 10 for 20 — **and half as many again for each
+    assault on this level that has failed since the last win** (a failed
+    first try means 5 soldiers next time, then 6, 8…); the Kingdom waits
+    until it has them, and the count starts again after a win. It goes in
+    daylight and not in winter. After a
     fight (won or not), no new order for a season. The strongest and
     bravest are picked. A bigger hill needs a bigger army, with no cap. A
     Headline, a Chronicle entry and the Director's spotlight follow it.

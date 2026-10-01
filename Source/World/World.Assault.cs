@@ -66,8 +66,9 @@ public sealed partial class World
         return soldiers;
     }
 
-    /// <summary>The soldiers an assault on a hill of this level needs: half as many as it has guards, rounded up.</summary>
-    public static int SoldiersNeeded(int hillLevel) => (Anthill.GuardsPerLevel * hillLevel + 1) / 2;
+    /// <summary>The soldiers an assault on a hill of this level needs: half as many as it has guards, rounded up — and half as many again for each assault that has failed since the last win.</summary>
+    public static int SoldiersNeeded(int hillLevel, int failures = 0) =>
+        (int)MathF.Ceiling((Anthill.GuardsPerLevel * hillLevel + 1) / 2 * (1f + 0.5f * failures));
 
     /// <summary>At each look at a kingdom (see <see cref="RunRealm"/>): the crown may order an assault on the hill.</summary>
     private void ConsiderAssault(Kingdom kingdom, Village capital)
@@ -75,7 +76,7 @@ public sealed partial class World
         if (!AssaultsEnabled || Anthill is not { } hill || CurrentAssault is not null || CurrentSeason == Season.Winter || IsNight ||
             ElapsedSeconds < _assaultCooldownUntil || KingOf(kingdom) is null)
             return;
-        int needed = SoldiersNeeded(hill.Level);
+        int needed = SoldiersNeeded(hill.Level, hill.Failures);
         List<Bramblekin> soldiers = FitSoldiers(kingdom);
         if (soldiers.Count < needed || Rng.NextDouble() >= AssaultChance)
             return;
@@ -107,7 +108,7 @@ public sealed partial class World
         CurrentAssault = assault;
         AssaultsLaunched++;
         KinGroup?[] clans = party.Select(GroupOf).Where(c => c is not null).Distinct().ToArray();
-        string text = $"The kingdom of {name} sends {party.Count} soldiers against the ant hill (level {hill.Level}, {hill.GuardCount} guards)";
+        string text = $"The kingdom of {name} sends {party.Count} soldiers against the ant hill (level {hill.Level}, {hill.GuardCount} guards{(hill.Failures > 0 ? $", after {hill.Failures} failed {(hill.Failures == 1 ? "try" : "tries")}" : "")})";
         Game.AddEventLog($"[ANTS] {text}");
         Headline("The ant hill", text, assault.Muster, true, clans);
         return assault;
@@ -189,6 +190,8 @@ public sealed partial class World
     {
         NextPhase(a, AssaultPhase.Retreating);
         AssaultsCalledOff++;
+        if (Anthill is { } failedHill)
+            failedHill.Failures++;
         string text = $"The assault on the ant hill is called off ({why}; {HillGuards.Count(g => !g.IsDead)} of {Anthill?.GuardCount} guards still stand): the soldiers of {a.Name} fall back";
         Game.AddEventLog($"[ANTS] {text}");
         Headline("The ant hill", text, a.Staging, false);
@@ -215,6 +218,7 @@ public sealed partial class World
         AssaultsWon++;
         HighestHillLevelBeaten = Math.Max(HighestHillLevelBeaten, a.Level);
         hill.Level = a.Level + 1;
+        hill.Failures = 0;
         string text = $"The soldiers of {a.Name} ({a.Party.Count(a.IsActive)} of {a.Size} left) bring home {eggs} {(eggs == 1 ? "egg" : "eggs")} from the ant hill: {string.Join(", ", winners)} {(winners.Count == 1 ? "eats" : "eat")} them. The hill is now level {hill.Level}";
         Game.AddEventLog($"[ANTS] {text}");
         Headline("The ant hill", text, a.Muster, true);
@@ -235,6 +239,8 @@ public sealed partial class World
         if (failure is not null)
         {
             AssaultsLost++;
+            if (Anthill is { } failedHill && a.Phase != AssaultPhase.Retreating)
+                failedHill.Failures++;
             string text = failure == "lost" ? $"The assault of {a.Name} on the ant hill was wiped out" : $"The assault of {a.Name} on the ant hill came to nothing: {failure}";
             Game.AddEventLog($"[ANTS] {text}");
             Chronicle(text);
@@ -247,13 +253,14 @@ public sealed partial class World
     /// A testing aid for tuning (headless <c>--assault N</c>): sets the hill to <paramref name="level"/> with its full guard and sends the
     /// strongest grown Bramblekin there are, as many as the level needs, against it from where they stand.
     /// </summary>
-    public Assault? StartTestAssault(int level)
+    public Assault? StartTestAssault(int level, int failures = 0)
     {
         if (Anthill is not { } hill)
             return null;
         hill.Level = Math.Max(1, level);
+        hill.Failures = failures;
         FillGuards();
-        List<Bramblekin> party = Colony.Where(k => !k.IsDead && !k.IsYoung && !k.IsElder).OrderByDescending(k => k.Strength).Take(SoldiersNeeded(hill.Level)).ToList();
+        List<Bramblekin> party = Colony.Where(k => !k.IsDead && !k.IsYoung && !k.IsElder).OrderByDescending(k => k.Strength).Take(SoldiersNeeded(hill.Level, failures)).ToList();
         if (party.Count == 0)
             return null;
         foreach (Bramblekin kin in party)

@@ -58,6 +58,7 @@ public sealed class SaveGame
     public V3? Anthill { get; set; }
     public int AnthillStock { get; set; }
     public int AnthillLevel { get; set; } = 1;
+    public int AnthillFailures { get; set; }
     public int AssaultsWon { get; set; }
     public int EggsEaten { get; set; }
 }

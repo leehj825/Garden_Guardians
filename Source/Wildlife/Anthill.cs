@@ -59,6 +59,9 @@ public sealed class Anthill
     /// <summary>The hill's level (1 to start): it never goes down, and goes up when an assault on it brings its prize home.</summary>
     public int Level { get; set; } = 1;
 
+    /// <summary>Assaults on this level that failed since the last win: each makes the Kingdom send half as many soldiers again next time.</summary>
+    public int Failures { get; set; }
+
     /// <summary>How many guards it keeps: 5 × level.</summary>
     public int GuardCount => GuardsPerLevel * Level;
 

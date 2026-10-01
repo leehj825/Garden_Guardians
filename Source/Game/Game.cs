@@ -559,7 +559,7 @@ public static partial class Game
     /// display, and for tuning — pass a <paramref name="seed"/> to replay
     /// the exact same run.
     /// </summary>
-    public static void RunHeadless(float simulatedSeconds, int? seed, string? loadPath = null, string? savePath = null, int assaultLevel = 0, float assaultAt = 60f)
+    public static void RunHeadless(float simulatedSeconds, int? seed, string? loadPath = null, string? savePath = null, int assaultLevel = 0, float assaultAt = 60f, int assaultFailures = 0)
     {
         _isHeadless = true;
         const float step = 1f / 60f;
@@ -594,7 +594,7 @@ public static partial class Game
             {
                 assaultStarted = true;
                 World.AssaultsEnabled = false; // Only the test one.
-                world.StartTestAssault(assaultLevel);
+                world.StartTestAssault(assaultLevel, assaultFailures);
             }
             world.Update(step);
             world.CommitPendingChanges();

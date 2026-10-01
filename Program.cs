@@ -98,7 +98,9 @@ public static class Program
         int assaultLevel = OptionValue(args, "--assault") is { } level && int.TryParse(level, out int parsedLevel) ? parsedLevel : 0;
         float assaultAt = OptionValue(args, "--assault-at") is { } at && float.TryParse(at, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsedAt) ? parsedAt : 60f;
 
-        Game.RunHeadless(seconds, seed, load, save, assaultLevel, assaultAt);
+        int assaultFailures = OptionValue(args, "--assault-failures") is { } fails && int.TryParse(fails, out int parsedFails) ? parsedFails : 0;
+
+        Game.RunHeadless(seconds, seed, load, save, assaultLevel, assaultAt, assaultFailures);
     }
 
     private static string? OptionValue(string[] args, string option)

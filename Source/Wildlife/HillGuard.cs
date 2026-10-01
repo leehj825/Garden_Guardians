@@ -14,11 +14,14 @@ public sealed class HillGuard : ICombatant
     private const float ModelScale = 1.0f;
 
     public const float BodyRadius = 0.38f;
-    public const int MaxHealth = 12;
-    public const int BiteDamage = 3;
+    public const int MaxHealth = 24;
+    public const int BiteDamage = 4;
+
+    /// <summary>A Bramblekin that is not in a Kingdom's assault scratches a guard for no more than this: only an army can bring one down.</summary>
+    public const int BystanderDamage = 1;
 
     private const float Speed = 2.0f;
-    private const float BiteInterval = 1.1f;
+    private const float BiteInterval = 1.0f;
 
     /// <summary>It bites from this close to a Bramblekin's edge.</summary>
     private const float BiteReach = 0.4f;
@@ -68,6 +71,8 @@ public sealed class HillGuard : ICombatant
     {
         if (IsHidden)
             return;
+        if (attacker.AssaultParty is null)
+            damage = Math.Min(damage, BystanderDamage);
         Health = Math.Max(0, Health - damage);
         _target = attacker;
         if (Health <= 0)

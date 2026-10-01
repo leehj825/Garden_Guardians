@@ -77,6 +77,7 @@ public sealed partial class World
             Anthill = Anthill is { } hill ? hill.Position : null,
             AnthillStock = Anthill?.Stock ?? 0,
             AnthillLevel = Anthill?.Level ?? 1,
+            AnthillFailures = Anthill?.Failures ?? 0,
             AssaultsWon = AssaultsWon,
             EggsEaten = EggsEaten,
         };
@@ -275,6 +276,8 @@ public sealed partial class World
         foreach (LifeRecord life in save.Lives)
             _lives[life.Id] = life;
         RestoreAnthill(save.Anthill, save.AnthillStock, save.AnthillLevel);
+        if (Anthill is { } loadedHill)
+            loadedHill.Failures = save.AnthillFailures;
         AssaultsWon = save.AssaultsWon;
         EggsEaten = save.EggsEaten;
         HighestHillLevelBeaten = Math.Max(0, (Anthill?.Level ?? 1) - 1);
