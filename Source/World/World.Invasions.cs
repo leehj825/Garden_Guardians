@@ -167,15 +167,19 @@ public sealed partial class World
     {
         Vector3 at = village.Centre;
         float start = (float)(Rng.NextDouble() * MathF.Tau);
-        for (int attempt = 0; attempt < 24; attempt++)
+        // Out as far as there is ground, along one bearing or another (the nearer, the later it is tried).
+        bool found = false;
+        for (float r = InvaderSpawnDistance; r >= 14f && !found; r -= 2f)
         {
-            float angle = start + attempt * 0.7f;
-            float r = InvaderSpawnDistance - (attempt / 8) * 8f;
-            Vector3 p = Grounded(village.Centre + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * r);
-            if (Terrain.Contains(p, 3f) && !IsBlocked(p, InvaderSpider.BodyRadius + 0.3f) && !IsWater(p))
+            for (int k = 0; k < 12 && !found; k++)
             {
-                at = p;
-                break;
+                float angle = start + k * MathF.Tau / 12f;
+                Vector3 p = Grounded(village.Centre + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * r);
+                if (Terrain.Contains(p, 3f) && !IsBlocked(p, InvaderSpider.BodyRadius + 0.3f) && !IsWater(p))
+                {
+                    at = p;
+                    found = true;
+                }
             }
         }
         for (int i = 0; i < count; i++)
