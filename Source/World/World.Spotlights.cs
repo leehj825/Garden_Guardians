@@ -33,7 +33,7 @@ public sealed partial class World
     /// <summary>
     /// Everything worth watching right now, for the Director: moments in the
     /// spotlight (fading with age), leadership duels, fights between kin,
-    /// raids, the Wolf Spider on the hunt, the Owl and the Heron at work,
+    /// raids, the Wolf Spider on the hunt,
     /// beetle hunts — and, when nothing's happening, the busiest village.
     /// </summary>
     public List<Shot> DirectorShots()
@@ -90,12 +90,8 @@ public sealed partial class World
             };
             shots.Add(new Shot(what, spider.State == SpiderState.Pouncing ? 8f : spider.State == SpiderState.Hunting ? 5.5f : 3f, spider, spider.Position));
         }
-        if (Owl is { IsSlain: false, IsLeaving: false } owl)
-            shots.Add(new Shot(owl.IsLanded ? "The owl has struck" : "The owl is out hunting", owl.IsLanded ? 8f : 4f, null, Grounded(owl.Position)));
         foreach (Feast feast in _feasts)
             shots.Add(new Shot($"A harvest feast in {feast.Host.Title}", 5f + 0.2f * Math.Min(feast.Attended.Count, 15), null, feast.Site));
-        if (Heron is { IsLanded: true } heron)
-            shots.Add(new Shot("The heron stalks the shallows", 3.5f, heron, heron.Position));
 
         // Nothing much happening: the liveliest village.
         KinGroup? busiest = null;

@@ -146,15 +146,7 @@ public static partial class Game
             $"Stag Beetles: {world.BeetlesKilled}",
             $"Grubs: {world.GrubsKilled}",
             $"Hornets swatted: {world.HornetsKilled}",
-            $"Frogs caught: {world.FrogsCaught} (the heron took {world.FrogsTakenByHeron})",
             $"Sling kills: {world.SlingKills}",
-        }));
-
-        sections.Add(("The heron", new List<string>
-        {
-            world.Heron is { IsLanded: true } ? "At the pond now!" : "Not at the pond",
-            $"Visits: {world.HeronVisits}, lunges {world.HeronStabs}",
-            $"Driven off: {world.HeronsDrivenOff}, brought down {world.HeronsKilled}",
         }));
 
         sections.Add(("Weather", new List<string>

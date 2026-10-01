@@ -48,9 +48,6 @@ public sealed class KinGroup
     /// <summary>Until when (game seconds) the clan is awake after an alarm.</summary>
     public float AlarmUntil { get; set; }
 
-    /// <summary>Combs of honey its members have taken from the hive (see World.Beehive).</summary>
-    public int HoneyTaken { get; set; }
-
     /// <summary>The year it last held a harvest feast (see World.Feasts).</summary>
     public int LastFeastYear { get; set; }
 

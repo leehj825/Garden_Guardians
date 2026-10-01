@@ -141,7 +141,7 @@ internal static unsafe class BramblekinModel
             BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or
                 BramblekinState.Dueling => BramblekinClip.Combat,
             BramblekinState.Collecting or BramblekinState.Building or BramblekinState.Farming or
-                BramblekinState.Foraging or BramblekinState.Stockpiling or BramblekinState.GatheringHoney or
+                BramblekinState.Foraging or BramblekinState.Stockpiling or
                 BramblekinState.Raiding => BramblekinClip.Gathering,
             _ => BramblekinClip.Idle,
         };

@@ -304,7 +304,7 @@ public sealed partial class Bramblekin : ICombatant
 
     // Perception results, refreshed every PerceptionInterval.
     private FoodShard? _perceivedFood;
-    /// <summary>Small game in sight: a Grub, or a frog out on the bank.</summary>
+    /// <summary>Small game in sight: a Grub.</summary>
     private ICombatant? _perceivedPrey;
     private Twig? _perceivedTwig;
     private ICombatant? _perceivedThreat;
@@ -716,10 +716,6 @@ public sealed partial class Bramblekin : ICombatant
         if (UpdateWaterCarry(deltaTime, world))
             return;
 
-        // 2c') A honey foray under way is seen through.
-        if (UpdateHoneyForay(deltaTime, world))
-            return;
-
         // 2c'') A harvest feast within reach.
         if (UpdateFeast(deltaTime, world))
             return;
@@ -742,10 +738,9 @@ public sealed partial class Bramblekin : ICombatant
 
     /// <summary>
     /// Perception, scaled by Intelligence: the nearest available Food and
-    /// small game (a Grub, or a frog out on the bank) within
+    /// small game (a Grub) within
     /// <see cref="DetectionRadius"/>, and the most pressing threat — whoever
-    /// just hit it, else the nearest of: the Wolf Spider, any Hornet, the
-    /// Heron (wading, or standing still close by), any Bramblekin attacking
+    /// just hit it, else the nearest of: the Wolf Spider, any Hornet, any Bramblekin attacking
     /// it, or (Group Dynamics) whatever is attacking or fighting one of its
     /// groupmates.
     /// </summary>
@@ -816,17 +811,6 @@ public sealed partial class Bramblekin : ICombatant
             if (!invader.IsDead)
                 Consider(invader, allyDefense: false);
         }
-        // The Heron: wading, it's plain to see; standing stock still, only close up.
-        if (world.Heron is { IsLanded: true } heron &&
-            GroundMover.HorizontalDistance(Position, heron.Position) <= (heron.IsStill ? Heron.StillSightRadius : Heron.ThreatRadius))
-            Consider(heron, allyDefense: false);
-        // Bees roused from the hive.
-        if (world.Swarms.Count > 0 && world.NearestSwarm(Position, 4f) is { } swarm)
-            Consider(swarm, allyDefense: false);
-        // The Owl, down on the ground over its catch.
-        if (world.Owl is { IsLanded: true } owl && GroundMover.HorizontalDistance(Position, owl.Position) <= Owl.ThreatRadius)
-            Consider(owl, allyDefense: true);
-
         List<Bramblekin> nearby = world.QueryColonyWithin(Position, radius);
         for (int i = 0; i < nearby.Count; i++)
         {

@@ -56,8 +56,7 @@ public sealed partial class World
 
     /// <summary>
     /// At each Leader decision: a settled clan may come to revere something
-    /// it has lived close to — the Oak (living under it, or having tasted
-    /// its honey), the Pond (living by it), the Spider (having fought it,
+    /// it has lived close to — the Oak (living under it), the Pond (living by it), the Spider (having fought it,
     /// or lost kin to danger), the Moon (keeping a hearth through the
     /// night) — and raises a shrine to it by its main home. A raised shrine
     /// binds the clan closer. And now and then a prophet has a vision of
@@ -73,7 +72,7 @@ public sealed partial class World
             if (Rng.NextDouble() >= BeliefChance * wisdom)
                 return;
             List<Belief> felt = new();
-            if (GroundMover.HorizontalDistance(home.Position, OakCenter) < 35f || group.HoneyTaken > 0)
+            if (GroundMover.HorizontalDistance(home.Position, OakCenter) < 35f)
                 felt.Add(Belief.Oak);
             if (WaterMap.UsualDistanceToWater(home.Position.X, home.Position.Z) < 12f)
                 felt.Add(Belief.Pond);

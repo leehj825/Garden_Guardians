@@ -374,7 +374,6 @@ public sealed partial class World
             return false;
         _foodByKind[(int)food.Kind]++;
         NoteDeposited(shelter);
-        StoreHoneyExtra(shelter, food);
         food.Deactivate();
         return true;
     }

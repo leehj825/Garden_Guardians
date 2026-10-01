@@ -198,7 +198,7 @@ public static partial class Game
         Projection = CameraProjection.Perspective,
     };
 
-    /// <summary>The terrain number in the GARDEN_TERRAIN environment variable, if there is one (0-3 baked; 1000000 and up grown from a seed): a development aid that overrides the choice for a new garden and headless runs.</summary>
+    /// <summary>The terrain number in the GARDEN_TERRAIN environment variable, if there is one (0 baked; 1000000 and up grown from a seed): a development aid that overrides the choice for a new garden and headless runs.</summary>
     private static int? ForcedTerrain => int.TryParse(Environment.GetEnvironmentVariable("GARDEN_TERRAIN"), out int terrain) ? terrain : null;
 
     /// <summary>
@@ -667,15 +667,9 @@ public static partial class Game
             $"Snares: {world.SnareCatches} grubs caught, {world.SnaresReset} snares set again; at the end {world.Groups.Count(g => World.Knows(g, Craft.Snares))} clans snare, " +
             $"{world.Snares.Count(s => s.IsSet)} of {world.Snares.Count} snares set.");
         Console.WriteLine(
-            $"Pond life: {world.FrogsCaught} frogs caught by kin, {world.FrogsTakenByHeron} by the heron; the heron came {world.HeronVisits} times, " +
-            $"lunged {world.HeronStabs} times, was driven off {world.HeronsDrivenOff} times and brought down {world.HeronsKilled} times.");
-        Console.WriteLine(
             $"Herding: {world.PensFenced} pens fenced, {world.HoneydewDrops} drops of honeydew, {world.AphidsBred} aphids bred; lost {world.AphidsLostToAnts} to ants, " +
             $"{world.AphidsLostToSpider} to the spider, {world.AphidsRustled} rustled in raids; at the end {world.Groups.Count(g => World.Knows(g, Craft.Herding))} clans herd, " +
             $"{world.Pens.Sum(p => p.Aphids)} aphids in {world.Pens.Count(p => p.Aphids > 0)} pens.");
-        Console.WriteLine(
-            $"Honey: {world.HoneyTaken} combs taken from the hive ({world.HiveHoney} left in it), {world.SwarmsRoused} swarms roused, {world.BeeStings} stings, " +
-            $"{world.BeesSwatted} bees swatted; {world.HoneyGifts} combs given as courtship gifts; {world.Groups.Count(g => World.Knows(g, Craft.Smoking))} clans smoke the bees out.");
         Console.WriteLine(
             $"Feasts: {world.FeastsHeld} harvest feasts held, {world.FeastGuests} guests from other clans came, {world.FeastCouples} couples met across clans at one, " +
             $"{world.FeastAlliances} alliances made over one.");
@@ -688,8 +682,7 @@ public static partial class Game
             $"{world.Groups.Count(g => World.Knows(g, Craft.Shields))} clans carry shields at the end; the greatest champion alive has won " +
             $"{(world.Colony.Count(k => !k.IsDead) > 0 ? world.Colony.Where(k => !k.IsDead).Max(k => k.ChampionWins) : 0)}.");
         Console.WriteLine(
-            $"Nights: {world.NightsPassed} nights; {world.WatchesPosted} watches posted, {world.AlarmsRaised} alarms raised, {world.NightRaids} raids set out in the dark. " +
-            $"The owl came out {world.OwlVisits} nights, struck {world.OwlStrikes} times ({world.OwlKills} killed), was driven off {world.OwlsDrivenOff} times and brought down {world.OwlsKilled} times.");
+            $"Nights: {world.NightsPassed} nights; {world.WatchesPosted} watches posted, {world.AlarmsRaised} alarms raised, {world.NightRaids} raids set out in the dark.");
         Console.WriteLine(
             $"Building: a Tent takes {world.AverageTentBuildSeconds:0}s on average, a House upgrade {world.AverageHouseUpgradeSeconds:0}s; " +
             $"{world.StagesOlderThan(600f)} of {world.Shelters.Count(s => !s.IsBuilt || s.IsUpgrading)} construction stages under way have stalled over 10 min.");
@@ -1304,7 +1297,7 @@ public static partial class Game
             $"Bramblekin {living}: {solitary} solitary, {world.Groups.Count} groups (largest {largestGroup}, {world.Groups.Count(World.KnowsFarming)} farming)   " +
             $"Alliances {world.CurrentAlliances}   Wars {world.CurrentWars}",
             $"Foraging {Count(BramblekinState.Foraging) + Count(BramblekinState.Hunting)}   Eating {Count(BramblekinState.Eating)}   Drinking {Count(BramblekinState.Drinking)}   " +
-            $"Fleeing {Count(BramblekinState.Fleeing)}   Fighting {Count(BramblekinState.Fighting)}   Robbing {Count(BramblekinState.Attacking)}   Asleep {Count(BramblekinState.Sleeping)}{(world.Feasts.Count > 0 ? $"   Feasting {Count(BramblekinState.Feasting)}" : "")}{(world.Owl is { IsLeaving: false } ? "   Owl out!" : "")}",
+            $"Fleeing {Count(BramblekinState.Fleeing)}   Fighting {Count(BramblekinState.Fighting)}   Robbing {Count(BramblekinState.Attacking)}   Asleep {Count(BramblekinState.Sleeping)}{(world.Feasts.Count > 0 ? $"   Feasting {Count(BramblekinState.Feasting)}" : "")}",
             $"Arrived {world.Arrivals}   Died: starved {world.DeathsByStarvation}, thirst {world.DeathsByThirst}, old age {world.DeathsByOldAge}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}, sickness {world.DeathsBySickness}   Sick {world.SickCount}",
             $"Born {world.Births} (gen {world.MaxGeneration})   Couples {world.LivingCouples}   Politics: {world.Departures} left, {world.Splinters} splits, {world.Coups} coups, {world.Exiles} exiles   Raids {world.StoreRaids}",
         };

@@ -104,7 +104,6 @@ public sealed partial class Bramblekin
         FoodShardKind.Cress => 15f,
         FoodShardKind.Fish => 5f,
         FoodShardKind.Honeydew => 4f,
-        FoodShardKind.Honey => 2f,
         FoodShardKind.Berry or FoodShardKind.Mushroom => 3f,
         _ => 0f,
     };

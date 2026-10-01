@@ -149,7 +149,7 @@ public sealed partial class Bramblekin
             return true;
         }
 
-        // Low stores are worth a hunt: a Grub (or a frog) near home becomes meat to stock.
+        // Low stores are worth a hunt: a Grub near home becomes meat to stock.
         float fill = world.GroupOf(this) is { } group ? world.StoreFill(group) : home.StoredFood / (float)home.StoreCapacity;
         if (!IsYoung && fill < 0.5f && LivePrey is { } prey &&
             GroundMover.HorizontalDistanceSquared(prey.Position, home.Position) <= StockpileRange * StockpileRange)

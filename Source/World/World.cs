@@ -499,8 +499,6 @@ public sealed partial class World
             Beetles[i].Update(deltaTime, this);
         Prof.Mark("Beetles");
 
-        UpdatePondLife(deltaTime);
-        Prof.Mark("UpdatePondLife");
         IndexRipeCrops();
         Prof.Mark("IndexRipeCrops");
 
@@ -559,8 +557,6 @@ public sealed partial class World
         Prof.Mark("UpdateWallBuilding");
         UpdateGoods(deltaTime);
         Prof.Mark("UpdateGoods");
-        UpdateBeehive(deltaTime);
-        Prof.Mark("UpdateBeehive");
         UpdateArrivals(deltaTime);
         Prof.Mark("UpdateArrivals");
         UpdateFoodDespawn(deltaTime);

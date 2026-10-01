@@ -59,8 +59,7 @@ public sealed partial class Bramblekin
         {
             world.ConsumeFood(food);
             _carried = null;
-            Hunger = MathF.Max(0f, Hunger - FoodNourishment - (_mealCooked ? World.CookedNourishmentBonus : 0f) -
-                                   (food.Kind == FoodShardKind.Honey ? World.HoneyNourishmentBonus : 0f));
+            Hunger = MathF.Max(0f, Hunger - FoodNourishment - (_mealCooked ? World.CookedNourishmentBonus : 0f));
             QuenchWith(food.Kind);
             Heal(FoodHealing + (_mealCooked ? World.CookedHealingBonus : 0));
             if (_mealCooked)
@@ -112,8 +111,7 @@ public sealed partial class Bramblekin
     /// cooldown. When robbing, the first blow that lands takes the victim's
     /// food (see <see cref="World.StealFood"/>). Blood is thicker than
     /// water: it never deals a close relative (parent, child, sibling) the
-    /// blow that would kill it. A slinger stops short of a Hornet, a frog or
-    /// the Heron and looses pebbles instead (see <see cref="TrySling"/>).
+    /// blow that would kill it. A slinger stops short of a Hornet and looses pebbles instead (see <see cref="TrySling"/>).
     /// </summary>
     private void PursueAndStrike(ICombatant target, float speed, float deltaTime, World world)
     {
@@ -143,7 +141,7 @@ public sealed partial class Bramblekin
         if (State == BramblekinState.Fighting && _threatIsAllyDefense)
             world.NoteDefended(this, target);
         if (target is not Bramblekin)
-            Train(Skill.Hunting, world, target is StagBeetle or WolfSpider or Heron ? 2f : 1f);
+            Train(Skill.Hunting, world, target is StagBeetle or WolfSpider ? 2f : 1f);
         target.TakeHit(target is Bramblekin ? StrikeDamage : HuntingDamage, this, world);
     }
 

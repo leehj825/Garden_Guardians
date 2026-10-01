@@ -44,7 +44,7 @@ public enum Craft
     /// <summary>Digging a well by the main home, lined with stones its Builders carry in — water at the door, all year, drought or no (see World.Wells).</summary>
     Wells = 1024,
 
-    /// <summary>Slings of twisted grass that loose pebbles: a Hornet, a frog on the bank or the Heron can be hit from a few paces off (see Bramblekin.Slings).</summary>
+    /// <summary>Slings of twisted grass that loose pebbles: a Hornet can be hit from a few paces off (see Bramblekin.Slings).</summary>
     Slings = 2048,
 
     /// <summary>A hearth out front of each House, kept burning with twigs: food eaten there is cooked (more filling, more healing), and folk wintering in beside it stay warmer (see World.Hearths).</summary>
@@ -59,8 +59,6 @@ public enum Craft
     /// <summary>Herding aphids in a pen by the main home for their honeydew — steady food that keeps (see World.Herding).</summary>
     Herding = 32768,
 
-    /// <summary>Smoking out the bees with a brand from the hearth before taking their honey: they seldom rouse (see World.Beehive).</summary>
-    Smoking = 65536,
 
     /// <summary>Shields of stag-beetle shell, issued to those whose job is fighting (Guards, Raiders, Hunters): a third less from every blow and bite, a Guard still less (see Bramblekin.HasShield, TakeDamage).</summary>
     Shields = 131072,

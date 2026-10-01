@@ -20,8 +20,7 @@ public sealed partial class Bramblekin
     /// <summary>
     /// Night (fed and safe): time for bed. It goes home and sleeps inside
     /// (healing as it would resting there); with no home, it sleeps where it
-    /// is — close by its Leader, if it follows one — out in the open, where
-    /// the Owl hunts. Not everyone sleeps: its clan's night watch keeps
+    /// is — close by its Leader, if it follows one — out in the open. Not everyone sleeps: its clan's night watch keeps
     /// watch by home, a raiding party keeps at it (raids go best in the
     /// dark), an errand is seen through, and an alarm wakes the whole clan.
     /// Returns false when it isn't bedtime for it.

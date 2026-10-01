@@ -10,7 +10,7 @@ public sealed partial class Bramblekin
     /// committed to (see <see cref="BeginRobbery"/>); else forage the nearest
     /// visible Food or eat from its home's store, whichever is closer (see
     /// <see cref="PrefersLooseFood"/>); else scavenge an
-    /// abandoned store; else hunt small game (a Grub, a frog on the bank), or
+    /// abandoned store; else hunt small game (a Grub), or
     /// a Stag Beetle with its pack; else (starving) eat the clan's seed corn;
     /// else (starving and Aggressive) raid someone's store; else — a
     /// follower borrows its
