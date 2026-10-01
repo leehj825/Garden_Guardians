@@ -164,15 +164,18 @@ public sealed partial class Bramblekin
 
     private static readonly Color ShieldColor = new(95, 55, 35, 255);
 
-    /// <summary>A round shield of glossy beetle shell on its arm, with a boss in its clan's colour.</summary>
+    /// <summary>A round shield of glossy beetle shell held out in front of the arm, face forward — big enough to read from the camera — with a boss in its clan's colour.</summary>
     private void DrawShield(Vector2 facing, KinGroup? group)
     {
+        float body = BodyHeight * BodyScale;
         var side = new Vector3(-facing.Y, 0f, facing.X);
-        Vector3 at = Position + new Vector3(0f, BodyHeight * 0.5f, 0f) + side * 0.22f + new Vector3(facing.X, 0f, facing.Y) * 0.08f;
-        const float width = 0.4f;
-        float yaw = MathF.Atan2(side.X, side.Z) * 180f / MathF.PI;
+        var forward = new Vector3(facing.X, 0f, facing.Y);
+        float width = 0.55f * body;
+        // Out beyond the arm and ahead of the chest, so the body does not hide it; face forward, like a soldier's.
+        Vector3 at = Position + new Vector3(0f, body * 0.5f, 0f) + side * (0.42f * body) + forward * (0.3f * body);
+        float yaw = MathF.Atan2(forward.X, forward.Z) * 180f / MathF.PI;
         VillageModels.Draw(VillageItem.Shield, at - new Vector3(0f, VillageModels.HeightAt(VillageItem.Shield, width) / 2f, 0f), yaw, width, Color.White);
         if (group?.Color is { } clan)
-            Detail.Sphere(at + side * 0.06f, 0.04f, clan);
+            Detail.Sphere(at + forward * (0.06f * body), 0.05f * body, clan);
     }
 }
