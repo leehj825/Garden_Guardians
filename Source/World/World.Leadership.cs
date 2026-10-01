@@ -329,6 +329,15 @@ public sealed partial class World
                 member.AssignJob(KinJob.Fisher);
         }
 
+        // A clan with spears keeps a bold Gatherer out hunting game for every few of its people, whether or not a Stag Beetle is about.
+        if (group.Goal is not (GroupGoal.Defend or GroupGoal.Raid or GroupGoal.Hunt) && group.Home is { IsBuilt: true } && World.Knows(group, Craft.Spears) && members.Count >= 3)
+        {
+            int hunters = Math.Max(1, members.Count / 5);
+            foreach (Bramblekin member in members.Where(m => m.Job == KinJob.Gatherer && m.Health > Bramblekin.MaxHealth * 0.6f)
+                         .OrderByDescending(m => m.Personality.Courage + 0.5f * m.Personality.Aggression + m.SkillAt(Skill.Hunting)).Take(hunters))
+                member.AssignJob(KinJob.Hunter);
+        }
+
         // A clan with herb-lore keeps someone kind and clever tending its sick and wounded.
         if (group.Goal != GroupGoal.Raid && World.Knows(group, Craft.Herbalism) && members.Count >= 2 && members.Any(m => m.NeedsCare))
             members.Where(m => m.Job == KinJob.Gatherer && !m.NeedsCare)
