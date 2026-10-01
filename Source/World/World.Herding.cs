@@ -108,7 +108,7 @@ public sealed partial class World
             float angle = (float)(Rng.NextDouble() * MathF.Tau);
             float distance = (home is null ? 3.5f : home.PalisadeRadius + AphidPen.DrawRadius + 0.4f) + attempt * 0.25f + (float)Rng.NextDouble() * 1.5f;
             Vector3 spot = Grounded(around + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * distance);
-            if (!Terrain.Contains(spot, AphidPen.DrawRadius + 1f) || IsBlocked(spot, AphidPen.Radius) || IsCramped(spot))
+            if (!Terrain.Contains(spot, AphidPen.DrawRadius + 1f) || IsBlockedOrAntZone(spot, AphidPen.Radius) || IsCramped(spot))
                 continue;
             if (Shelters.Any(s => !s.IsCollapsed && GroundMover.HorizontalDistance(s.Position, spot) < HomeYard(s) + AphidPen.DrawRadius))
                 continue;

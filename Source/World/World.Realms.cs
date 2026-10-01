@@ -206,6 +206,7 @@ public sealed partial class World
                 from.TryDeposit();
         }
         kingdom.Pledged = pledged;
+        ConsiderAssault(kingdom, capital);
     }
 
     /// <summary>A soldier of a kingdom's village, one in <see cref="PledgeOneIn"/>, is sworn to defend its sister villages too.</summary>

@@ -90,6 +90,8 @@ public sealed partial class World
             };
             shots.Add(new Shot(what, spider.State == SpiderState.Pouncing ? 8f : spider.State == SpiderState.Hunting ? 5.5f : 3f, spider, spider.Position));
         }
+        if (CurrentAssault is { } assault && Anthill is { } assaultHill)
+            shots.Add(new Shot(assault.Phase is AssaultPhase.Mustering or AssaultPhase.Returning or AssaultPhase.Retreating ? $"The soldiers of {assault.Name} on the ant hill expedition" : "The assault on the ant hill", assault.Phase == AssaultPhase.Fighting ? 9f : 5.5f, null, assault.Phase is AssaultPhase.Mustering or AssaultPhase.Returning or AssaultPhase.Retreating ? assault.Muster : assaultHill.Position));
         foreach (Feast feast in _feasts)
             shots.Add(new Shot($"A harvest feast in {feast.Host.Title}", 5f + 0.2f * Math.Min(feast.Attended.Count, 15), null, feast.Site));
 

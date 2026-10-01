@@ -4,7 +4,7 @@ using Raylib_cs;
 namespace GardenGuardians;
 
 /// <summary>
-/// An ant from the rival colony (see <see cref="Anthill"/> and World.Ants):
+/// A thief ant from the rival colony (see <see cref="Anthill"/> and World.AntHill):
 /// it goes for the nearest store with food in reach of its hill — any but
 /// a palisaded one — takes a piece and carries it home, or picks up loose
 /// food lying near the hill. Easy to swat, and Bramblekin defend their homes
@@ -12,8 +12,11 @@ namespace GardenGuardians;
 /// </summary>
 public sealed class Ant : ICombatant
 {
-    public const float BodyRadius = 0.12f;
-    public const float EdgeMargin = 0.3f;
+    /// <summary>The model's scale: about 0.8 m from head to tail (a Bramblekin is 1 m tall).</summary>
+    public const float ModelScale = 0.8f;
+
+    public const float BodyRadius = 0.28f;
+    public const float EdgeMargin = 0.5f;
     public const int MaxHealth = 5;
 
     private const float Speed = 1.5f;
@@ -27,12 +30,11 @@ public sealed class Ant : ICombatant
     /// <summary>…this often, while it's within reach.</summary>
     private const float BiteInterval = 1.2f;
 
-    private const float BiteRange = 0.45f;
+    private const float BiteRange = 0.6f;
 
     /// <summary>It stays angry at its attacker this long.</summary>
     private const float AngerSeconds = 5f;
 
-    private static readonly Color BodyColor = new(90, 35, 25, 255);
     private static readonly Color LoadColor = new(210, 40, 45, 255);
     private static readonly Color AphidLoadColor = new(150, 210, 90, 255);
 
@@ -101,8 +103,8 @@ public sealed class Ant : ICombatant
 
         if (IsLaden)
         {
-            if (_mover.MoveTowards(hill.Position, Speed, deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius)) ||
-                GroundMover.HorizontalDistance(Position, hill.Position) <= Anthill.Radius)
+            if (_mover.MoveTowards(hill.Mouth, Speed, deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius)) ||
+                GroundMover.HorizontalDistance(Position, hill.Mouth) <= 1.2f)
             {
                 if (!CarriesAphid)
                     hill.Stock++;
@@ -161,7 +163,7 @@ public sealed class Ant : ICombatant
         if (_mover.MoveTowards(_wanderTarget, Speed * 0.5f, deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius)))
         {
             float angle = (float)(_rng.NextDouble() * MathF.Tau);
-            _wanderTarget = hill.Position + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * (2f + (float)_rng.NextDouble() * 6f);
+            _wanderTarget = hill.Position + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * (Anthill.Radius + 1.5f + (float)_rng.NextDouble() * 6f);
         }
     }
 
@@ -184,52 +186,12 @@ public sealed class Ant : ICombatant
         return true;
     }
 
-    /// <summary>Three dark red-brown beads — head, thorax, abdomen — with a berry on its back when laden.</summary>
+    /// <summary>The ant model, facing the way it walks, with a berry (or an aphid) on its back when laden.</summary>
     public void Draw()
     {
         Vector2 heading = _mover.Heading;
-        var forward = new Vector3(heading.X, 0f, heading.Y) * 0.11f;
-        Vector3 center = Position + new Vector3(0f, 0.07f, 0f);
-        Detail.Sphere(center + forward, 0.05f, BodyColor);
-        Detail.Sphere(center, 0.04f, BodyColor);
-        Detail.Sphere(center - forward * 1.1f, 0.065f, BodyColor);
+        PropModels.DrawAnt(Position, MathF.Atan2(heading.X, heading.Y) * 180f / MathF.PI, ModelScale, Color.White);
         if (IsLaden)
-            Detail.Sphere(center + new Vector3(0f, 0.09f, 0f), 0.06f, CarriesAphid ? AphidLoadColor : LoadColor);
-    }
-}
-
-/// <summary>
-/// The rival ant colony's mound, dug in near the garden's edge from its
-/// second year: it sends ants out after the Bramblekin's stores from
-/// spring to autumn — more of them the more food it has taken in.
-/// </summary>
-public sealed class Anthill
-{
-    public const float Radius = 0.8f;
-
-    /// <summary>Its ants rob stores within this many meters of it…</summary>
-    public const float ForageRadius = 55f;
-
-    /// <summary>…and pick up loose food only this close to home.</summary>
-    public const float GleanRadius = 18f;
-
-    private static readonly Color MoundColor = new(150, 110, 70, 255);
-    private static readonly Color HoleColor = new(40, 28, 20, 255);
-
-    public Anthill(Vector3 position) => Position = World.Grounded(position);
-
-    public Vector3 Position { get; }
-
-    /// <summary>Food its ants have brought home.</summary>
-    public int Stock { get; set; }
-
-    /// <summary>How many ants it keeps out at once: 2, plus one per 15 food taken, up to 6.</summary>
-    public int MaxAnts => Math.Min(6, 2 + Stock / 15);
-
-    public void Draw()
-    {
-        float size = Radius * (1f + Math.Min(Stock, 60) / 120f);
-        Raylib.DrawCylinder(Position, 0f, size, size * 0.8f, 10, MoundColor);
-        Detail.Sphere(Position + new Vector3(0f, size * 0.78f, 0f), 0.09f, HoleColor);
+            Detail.Sphere(Position + new Vector3(0f, 0.5f, 0f), 0.14f, CarriesAphid ? AphidLoadColor : LoadColor);
     }
 }

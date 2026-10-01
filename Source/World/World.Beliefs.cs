@@ -196,7 +196,7 @@ public sealed partial class World
         {
             float angle = (float)(Rng.NextDouble() * MathF.Tau);
             Vector3 spot = home.Position + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * (home.Radius + 2.2f);
-            if (Terrain.Contains(spot, 1f) && !IsBlocked(spot, 0.6f) && !IsNearHome(spot, 0.3f) &&
+            if (Terrain.Contains(spot, 1f) && !IsBlockedOrAntZone(spot, 0.6f) && !IsNearHome(spot, 0.3f) &&
                 !Pens.Any(p => p.Contains(spot)))
                 return Grounded(spot);
         }

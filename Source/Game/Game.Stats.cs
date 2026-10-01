@@ -136,8 +136,11 @@ public static partial class Game
         {
             $"Ill now: {world.SickCount}, ever {world.SicknessCases}",
             $"Died of sickness: {world.DeathsBySickness}",
-            world.Anthill is { } hill ? $"Anthill: {hill.Stock} food, {world.Ants.Count} ants out" : "No ants yet",
+            world.Anthill is { } hill ? $"Ant hill: level {hill.Level} ({hill.GuardCount} guards), {hill.Stock} food, {world.Ants.Count} thieves out" : "No ant hill",
             $"Stolen by ants: {world.AntThefts}, swatted {world.AntsKilled}",
+            $"Assaults on the hill: {world.AssaultsLaunched} sent, {world.AssaultsWon} won, {world.AssaultsCalledOff} called off",
+            $"Guards slain {world.GuardsSlain}, best level beaten {world.HighestHillLevelBeaten}, eggs eaten {world.EggsEaten}, soldiers who ran {world.Deserters}",
+            world.CurrentAssault is { } assault ? $"An assault is under way: {assault.Phase.ToString().ToLowerInvariant()}" : "No assault under way",
         }));
 
         sections.Add(("Hunting", new List<string>

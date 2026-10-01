@@ -37,7 +37,7 @@ public sealed partial class World
             float angle = (float)(Rng.NextDouble() * MathF.Tau);
             float radius = MathF.Sqrt((float)Rng.NextDouble()) * BerryPatchRadius;
             Vector3 spot = anchor + new Vector3(MathF.Cos(angle) * radius, 0f, MathF.Sin(angle) * radius);
-            if (Terrain.Contains(spot, 1f) && !IsBlocked(spot, FoodShard.Radius + 0.1f))
+            if (Terrain.Contains(spot, 1f) && !IsBlockedOrAntZone(spot, FoodShard.Radius + 0.1f))
                 return spot;
         }
         return RandomFreePoint(FoodShard.Radius + 0.3f, edgeMargin: 1f);

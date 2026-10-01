@@ -552,7 +552,7 @@ public static partial class Game
     /// display, and for tuning — pass a <paramref name="seed"/> to replay
     /// the exact same run.
     /// </summary>
-    public static void RunHeadless(float simulatedSeconds, int? seed, string? loadPath = null, string? savePath = null)
+    public static void RunHeadless(float simulatedSeconds, int? seed, string? loadPath = null, string? savePath = null, int assaultLevel = 0, float assaultAt = 60f)
     {
         _isHeadless = true;
         const float step = 1f / 60f;
@@ -580,8 +580,15 @@ public static partial class Game
         float endTime = world.ElapsedSeconds + simulatedSeconds;
         float reportTimer = 0f;
         int steps = 0;
+        bool assaultStarted = assaultLevel <= 0;
         while (world.ElapsedSeconds < endTime)
         {
+            if (!assaultStarted && world.ElapsedSeconds >= assaultAt)
+            {
+                assaultStarted = true;
+                World.AssaultsEnabled = false; // Only the test one.
+                world.StartTestAssault(assaultLevel);
+            }
             world.Update(step);
             world.CommitPendingChanges();
             Prof.Mark("Commit");
@@ -616,7 +623,9 @@ public static partial class Game
             $"Weather: {world.BountifulSeasons} bountiful seasons, {world.Droughts} droughts, {world.HarshWinters} harsh winters, {world.Storms} storms, " +
             $"{world.Floods} floods ({world.HomesFlooded} homes flooded, {world.FoodWashedAway} food washed away).");
         Console.WriteLine(
-            $"Ants: {(world.Anthill is { } hill ? $"a hill with {hill.Stock} food" : "none yet")}; {world.AntThefts} food stolen from stores, {world.AntsKilled} ants swatted. " +
+            $"Ants: {(world.Anthill is { } hill ? $"a level {hill.Level} hill with {hill.Stock} food" : "none yet")}; {world.AntThefts} food stolen from stores, {world.AntsKilled} thief ants swatted. " +
+            $"Assaults on the hill: {world.AssaultsLaunched} sent, {world.AssaultsWon} won ({world.EggsEaten} eggs eaten, best level beaten {world.HighestHillLevelBeaten}), {world.AssaultsCalledOff} called off, " +
+            $"{world.AssaultsLost} lost; {world.GuardsSlain} guards slain, {world.Deserters} soldiers ran away. " +
             $"The oak dropped {world.AcornsFallen} acorns. Ways found round the pond: {WaterMap.RoutesFound}.");
         Console.WriteLine(
             $"Eras: {world.Groups.Count(g => World.EraOf(g) == Era.StoneAge)} clans in the Stone Age, {world.Groups.Count(g => World.EraOf(g) == Era.FarmingAge)} Farming, {world.Groups.Count(g => World.EraOf(g) == Era.VillageAge)} Village, {world.Groups.Count(g => World.EraOf(g) == Era.KingdomAge)} Kingdom; ages reached: {world.EraTransitions[1]} Farming, {world.EraTransitions[2]} Village, {world.EraTransitions[3]} Kingdom. Paths: {world.PathCells} worn cells, {world.RoadCells} paved. {world.Groups.Count(g => World.Knows(g, Craft.Tools))} clans have tools, {world.Groups.Count(g => World.Knows(g, Craft.Roads))} roads, {world.Groups.Count(g => World.Knows(g, Craft.Writing))} writing ({world.RunesCarved} deeds carved), {world.Groups.Count(g => World.Knows(g, Craft.Watchtowers))} watchtowers ({world.HornsSounded} horns), {world.Groups.Count(g => World.Knows(g, Craft.Calendar))} calendars ({world.SolsticesKept} solstices), {world.Groups.Count(g => World.Knows(g, Craft.Medicine))} medicine ({world.TradeInfections} trade infections), {world.Groups.Count(g => world.IsKingdom(g))} kingdoms ({world.FealtiesSworn} fealties, {world.VassalsFreed} vassals freed), {world.Groups.Count(g => World.Knows(g, Craft.Exploration))} exploring ({world.CellsMapped} cells mapped by scouts, {world.FarShoresFound} far shores reached), {world.Groups.Count(g => World.Knows(g, Craft.Rafts))} rafts ({world.RaftCrossings} crossings, {world.RaftMishaps} capsized).\n" +
@@ -1182,6 +1191,7 @@ public static partial class Game
             ($"Aggression {kin.Personality.Aggression:0.00}   Sociability {kin.Personality.Sociability:0.00}", new Color(185, 60, 45, 255)),
             ($"Intelligence {kin.Personality.Intelligence:0.00} ({kin.DetectionRadius:0}m)   Courage {kin.Personality.Courage:0.00}", new Color(60, 100, 170, 255)),
             ($"Rebellion {kin.Personality.Rebelliousness:0.00}  Persuasion {kin.Personality.Persuasiveness:0.00}  Diligence {kin.Personality.Diligence:0.00}", new Color(60, 130, 70, 255)),
+            ($"{kin.DescribeStrength()}", new Color(150, 80, 40, 255)),
             ($"Skills: {kin.DescribeSkills()}{(kin.DescribeTrade() is { } trade ? $"  ({trade})" : "")}", new Color(150, 100, 40, 255)),
             (group is null ? "Group: none" : $"Group: {group.Name ?? group.ShortId}, {group.Members.Count} members" +
                 (DescribeClan(world, group) is { } about ? $" ({about})" : ""), ink),

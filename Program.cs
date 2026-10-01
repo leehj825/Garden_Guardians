@@ -60,6 +60,7 @@ namespace GardenGuardians;
 /// periodic population reports — a quick way to check the survival loop end
 /// to end without a GPU. <c>--load</c> carries on a saved garden (for
 /// <c>seconds</c> more) and <c>--save</c> writes it out at the end.
+/// <c>--assault N</c> sends a test assault on a level-N ant hill at <c>--assault-at</c> seconds (default 60).
 /// </summary>
 public static class Program
 {
@@ -93,7 +94,11 @@ public static class Program
         string? load = OptionValue(args, "--load");
         string? save = OptionValue(args, "--save");
 
-        Game.RunHeadless(seconds, seed, load, save);
+        // --assault <level> [--assault-at <seconds>] sends a test assault on a hill of that level (a tuning aid).
+        int assaultLevel = OptionValue(args, "--assault") is { } level && int.TryParse(level, out int parsedLevel) ? parsedLevel : 0;
+        float assaultAt = OptionValue(args, "--assault-at") is { } at && float.TryParse(at, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsedAt) ? parsedAt : 60f;
+
+        Game.RunHeadless(seconds, seed, load, save, assaultLevel, assaultAt);
     }
 
     private static string? OptionValue(string[] args, string option)

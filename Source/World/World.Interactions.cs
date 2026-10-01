@@ -160,6 +160,7 @@ public sealed partial class World
                     WolfSpider => "was caught by the Wolf Spider",
                     Hornet => "was stung to death by hornets",
                     Ant => "was bitten to death by ants",
+                    HillGuard => "was bitten to death by the ant hill's guards",
                     InvaderSpider => "was bitten to death by invading spiders",
                     _ => "was killed by a predator",
                 };

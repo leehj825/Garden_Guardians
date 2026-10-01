@@ -57,6 +57,9 @@ public sealed class SaveGame
     public List<LifeRecord> Lives { get; set; } = new();
     public V3? Anthill { get; set; }
     public int AnthillStock { get; set; }
+    public int AnthillLevel { get; set; } = 1;
+    public int AssaultsWon { get; set; }
+    public int EggsEaten { get; set; }
 }
 
 public sealed class PropSave
@@ -148,6 +151,7 @@ public sealed class KinSave
     public ErrandSave? Errand { get; set; }
     public float LeaderSeconds { get; set; }
     public int SpiderKills { get; set; }
+    public int EggsEaten { get; set; }
     public int ChampionWins { get; set; }
     public float Sickness { get; set; }
     public float Immunity { get; set; }

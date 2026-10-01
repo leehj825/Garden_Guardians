@@ -76,6 +76,9 @@ public sealed partial class World
             Lives = _lives.Values.ToList(),
             Anthill = Anthill is { } hill ? hill.Position : null,
             AnthillStock = Anthill?.Stock ?? 0,
+            AnthillLevel = Anthill?.Level ?? 1,
+            AssaultsWon = AssaultsWon,
+            EggsEaten = EggsEaten,
         };
 
         foreach (PropertyInfo property in SavedProperties)
@@ -271,7 +274,10 @@ public sealed partial class World
         History.AddRange(save.History);
         foreach (LifeRecord life in save.Lives)
             _lives[life.Id] = life;
-        RestoreAnthill(save.Anthill, save.AnthillStock);
+        RestoreAnthill(save.Anthill, save.AnthillStock, save.AnthillLevel);
+        AssaultsWon = save.AssaultsWon;
+        EggsEaten = save.EggsEaten;
+        HighestHillLevelBeaten = Math.Max(0, (Anthill?.Level ?? 1) - 1);
         foreach (Bramblekin living in Colony)
             RegisterLife(living); // An older save, from before lives were kept.
 

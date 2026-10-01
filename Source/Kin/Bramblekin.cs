@@ -201,6 +201,7 @@ public sealed partial class Bramblekin : ICombatant
         Hornet => Hornet.BiteDamage,
         Ant => Ant.BiteDamage,
         InvaderSpider => InvaderSpider.BiteDamage,
+        HillGuard => HillGuard.BiteDamage,
         Bramblekin kin => kin.StrikeDamage,
         _ => 0,
     };
@@ -403,7 +404,7 @@ public sealed partial class Bramblekin : ICombatant
     public float DetectionRadius => BaseDetectionRadius + DetectionRadiusPerIntelligence * Personality.Intelligence;
 
     /// <summary>True if it can currently see a living Wolf Spider or Hornet — see <see cref="World.ResolveEncounter"/>'s Alliance rule.</summary>
-    public bool IsThreatenedByPredator => _perceivedThreat is { IsDead: false } threat && threat is WolfSpider or Hornet or InvaderSpider;
+    public bool IsThreatenedByPredator => _perceivedThreat is { IsDead: false } threat && threat is WolfSpider or Hornet or InvaderSpider or HillGuard;
 
     /// <summary>True if it can currently see loose Food it could take — a starving Bramblekin that can doesn't need to rob anyone.</summary>
     public bool SeesFood => _perceivedFood is { IsActive: true, IsCarried: false };
@@ -419,7 +420,7 @@ public sealed partial class Bramblekin : ICombatant
     private const float GuardStrikeFactor = 1.3f, RaiderStrikeFactor = 1.15f;
 
     private int StrikeDamage => (int)MathF.Round(
-        (BaseStrikeDamage + StrikeDamagePerAggression * Personality.Aggression + StrikeDamagePerStrength * (Personality.Strength - 0.5f)) *
+        (BaseStrikeDamage + StrikeDamagePerAggression * Personality.Aggression + StrikeDamagePerStrength * (Strength - 0.5f)) *
         (IsElder ? ElderStrikeFactor : 1f) * (Job == KinJob.Guard ? GuardStrikeFactor : Job == KinJob.Raider ? RaiderStrikeFactor : 1f));
 
     /// <summary>
@@ -554,7 +555,7 @@ public sealed partial class Bramblekin : ICombatant
         // A beetle-shell shield takes the edge off every blow and bite.
         if (cause is DeathCause.Kin or DeathCause.Predator)
         {
-            float factor = 1f - ToughnessPerStrength * (Personality.Strength - 0.5f);
+            float factor = 1f - ToughnessPerStrength * (Strength - 0.5f);
             if (Job == KinJob.Guard)
                 factor *= GuardToughness;
             if (HasShield)
@@ -655,7 +656,7 @@ public sealed partial class Bramblekin : ICombatant
             metabolism *= SickHungerFactor;
         if (IsAsleep)
             metabolism *= SleepMetabolism;
-        Hunger = MathF.Min(MaxHunger, Hunger + HungerPerSecond * metabolism * deltaTime);
+        Hunger = MathF.Min(MaxHunger, Hunger + HungerPerSecond * metabolism * VigorHungerFactor * deltaTime);
         if (Hunger >= MaxHunger)
         {
             _starvationTimer += deltaTime;
@@ -678,6 +679,7 @@ public sealed partial class Bramblekin : ICombatant
         if (_onRaft && PoleAcross(deltaTime, world))
             return; // Out on the water: nothing else can be done until it lands.
 
+        UpdateShaken(world);
         _perceptionTimer -= deltaTime;
         if (_perceptionTimer <= 0f)
         {
@@ -704,8 +706,16 @@ public sealed partial class Bramblekin : ICombatant
         }
         _robTarget = null; // Fed again: no reason left to rob anyone.
 
+        // 1b) In the thick of a Kingdom's assault on the ant hill (the fight, the prize), a soldier has no mind for anything else.
+        if (AssaultParty is { Phase: AssaultPhase.Fighting or AssaultPhase.Looting } && UpdateAssault(deltaTime, world))
+            return;
+
         // 2) Safety.
         if (UpdateSafety(deltaTime, world))
+            return;
+
+        // 2a) On the road to or from the hill, a soldier answers a threat on the way (above) and otherwise keeps with the band.
+        if (UpdateAssault(deltaTime, world))
             return;
 
         // 2b) Ants at its home's store get swatted.
@@ -758,6 +768,14 @@ public sealed partial class Bramblekin : ICombatant
         }
         _perceivedPrey = world.NearestPrey(Position, radius);
         _perceivedAnt = world.Ants.Count > 0 ? world.NearestLiveAnt(Position, radius) : null;
+        // Nobody chases a Grub or a thief ant into the ant hill's zone (but a Kingdom's army, which is there to fight).
+        if (AssaultParty is null)
+        {
+            if (_perceivedPrey is not null && world.IsInAntZone(_perceivedPrey.Position, 2f))
+                _perceivedPrey = null;
+            if (_perceivedAnt is not null && world.IsInAntZone(_perceivedAnt.Position, 2f))
+                _perceivedAnt = null;
+        }
         _perceivedBeetle = world.NearestLiveBeetle(Position, radius);
         _perceivedTwig = NeedsTwig ? world.NearestAvailableTwig(Position, radius, this) : null;
         if (_perceivedTwig is not null)
@@ -810,6 +828,15 @@ public sealed partial class Bramblekin : ICombatant
         {
             if (!invader.IsDead)
                 Consider(invader, allyDefense: false);
+        }
+        // The ant hill's guards, if it has come near the hill's zone.
+        if (world.Anthill is { } nearHill && GroundMover.HorizontalDistanceSquared(Position, nearHill.Position) <= (Anthill.ZoneRadius + radius) * (Anthill.ZoneRadius + radius))
+        {
+            foreach (HillGuard guard in world.HillGuards)
+            {
+                if (!guard.IsDead && !guard.IsHidden)
+                    Consider(guard, allyDefense: false);
+            }
         }
         List<Bramblekin> nearby = world.QueryColonyWithin(Position, radius);
         for (int i = 0; i < nearby.Count; i++)

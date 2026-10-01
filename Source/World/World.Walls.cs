@@ -94,7 +94,7 @@ public sealed partial class World
 
     /// <summary>True if a wall can't stand at <paramref name="p"/>: water, a rock, the oak, another home or a crop is in the way, or it is off the map.</summary>
     private bool WallSiteBlocked(Vector3 p) =>
-        !Terrain.Contains(p, 3f) || IsBlocked(p, 1.3f) ||
+        !Terrain.Contains(p, 3f) || IsBlockedOrAntZone(p, 1.3f) ||
         Shelters.Any(s => !s.IsCollapsed && GroundMover.HorizontalDistance(s.Position, p) < s.Radius + 1.3f) ||
         Crops.Any(c => GroundMover.HorizontalDistance(c.Position, p) < Crop.Radius + 1f);
 

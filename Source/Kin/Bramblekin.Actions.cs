@@ -197,7 +197,7 @@ public sealed partial class Bramblekin
 
     /// <summary>Walks toward <paramref name="target"/>, steering round Pebbles. Returns true on arrival.</summary>
     private bool MoveTo(Vector3 target, float speed, float deltaTime, World world) =>
-        _mover.MoveTowards(target, speed * AgeSpeedFactor * (IsSick ? SickSpeedFactor : 1f) * WorkPace * world.PathSpeed(Position), deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius));
+        _mover.MoveTowards(target, speed * AgeSpeedFactor * VigorSpeedFactor * (IsSick ? SickSpeedFactor : 1f) * WorkPace * world.PathSpeed(Position), deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius));
 
     private void StartPause()
     {
@@ -245,7 +245,7 @@ public sealed partial class Bramblekin
             float angle = (float)(_rng.NextDouble() * MathF.Tau);
             float distance = MathF.Sqrt((float)_rng.NextDouble()) * radius;
             Vector3 candidate = center + new Vector3(MathF.Cos(angle) * distance, 0f, MathF.Sin(angle) * distance);
-            if (world.Terrain.Contains(candidate, EdgeMargin + 1f) && !world.IsBlocked(candidate, BodyRadius))
+            if (world.Terrain.Contains(candidate, EdgeMargin + 1f) && !world.IsBlockedOrAntZone(candidate, BodyRadius))
                 return candidate;
         }
         return world.RandomFreePoint(BodyRadius, EdgeMargin + 1f);
@@ -259,7 +259,7 @@ public sealed partial class Bramblekin
         {
             away = Vector2.Normalize(away);
             Vector3 candidate = Position + new Vector3(away.X, 0f, away.Y) * distance;
-            if (world.Terrain.Contains(candidate, EdgeMargin + 1f) && !world.IsBlocked(candidate, BodyRadius))
+            if (world.Terrain.Contains(candidate, EdgeMargin + 1f) && !world.IsBlockedOrAntZone(candidate, BodyRadius))
                 return candidate;
         }
         return RandomWanderPoint(world, distance);
@@ -271,7 +271,7 @@ public sealed partial class Bramblekin
         float angle = (float)(_rng.NextDouble() * MathF.Tau);
         float distance = (float)_rng.NextDouble() * radius;
         Vector3 candidate = center + new Vector3(MathF.Cos(angle) * distance, 0f, MathF.Sin(angle) * distance);
-        return world.Terrain.Contains(candidate, EdgeMargin + 1f) && !world.IsBlocked(candidate, BodyRadius) ? candidate : center;
+        return world.Terrain.Contains(candidate, EdgeMargin + 1f) && !world.IsBlockedOrAntZone(candidate, BodyRadius) ? candidate : center;
     }
 
     /// <summary>The nearest living Bramblekin it can see that it has never met.</summary>

@@ -25,15 +25,15 @@ public static unsafe class PropModels
     public const float HouseCapTop = 0.72f;
 
     /// <summary>The props; each has a full model and a cheap one (a fifth or so of the triangles, a 512px texture) for when it is small on screen.</summary>
-    public enum Prop { House, Bush, Spider, Tent, BerryPlot, CressPlot, MushroomPlot, GrainPlot, Beetle }
+    public enum Prop { House, Bush, Spider, Tent, BerryPlot, CressPlot, MushroomPlot, GrainPlot, Beetle, Ant, AntHill }
 
-    private static readonly string[] Files = { "AcornHouse", "BerryFarm", "Spider", "Tent", "BerryPlot", "CressPlot", "MushroomPlot", "GrainPlot", "Beetle" };
+    private static readonly string[] Files = { "AcornHouse", "BerryFarm", "Spider", "Tent", "BerryPlot", "CressPlot", "MushroomPlot", "GrainPlot", "Beetle", "Ant", "AntHill" };
 
     /// <summary>Below this many pixels across, the cheap model.</summary>
     private const float FullPixels = 110f;
 
-    private static readonly Model[] _full = new Model[9], _cheap = new Model[9];
-    private static readonly bool[] _ready = new bool[9];
+    private static readonly Model[] _full = new Model[Files.Length], _cheap = new Model[Files.Length];
+    private static readonly bool[] _ready = new bool[Files.Length];
 
     private static void EnsureLoaded(Prop prop)
     {
@@ -41,8 +41,8 @@ public static unsafe class PropModels
         if (_ready[i])
             return;
         _full[i] = Raylib.LoadModel(AssetPath + Files[i] + ".glb");
-        _cheap[i] = prop is Prop.Spider or Prop.Beetle ? _full[i] : Raylib.LoadModel(AssetPath + Files[i] + "_lod.glb"); // The spider is light already (and rigged): one model.
-        if (prop is Prop.House or Prop.Tent or Prop.BerryPlot or Prop.CressPlot or Prop.MushroomPlot or Prop.GrainPlot)
+        _cheap[i] = prop is Prop.Spider or Prop.Beetle or Prop.Ant or Prop.AntHill ? _full[i] : Raylib.LoadModel(AssetPath + Files[i] + "_lod.glb"); // The spider, the beetle and the ants are light already: one model.
+        if (prop is Prop.House or Prop.Tent or Prop.BerryPlot or Prop.CressPlot or Prop.MushroomPlot or Prop.GrainPlot or Prop.AntHill or Prop.Ant)
         {
             // The house's pictures are big and painterly: smoothed and mipmapped, they don't shimmer or show as pixels.
             Smooth(_full[i]);
@@ -69,6 +69,14 @@ public static unsafe class PropModels
         float pixels = Detail.Pixels(position, scale * (prop switch { Prop.House => HouseWidth, Prop.Bush => BushWidth, Prop.Tent => TentWidth, Prop.Spider => SpiderWidth, _ => 1f }));
         Model model = pixels >= FullPixels ? _full[(int)prop] : _cheap[(int)prop];
         Raylib.DrawModelEx(model, position, Vector3.UnitY, yawDegrees, new Vector3(scale), tint);
+    }
+
+    /// <summary>An ant (or the like: thin legs, so seen from behind they must not vanish) at <paramref name="position"/>, facing <paramref name="yawDegrees"/> (0 faces +Z).</summary>
+    public static void DrawAnt(Vector3 position, float yawDegrees, float scale, Color tint)
+    {
+        Rlgl.DisableBackfaceCulling();
+        Draw(Prop.Ant, position, yawDegrees, scale, tint);
+        Rlgl.EnableBackfaceCulling();
     }
 
     /// <summary>

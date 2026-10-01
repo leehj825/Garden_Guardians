@@ -897,8 +897,9 @@ overhead camera:
 *   **Ants:** a colony lives in a fixed ant hill in a corner of the garden
     (see The Ant Hill below). From spring to autumn single thief ants
     leave it — 2, plus one per 15 food it has taken, up to 6 — and rob the
-    nearest store within 55m (never a palisaded one), or glean loose food
-    near the hill, and carry it home; in winter they stay underground.
+    nearest store within 70m (never a palisaded one), or glean loose food
+    within 30m of the hill, and carry it home; in winter they stay
+    underground.
     Easily swatted (5 Health), they bite back at whoever hits them.
     Bramblekin go for any ant near their home, or one biting them. There
     are no mass raids on villages: a thief is one ant at a time, and the
@@ -910,93 +911,109 @@ overhead camera:
     store and is swept away at even odds, a flooded House loses half its
     store. About three floods in 13 years.
 
-## The Ant Hill (planned — not built yet)
+## The Ant Hill
 The ant colony is the garden's dungeon: a big, fixed hill in one corner,
 guarded by ants, which only a Kingdom's army can break into. Each
-assault that wipes out the guards makes the next hill tougher and the
-reward richer.
+assault that wipes out the guards and brings its prize home makes the
+next hill tougher and the reward richer.
 
-*   **The hill:** it stands in a corner of the map from the first day, and
-    never moves. For a baked terrain the corner is fixed in its data; for
-    a grown terrain it is the corner (from its seed) with the most clear,
-    level ground away from water. It can't be destroyed: it keeps growing.
-    Its model is an ant hill, with ants as their own model; the size
-    constants (hill radius, ant body size) come from the models.
-*   **The no-go zone:** round the hill is a zone (20m to start with,
-    tuned to the model). Nothing is built, planted or settled in it; kin
-    treat it as a remembered danger and won't wander in; clans and
-    villages keep clear of it. The only way in is a Kingdom assault.
-*   **Defenders:** the hill's level L (1 to start) sets how many guard it:
-    **5 × L ants** — 5, 10, 15, 20 and so on, with no cap. They stay in
-    the zone and attack any kin that enters it, chasing until the kin is
-    dead or has left the zone. They fight to the death.
+*   **The hill:** a model (`Assets/Models/Props/AntHill.glb`, drawn 10m
+    wide, solid for 4.4m round its middle) that stands in a corner of the
+    map from the first day and never moves. The corner is the terrain's
+    own, the same for every garden on it: of the four, the one with room
+    for it that is farthest from the oak and the water and has the
+    gentlest ground (`World.PlaceAnthill`). Its mouth faces the garden.
+    It can't be destroyed: it keeps growing.
+*   **Thief ants** (`Assets/Models/Props/Ant.glb`, about 0.8m long): from
+    spring to autumn single ants come out of the mouth — 2, plus one per
+    15 food the hill has taken, up to 6 — and rob the nearest store within
+    70m (never a palisaded one), or glean loose food within 30m, and carry
+    it home; in winter they stay underground. Easily swatted (5 Health,
+    a bite of 2 back at whoever hits them). Bramblekin go for any thief
+    near their home. There are no mass raids on villages: a thief is one
+    ant at a time, and the kin defend against it as before.
+*   **The no-go zone:** round the hill is a zone 20m out. Nothing is
+    built, planted, settled, set down (food, stones, branches, snares,
+    wells, walls, feast sites, shrines) or wandered to in it, and every
+    clan treats it as a standing danger. The only way in is a Kingdom
+    assault.
+*   **Guards:** the hill's level L (1 to start) sets how many guard it:
+    **5 × L ants** — 5, 10, 15, 20 and so on, with no cap. A guard (10
+    Health, bites for 3 every 1.1s, walks at 2 m/s, about 1m long) stands
+    about the hill, falls on any Bramblekin that enters the zone and chases
+    it until it is dead or 6m clear of the zone. They fight to the death.
 *   **Healing and refilling:** when no kin has been in the zone for 10s,
-    wounded ants go back inside and heal (1 Health a second), and every
-    ant that died is replaced (one every 3s), so the next fight meets the
-    full 5 × L. Defenders don't leave the zone, so they aren't thieves:
-    thieves are the separate single ants above.
+    wounded guards go back inside the hill and heal (1 Health a second),
+    and every guard that died is replaced (one every 3s, up to the hill's
+    level), so the next fight meets the full 5 × L. In winter the guards
+    stay inside unless someone comes in.
 *   **A fight:** from the first blow at the hill until no kin is in the
-    zone. It is won when every defender that stood at its start is dead
-    in that same fight. If the fight ends with any defender alive,
-    nothing changes: the hill heals, refills, and the next fight starts
-    from the same level again.
+    zone. It is won when no guard is left alive while the party is in the
+    zone. If it ends with any guard alive, nothing changes: the hill heals,
+    refills, and the next fight starts from the same level again.
 *   **The prize:** after a win, the victorious troops go into the hill and
     pick up the reward: **L eggs**, where L is the level just beaten (a
     win at 5 ants gives 1, at 10 gives 2, at 15 gives 3, at 20 gives 4,
     with no cap). They carry the eggs back to the capital. **The hill's
-    level goes up only when the carriers reach the capital with the
-    eggs**: until then it stays at the beaten level. If the eggs are lost
-    on the way (the carriers die or are driven off), there is no level-up
-    and no reward; the hill refills at its old level and the fight has
-    to be won again.
-*   **The Kingdom decides:** at a Kingdom look-over, the crown may order an
-    assault on the hill. It needs enough fit soldiers (Guards, Soldiers
-    and Hunters at 80% Health or more, any vassal village's included) —
-    **half as many as there are defenders, rounded up**: 3 for 5 ants, 5
-    for 10, 8 for 15 — and it isn't winter (the ants are underground).
-    After a fight, no new order for a season, so a beaten party can heal
-    and the Kingdom can rebuild. A bigger hill needs a bigger army, with no cap. The party gathers at the capital, marches
-    together and fights as a band; a Headline, a Chronicle entry and the
-    Director's spotlight follow it.
+    level goes up only when a carrier reaches the capital with the
+    eggs**: until then it stays at the beaten level (and its guards refill
+    at that level). If the carriers die, or the eggs aren't home in 180s,
+    there is no level-up and no reward; the fight has to be won again.
+*   **The Kingdom decides:** at each look at a kingdom (every 5s) the crown
+    may order an assault (one look in four once it is ready). It needs a
+    king and enough fit soldiers (Guards and Hunters of any of its
+    villages, grown, not elderly or sick, at 80% Health or more and not
+    hungry) — **half as many as there are guards, rounded up**: 3 for 5,
+    5 for 10, 8 for 15, 10 for 20 — in daylight and not in winter. After a
+    fight (won or not), no new order for a season. The strongest and
+    bravest are picked. A bigger hill needs a bigger army, with no cap. A
+    Headline, a Chronicle entry and the Director's spotlight follow it.
+*   **The march:** the party **musters** at the capital's middle (up to
+    60s for stragglers), **marches** together to a staging point 8m
+    outside the zone (up to 90s), then **fights**. On the road a soldier
+    still answers a threat (a Hornet, the Wolf Spider) as any kin would
+    and then goes on.
 *   **Retreat:** the Kingdom calls a retreat when half of the party has
-    died or run away. A retreat takes everyone home, with no blame.
-*   **Running away:** each kin in the fight decides for itself. A kin
-    below 35% Health weighs fleeing against fighting on, by Courage (the
-    braver, the likelier to stay), Loyalty to the crown and whether a
-    Leader or a friend is next to it; a very brave one fights until it
-    dies. A kin that runs, when the party hasn't been ordered back, goes
-    home and is **shaken**: its Strength drops by a fifth for two days
-    and it loses a little Reputation, and the Kingdom remembers the
-    desertion when it picks its next party. A recovered kin is as strong
-    as before; the punishment is not permanent.
-*   **Eggs and the reward:** the eggs go to the capital's store when the
-    party gets home. Once they are in, the **best fighter of the raid**
-    (most ants killed, then the most Health left; a kin that fled can't
-    be it) is rewarded with the whole haul and eats it. An egg fills
-    Hunger by 40 and is a permanent gain. Eggs are not capped, and the
-    more troops a hill needs (half its ants), the more eggs a win pays,
-    so a bigger prize always costs a bigger army. To keep a pile of eggs
-    from making one kin unbeatable, the gains fade as they stack (each
-    egg adds 85% of the one before):
+    died or run away, or a fight drags on past 240s. A retreat takes
+    everyone home, with no blame.
+*   **Running away:** each kin in the fight decides for itself. Once its
+    Health is at 35% or lower it weighs fleeing against fighting on, once
+    (again if it is patched up past 60% and hurt again): it stays with
+    odds of Courage × 1.15, so the very brave (0.87 and up) never run.
+    A kin that runs, when the party hasn't been ordered back, flees the
+    hill and is **shaken**: its Strength drops by a fifth for two days and
+    it loses 0.05 Reputation. A recovered kin is as strong as before.
+*   **Eggs and the reward:** the eggs go to the capital's middle with the
+    carriers. When a carrier gets there, the eggs are **shared down the
+    ranking** of the raid: the survivors (not those who ran) are ranked by
+    guards killed, then by Health left, and the eggs are handed out one
+    each from the top (round again if there are more eggs than survivors).
+    Each kin eats its egg on the spot. An egg fills Hunger by 40 and is a
+    permanent gain. Eggs are not capped; to keep a pile from making one
+    kin unbeatable, the gains fade as they stack (each egg adds 85% of the
+    one before):
     *   **Strength:** +0.04 for the first egg, +0.034 for the second, and
         so on, adding to the kin's own Strength with no hard ceiling.
-        Strength already makes blows harder and blows taken lighter (see
-        Hunting & Defending).
+        Strength makes blows harder and blows taken lighter (see Hunting &
+        Defending). A shaken kin has a fifth less.
     *   **Vigor (a new stat):** the kin's energy. The first egg slows its
         hunger by 3% and speeds its walk by 1%; later eggs add less each,
         by the same fade.
-*   **Showing it:** the hill's level is written on its marker; the Stats
-    tab lists fights fought and won, the highest level beaten, eggs
-    eaten, and the deserters; the headless summary counts them. A saved
-    garden keeps the hill's level, the ants' health and each kin's eggs
-    eaten.
-*   **Open choices:** the zone's radius (20m), the retreat and flee
-    numbers, the party size (half the defenders), the egg numbers and
-    their fade (85% per egg) are first guesses to tune once the models
-    are in and the fights can be watched. Still to settle: whether the
-    whole haul goes to the best fighter or is shared down the ranks, and
-    whether the hill's guards refill at the old level or stay empty while
-    the carriers are still on the road.
+*   **Showing it:** the Kin Inspector shows Strength (born, and with
+    eggs), shaken, and Vigor; the Stats tab lists the hill's level and
+    guards, assaults sent, won and called off, guards slain, best level
+    beaten, eggs eaten and soldiers who ran; the headless summary counts
+    them. A saved garden keeps the hill's level, the assaults won, the
+    eggs eaten and each kin's own eggs eaten (not an assault under way:
+    a loaded garden starts with none, like invasions).
+*   **Tuning:** headless `--assault N [--assault-at S]` sends a test
+    assault on a level-N hill at S seconds (default 60): the strongest
+    grown kin there are, as many as the hill needs, made Guards. Over 16
+    seeds in a young garden (no shields or spears, and hornets and the
+    Wolf Spider about) it won about 70% at level 1, 80% at 2, 45% at 3 and
+    55% at 5. Still first guesses, to tune by watching real fights: the
+    zone's 20m, the guards' strength, the retreat and flee numbers, the
+    party size and the egg numbers.
 
 ## Neighbours: Alliances & War
 *   **Neighbours** are groups whose main homes are within 30m. Between
