@@ -11,10 +11,10 @@ namespace GardenGuardians;
 /// </summary>
 public sealed class InvaderSpider : ICombatant
 {
-    /// <summary>The model's scale: its legs span about 0.7 m (the Wolf Spider's span 2 m).</summary>
-    private const float ModelScale = 0.7f / PropModels.SpiderWidth;
+    /// <summary>The model's scale: its legs span about 1.4 m (a Bramblekin is 1 m tall; the Wolf Spider's span is 2 m).</summary>
+    private const float ModelScale = 1.4f / PropModels.SpiderWidth;
 
-    public const float BodyRadius = 0.18f;
+    public const float BodyRadius = 0.35f;
     public const int MaxHealth = 20;
     public const int BiteDamage = 5;
 
