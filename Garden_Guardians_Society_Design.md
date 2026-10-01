@@ -1,0 +1,171 @@
+# Garden Guardians — Society & Jobs Design (draft for review)
+
+Status: **design only — nothing here is built yet.** Written 2026-10-01 after the discussion about villages, kingdoms and paid jobs.
+Please mark up the **Open questions** at the end; the plan in section 9 starts once they are answered.
+
+---
+
+## 1. Goal
+
+Today the game has two ideas tangled together: *how advanced a clan is* (its "age") and *how big its society is*. This design separates them, and makes bigger societies behave differently from small ones:
+
+* **Technology (the ages)** decides *what a society can build and know*. Stone → Farming → Village → Kingdom. This stays as it is (counted from crafts; see `World.EraOf`).
+* **Society (the levels)** decides *who belongs together and who leads*. Family → Clan → Village → Kingdom, each a real object with a name, members and a leader.
+* **Provisioning** decides *who is free to do a job*. In a small society everyone feeds themselves first. In a settled society a pooled store feeds the people whose job is not food — soldiers, scouts, builders — so they can work *without hunting for their own meal*. That is what makes a village or a kingdom *play* differently from a clan.
+
+## 2. What exists today (checked in the code)
+
+| Piece | Where | What it does now |
+|---|---|---|
+| Clan | `Kin/KinGroup.cs` | `Members`, one `Leader`, `Home` + `Annexes` (extra homes), `Era`, `LiegeId`. Founded from encounters; named after the leader's family. |
+| Jobs | `Kin/Society.cs` `KinJob` | **Eight already exist:** Gatherer, Builder, Hunter, Guard, Farmer, Raider, Healer, Scout. Handed out by the Leader (`World.AssignJobs`). |
+| Duty | `Kin/Bramblekin.Duty.cs` | A kin does its job **only when "fed and safe"** (the need order is hunger/thirst → safety → duty → settling → social). So today no job is ever *paid*; a Guard who is hungry stops guarding and forages. |
+| Store | `World/Shelter.cs` | Each home has `StoredFood`; clan's `SharingRule` (Equal / LeaderFirst) says who may eat from it. |
+| "Village" | `World/World.GroupHomes.cs` | **Only a counter** (`VillagesFounded`): a clan that builds a second home (annex) is "a village". It has no name, members, centre or leader of its own. |
+| Alliance | `World/World.Neighbours.cs` | Pairwise, `MaxAllies = 2` per clan. |
+| Kingdom | `World/World.Kingdoms.cs` | A Kingdom-Age clan makes a smaller ally swear fealty (`LiegeId`); vassals pay tribute and can break free. The "king" is simply that clan's leader. |
+| Governance | `World.Council`, `World.Succession`, `World.Champions` | Leader's council of up to 3, named heirs, duels settling disputes, tribute. Re-usable for the new levels. |
+
+**Correction to what I said in chat:** jobs *do* exist. What is missing is that they are unpaid, and that "village" and "kingdom" are not things.
+
+## 3. Principles
+
+1. **Two ladders, never mixed.** Tech age is a *cap* (a village needs farming; a kingdom needs the Kingdom Age); society level is the *structure*.
+2. **A society only pays what it earns.** Rations come from a real surplus. No surplus → no paid jobs → back to foraging. Starvation stays the pressure.
+3. **Leaders at every level**, with a title: family head, clan chief, village headman, king. Each level's leader answers to the one above.
+4. **Reuse what works.** Councils, heirs, duels, tribute, errands and the Leader-decision tick are kept; new levels plug into them.
+5. **Everything testable headless.** Each phase ends with numbers from the headless runs (food, deaths, jobs held), not just looks.
+
+## 4. Society levels
+
+### 4.1 Family (Stone Age)
+* A pair and their children, living in a tent. Head of household = the older/more reputable parent.
+* Forage and hunt for themselves. No paid jobs. (This is today's "solitary / small group".)
+
+### 4.2 Clan (Farming Age)
+* Related families settling together in houses; they farm. Leader = **clan chief**. (This is today's `KinGroup`; mostly unchanged.)
+* May assign jobs, but each job-holder still eats on their own time (unpaid) *unless the clan has a surplus rule — see 5.4*.
+
+### 4.3 Village (Village Age) — **new object**
+```
+Village
+  Id, Name ("Mossbridge"), Centre (position), FoundedAt
+  Clans: list of clan ids        // one or several
+  Homes: derived from member clans' homes within VillageRadius of Centre
+  Headman: Bramblekin?           // the village leader
+  Store: VillageStore            // shared pooled food (see 5)
+  Landmarks: well, market, shrine, granary (shared)
+```
+* **Formation:** when ≥ 2 homes (from one or more clans) stand within `VillageRadius` (≈ 15 m) of each other and the owning clans are not at war, a village *forms around the best-connected home* and is named. A clan with only annexes (today's "village") becomes a one-clan village.
+* **Headman:** chosen by the same claim-to-lead score the game already uses (Intelligence + Reputation + kin support), *among clan chiefs*; ties and disputes use council vote then duel.
+* **Clans keep their chiefs** under the headman; internal clan matters (inheritance, loyalty) stay with the clan.
+* **Dissolves** when homes drop below 2 or all clans leave; its store is shared out to its clans.
+
+### 4.4 Kingdom (Kingdom Age) — **new object**
+```
+Kingdom
+  Id, Name, Capital (village id), King: Bramblekin?
+  Villages: list of village ids (target 5–6)
+  Treasury/Tribute rules, Army: soldiers pledged by villages
+```
+* **Formation:** a village that is the largest of ≥ 3 allied villages, with the Kingdom Age and the crafts Stonework + Roads + Markets, is offered the crown; allied villages swear fealty. Fealty replaces today's clan-over-clan vassalage for these cases (the small-realm vassal mechanism stays for clans not in any village).
+* **King:** the capital's headman by default; contested by strongest village (council vote → duel). Succession reuses `ConsiderHeir`.
+* **Vassal villages** keep headmen; owe tribute (food to the Capital store) and pledged soldiers; may rebel when too large (existing independence rule).
+* **Dissolves** if villages fall below 3; villages revert to independent.
+
+## 5. Provisioning — paying people to do jobs
+
+### 5.1 The idea
+Today: need order = Hunger → Safety → **Duty** → Settle → Social. A kin does its job only after it has fed itself.
+
+New: a kin with a **paid job** is **fed from the community store** (village or kingdom store) as part of its job, *before* it would go foraging. Hunger still exists (they must eat), but eating becomes a short trip to the store, not a hunt.
+
+### 5.2 Rations
+* A paid kin has a **ration entitlement**: while the store holds food, a hungry paid kin walks to the store and eats from it (using the existing `TryWithdraw`). It does not forage unless the store is empty.
+* **Unpaid** kin (family members, free farmers when not rationed) behave exactly as today.
+* If the store runs empty, paid kin **lose their ration** and revert to foraging; their job pauses. Leaders re-balance.
+
+### 5.3 Who produces, who consumes
+* **Producers** (never rationed by default): Farmer, Fisher, Gatherer, Hunter. They fill the store.
+* **Consumers** (rationed): Soldier (Guard), Scout, Builder, Healer, and the Leader/council.
+* Producers eat first from what they carry/grow (and may eat from the store like anyone), so the system cannot starve them for others' sake.
+
+### 5.4 Balance cap (the thing that makes it not collapse)
+Each Leader tick the community computes:
+```
+income  = food entering the store over the last season (moving average)
+upkeep  = rations per paid kin per day × days
+allowedPaid = floor( (income - reserve) / rationPerPaidKin )
+```
+and may assign **at most `allowedPaid`** consumer jobs (with a hard floor of 0). Reserve = enough for one winter month. This is the single dial that stops a village from hiring more soldiers than its farms can feed. Start conservative; tune from headless runs.
+
+### 5.5 Where the store lives
+* A **village granary** (existing `Granary` craft/model) becomes the village store; each home's own `StoredFood` still exists as the household store and spills to the village store above a threshold.
+* A kingdom has a **capital store** that receives tribute and supplies the army in the field.
+
+## 6. Jobs (final list)
+
+| Job | Level | Produces/Consumes | Behaviour |
+|---|---|---|---|
+| Farmer | clan+ | produces | Plants/harvests plots → store. (exists) |
+| **Fisher** | clan+ (needs Fishing craft) | produces | Walks to shore, fishes, carries catch → store. (Fishing exists as an action; becomes a job.) |
+| Gatherer | clan+ | produces | Collects loose food/acorns/honey within range → store. (exists) |
+| Hunter | clan+ | produces | Hunts the picked prey. (exists) |
+| **Soldier** (Guard, renamed/extended) | village+ | **consumes** | Patrols the village boundary, answers alarms, fights predators/raiders; **picks up food only within a few metres of its patrol route** (never leaves post), delivers it to the store. |
+| Scout | village+ | consumes | Explores and warns. (exists; becomes paid) |
+| Builder | village+ | consumes | Walls, houses, wells. (exists; becomes paid) |
+| Healer | village+ | consumes | Tends the sick. (exists; becomes paid) |
+| Raider | war only | consumes | Raids enemy stores. (exists) |
+| **Army** | kingdom | consumes | Soldiers pledged by villages marching to a threat or a front. |
+
+Assignment: the **Leader of that level** assigns (clan chief in a clan; headman in a village; king for the army), scoring members by skills + personality (e.g. Courage/Aggression → Soldier; Farming skill → Farmer). Existing `AssignJobs` is extended with the cap in 5.4.
+
+## 7. Leaders and titles
+
+| Level | Leader | Chosen by | Replaced when |
+|---|---|---|---|
+| Family | head of household | seniority | death/old age |
+| Clan | chief | existing claim-to-lead; council | existing rebellion/heir rules |
+| Village | headman | best claim among clan chiefs; council vote; duel if tied | headman dies; a clan breaks away |
+| Kingdom | king | capital's headman by default; strongest-village contest | death → named heir; rebellion |
+
+Each has a banner/colour and a line in the Clans and History views.
+
+## 8. Data model & save
+
+* New `Village` and `Kingdom` classes (`Source/World/Village.cs`, `Kingdom.cs`), held in `World._villages`, `World._kingdoms`; clans carry `VillageId?`, villages carry `KingdomId?`.
+* New per-kin field: `Rationed` (bool, derived each tick) — **not saved**; recomputed from job + store.
+* Save: `VillageSave`, `KingdomSave` lists (nullable → old saves load unchanged, villages/kingdoms re-formed on first tick). Follows the `WallSave` pattern.
+* `KinJob` gains `Fisher` (appended — enum values saved as numbers, so new values go at the end).
+* Existing `VillagesFounded` counter stays for stats but is replaced as the source of truth by `_villages.Count`.
+
+## 9. Build plan (each step independently testable)
+
+1. **Village object** — formation, name, centre, headman election, dissolve; shown in the Clans view and as a banner on the map. *Test:* headless run: villages form/dissolve sensibly; no kin lose their clan.
+2. **Village store + rations** — pooled store, paid kin eat from it, cap formula. Start with Guard only. *Test:* with rations on, guards guard longer, village food stays ≥ reserve, no new starvation deaths vs. baseline.
+3. **Soldier + Gatherer + Fisher jobs** — patrol-route pickup rule, fishing as a job. *Test:* job counts vs. cap; food income vs. upkeep.
+4. **Remaining paid jobs** — Scout, Builder, Healer on rations; headman assigns.
+5. **Kingdom object** — alliance of ≥ 3 villages, king, capital store, tribute, pledged soldiers (army).
+6. **Events & UI polish** — founding/succession/revolt headlines, history entries, stats lines.
+
+Walls (already built) become a **village** project paid from the village store in step 4.
+
+## 10. Risks
+
+* **Collapse from over-hiring** → the 5.4 cap, plus a winter reserve; tune from headless sweeps.
+* **Complexity in Leader decisions** (already large) → keep the new logic in its own files (`World.Villages.cs`, `World.Rations.cs`, `World.Kingdoms2.cs`), called once per Leader tick.
+* **Old saves** → all new save fields nullable; first tick re-derives villages from existing homes.
+* **Performance** → village/kingdom updates run at Leader-tick rate (seconds), not per frame.
+
+## 11. Open questions (please answer)
+
+1. **Village membership:** only one clan's homes, or may several clans share a village?
+   *Recommendation: several, with a headman chosen among the chiefs (it gives villages their own politics).*
+2. **Leader selection** at village/kingdom level: strongest, best-liked, or council vote?
+   *Recommendation: claim-to-lead score + council vote; duel only as the tie-break/dispute.*
+3. **Old kingdom mechanism** (clan over clan): keep for small realms, or replace entirely by village alliances?
+   *Recommendation: keep it for clans outside any village; true kingdoms are village alliances.*
+4. **Soldier food pickup:** side-effect near patrol route only (recommended), or a full "collector" duty?
+5. **How harsh should the economy be?** Start generous (few paid jobs, big reserve) or tight (more jobs, starvation risk)?
+   *Recommendation: start generous so it is stable, then tighten.*
+6. **Scale target:** is 5–6 villages per kingdom right, and what map size should this assume (small 100 m only, or medium/large)?
