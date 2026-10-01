@@ -142,33 +142,23 @@ public sealed class StagBeetle : ICombatant
         return best;
     }
 
-    /// <summary>A long, flattened, glossy-brown shell with a pair of big forward mandibles.</summary>
+    /// <summary>Metres it covers in one loop of its walk (its legs keep time with the ground it covers).</summary>
+    private const float StrideMetres = 0.9f;
+
+    /// <summary>How big the model is drawn: 1 unit long as made, this many metres long here.</summary>
+    private const float ModelLength = 1.6f;
+
+    private float _walkCycle;
+    private Vector3 _lastPosition;
+
+    /// <summary>The beetle (the model, rigged to walk on six legs by Tools/convert_beetle.py), facing the way it heads.</summary>
     public void Draw()
     {
         float yawDegrees = -MathF.Atan2(_mover.Heading.Y, _mover.Heading.X) * 180f / MathF.PI;
-
-        Rlgl.PushMatrix();
-        Rlgl.Translatef(Position.X, Position.Y, Position.Z);
-        Rlgl.Rotatef(yawDegrees, 0, 1, 0);
-
-        Rlgl.PushMatrix();
-        Rlgl.Translatef(-0.05f, 0.28f, 0f);
-        Rlgl.Scalef(1.4f, 0.55f, 0.9f);
-        Detail.Sphere(Vector3.Zero, BodyRadius, ShellColor, Position);
-        Rlgl.PopMatrix();
-
-        // The seam down the middle of its wing cases.
-        Raylib.DrawLine3D(new Vector3(-0.6f, 0.53f, 0f), new Vector3(0.3f, 0.53f, 0f), ShellHighlight);
-
-        // Head and mandibles.
-        Detail.Sphere(new Vector3(0.55f, 0.25f, 0f), 0.16f, ShellColor, Position);
-        for (int side = -1; side <= 1; side += 2)
-        {
-            var root = new Vector3(0.65f, 0.25f, side * 0.08f);
-            var tip = new Vector3(1.0f, 0.3f, side * 0.02f);
-            Raylib.DrawCylinderEx(root, tip, 0.045f, 0.015f, 5, MandibleColor);
-        }
-
-        Rlgl.PopMatrix();
+        Vector3 here = Position;
+        if (_mover.IsMoving)
+            _walkCycle += GroundMover.HorizontalDistance(_lastPosition, here) / StrideMetres;
+        _lastPosition = here;
+        PropModels.DrawWalker(PropModels.Prop.Beetle, here, yawDegrees, ModelLength, Color.White, _walkCycle, _mover.IsMoving);
     }
 }
