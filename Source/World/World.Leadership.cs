@@ -303,7 +303,7 @@ public sealed partial class World
 
             default:
                 if (members.Count >= 4 && group.Home is { IsBuilt: true })
-                    members.MaxBy(m => m.Personality.Courage + 0.5f * m.Personality.Aggression)!.AssignJob(KinJob.Guard);
+                    members.MaxBy(m => m.Personality.Courage + 0.5f * m.Personality.Aggression + 0.5f * m.Personality.Strength)!.AssignJob(KinJob.Guard);
                 break;
         }
 

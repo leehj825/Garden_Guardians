@@ -120,6 +120,13 @@ and may assign **at most `allowedPaid`** consumer jobs (with a hard floor of 0).
 
 Assignment: the **Leader of that level** assigns (clan chief in a clan; headman in a village; king for the army), scoring members by skills + personality (e.g. Courage/Aggression → Soldier; Farming skill → Farmer). Existing `AssignJobs` is extended with the cap in 5.4.
 
+### 6.1 Soldiers are stronger (added 2026-10-01; built)
+
+* **Born strength:** every kin now has a `Strength` trait (0..1, inherited from its parents like the other traits, nudged up by a martial clan culture, saved). A strong kin hits harder (±2 damage around the average) and takes a little less from every blow (±10%).
+* **Soldier training:** the Guard job makes a kin strike **30% harder** (a Raider 15%) and take **10% less**. Guards are picked by courage, aggression **and strength**.
+* **Shields go to fighters:** a clan that knows Shields issues them to Guards, Raiders and Hunters only (not to everyone, as before). A shield takes **a third** off every blow and bite; a Guard holds it up in front and takes **15% less again**. Shields are drawn on those who carry them.
+* Later (steps 2-3): soldiers fed from the village store stay on post, so this strength is actually in the field when predators and raiders come.
+
 ## 7. Leaders and titles
 
 | Level | Leader | Chosen by | Replaced when |

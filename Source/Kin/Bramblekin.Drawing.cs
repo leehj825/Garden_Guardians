@@ -108,7 +108,7 @@ public sealed partial class Bramblekin
         if (props)
         {
             if (State is BramblekinState.Fighting or BramblekinState.Dueling or BramblekinState.Guarding or BramblekinState.Raiding &&
-                !IsYoung && Knows(Craft.Shields))
+                HasShield)
                 DrawShield(facing, group);
 
             if (State is BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or BramblekinState.Dueling)

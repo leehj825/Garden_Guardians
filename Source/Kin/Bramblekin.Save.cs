@@ -19,6 +19,7 @@ public sealed partial class Bramblekin
         Persuasiveness = Personality.Persuasiveness,
         Courage = Personality.Courage,
         Diligence = Personality.Diligence,
+        Strength = Personality.Strength,
         Position = Position,
         Health = Health,
         Hunger = Hunger,
@@ -76,7 +77,7 @@ public sealed partial class Bramblekin
         // A save from before the newer traits: they're rolled afresh.
         float Trait(float? saved) => saved ?? (float)rng.NextDouble();
         var personality = new Personality(save.Aggression, save.Sociability, save.Intelligence,
-            Trait(save.Rebelliousness), Trait(save.Persuasiveness), Trait(save.Courage), Trait(save.Diligence));
+            Trait(save.Rebelliousness), Trait(save.Persuasiveness), Trait(save.Courage), Trait(save.Diligence), Trait(save.Strength));
         var kin = new Bramblekin(save.Position, rng, personality)
         {
             ID = save.Id,

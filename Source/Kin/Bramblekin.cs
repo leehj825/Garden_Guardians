@@ -402,7 +402,27 @@ public sealed partial class Bramblekin : ICombatant
     public bool IsVibrating => !IsDead && (State is BramblekinState.Foraging or BramblekinState.Eating or BramblekinState.Hunting
         or BramblekinState.Attacking or BramblekinState.Raiding or BramblekinState.Farming || IsDrinkingAtPond);
 
-    private int StrikeDamage => (int)MathF.Round((BaseStrikeDamage + StrikeDamagePerAggression * Personality.Aggression) * (IsElder ? ElderStrikeFactor : 1f));
+    /// <summary>A strong kin hits harder (±<see cref="StrikeDamagePerStrength"/>/2 around the average) and a trained soldier harder again.</summary>
+    private const float StrikeDamagePerStrength = 4f;
+
+    /// <summary>A Guard (a soldier) strikes this much harder for its training — a Raider a little less.</summary>
+    private const float GuardStrikeFactor = 1.3f, RaiderStrikeFactor = 1.15f;
+
+    private int StrikeDamage => (int)MathF.Round(
+        (BaseStrikeDamage + StrikeDamagePerAggression * Personality.Aggression + StrikeDamagePerStrength * (Personality.Strength - 0.5f)) *
+        (IsElder ? ElderStrikeFactor : 1f) * (Job == KinJob.Guard ? GuardStrikeFactor : Job == KinJob.Raider ? RaiderStrikeFactor : 1f));
+
+    /// <summary>
+    /// Armed with a shield: a clan that knows <see cref="Craft.Shields"/> issues them to those whose job is fighting — Guards (soldiers),
+    /// Raiders and Hunters — not to everyone.
+    /// </summary>
+    public bool HasShield => Knows(Craft.Shields) && !IsYoung && Job is KinJob.Guard or KinJob.Raider or KinJob.Hunter;
+
+    /// <summary>A Guard holds its shield up and stands in the front: it takes this much less than another shield-bearer.</summary>
+    private const float GuardBlockFactor = 0.85f;
+
+    /// <summary>A strong kin shrugs off a little of every blow (±<see cref="ToughnessPerStrength"/>/2 around the average), and a Guard's training toughens it.</summary>
+    private const float ToughnessPerStrength = 0.2f, GuardToughness = 0.9f;
 
     /// <summary>A blow against a creature: half as hard again with <see cref="Craft.Spears"/>, and up to half as hard again for a master hunter.</summary>
     private int HuntingDamage => (int)MathF.Round((Knows(Craft.Spears) ? StrikeDamage * 1.5f : StrikeDamage) * (1f + 0.5f * SkillAt(Skill.Hunting)));
@@ -519,8 +539,15 @@ public sealed partial class Bramblekin : ICombatant
             return;
 
         // A beetle-shell shield takes the edge off every blow and bite.
-        if (Knows(Craft.Shields) && !IsYoung && cause is DeathCause.Kin or DeathCause.Predator)
-            amount = Math.Max(1, (int)MathF.Round(amount * ShieldFactor));
+        if (cause is DeathCause.Kin or DeathCause.Predator)
+        {
+            float factor = 1f - ToughnessPerStrength * (Personality.Strength - 0.5f);
+            if (Job == KinJob.Guard)
+                factor *= GuardToughness;
+            if (HasShield)
+                factor *= ShieldFactor * (Job == KinJob.Guard ? GuardBlockFactor : 1f);
+            amount = Math.Max(1, (int)MathF.Round(amount * factor));
+        }
         Health = Math.Max(0, Health - amount);
 
         // A leadership duel is a contest, not a feud: no lingering threat, no enmity.

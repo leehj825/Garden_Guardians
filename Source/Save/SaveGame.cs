@@ -107,6 +107,7 @@ public sealed class KinSave
     public float? Persuasiveness { get; set; }
     public float? Courage { get; set; }
     public float? Diligence { get; set; }
+    public float? Strength { get; set; }
     public V3 Position { get; set; }
     public int Health { get; set; }
     public float Hunger { get; set; }
