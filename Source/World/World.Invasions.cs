@@ -28,6 +28,9 @@ public sealed class Invasion
 
     /// <summary>The villages it is aimed at, the capital first.</summary>
     public List<Guid> Targets { get; } = new();
+
+    /// <summary>The bearing (radians, from a village's middle) each target's spiders come in along, once chosen: out at the edge of the map.</summary>
+    public Dictionary<Guid, float> Bearings { get; } = new();
     public bool IsHard => KingdomId is not null;
 }
 
@@ -217,8 +220,13 @@ public sealed partial class World
         Invasions.Add(invasion);
         InvasionsStarted++;
         SendWave(invasion);
+        // The banner and the camera's spotlight go to where the swarm comes in, so it can be watched marching on the village.
+        if (Invaders.LastOrDefault(sp => sp.InvasionId == invasion.Id) is { } first)
+            where = first.Position;
         string size = invasion.IsHard ? "A great swarm" : "A swarm";
         string inWaves = waves > 1 ? $", in {waves} waves" : "";
+        if (invasion.Targets.Count > 0 && invasion.Bearings.TryGetValue(invasion.Targets[0], out float bearing))
+            inWaves += $", from the {Compass(bearing)}";
         Game.AddEventLog($"[INVASION] {size} of {count} small spiders marches on {invasion.TargetName}{inWaves}");
         Headline(invasion.IsHard ? "Invasion!" : "Spiders!", $"{size} of {count} small spiders marches on {invasion.TargetName}{inWaves}", where, true, VillageClans(invasion).ToArray());
         return invasion;
@@ -254,28 +262,7 @@ public sealed partial class World
 
     private void Spawn(Invasion invasion, Village village, int count)
     {
-        Vector3 at = village.Centre;
-        float start = (float)(Rng.NextDouble() * MathF.Tau);
-        // Out as far as there is open ground, along one bearing or another — clear of other homes if it can be, less so if the map is crowded.
-        bool found = false;
-        foreach (float clear in new[] { 20f, 12f, 6f, 0f })
-        {
-            for (float r = InvaderSpawnDistance; r >= 18f && !found; r -= 2f)
-            {
-                for (int k = 0; k < 12 && !found; k++)
-                {
-                    float angle = start + k * MathF.Tau / 12f;
-                    Vector3 p = Grounded(village.Centre + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * r);
-                    if (Terrain.Contains(p, 3f) && !IsBlocked(p, InvaderSpider.BodyRadius + 0.3f) && !IsWater(p) && (clear <= 0f || !NearHomesOrKin(p, clear)))
-                    {
-                        at = p;
-                        found = true;
-                    }
-                }
-            }
-            if (found)
-                break;
-        }
+        Vector3 at = EdgeSpawnPoint(invasion, village) ?? NearSpawnPoint(village);
         for (int i = 0; i < count; i++)
         {
             Vector3 p = Grounded(at + new Vector3((float)(Rng.NextDouble() - 0.5) * 3f, 0f, (float)(Rng.NextDouble() - 0.5) * 3f));
@@ -283,6 +270,85 @@ public sealed partial class World
                 p = at;
             Invaders.Add(new InvaderSpider(p, village.Centre, invasion.Id, village.Id, Rng));
         }
+    }
+
+    /// <summary>
+    /// Where the swarm comes in: out at the edge of the map, along a bearing from the village with a long run of open ground (the
+    /// same bearing for every wave of an invasion). Null if no bearing offers one.
+    /// </summary>
+    private Vector3? EdgeSpawnPoint(Invasion invasion, Village village)
+    {
+        const int Bearings = 16;
+        float EdgeRun(float angle)
+        {
+            var dir = new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle));
+            float last = 0f;
+            for (float r = 10f; r <= 250f; r += 4f)
+            {
+                if (!Terrain.Contains(village.Centre + dir * r, 2.5f))
+                    break;
+                last = r;
+            }
+            return last;
+        }
+        Vector3? PointAt(float angle)
+        {
+            var dir = new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle));
+            for (float r = EdgeRun(angle); r >= 24f; r -= 2f)
+            {
+                Vector3 p = Grounded(village.Centre + dir * r);
+                if (!IsBlocked(p, InvaderSpider.BodyRadius + 0.3f) && !IsWater(p))
+                    return p;
+            }
+            return null;
+        }
+
+        if (!invasion.Bearings.TryGetValue(village.Id, out float chosen))
+        {
+            float jitter = (float)(Rng.NextDouble() * MathF.Tau / Bearings);
+            var runs = new List<(float Angle, float Run)>();
+            for (int k = 0; k < Bearings; k++)
+            {
+                float angle = jitter + k * MathF.Tau / Bearings;
+                runs.Add((angle, EdgeRun(angle)));
+            }
+            float longest = runs.Max(r => r.Run);
+            if (longest < 26f)
+                return null;
+            List<(float Angle, float Run)> far = runs.Where(r => r.Run >= longest * 0.8f).ToList();
+            chosen = far[Rng.Next(far.Count)].Angle;
+            invasion.Bearings[village.Id] = chosen;
+        }
+        return PointAt(chosen);
+    }
+
+    /// <summary>Open ground about <see cref="InvaderSpawnDistance"/> from the village, clear of homes where it can be: the fallback when no edge is reachable.</summary>
+    private Vector3 NearSpawnPoint(Village village)
+    {
+        float start = (float)(Rng.NextDouble() * MathF.Tau);
+        foreach (float clear in new[] { 20f, 12f, 6f, 0f })
+        {
+            for (float r = InvaderSpawnDistance; r >= 18f; r -= 2f)
+            {
+                for (int k = 0; k < 12; k++)
+                {
+                    float angle = start + k * MathF.Tau / 12f;
+                    Vector3 p = Grounded(village.Centre + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * r);
+                    if (Terrain.Contains(p, 3f) && !IsBlocked(p, InvaderSpider.BodyRadius + 0.3f) && !IsWater(p) && (clear <= 0f || !NearHomesOrKin(p, clear)))
+                        return p;
+                }
+            }
+        }
+        return village.Centre;
+    }
+
+    /// <summary>"north-east" for a bearing (+X east, -Z north).</summary>
+    private static string Compass(float angle)
+    {
+        string[] names = { "east", "north-east", "north", "north-west", "west", "south-west", "south", "south-east" };
+        float degrees = MathF.Atan2(-MathF.Sin(angle), MathF.Cos(angle)) * 180f / MathF.PI;
+        int index = (int)MathF.Round((degrees < 0 ? degrees + 360f : degrees) / 45f) % 8;
+        return names[index];
     }
 
     /// <summary>True if a standing home or a living Bramblekin is within <paramref name="distance"/> of <paramref name="point"/> (invaders do not appear in anyone's lap).</summary>
