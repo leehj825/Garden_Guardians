@@ -3,6 +3,8 @@
     pip install numpy pillow
     python3 Tools/convert_tripo_kin.py Tools/kin_src/Male.glb   Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Walking.glb
     python3 Tools/convert_tripo_kin.py Tools/kin_src/Female.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Walking_female.glb --female
+    python3 Tools/convert_tripo_kin.py Tools/kin_src/GuardMale.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Guard_male.glb --lods --guard
+    python3 Tools/convert_tripo_kin.py Tools/kin_src/GuardFemale.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Guard_female.glb --female --lods --guard --outside 0.14
 
 What convert_female.py does for a decimated mesh, done directly: the model (Y-up, facing +Z, about 0.95-0.98 tall) is scaled to the
 skeleton's height of 1, turned into its bind space (Z-up, facing -Y), skinned to its 33 joints by distance to the bones, and
@@ -27,6 +29,7 @@ from convert_female import (EPSILON, FITTED_ARM, NEIGHBOURS, POWER, accessor, bi
 
 Image.MAX_IMAGE_PIXELS = None
 ARM_RADIUS = 0.07      # beyond this far from every arm bone a vertex is not arm (hair, skirt)
+GUARD_OUTSIDE = 0.2    # beyond this far to the side (bind space) a guard vertex is shield or sword
 LEG_TOP = 0.28         # above this height (bind space) nothing follows the legs (hair, dress)
 
 
@@ -50,7 +53,7 @@ def png_of(picture, size):
     return buf.getvalue()
 
 
-def skin(points, names, segs, female):
+def skin(points, names, segs, female, guard=False, outside_x=GUARD_OUTSIDE):
     owners = list(segs)
     dist = np.stack([np.min([point_segment_distance(points, a, b) for a, b in segs[n]], axis=0) for n in owners], axis=1)
     if female:
@@ -60,6 +63,16 @@ def skin(points, names, segs, female):
         dist[np.ix_(not_arm, np.where(arm)[0])] = np.inf
         high = points[:, 2] > LEG_TOP
         dist[np.ix_(high, np.where(leg)[0])] = np.inf
+    if guard:
+        # A guard's shield (left) and sword (right) stand out from the body: out there only that side's arm carries them, never the
+        # spine or the legs, so they stay with the hand instead of bending with the torso.
+        for sign, side in ((1, "Left"), (-1, "Right")):
+            outside = points[:, 0] * sign > outside_x
+            bad = np.array([not (side in n and any(k in n for k in ("Shoulder", "Arm", "Hand"))) for n in owners])
+            limited = dist.copy()
+            limited[np.ix_(outside, np.where(bad)[0])] = np.inf
+            ok = np.isfinite(limited).any(axis=1)  # (hair and the like that no arm bone may carry keep their usual bones)
+            dist[ok] = limited[ok]
     order = np.argsort(dist, axis=1)[:, :NEIGHBOURS]
     d = np.take_along_axis(dist, order, axis=1)
     w = 1.0 / (d + EPSILON) ** POWER
@@ -77,6 +90,8 @@ def main():
     ap.add_argument("--female", action="store_true")
     ap.add_argument("--texture", type=int, default=2048)
     ap.add_argument("--lods", action="store_true")
+    ap.add_argument("--outside", type=float, default=GUARD_OUTSIDE, help="with --guard: how far to the side (bind space) the arms alone carry the vertices")
+    ap.add_argument("--guard", action="store_true", help="shield and sword follow the arms only")
     args = ap.parse_args()
 
     pos_y, nrm_y, uv, idx, picture = load_static(args.model)
@@ -93,7 +108,7 @@ def main():
     doc, binary = read_glb(args.skeleton)
     names, position, parent = bind_joints(doc, binary)
     segs = segments(names, position, parent, FITTED_ARM if args.female else {})
-    joints_idx, w = skin(pos, names, segs, args.female)
+    joints_idx, w = skin(pos, names, segs, args.female, args.guard, args.outside)
     joints4 = np.zeros((len(pos), 4), "u1")
     weights4 = np.zeros((len(pos), 4), "<f4")
     joints4[:, :NEIGHBOURS] = joints_idx
