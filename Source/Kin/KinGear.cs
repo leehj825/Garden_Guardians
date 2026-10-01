@@ -13,7 +13,7 @@ public static unsafe class KinGear
 {
     public const float SwordLength = 0.5f, BowLength = 0.7f, QuiverLength = 0.5f, ShieldWidth = 0.36f;
 
-    public static float SwordBindUp = 0.3f, BowBindUp = 0.5f;
+    public static float SwordBindUp = 0.3f, BowBindUp = 0.6f;
 
     private static readonly Dictionary<(nint Mesh, int Bone), int[]> _vertices = new();
 
@@ -120,7 +120,8 @@ public static unsafe class KinGear
             if (bow)
             {
                 // Held by its grip against the inside of the palm, standing along the hand with its belly forward.
-                Vector3 along = Turned(pose, "mixamorig:LeftHand", new Vector3(0f, BowBindUp, 1f));
+                // Hanging from the fist by its grip, tips down (and the whole bow swings with the hand).
+                Vector3 along = Vector3.Normalize(-Vector3.UnitY + BowBindUp * Turned(pose, "mixamorig:LeftHand", Vector3.UnitX));
                 Vector3 centre = left - Vector3.UnitX * 0.03f + forward * 0.02f;
                 GearModels.Draw(GearModels.Gear.Bow, Matrix4x4.CreateScale(BowLength) * Frame(along, forward, centre) * body);
             }
