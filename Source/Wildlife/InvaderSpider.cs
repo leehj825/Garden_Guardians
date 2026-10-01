@@ -15,11 +15,11 @@ public sealed class InvaderSpider : ICombatant
     private const float ModelScale = 0.7f / PropModels.SpiderWidth;
 
     public const float BodyRadius = 0.18f;
-    public const int MaxHealth = 12;
-    public const int BiteDamage = 4;
+    public const int MaxHealth = 20;
+    public const int BiteDamage = 5;
 
-    private const float Speed = 1.7f;
-    private const float BiteInterval = 1.2f;
+    private const float Speed = 1.9f;
+    private const float BiteInterval = 1.0f;
 
     /// <summary>It goes for a Bramblekin it sees within this many meters.</summary>
     private const float SightRadius = 9f;
