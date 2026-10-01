@@ -34,6 +34,7 @@ CLOTH_GREEN = 1.1      # a vertex whose texture is this much greener than it is 
 RIGID_X = 0.2         # a guard's shield (left) and sword (right) lie beyond this far to the side (bind space), between the knees and the helmet
 HEAD_BASE = 0.6        # above this height a guard's helmet, brim and hair go with the head alone...
 BLADE_BOX = ((-1.0, -0.315), (-0.25, -0.165))  # ...except the sword blade, which rises beside the helmet: x and y limits (bind space)
+CHIN_Z, CHIN_X = 0.5, 0.15  # the chin and jaw reach down below HEAD_BASE (to the neck): within this far of the middle, from this height, they go with the head too
 BLADE_FOOT = 0.4       # ...from this height up
 LEG_TOP = 0.28         # above this height (bind space) nothing follows the legs (hair, dress)
 
@@ -123,7 +124,7 @@ def skin(points, names, segs, female, guard=False, tris=None, cloth=None):
             rigid[held] = names.index(bone)
         blade = (z >= BLADE_FOOT) & (x > BLADE_BOX[0][0]) & (x <= BLADE_BOX[0][1]) & (y >= BLADE_BOX[1][0]) & (y <= BLADE_BOX[1][1])
         rigid[blade] = names.index("RightHand")
-        rigid[(z >= HEAD_BASE) & ~blade] = names.index("Head")
+        rigid[((z >= HEAD_BASE) | ((z >= CHIN_Z) & (np.abs(x) < CHIN_X))) & ~blade] = names.index("Head")
         fixed = rigid >= 0
         index[fixed] = 0
         index[fixed, 0] = rigid[fixed]
