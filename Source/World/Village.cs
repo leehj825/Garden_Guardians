@@ -59,6 +59,9 @@ public sealed class Village
     /// <summary>How far from its middle its soldiers walk their round: past its outermost home.</summary>
     public float PatrolRadius { get; set; } = 6f;
 
+    /// <summary>The kingdom it belongs to, if any.</summary>
+    public Guid? KingdomId { get; set; }
+
     /// <summary>The headman's own clan.</summary>
     public Guid? HeadmanClan { get; set; }
 }

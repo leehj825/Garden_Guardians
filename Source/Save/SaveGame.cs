@@ -43,6 +43,7 @@ public sealed class SaveGame
     /// <summary>Pieces of stone wall; null in a save from before walls.</summary>
     public List<WallSave>? Walls { get; set; }
     public List<VillageSave>? Villages { get; set; }
+    public List<KingdomSave>? Kingdoms { get; set; }
     public List<SnareSave> Snares { get; set; } = new();
 
     /// <summary>Aphid pens; null in a save from before herding.</summary>
@@ -227,6 +228,17 @@ public sealed class VillageSave
     public float FoundedAt { get; set; }
     public List<Guid> Clans { get; set; } = new();
     public int? Headman { get; set; }
+}
+
+public sealed class KingdomSave
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = "";
+    public Guid Capital { get; set; }
+    public int? King { get; set; }
+    public float FoundedAt { get; set; }
+    public List<Guid> Villages { get; set; } = new();
+    public int TributePaid { get; set; }
 }
 
 public sealed class WallSave

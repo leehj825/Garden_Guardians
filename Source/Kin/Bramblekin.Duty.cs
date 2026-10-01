@@ -81,6 +81,15 @@ public sealed partial class Bramblekin
             return true;
         }
 
+        if (village is not null && world.IsPledged(this) && world.RealmAlarmFor(village) is { } realmThreat)
+        {
+            // Sworn to the kingdom: march to a sister village's defence.
+            SetState(BramblekinState.Fighting);
+            CombatTarget = realmThreat;
+            PursueAndStrike(realmThreat, WalkSpeed * PursuitSpeedMultiplier, deltaTime, world);
+            return true;
+        }
+
         if (village is not null)
             return DoPatrol(village, group, deltaTime, world);
 

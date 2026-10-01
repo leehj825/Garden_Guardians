@@ -1101,7 +1101,8 @@ public static partial class Game
                 continue;
             Vector2 screen = Raylib.GetWorldToScreen(anchor, camera);
             string headman = world.HeadmanOf(village) is { } h ? $", headman {h.Name}" : "";
-            string text = $"{village.Name} ({village.ClanIds.Count} {(village.ClanIds.Count == 1 ? "clan" : "clans")}{headman})";
+            string realm = world.RealmOf(village) is { } kingdom ? (village.Id == kingdom.Capital ? $", capital of {kingdom.Name}" : $", in {kingdom.Name}") : "";
+            string text = $"{village.Name} ({village.ClanIds.Count} {(village.ClanIds.Count == 1 ? "clan" : "clans")}{headman}{realm})";
             int width = Raylib.MeasureText(text, villageFont);
             int x = (int)(screen.X - width / 2f), y = (int)(screen.Y - villageFont);
             Raylib.DrawRectangle(x - 8, y - 4, width + 16, villageFont + 8, PanelFill with { A = 215 });
@@ -1168,7 +1169,7 @@ public static partial class Game
                 (kin.GuardianNames is { } guardians ? $", raised by {guardians.A} & {guardians.B}" : ""), ink),
             (kin.DescribeFamily(), kin.Partner is not null ? new Color(190, 70, 120, 255) : ink),
             ($"State: {kin.State}   Health: {kin.Health} / {Bramblekin.MaxHealth}", ink),
-            ($"Job: {(kin.IsYoung ? "none (young)" : group is null ? "none (on its own)" : kin.Job.ToString())}{(kin.VillageJob != KinJob.None ? $"  (village: {kin.VillageJob}{(kin.IsPaid ? ", paid" : ", unpaid")})" : "")}", ink),
+            ($"Job: {(kin.IsYoung ? "none (young)" : group is null ? "none (on its own)" : kin.Job.ToString())}{(kin.VillageJob != KinJob.None ? $"  (village: {kin.VillageJob}{(kin.IsPaid ? ", paid" : ", unpaid")})" : "")}{(world.Realms.FirstOrDefault(k => k.KingId == kin.ID) is { } crown ? $"  KING of {crown.Name}" : "")}", ink),
             ($"Hunger: {(int)kin.Hunger}%{(kin.IsStarving ? " STARVING" : kin.IsHungry ? " (hungry)" : "")}{(kin.HasFood ? "  +food" : "")}{(kin.IsSick ? "  SICK" : "")}",
                 kin.IsStarving || kin.IsSick ? new Color(170, 60, 40, 255) : ink),
             ($"Thirst: {(int)kin.Thirst}%{(kin.Thirst >= Bramblekin.MaxThirst ? " PARCHED" : kin.IsThirsty ? " (thirsty)" : "")}   " +

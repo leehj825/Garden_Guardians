@@ -157,6 +157,7 @@ public sealed partial class World
             UpdateRations(village);
         }
         ClearRationsOutsideVillages();
+        UpdateRealms();
     }
 
     /// <summary>
@@ -232,6 +233,6 @@ public sealed partial class World
         if (VillageOf(group) is not { } village)
             return null;
         string headman = HeadmanOf(village) is { } h ? h.Name : "no headman";
-        return $"{village.Name} ({village.Homes} homes, {village.ClanIds.Count} {(village.ClanIds.Count == 1 ? "clan" : "clans")}, headman {headman}, store {village.Stock}, {village.Soldiers} soldiers, {village.Builders} builders, {village.Healers} healers, {village.Scouts} scouts; {village.Paid} of {village.AllowedPaid} fed)";
+        return $"{village.Name} ({village.Homes} homes, {village.ClanIds.Count} {(village.ClanIds.Count == 1 ? "clan" : "clans")}, headman {headman}, store {village.Stock}, {village.Soldiers} soldiers, {village.Builders} builders, {village.Healers} healers, {village.Scouts} scouts; {village.Paid} of {village.AllowedPaid} fed{(DescribeRealm(village) is { } realm ? $"; {realm}" : "")})";
     }
 }

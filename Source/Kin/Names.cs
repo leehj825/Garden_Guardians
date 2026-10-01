@@ -88,4 +88,18 @@ public static class Names
         }
         return VillageStart[rng.Next(VillageStart.Length)] + VillageEnd[rng.Next(VillageEnd.Length)] + " " + Guid.NewGuid().ToString("N")[..3];
     }
+
+    private static readonly string[] KingdomEnd = { "reach", "mark", "land", "realm", "wood", "crown" };
+
+    /// <summary>A kingdom's name ("Thornreach", "Hazelmark"), one not <paramref name="taken"/>.</summary>
+    public static string Kingdom(Random rng, Func<string, bool> taken)
+    {
+        for (int attempt = 0; attempt < 60; attempt++)
+        {
+            string name = VillageStart[rng.Next(VillageStart.Length)] + KingdomEnd[rng.Next(KingdomEnd.Length)];
+            if (!taken(name))
+                return name;
+        }
+        return VillageStart[rng.Next(VillageStart.Length)] + KingdomEnd[rng.Next(KingdomEnd.Length)] + " " + Guid.NewGuid().ToString("N")[..3];
+    }
 }
