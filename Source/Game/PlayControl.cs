@@ -18,6 +18,9 @@ public sealed class PlayControl
     /// <summary>How high above the kin's feet (m) the camera looks.</summary>
     private const float LookHeight = 1.1f;
 
+    /// <summary>The camera aims this far (m) below the kin's head, which lifts the kin up the screen, clear of the thumbs.</summary>
+    private const float LookBelow = 1.0f;
+
     /// <summary>Radians the view turns per pixel dragged, sideways and up/down.</summary>
     private const float TurnPerPixel = 0.006f, PitchPerPixel = 0.004f;
 
@@ -207,7 +210,7 @@ public sealed class PlayControl
         if (position.Y < ground)
             position.Y = ground;
         camera.Position = position;
-        camera.Target = _focus + new Vector3(0f, 0.2f, 0f);
+        camera.Target = _focus + new Vector3(0f, -LookBelow, 0f);
         camera.Up = Vector3.UnitY;
     }
 
