@@ -124,6 +124,7 @@ public sealed partial class World
             kept.Add(village);
             village.Centre = centre;
             village.Homes = cluster.Count;
+            village.PatrolRadius = MathF.Max(6f, cluster.Max(h => GroundMover.HorizontalDistance(h.Position, centre) + h.PalisadeRadius) + 1.5f);
             if (!village.ClanIds.OrderBy(id => id).SequenceEqual(clans))
             {
                 foreach (Guid joined in clans.Except(village.ClanIds))
@@ -186,6 +187,43 @@ public sealed partial class World
         HeadmenChosen++;
         Game.AddEventLog($"[VILLAGE] {headman.Name} {(first ? "is chosen" : "becomes")} headman of {village.Name}");
         Chronicle($"{headman.Name} {(first ? "was chosen" : "became")} headman of the village of {village.Name}", ClansOf(village).ToArray());
+    }
+
+    /// <summary>Waypoints on a soldier's round of a village.</summary>
+    public const int PatrolPoints = 8;
+
+    /// <summary>Waypoint <paramref name="index"/> of <paramref name="village"/>'s round: on a ring past its homes, moved in (or round) if something stands there.</summary>
+    public Vector3 PatrolWaypoint(Village village, int index)
+    {
+        float angle = index * MathF.Tau / PatrolPoints + (village.FoundedAt * 0.37f) % MathF.Tau;
+        for (float r = village.PatrolRadius; r > 3f; r -= 1f)
+        {
+            Vector3 p = Grounded(village.Centre + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * r);
+            if (Terrain.Contains(p, 2f) && !IsBlocked(p, 0.4f))
+                return p;
+        }
+        return village.Centre;
+    }
+
+    /// <summary>
+    /// The threat a clan's soldiers should go for: its own alarm (a threat near its home) or — in a village — any of the village's clans'
+    /// alarms near any of the village's homes. Null if none.
+    /// </summary>
+    public ICombatant? AlarmFor(KinGroup group, Village? village)
+    {
+        if (group.DefendTarget is { IsDead: false } own && group.Home is { } home &&
+            GroundMover.HorizontalDistanceSquared(own.Position, home.Position) <= HomeDefenseRadius * HomeDefenseRadius * 1.5f)
+            return own;
+        if (village is null)
+            return null;
+        foreach (KinGroup clan in ClansOf(village))
+        {
+            if (clan.DefendTarget is not { IsDead: false } shared)
+                continue;
+            if (GroupHomes(clan).Any(h => GroundMover.HorizontalDistanceSquared(shared.Position, h.Position) <= HomeDefenseRadius * HomeDefenseRadius * 1.5f))
+                return shared;
+        }
+        return null;
     }
 
     /// <summary>A line about the village for the clan card: "Mossbridge (3 homes, headman Tibo)".</summary>

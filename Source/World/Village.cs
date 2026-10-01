@@ -50,6 +50,9 @@ public sealed class Village
     /// <summary>Meals its paid soldiers have eaten from its stores.</summary>
     public int RationMeals { get; set; }
 
+    /// <summary>How far from its middle its soldiers walk their round: past its outermost home.</summary>
+    public float PatrolRadius { get; set; } = 6f;
+
     /// <summary>The headman's own clan.</summary>
     public Guid? HeadmanClan { get; set; }
 }

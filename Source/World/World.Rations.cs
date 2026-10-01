@@ -25,6 +25,9 @@ public sealed partial class World
     /// <summary>A testing aid: with rations off a village's soldiers fend for themselves, as before.</summary>
     public static bool RationsEnabled { get; set; } = true;
 
+    /// <summary>A testing aid: with the village jobs off there is no garrison, no Fishers and no patrol (the jobs are as before step 3).</summary>
+    public static bool SocietyJobsEnabled { get; set; } = true;
+
     private readonly Dictionary<Guid, int> _depositsByClan = new();
 
     /// <summary>Meals paid soldiers have eaten from village stores, for the report.</summary>

@@ -11,6 +11,10 @@ public sealed partial class World
     /// <summary>A threat within this many meters of home (or of a homeless group's Leader) is the group's business.</summary>
     public const float HomeDefenseRadius = 10f;
 
+    /// <summary>A clan keeps a Fisher for every this many of its people, if there is shore within this far (m) of home.</summary>
+    private const int FishersPerMembers = 6;
+    private const float FishingShoreReach = 20f;
+
     /// <summary>A Leader sends Hunters after a Stag Beetle within this many meters of home at Aggression 0…</summary>
     public const float BaseHuntSearchRadius = 20f;
 
@@ -314,6 +318,27 @@ public sealed partial class World
             int farmers = Math.Max(1, members.Count / perFarmer);
             foreach (Bramblekin member in members.Where(m => m.Job == KinJob.Gatherer).OrderByDescending(m => m.Personality.Intelligence + m.SkillAt(Skill.Farming)).Take(farmers))
                 member.AssignJob(KinJob.Farmer);
+        }
+
+        // A clan that fishes keeps a Fisher on the shore for every few of its people, if there is shore near its home.
+        if (SocietyJobsEnabled && group.Goal is not (GroupGoal.Defend or GroupGoal.Raid) && group.Home is { IsBuilt: true } fishHome && World.Knows(group, Craft.Fishing) && members.Count >= 3 &&
+            RandomShoreSpot(fishHome.Position, FishingShoreReach) is not null)
+        {
+            int fishers = Math.Max(1, members.Count / FishersPerMembers);
+            foreach (Bramblekin member in members.Where(m => m.Job == KinJob.Gatherer).OrderByDescending(m => m.SkillAt(Skill.Fishing) + m.Personality.Diligence).Take(fishers))
+                member.AssignJob(KinJob.Fisher);
+        }
+
+        // A village's garrison: as many soldiers as it can feed, the sturdiest and boldest of its clans' Gatherers.
+        if (SocietyJobsEnabled && group.Goal is not (GroupGoal.Raid or GroupGoal.Settle) && VillageOf(group) is { } village && village.AllowedPaid > 0)
+        {
+            int adults = ClansOf(village).Sum(c => c.Members.Count(m => !m.IsDead && !m.IsYoung));
+            int quota = (int)MathF.Ceiling(village.AllowedPaid * members.Count / (float)Math.Max(1, adults));
+            quota = Math.Min(quota, Math.Max(1, members.Count * 2 / 5)); // never more than two in five.
+            int have = members.Count(m => m.Job == KinJob.Guard);
+            foreach (Bramblekin member in members.Where(m => m.Job == KinJob.Gatherer && m.Health > Bramblekin.MaxHealth / 2)
+                         .OrderByDescending(m => m.Personality.Courage + 0.5f * m.Personality.Aggression + 0.5f * m.Personality.Strength).Take(Math.Max(0, quota - have)))
+                member.AssignJob(KinJob.Guard);
         }
 
         // A clan with herb-lore keeps someone kind and clever tending its sick and wounded.

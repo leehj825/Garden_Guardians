@@ -1,6 +1,6 @@
 # Garden Guardians — Society & Jobs Design (draft for review)
 
-Status: **steps 1 (villages) and 2 (the village store and rations, for Guards) are built; steps 3-6 are not.** The open questions below were answered with the recommendations. Written 2026-10-01 after the discussion about villages, kingdoms and paid jobs.
+Status: **steps 1 (villages), 2 (rations) and 3 (soldiers, fishers) are built; steps 4-6 are not.** The open questions below were answered with the recommendations. Written 2026-10-01 after the discussion about villages, kingdoms and paid jobs.
 Please mark up the **Open questions** at the end; the plan in section 9 starts once they are answered.
 
 ---
@@ -161,6 +161,8 @@ Each has a banner/colour and a line in the Clans and History views.
 Walls (already built) become a **village** project paid from the village store in step 4.
 
 *Step 2 done (2026-10-01):* `World.Rations.cs`. The village's pooled store is the stock of every home of its clans. Each look it works out `income` (food deposited by its clans, smoothed over ~1.5 min) and `AllowedPaid = floor(income x 0.5 / mealsPerKinSecond + (stock - reserve) / (mealsPerKinSecond x 900 s))`, reserve = 0.7 pieces per villager. That many Guards (lowest IDs first) are *paid*: when hungry they are brought a ration from the nearest village store (so they eat in place and do not leave the post), and never when stock is at the reserve. Headless result (6 seeds x 50 min, Village-Age start): paid guards spent 19.7% of their time food-seeking (incl. eating) vs 24.3% for unpaid guards, and were starving 1.2% of samples vs 3.8%. The effect is real but modest because few guards exist yet (Guard is a single job in peace time) — step 3 adds the Soldier role that makes it matter.
+
+*Step 3 done (2026-10-01):* **Soldier** — in a village a Guard patrols a ring of 8 waypoints just outside the homes (looks about 3 s at each), answers any clan's alarm near any of the village's homes, and picks up food within 4 m of its route and carries it to the stores (it never leaves the route for more). The garrison is as large as the village can feed (the `AllowedPaid` of step 2, at most two in five adults, picked by courage + aggression + strength). **Fisher** — `KinJob.Fisher`: a clan that knows Fishing, with shore within 20 m of home, keeps one fisher per 6 people on the shore all day (before, fishing was only a fallback). Headless A/B (6 seeds x 40 min, Village-Age start, jobs off vs on): alive 206 -> 238, starved 122 -> 100, killed by predators 85 -> 65, soldiers on average 17 -> 29, fishers 0 -> 11, food in stores 227 -> 270, guards on patrol/post 33% -> 53% of the time. Gatherer, Farmer and Hunter are unchanged (they are the producers).
 
 ## 10. Risks
 
