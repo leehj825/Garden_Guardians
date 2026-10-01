@@ -202,4 +202,40 @@ internal static unsafe class BramblekinModel
         instance.BoneMatrices = null;
         instance.CurrentPose = null;
     }
+
+    private static readonly Dictionary<string, int> _boneIndex = new();
+
+    /// <summary>The index of the bone called <paramref name="name"/> ("mixamorig:RightHand") in the skeleton, or -1.</summary>
+    public static int BoneIndex(in Model pose, string name)
+    {
+        if (_boneIndex.TryGetValue(name, out int cached))
+            return cached;
+        int found = -1;
+        for (int i = 0; i < pose.Skeleton.BoneCount && found < 0; i++)
+        {
+            if ((System.Runtime.InteropServices.Marshal.PtrToStringAnsi((nint)pose.Skeleton.Bones[i].Name) ?? "") == name)
+                found = i;
+        }
+        _boneIndex[name] = found;
+        return found;
+    }
+
+    /// <summary>The skeleton's bones are set out in units about 2.92 tall where the mesh is 1 tall: its poses are this many metres per bone unit.</summary>
+    private const float SkeletonScale = 0.3425f;
+
+    /// <summary>The world matrix of bone <paramref name="index"/> in the current pose, in the mesh's own units (row-vector order): its frame, with its place worked up through its parents.</summary>
+    public static Matrix4x4 BoneWorld(in Model pose, int index)
+    {
+        Matrix4x4 world = Chain(pose, index);
+        world.Translation *= SkeletonScale;
+        return world;
+    }
+
+    private static Matrix4x4 Chain(in Model pose, int index)
+    {
+        Transform t = pose.CurrentPose[index];
+        Matrix4x4 local = Matrix4x4.CreateScale(t.Scale) * Matrix4x4.CreateFromQuaternion(t.Rotation) * Matrix4x4.CreateTranslation(t.Translation);
+        int parent = pose.Skeleton.Bones[index].Parent;
+        return parent >= 0 ? local * Chain(pose, parent) : local;
+    }
 }
