@@ -139,7 +139,7 @@ public sealed partial class World
                 break;
 
             case AssaultPhase.Fighting:
-                if (HillGuards.All(g => g.IsDead || g.IsHidden) && AntZoneKin.Any(k => a.Party.Contains(k)))
+                if (HillGuards.All(g => g.IsDead) && AntZoneKin.Any(k => a.Party.Contains(k)))
                 {
                     NextPhase(a, AssaultPhase.Looting);
                     string text = $"The guards of the ant hill are down: the soldiers of {a.Name} go in for the prize";
@@ -252,9 +252,7 @@ public sealed partial class World
         if (Anthill is not { } hill)
             return null;
         hill.Level = Math.Max(1, level);
-        HillGuards.Clear();
-        for (int i = 0; i < hill.GuardCount; i++)
-            HillGuards.Add(new HillGuard(hill.Mouth, Rng, hidden: false));
+        FillGuards();
         List<Bramblekin> party = Colony.Where(k => !k.IsDead && !k.IsYoung && !k.IsElder).OrderByDescending(k => k.Strength).Take(SoldiersNeeded(hill.Level)).ToList();
         if (party.Count == 0)
             return null;

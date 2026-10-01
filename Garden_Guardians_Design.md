@@ -935,7 +935,7 @@ next hill tougher and the reward richer.
     for two minutes. Bramblekin go for any thief
     near their home. There are no mass raids on villages: a thief is one
     ant at a time, and the kin defend against it as before.
-*   **The no-go zone:** round the hill is a zone 20m out. Nothing is
+*   **The no-go zone:** round the hill is a zone 12m out (the attack range). Nothing is
     built, planted, settled, set down (food, stones, branches, snares,
     wells, walls, feast sites, shrines) or wandered to in it, and every
     clan treats it as a standing danger. The only way in is a Kingdom
@@ -943,8 +943,14 @@ next hill tougher and the reward richer.
 *   **Guards:** the hill's level L (1 to start) sets how many guard it:
     **5 × L ants** — 5, 10, 15, 20 and so on, with no cap. A guard (12
     Health, bites for 3 every 1.1s, walks at 2 m/s, about 1m long) stands
-    about the hill, falls on any Bramblekin that enters the zone and chases
+    falls on any Bramblekin that enters the zone and chases
     it until it is dead or 6m clear of the zone. They fight to the death.
+*   **Sentries and alert:** in quiet times only 2 guards (the sentries)
+    roam about the hill, within 6m of its foot; all the rest wait inside.
+    When any Bramblekin comes within 6m of the zone's edge the hill is on
+    alert: the guards inside come out one by one over a couple of seconds
+    and stand ready — they still attack only inside the zone. Ten seconds
+    after the last Bramblekin has gone, all but the sentries go back in.
 *   **Healing and refilling:** when no kin has been in the zone for 10s,
     wounded guards go back inside the hill and heal (1 Health a second),
     and every guard that died is replaced (one every 3s, up to the hill's
@@ -1019,7 +1025,7 @@ next hill tougher and the reward richer.
     (nearly every assault up to level 8 in the long runs, usually with no
     losses) — so the guards may need to be tougher in later levels. Still
     first guesses, to tune by watching real fights: the
-    zone's 20m, the guards' strength, the retreat and flee numbers, the
+    zone's 12m, the guards' strength, the retreat and flee numbers, the
     party size and the egg numbers.
 
 ## Neighbours: Alliances & War

@@ -27,7 +27,7 @@ public sealed class HillGuard : ICombatant
     private const float HealPerSecond = 1f;
 
     /// <summary>When posted it stands about the hill between these distances (m) from its middle.</summary>
-    private const float PostMin = Anthill.Radius + 2f, PostMax = Anthill.Radius + 9f;
+    private const float PostMin = Anthill.Radius + 2f, PostMax = Anthill.Radius + 6f;
 
     private static readonly Color Tint = new(255, 215, 205, 255);
 
@@ -37,12 +37,14 @@ public sealed class HillGuard : ICombatant
     private Vector3 _postTarget;
     private float _biteTimer;
     private float _healCarry;
+    private float _alertDelay = -1f;
     private float _walkCycle;
     private Vector3 _lastPosition;
 
-    public HillGuard(Vector3 position, Random rng, bool hidden)
+    public HillGuard(Vector3 position, Random rng, bool hidden, bool sentry = false)
     {
         _rng = rng;
+        IsSentry = sentry;
         _mover = new GroundMover(position, BodyRadius, edgeMargin: 0.5f, rng);
         _postTarget = position;
         IsHidden = hidden;
@@ -53,6 +55,9 @@ public sealed class HillGuard : ICombatant
     public bool IsDead { get; private set; }
     public int Health { get; private set; } = MaxHealth;
     public float CollisionRadius => BodyRadius;
+
+    /// <summary>One of the few that roam about the hill when all is quiet (the rest wait inside until it is on alert).</summary>
+    public bool IsSentry { get; set; }
 
     /// <summary>True while it is inside the hill (healing, or kept below in winter): not drawn, and nothing can strike it.</summary>
     public bool IsHidden { get; private set; }
@@ -86,14 +91,27 @@ public sealed class HillGuard : ICombatant
         }
         _target = null;
 
-        // Quiet: the wounded (and everyone, in winter) go below; the rest stand about the hill.
-        bool quiet = world.AntZoneQuietSeconds >= World.AntZoneQuietNeeded;
-        bool belowWanted = quiet && (Health < MaxHealth || world.CurrentSeason == Season.Winter);
+        // Kin near the zone but not in it: the hill is on alert and the guards inside come out (one by one), ready.
+        bool alert = world.AntAlert;
+        if (!alert)
+            _alertDelay = -1f;
+        else if (IsHidden && Health >= MaxHealth && world.CurrentSeason != Season.Winter)
+        {
+            if (_alertDelay < 0f)
+                _alertDelay = (float)_rng.NextDouble() * 2.5f;
+            _alertDelay -= deltaTime;
+            if (_alertDelay <= 0f)
+                Emerge(hill);
+        }
+
+        // Quiet: the wounded (and everyone, in winter) go below, and so do all but the sentries; the sentries stand about the hill.
+        bool quiet = world.AntAlertQuietSeconds >= World.AntZoneQuietNeeded;
+        bool belowWanted = quiet && (!IsSentry || Health < MaxHealth || world.CurrentSeason == Season.Winter);
         if (IsHidden)
         {
-            if (!belowWanted)
+            if (!belowWanted && !alert && IsSentry && world.CurrentSeason != Season.Winter && Health >= MaxHealth)
                 Emerge(hill);
-            else
+            else if (belowWanted || alert)
             {
                 _healCarry += HealPerSecond * deltaTime;
                 int whole = (int)_healCarry;

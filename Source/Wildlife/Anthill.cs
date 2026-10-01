@@ -18,7 +18,13 @@ public sealed class Anthill
     public const float DrawWidth = 10f;
 
     /// <summary>The no-go zone: nothing is built, planted or settled within this far (m) of the hill's middle, and its guards fight whoever comes in.</summary>
-    public const float ZoneRadius = 20f;
+    public const float ZoneRadius = 12f;
+
+    /// <summary>Bramblekin this much (m) beyond the zone's edge put the hill on alert: all its guards come out (but attack only in the zone).</summary>
+    public const float AlertMargin = 6f;
+
+    /// <summary>Only this many guards roam about the hill when all is quiet; the rest stay inside until it is on alert.</summary>
+    public const int Sentries = 2;
 
     /// <summary>Guards give up the chase of someone who has got this far (m) outside the zone.</summary>
     public const float ChaseLeash = 6f;

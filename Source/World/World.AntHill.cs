@@ -37,6 +37,12 @@ public sealed partial class World
     /// <summary>How long (s) the zone has been empty of Bramblekin.</summary>
     public float AntZoneQuietSeconds { get; private set; } = AntZoneQuietNeeded;
 
+    /// <summary>True while any Bramblekin is in the zone or within <see cref="Anthill.AlertMargin"/> of it: the hill is on alert.</summary>
+    public bool AntAlert { get; private set; }
+
+    /// <summary>How long (s) no Bramblekin has been near enough to alert the hill.</summary>
+    public float AntAlertQuietSeconds { get; private set; } = AntZoneQuietNeeded;
+
     /// <summary>Food carried off from stores by ants.</summary>
     public int AntThefts { get; private set; }
 
@@ -80,8 +86,15 @@ public sealed partial class World
         }
         best ??= Grounded(new Vector3(half - inset, 0f, half - inset));
         SetAnthill(new Anthill(best.Value, Vector3.Zero));
+        FillGuards();
+    }
+
+    /// <summary>The hill's full guard: a couple of sentries out, the rest inside.</summary>
+    private void FillGuards()
+    {
+        HillGuards.Clear();
         for (int i = 0; i < Anthill!.GuardCount; i++)
-            HillGuards.Add(new HillGuard(Anthill.Mouth, Rng, hidden: false));
+            HillGuards.Add(new HillGuard(Anthill.Mouth, Rng, hidden: i >= Anthill.Sentries, sentry: i < Anthill.Sentries));
     }
 
     private void SetAnthill(Anthill hill)
@@ -107,6 +120,19 @@ public sealed partial class World
                 AntZoneKin.Add(kin);
         }
         AntZoneQuietSeconds = AntZoneKin.Count > 0 ? 0f : AntZoneQuietSeconds + deltaTime;
+        AntAlert = AntZoneKin.Count > 0;
+        if (!AntAlert)
+        {
+            foreach (Bramblekin kin in QueryNearbyColony(hill.Position, Anthill.ZoneRadius + Anthill.AlertMargin))
+            {
+                if (!kin.IsDead && hill.IsInZone(kin.Position, Anthill.AlertMargin))
+                {
+                    AntAlert = true;
+                    break;
+                }
+            }
+        }
+        AntAlertQuietSeconds = AntAlert ? 0f : AntAlertQuietSeconds + deltaTime;
 
         // Thieves.
         if (CurrentSeason == Season.Winter)
@@ -139,7 +165,7 @@ public sealed partial class World
             if (_guardRefillTimer <= 0f)
             {
                 _guardRefillTimer = GuardRefillInterval;
-                HillGuards.Add(new HillGuard(hill.Mouth, Rng, hidden: true));
+                HillGuards.Add(new HillGuard(hill.Mouth, Rng, hidden: true, sentry: HillGuards.Count(g => g.IsSentry && !g.IsDead) < Anthill.Sentries));
             }
         }
         for (int i = HillGuards.Count - 1; i >= 0; i--)
@@ -293,8 +319,6 @@ public sealed partial class World
         if (position is not { } where)
             return;
         SetAnthill(new Anthill(where, Vector3.Zero) { Stock = stock, Level = Math.Max(1, level) });
-        HillGuards.Clear();
-        for (int i = 0; i < Anthill!.GuardCount; i++)
-            HillGuards.Add(new HillGuard(Anthill.Mouth, Rng, hidden: false));
+        FillGuards();
     }
 }
