@@ -167,20 +167,25 @@ public sealed partial class World
     {
         Vector3 at = village.Centre;
         float start = (float)(Rng.NextDouble() * MathF.Tau);
-        // Out as far as there is ground, along one bearing or another (the nearer, the later it is tried).
+        // Out as far as there is open ground, along one bearing or another — clear of other homes if it can be, less so if the map is crowded.
         bool found = false;
-        for (float r = InvaderSpawnDistance; r >= 14f && !found; r -= 2f)
+        foreach (float clear in new[] { 20f, 12f, 6f, 0f })
         {
-            for (int k = 0; k < 12 && !found; k++)
+            for (float r = InvaderSpawnDistance; r >= 18f && !found; r -= 2f)
             {
-                float angle = start + k * MathF.Tau / 12f;
-                Vector3 p = Grounded(village.Centre + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * r);
-                if (Terrain.Contains(p, 3f) && !IsBlocked(p, InvaderSpider.BodyRadius + 0.3f) && !IsWater(p))
+                for (int k = 0; k < 12 && !found; k++)
                 {
-                    at = p;
-                    found = true;
+                    float angle = start + k * MathF.Tau / 12f;
+                    Vector3 p = Grounded(village.Centre + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * r);
+                    if (Terrain.Contains(p, 3f) && !IsBlocked(p, InvaderSpider.BodyRadius + 0.3f) && !IsWater(p) && (clear <= 0f || !NearHomesOrKin(p, clear)))
+                    {
+                        at = p;
+                        found = true;
+                    }
                 }
             }
+            if (found)
+                break;
         }
         for (int i = 0; i < count; i++)
         {
@@ -190,6 +195,11 @@ public sealed partial class World
             Invaders.Add(new InvaderSpider(p, village.Centre, invasion.Id, village.Id, Rng));
         }
     }
+
+    /// <summary>True if a standing home or a living Bramblekin is within <paramref name="distance"/> of <paramref name="point"/> (invaders do not appear in anyone's lap).</summary>
+    private bool NearHomesOrKin(Vector3 point, float distance) =>
+        Shelters.Any(h => h is { IsBuilt: true, IsCollapsed: false } && GroundMover.HorizontalDistance(h.Position, point) < distance) ||
+        Colony.Any(k => !k.IsDead && GroundMover.HorizontalDistance(k.Position, point) < distance * 0.6f);
 
     private void Announce(Invasion invasion, Vector3 where, int count)
     {
