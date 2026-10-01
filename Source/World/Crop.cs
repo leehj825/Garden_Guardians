@@ -36,6 +36,11 @@ public sealed class Crop
     /// <summary>Its footprint (m), for spacing and picking.</summary>
     public const float Radius = 0.45f;
 
+    /// <summary>How far a crop of this kind reaches when grown, picture and all (m): a planted berry patch, a wild bush, or one of the big plots. Placement keeps other things this far off.</summary>
+    public static float FootprintFor(CropKind kind, bool wild) => kind == CropKind.Berry ? (wild ? 0.8f : 1.05f) : Radius * 3.8f;
+
+    public float Footprint => FootprintFor(Kind, GroupId is null);
+
     private static readonly Color LeafColor = new(55, 125, 50, 255);
     private static readonly Color WinterLeafColor = new(110, 100, 70, 255);
     private static readonly Color BerryColor = new(200, 35, 60, 255);

@@ -94,7 +94,7 @@ public sealed partial class World
             float distance = home.Radius + AphidPen.Radius + 1.2f + (float)Rng.NextDouble() * 1.5f;
             Vector3 spot = home.Position + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * distance;
             if (!Terrain.Contains(spot, AphidPen.Radius + 1f) || IsBlocked(spot, AphidPen.Radius) || IsNearHome(spot, 0.3f) ||
-                Pens.Any(p => GroundMover.HorizontalDistance(p.Position, spot) < AphidPen.Radius * 2.5f))
+                OverlapsLayout(spot, AphidPen.DrawRadius))
                 continue;
             var pen = new AphidPen(spot, group.Id, aphids)
             {

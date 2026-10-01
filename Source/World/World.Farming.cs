@@ -31,7 +31,6 @@ public sealed partial class World
     public const float CressBedReach = 14f;
 
     /// <summary>No two crops closer than this (m).</summary>
-    private const float CropSpacing = 1.4f;
 
     /// <summary>Planting takes a piece of food from the stores as seed.</summary>
     public const int SeedCost = 1;
@@ -170,10 +169,19 @@ public sealed partial class World
         return best;
     }
 
+    /// <summary>
+    /// True if something of <paramref name="radius"/> (its picture's reach) set down at <paramref name="spot"/> would overlap a crop, an aphid pen
+    /// or a well already there, whatever size each has grown to.
+    /// </summary>
+    private bool OverlapsLayout(Vector3 spot, float radius, float gap = 0.15f) =>
+        Crops.Any(c => GroundMover.HorizontalDistance(c.Position, spot) < c.Footprint + radius + gap) ||
+        Pens.Any(p => GroundMover.HorizontalDistance(p.Position, spot) < AphidPen.DrawRadius + radius + gap) ||
+        Wells.Any(w => GroundMover.HorizontalDistance(w.Position, spot) < Well.DrawRadius + radius + gap);
+
     /// <summary>A free spot near <paramref name="home"/> for a <paramref name="kind"/> crop: open ground (or shore, for cress), clear of homes and other crops. Null if none turns up.</summary>
     public Vector3? FindPlantingSpot(Shelter home, CropKind kind)
     {
-        for (int attempt = 0; attempt < 16; attempt++)
+        for (int attempt = 0; attempt < 30; attempt++)
         {
             Vector3 spot;
             if (kind == CropKind.Cress)
@@ -195,7 +203,7 @@ public sealed partial class World
                 continue;
             if (Shelters.Any(s => IsInHomeYard(s, spot, kind, home)))
                 continue;
-            if (Crops.Any(c => GroundMover.HorizontalDistanceSquared(c.Position, spot) < CropSpacing * CropSpacing))
+            if (OverlapsLayout(spot, Crop.FootprintFor(kind, wild: false)))
                 continue;
             return spot;
         }

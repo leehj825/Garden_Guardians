@@ -80,7 +80,7 @@ public sealed partial class World
                 continue;
             if (Shelters.Any(s => !s.IsCollapsed && GroundMover.HorizontalDistance(s.Position, spot) < s.Radius + Well.Radius + 0.5f))
                 continue;
-            if (Crops.Any(c => GroundMover.HorizontalDistance(c.Position, spot) < Crop.Radius + Well.Radius + 0.3f))
+            if (OverlapsLayout(spot, Well.DrawRadius))
                 continue;
             if (spot.Y < lowest)
             {
