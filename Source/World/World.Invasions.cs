@@ -278,12 +278,12 @@ public sealed partial class World
     /// </summary>
     private Vector3? EdgeSpawnPoint(Invasion invasion, Village village)
     {
-        const int Bearings = 24;
+        const int Bearings = 16;
         float EdgeRun(float angle)
         {
             var dir = new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle));
             float last = 0f;
-            for (float r = 10f; r <= 250f; r += 2f)
+            for (float r = 10f; r <= 250f; r += 4f)
             {
                 if (!Terrain.Contains(village.Centre + dir * r, 2.5f))
                     break;
