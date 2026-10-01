@@ -13,10 +13,12 @@ public static unsafe class KinGear
 {
     public const float SwordLength = 0.5f, BowLength = 0.7f, QuiverLength = 0.5f, ShieldWidth = 0.36f;
 
+    public static float SwordBindUp = 0.3f, BowBindUp = 0.5f;
+
     private static readonly Dictionary<(nint Mesh, int Bone), int[]> _vertices = new();
 
     /// <summary>Where the vertices that belong mostly to <paramref name="bone"/> are now (their average, skinned), in the mesh's own space. False if the mesh has none.</summary>
-    private static bool Centroid(in Model pose, string bone, out Vector3 centre)
+    internal static bool Centroid(in Model pose, string bone, out Vector3 centre)
     {
         centre = default;
         int index = BramblekinModel.BoneIndex(pose, bone);
@@ -65,13 +67,24 @@ public static unsafe class KinGear
     }
 
     /// <summary>A hand's place and which way its fingers point (from the forearm to the hand), or false if the mesh can't say.</summary>
-    private static bool Hand(in Model pose, string hand, string forearm, out Vector3 at, out Vector3 fingers)
+    internal static bool Hand(in Model pose, string hand, string forearm, out Vector3 at, out Vector3 fingers)
     {
         at = fingers = default;
         if (!Centroid(pose, hand, out at))
             return false;
         fingers = Centroid(pose, forearm, out Vector3 arm) && Vector3.DistanceSquared(arm, at) > 1e-6f ? Vector3.Normalize(at - arm) : -Vector3.UnitY;
         return true;
+    }
+
+    /// <summary>A direction fixed in the bind pose (<paramref name="bindDirection"/>) carried along by the bone's own skinning rotation, so it turns exactly as that part of the body does.</summary>
+    internal static Vector3 Turned(in Model pose, string bone, Vector3 bindDirection)
+    {
+        int index = BramblekinModel.BoneIndex(pose, bone);
+        if (index < 0)
+            return bindDirection;
+        Matrix4x4 m = pose.BoneMatrices[index]; // raylib's: translation in the last column
+        var d = Vector3.Normalize(bindDirection);
+        return Vector3.Normalize(new Vector3(m.M11 * d.X + m.M12 * d.Y + m.M13 * d.Z, m.M21 * d.X + m.M22 * d.Y + m.M23 * d.Z, m.M31 * d.X + m.M32 * d.Y + m.M33 * d.Z));
     }
 
     /// <summary>A matrix (row-vector order) putting an item's long axis along <paramref name="along"/> and its model Z along <paramref name="normal"/> (made square to it), centred at <paramref name="at"/>.</summary>
@@ -91,7 +104,7 @@ public static unsafe class KinGear
         if (sword && Hand(pose, "mixamorig:RightHand", "mixamorig:RightForeArm", out Vector3 right, out Vector3 rightFingers))
         {
             // The grip across the fist: the blade is the fingers' direction turned a quarter-turn forward-and-up (hanging arm: blade out in front; arm raised: blade up).
-            Vector3 along = Vector3.Normalize(Vector3.Transform(rightFingers, Quaternion.CreateFromAxisAngle(-Vector3.UnitX, 1.75f)));
+            Vector3 along = Turned(pose, "mixamorig:RightHand", new Vector3(-0.5f, -1f, SwordBindUp));
             Vector3 centre = right + along * (0.3f * SwordLength);
             GearModels.Draw(GearModels.Gear.Sword, Matrix4x4.CreateScale(SwordLength) * Frame(along, -Vector3.UnitX, centre) * body);
         }
@@ -107,8 +120,9 @@ public static unsafe class KinGear
             if (bow)
             {
                 // Held by its grip against the inside of the palm, standing along the hand with its belly forward.
+                Vector3 along = Turned(pose, "mixamorig:LeftHand", new Vector3(0f, BowBindUp, 1f));
                 Vector3 centre = left - Vector3.UnitX * 0.03f + forward * 0.02f;
-                GearModels.Draw(GearModels.Gear.Bow, Matrix4x4.CreateScale(BowLength) * Frame(leftFingers, forward, centre) * body);
+                GearModels.Draw(GearModels.Gear.Bow, Matrix4x4.CreateScale(BowLength) * Frame(along, forward, centre) * body);
             }
         }
         if (quiver && Centroid(pose, "mixamorig:Head", out Vector3 head))
