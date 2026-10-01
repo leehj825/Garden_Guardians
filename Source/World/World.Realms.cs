@@ -42,8 +42,11 @@ public sealed partial class World
 
     private int Population(Village village) => ClansOf(village).Sum(c => c.Members.Count(m => !m.IsDead));
 
-    private bool VillagesAllied(Village a, Village b)
+    /// <summary>Allied, or at least friendly: one of their clans is allied with one of the other's, or their headmen count each other friends.</summary>
+    public bool VillagesAllied(Village a, Village b)
     {
+        if (HeadmanOf(a) is { } ha && HeadmanOf(b) is { } hb && (ha.RelationshipTo(hb) == RelationshipState.Friend || hb.RelationshipTo(ha) == RelationshipState.Friend))
+            return true;
         foreach (Guid x in a.ClanIds)
         {
             foreach (Guid y in b.ClanIds)
@@ -68,7 +71,7 @@ public sealed partial class World
         return false;
     }
 
-    private bool InKingdomAge(Village village) => ClansOf(village).Any(c => EraOf(c) >= Era.KingdomAge);
+    public bool InKingdomAge(Village village) => ClansOf(village).Any(c => EraOf(c) >= Era.KingdomAge);
 
     /// <summary>Called with each look at the villages: kingdoms form, grow, lose members, crown kings, collect tribute and dissolve.</summary>
     private void UpdateRealms()
