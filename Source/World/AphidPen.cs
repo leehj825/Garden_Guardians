@@ -31,7 +31,7 @@ public sealed class AphidPen
         Aphids = aphids;
     }
 
-    public Vector3 Position { get; }
+    public Vector3 Position { get; set; }
 
     /// <summary>The clan it belongs to; null once that clan is gone (the herd then drifts away).</summary>
     public Guid? GroupId { get; set; }

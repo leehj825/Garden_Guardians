@@ -107,6 +107,12 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>Hunger removed by eating one piece of Food.</summary>
     private const float FoodNourishment = 40f;
 
+    /// <summary>Pieces of food one kin eats a second, at the usual pace (a village's rations are worked out from it).</summary>
+    public const float MealsPerSecond = HungerPerSecond / FoodNourishment;
+
+    /// <summary>True while its village feeds it for its job (see World.Rations): it eats from the village's stores rather than foraging.</summary>
+    public bool IsPaid { get; set; }
+
     /// <summary>Health restored by eating one piece of Food — the only way to heal.</summary>
     private const int FoodHealing = 6;
 

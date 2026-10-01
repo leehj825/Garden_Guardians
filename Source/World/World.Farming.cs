@@ -194,7 +194,7 @@ public sealed partial class World
             {
                 float angle = (float)(Rng.NextDouble() * MathF.Tau);
                 float distance = kind == CropKind.Mushroom
-                    ? home.Radius + Crop.Radius + 0.1f + (float)Rng.NextDouble() * MushroomBedReach
+                    ? HomeYard(home) + Crop.FootprintFor(kind, wild: false) * 0.85f + 0.1f + (float)Rng.NextDouble() * MushroomBedReach
                     : PlantMinDistance + (float)Rng.NextDouble() * (PlantMaxDistance - PlantMinDistance);
                 spot = Grounded(home.Position + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * distance);
             }
@@ -211,28 +211,49 @@ public sealed partial class World
     }
 
     /// <summary>True if <paramref name="spot"/> is too close to <paramref name="shelter"/> for a <paramref name="kind"/> crop: inside its wall, its palisade ring and the yard round it. A mushroom bed may hug its own <paramref name="home"/>.</summary>
-    private static bool IsInHomeYard(Shelter shelter, Vector3 spot, CropKind kind, Shelter? home)
-    {
-        float reach = kind == CropKind.Mushroom && shelter == home
-            ? shelter.Radius + Crop.Radius
-            : shelter.PalisadeRadius + Crop.Radius + 0.2f;
-        return GroundMover.HorizontalDistance(shelter.Position, spot) < reach;
-    }
+    private static bool IsInHomeYard(Shelter shelter, Vector3 spot, CropKind kind, Shelter? home) =>
+        GroundMover.HorizontalDistance(shelter.Position, spot) < HomeYard(shelter) + Crop.FootprintFor(kind, wild: false) * 0.85f;
+
+    /// <summary>How far from a home's middle nothing else may stand: its palisade ring (which it may or may not have yet), with a little air.</summary>
+    private static float HomeYard(Shelter shelter) => shelter.PalisadeRadius + 0.3f;
 
     private float _yardSweepTimer;
 
-    /// <summary>Homes grow (tent to house) and gain palisades after a crop is in: plough under any that now sit in a home's yard, so none ever overlaps a home.</summary>
+    /// <summary>
+    /// Every few seconds, whatever was set down where something else now stands is cleared: a crop is ploughed under if it overlaps a home
+    /// (and its palisade ring), a well, an aphid pen or a bigger crop, and an aphid pen is moved off a home, a well or the plots. Homes grow
+    /// (tent to house) and gain palisades after a crop is in, so this keeps everything built apart, whenever it was built.
+    /// </summary>
     private void ClearHomeYards(float deltaTime)
     {
         _yardSweepTimer -= deltaTime;
         if (_yardSweepTimer > 0f)
             return;
         _yardSweepTimer = 5f;
+
+        var homes = Shelters.Where(s => !s.IsCollapsed).ToList();
         for (int i = Crops.Count - 1; i >= 0; i--)
         {
             Crop crop = Crops[i];
-            if (Shelters.Any(s => !s.IsCollapsed && GroundMover.HorizontalDistance(s.Position, crop.Position) < (crop.Kind == CropKind.Mushroom ? s.Radius + Crop.Radius * 0.5f : s.Radius + Crop.Radius + 0.9f)))
+            float reach = crop.Footprint * 0.85f;
+            bool overlaps =
+                homes.Any(s => GroundMover.HorizontalDistance(s.Position, crop.Position) < HomeYard(s) + reach) ||
+                Wells.Any(w => GroundMover.HorizontalDistance(w.Position, crop.Position) < Well.DrawRadius + reach) ||
+                Pens.Any(p => GroundMover.HorizontalDistance(p.Position, crop.Position) < AphidPen.DrawRadius + reach) ||
+                Crops.Any(o => o != crop && GroundMover.HorizontalDistance(o.Position, crop.Position) < (o.Footprint + crop.Footprint) * 0.8f &&
+                               (o.Growth > crop.Growth || (o.Growth == crop.Growth && Crops.IndexOf(o) < i)));
+            if (overlaps)
                 Crops.RemoveAt(i);
+        }
+
+        foreach (AphidPen pen in Pens)
+        {
+            bool overlaps =
+                homes.Any(s => GroundMover.HorizontalDistance(s.Position, pen.Position) < HomeYard(s) + AphidPen.DrawRadius * 0.85f) ||
+                Wells.Any(w => GroundMover.HorizontalDistance(w.Position, pen.Position) < Well.DrawRadius + AphidPen.DrawRadius * 0.85f) ||
+                Pens.Any(o => o != pen && GroundMover.HorizontalDistance(o.Position, pen.Position) < AphidPen.DrawRadius * 1.7f && Pens.IndexOf(o) < Pens.IndexOf(pen));
+            if (overlaps && FindPenSpot(pen.Position, pen) is { } spot)
+                pen.Position = Grounded(spot);
         }
     }
 

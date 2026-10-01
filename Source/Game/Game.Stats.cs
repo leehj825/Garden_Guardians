@@ -57,6 +57,7 @@ public static partial class Game
             $"Tents built: {world.TentsBuilt}",
             $"Houses built: {world.HousesBuilt}",
             $"Fell to ruin: {world.SheltersCollapsed}",
+            $"Rations: {world.Villages.Sum(v => v.Paid)} soldiers fed by villages now (room for {world.Villages.Sum(v => v.AllowedPaid)}); {world.RationMeals} meals eaten from village stores",
             $"Villages: {world.Villages.Count} now ({world.VillagesNamed} named, {world.HeadmenChosen} headmen chosen); clans that budded a second home: {world.VillagesFounded}",
             $"Daughter clans: {world.Buddings}",
         }));

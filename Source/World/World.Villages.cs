@@ -153,7 +153,9 @@ public sealed partial class World
             foreach (KinGroup clan in ClansOf(village))
                 clan.VillageId = village.Id;
             ChooseHeadman(village);
+            UpdateRations(village);
         }
+        ClearRationsOutsideVillages();
     }
 
     /// <summary>
@@ -192,6 +194,6 @@ public sealed partial class World
         if (VillageOf(group) is not { } village)
             return null;
         string headman = HeadmanOf(village) is { } h ? h.Name : "no headman";
-        return $"{village.Name} ({village.Homes} homes, {village.ClanIds.Count} {(village.ClanIds.Count == 1 ? "clan" : "clans")}, headman {headman})";
+        return $"{village.Name} ({village.Homes} homes, {village.ClanIds.Count} {(village.ClanIds.Count == 1 ? "clan" : "clans")}, headman {headman}, store {village.Stock}, {village.Paid} of {village.AllowedPaid} fed soldiers)";
     }
 }

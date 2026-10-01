@@ -88,22 +88,33 @@ public sealed partial class World
     /// <summary>A new pen for <paramref name="group"/> beside <paramref name="home"/>, holding <paramref name="aphids"/>; null if there's no room.</summary>
     private AphidPen? FencePen(KinGroup group, Shelter home, int aphids)
     {
-        for (int attempt = 0; attempt < 12; attempt++)
+        if (FindPenSpot(home.Position, null, home) is not { } spot)
+            return null;
+        var pen = new AphidPen(spot, group.Id, aphids)
+        {
+            HoneydewTimer = HoneydewSeconds / 2f,
+            BreedTimer = AphidBreedSeconds,
+        };
+        Pens.Add(pen);
+        PensFenced++;
+        return pen;
+    }
+
+    /// <summary>A free spot for a pen beside <paramref name="around"/>: clear of every home's palisade ring, wells, crops and other pens (<paramref name="ignore"/> being the pen itself, when it is moving).</summary>
+    private Vector3? FindPenSpot(Vector3 around, AphidPen? ignore, Shelter? home = null)
+    {
+        for (int attempt = 0; attempt < 24; attempt++)
         {
             float angle = (float)(Rng.NextDouble() * MathF.Tau);
-            float distance = home.Radius + AphidPen.Radius + 1.2f + (float)Rng.NextDouble() * 1.5f;
-            Vector3 spot = home.Position + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * distance;
-            if (!Terrain.Contains(spot, AphidPen.Radius + 1f) || IsBlocked(spot, AphidPen.Radius) || IsNearHome(spot, 0.3f) ||
-                OverlapsLayout(spot, AphidPen.DrawRadius))
+            float distance = (home is null ? 3.5f : home.PalisadeRadius + AphidPen.DrawRadius + 0.4f) + attempt * 0.25f + (float)Rng.NextDouble() * 1.5f;
+            Vector3 spot = Grounded(around + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * distance);
+            if (!Terrain.Contains(spot, AphidPen.DrawRadius + 1f) || IsBlocked(spot, AphidPen.Radius) || IsCramped(spot))
                 continue;
-            var pen = new AphidPen(spot, group.Id, aphids)
-            {
-                HoneydewTimer = HoneydewSeconds / 2f,
-                BreedTimer = AphidBreedSeconds,
-            };
-            Pens.Add(pen);
-            PensFenced++;
-            return pen;
+            if (Shelters.Any(s => !s.IsCollapsed && GroundMover.HorizontalDistance(s.Position, spot) < HomeYard(s) + AphidPen.DrawRadius))
+                continue;
+            if (Pens.Any(p => p != ignore && GroundMover.HorizontalDistance(p.Position, spot) < AphidPen.DrawRadius * 2f) || OverlapsLayout(spot, AphidPen.DrawRadius))
+                continue;
+            return spot;
         }
         return null;
     }

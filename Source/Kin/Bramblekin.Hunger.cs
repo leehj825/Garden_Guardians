@@ -53,6 +53,18 @@ public sealed partial class Bramblekin
             return;
         }
 
+        // Paid for its job (a soldier on a village's rations): it does not leave its post to forage.
+        // The ration is brought to it: it eats where it stands (its job is the post, not the walk) from the nearest village store.
+        if (IsPaid && world.RationStoreFor(this) is { } ration && world.WithdrawFood(ration) is { } rationFood)
+        {
+            _carried = rationFood;
+            world.NoteAteFromStore(this, ration);
+            world.NoteRation(this);
+            StartEating();
+            _mealCooked = ration.IsHearthLit;
+            return;
+        }
+
         if (ValidPerceivedFood(world) is { } food && (store is null || PrefersLooseFood(food, store)))
         {
             ApproachFood(food, WalkSpeed * (IsStarving ? 1.25f : 1f), deltaTime, world, eatOnArrival: true);

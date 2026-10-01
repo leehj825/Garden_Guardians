@@ -1,6 +1,6 @@
 # Garden Guardians — Society & Jobs Design (draft for review)
 
-Status: **step 1 (the village object) is built; steps 2-6 are not.** The open questions below were answered with the recommendations. Written 2026-10-01 after the discussion about villages, kingdoms and paid jobs.
+Status: **steps 1 (villages) and 2 (the village store and rations, for Guards) are built; steps 3-6 are not.** The open questions below were answered with the recommendations. Written 2026-10-01 after the discussion about villages, kingdoms and paid jobs.
 Please mark up the **Open questions** at the end; the plan in section 9 starts once they are answered.
 
 ---
@@ -152,13 +152,15 @@ Each has a banner/colour and a line in the Clans and History views.
 
 
 1. **Village object** — formation, name, centre, headman election, dissolve; shown in the Clans view and as a banner on the map. *Test:* headless run: villages form/dissolve sensibly; no kin lose their clan.
-2. **Village store + rations** — pooled store, paid kin eat from it, cap formula. Start with Guard only. *Test:* with rations on, guards guard longer, village food stays ≥ reserve, no new starvation deaths vs. baseline.
+2. **Village store + rations** *(built 2026-10-01: see below)* — pooled store, paid kin eat from it, cap formula. Start with Guard only. *Test:* with rations on, guards guard longer, village food stays ≥ reserve, no new starvation deaths vs. baseline.
 3. **Soldier + Gatherer + Fisher jobs** — patrol-route pickup rule, fishing as a job. *Test:* job counts vs. cap; food income vs. upkeep.
 4. **Remaining paid jobs** — Scout, Builder, Healer on rations; headman assigns.
 5. **Kingdom object** — alliance of ≥ 3 villages, king, capital store, tribute, pledged soldiers (army).
 6. **Events & UI polish** — founding/succession/revolt headlines, history entries, stats lines.
 
 Walls (already built) become a **village** project paid from the village store in step 4.
+
+*Step 2 done (2026-10-01):* `World.Rations.cs`. The village's pooled store is the stock of every home of its clans. Each look it works out `income` (food deposited by its clans, smoothed over ~1.5 min) and `AllowedPaid = floor(income x 0.5 / mealsPerKinSecond + (stock - reserve) / (mealsPerKinSecond x 900 s))`, reserve = 0.7 pieces per villager. That many Guards (lowest IDs first) are *paid*: when hungry they are brought a ration from the nearest village store (so they eat in place and do not leave the post), and never when stock is at the reserve. Headless result (6 seeds x 50 min, Village-Age start): paid guards spent 19.7% of their time food-seeking (incl. eating) vs 24.3% for unpaid guards, and were starving 1.2% of samples vs 3.8%. The effect is real but modest because few guards exist yet (Guard is a single job in peace time) — step 3 adds the Soldier role that makes it matter.
 
 ## 10. Risks
 

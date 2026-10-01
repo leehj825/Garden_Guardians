@@ -373,6 +373,7 @@ public sealed partial class World
         if (!shelter.TryDeposit())
             return false;
         _foodByKind[(int)food.Kind]++;
+        NoteDeposited(shelter);
         StoreHoneyExtra(shelter, food);
         food.Deactivate();
         return true;

@@ -37,6 +37,19 @@ public sealed class Village
     /// <summary>How many homes it has.</summary>
     public int Homes { get; set; }
 
+    /// <summary>Food in its homes' stores now (the village's pooled store: every home of its clans).</summary>
+    public int Stock { get; set; }
+
+    /// <summary>Pieces of food a second its people have been bringing in lately (smoothed over about a minute and a half).</summary>
+    public float IncomeRate { get; set; }
+
+    /// <summary>How many of its soldiers it can feed (see World.Rations), and how many it does.</summary>
+    public int AllowedPaid { get; set; }
+    public int Paid { get; set; }
+
+    /// <summary>Meals its paid soldiers have eaten from its stores.</summary>
+    public int RationMeals { get; set; }
+
     /// <summary>The headman's own clan.</summary>
     public Guid? HeadmanClan { get; set; }
 }

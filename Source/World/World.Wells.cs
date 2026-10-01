@@ -78,7 +78,7 @@ public sealed partial class World
             Vector3 spot = Grounded(home.Position + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * distance);
             if (!Terrain.Contains(spot, 3f) || IsBlocked(spot, Well.Radius + 0.3f))
                 continue;
-            if (Shelters.Any(s => !s.IsCollapsed && GroundMover.HorizontalDistance(s.Position, spot) < s.Radius + Well.Radius + 0.5f))
+            if (Shelters.Any(s => !s.IsCollapsed && GroundMover.HorizontalDistance(s.Position, spot) < HomeYard(s) + Well.DrawRadius))
                 continue;
             if (OverlapsLayout(spot, Well.DrawRadius))
                 continue;
