@@ -220,6 +220,9 @@ public sealed partial class World
         Invasions.Add(invasion);
         InvasionsStarted++;
         SendWave(invasion);
+        // The banner and the camera's spotlight go to where the swarm comes in, so it can be watched marching on the village.
+        if (Invaders.LastOrDefault(sp => sp.InvasionId == invasion.Id) is { } first)
+            where = first.Position;
         string size = invasion.IsHard ? "A great swarm" : "A swarm";
         string inWaves = waves > 1 ? $", in {waves} waves" : "";
         if (invasion.Targets.Count > 0 && invasion.Bearings.TryGetValue(invasion.Targets[0], out float bearing))
