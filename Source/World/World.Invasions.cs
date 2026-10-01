@@ -40,7 +40,28 @@ public sealed partial class World
     /// <summary>With a kingdom standing, this share of invasions is a hard one against it.</summary>
     private const double HardInvasionShare = 0.4;
 
-    public const int LightMin = 3, LightMax = 5, HardMin = 10, HardRandom = 5;
+    public const int LightMin = 3, LightMax = 12, HardMin = 10, HardMax = 30;
+
+    /// <summary>A village's strength for an invasion's sake: each grown soldier counts one, every other grown kin a quarter.</summary>
+    public float DefenceOf(Village village)
+    {
+        float strength = 0f;
+        foreach (Bramblekin kin in ClansOf(village).SelectMany(c => c.Members))
+        {
+            if (kin.IsDead || kin.IsYoung)
+                continue;
+            strength += kin.Job == KinJob.Guard || kin.VillageJob == KinJob.Guard ? 1f : 0.25f;
+        }
+        return strength;
+    }
+
+    /// <summary>A light invasion's size: 3 to 5 against a small village with few soldiers, up to 12 against a large one, a spider for every four points of its defence.</summary>
+    public int LightInvasionSize(Village village) =>
+        Math.Clamp(LightMin + (int)MathF.Round(DefenceOf(village) / 4f) + Rng.Next(-1, 2), LightMin, LightMax);
+
+    /// <summary>A hard invasion's size: 10 or more, and one more for every two points of its villages' defence together (at most 30).</summary>
+    public int HardInvasionSize(Kingdom kingdom) =>
+        Math.Clamp(HardMin + (int)MathF.Round(VillagesOf(kingdom).Sum(DefenceOf) / 2f) + Rng.Next(-1, 2), HardMin, HardMax);
 
     /// <summary>A spider is rewarded with this much meat where it falls.</summary>
     private const int InvaderCarcassFood = 1;
@@ -116,10 +137,12 @@ public sealed partial class World
         }
         _invasionTimer = InvasionGapMin + (float)Rng.NextDouble() * InvasionGapRandom;
         if (Realms.Count > 0 && Rng.NextDouble() < HardInvasionShare)
-            StartKingdomInvasion(Realms[Rng.Next(Realms.Count)], HardMin + Rng.Next(HardRandom));
+            StartKingdomInvasion(PickKingdom(), -1);
         else
-            StartVillageInvasion(Villages[Rng.Next(Villages.Count)], LightMin + Rng.Next(LightMax - LightMin + 1));
+            StartVillageInvasion(Villages[Rng.Next(Villages.Count)], -1);
     }
+
+    private Kingdom PickKingdom() => Realms[Rng.Next(Realms.Count)];
 
     private IEnumerable<KinGroup> VillageClans(Invasion invasion) =>
         Villages.Where(v => invasion.VillageIds.Contains(v.Id)).SelectMany(ClansOf);
@@ -127,8 +150,10 @@ public sealed partial class World
     private static string Capitalize(string s) => s.Length == 0 ? s : char.ToUpper(s[0]) + s[1..];
 
     /// <summary>A light invasion: <paramref name="count"/> small spiders against <paramref name="village"/>.</summary>
-    public Invasion StartVillageInvasion(Village village, int count)
+    public Invasion StartVillageInvasion(Village village, int count = -1)
     {
+        if (count < 0)
+            count = LightInvasionSize(village);
         var invasion = new Invasion { TargetName = $"the village of {village.Name}", StartedAt = ElapsedSeconds, Size = count };
         invasion.VillageIds.Add(village.Id);
         Spawn(invasion, village, count);
@@ -138,8 +163,10 @@ public sealed partial class World
     }
 
     /// <summary>A hard invasion: <paramref name="count"/> spiders against <paramref name="kingdom"/>, most at its capital, the rest at its other villages.</summary>
-    public Invasion StartKingdomInvasion(Kingdom kingdom, int count)
+    public Invasion StartKingdomInvasion(Kingdom kingdom, int count = -1)
     {
+        if (count < 0)
+            count = HardInvasionSize(kingdom);
         List<Village> targets = VillagesOf(kingdom).ToList();
         Village capital = CapitalOf(kingdom) ?? targets[0];
         var invasion = new Invasion { TargetName = $"the kingdom of {kingdom.Name}", StartedAt = ElapsedSeconds, Size = count, KingdomId = kingdom.Id };
