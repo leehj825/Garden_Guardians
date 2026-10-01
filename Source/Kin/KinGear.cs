@@ -90,8 +90,8 @@ public static unsafe class KinGear
         var forward = Vector3.UnitZ; // the mesh faces +Z; its left hand is at +X
         if (sword && Hand(pose, "mixamorig:RightHand", "mixamorig:RightForeArm", out Vector3 right, out Vector3 rightFingers))
         {
-            // The grip in the palm, the blade carrying on past the fingers (a little forward, so it never drags on the ground).
-            Vector3 along = Vector3.Normalize(rightFingers + 0.5f * forward);
+            // The grip across the fist: the blade is the fingers' direction turned a quarter-turn forward-and-up (hanging arm: blade out in front; arm raised: blade up).
+            Vector3 along = Vector3.Normalize(Vector3.Transform(rightFingers, Quaternion.CreateFromAxisAngle(-Vector3.UnitX, 1.75f)));
             Vector3 centre = right + along * (0.3f * SwordLength);
             GearModels.Draw(GearModels.Gear.Sword, Matrix4x4.CreateScale(SwordLength) * Frame(along, -Vector3.UnitX, centre) * body);
         }
@@ -101,7 +101,7 @@ public static unsafe class KinGear
             {
                 // Strapped to the wrist, face out to the left, along the forearm.
                 Vector3 outward = Vector3.UnitX;
-                Vector3 centre = left - leftFingers * 0.1f + outward * 0.1f;
+                Vector3 centre = left - leftFingers * 0.1f + outward * 0.02f;
                 GearModels.Draw(GearModels.Gear.Shield, Matrix4x4.CreateScale(ShieldWidth) * Frame(leftFingers, outward, centre) * body);
             }
             if (bow)
