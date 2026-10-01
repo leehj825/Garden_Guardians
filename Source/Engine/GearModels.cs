@@ -10,14 +10,14 @@ namespace GardenGuardians;
 /// </summary>
 public static unsafe class GearModels
 {
-    public enum Gear { Sword, Spear, Bow, Quiver }
+    public enum Gear { Sword, Spear, Bow, Quiver, Shield }
 
     private static readonly string Folder = OperatingSystem.IsAndroid()
         ? "Models/Props/Gear/"
         : Path.Combine(AppContext.BaseDirectory, "Assets", "Models", "Props", "Gear") + Path.DirectorySeparatorChar;
 
-    private static readonly Model[] _models = new Model[4];
-    private static readonly bool[] _ready = new bool[4];
+    private static readonly Model[] _models = new Model[5];
+    private static readonly bool[] _ready = new bool[5];
 
     private static Model Get(Gear gear)
     {

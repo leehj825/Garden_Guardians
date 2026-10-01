@@ -110,11 +110,9 @@ public sealed partial class Bramblekin
 
         if (props)
         {
-            if (State is BramblekinState.Fighting or BramblekinState.Dueling or BramblekinState.Guarding or BramblekinState.Raiding &&
-                HasShield)
-                DrawShield(facing, group);
 
-            if (State is BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or BramblekinState.Dueling)
+
+            if (State is BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or BramblekinState.Dueling && Job is not (KinJob.Guard or KinJob.Raider))
             {
                 Color thornColor = State == BramblekinState.Attacking ? BloodyThornColor : ThornColor;
                 var grip = Position + new Vector3(0, BodyHeight * 0.6f, 0);
@@ -167,52 +165,16 @@ public sealed partial class Bramblekin
 
     // --- What it carries ------------------------------------------------------------------------
 
-    /// <summary>
-    /// A soldier or raider holds a sword at the right hand; a hunter carries a bow in the left, a quiver on its back (showing behind the
-    /// hair) and — knowing Spears — a spear in the right. Each follows the hand (or the back) of the pose as the kin walks, but is held
-    /// in a fixed way relative to the body (the hand bones' own axes swing about too much to hold anything by).
-    /// </summary>
+    /// <summary>The sword and shield of a soldier or raider, a hunter's bow and quiver: hung on the bones of the pose (see <see cref="KinGear"/>), so they walk and swing with it.</summary>
     private void DrawGear(in Model pose, Vector3 axis, float angleDegrees, float scale)
     {
-        bool sword = Job is KinJob.Guard or KinJob.Raider;
+        bool fighter = Job is KinJob.Guard or KinJob.Raider;
         bool hunter = Job == KinJob.Hunter;
-        if (IsYoung || (!sword && !hunter))
+        if (IsYoung || (!fighter && !hunter))
             return;
-
-        // The Bramblekin's own place on the ground and its size: mesh units -> world.
         Matrix4x4 body = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateFromAxisAngle(Vector3.Normalize(axis), angleDegrees * MathF.PI / 180f) * Matrix4x4.CreateTranslation(Position);
-        int rightHand = BramblekinModel.BoneIndex(pose, "mixamorig:RightHand"), leftHand = BramblekinModel.BoneIndex(pose, "mixamorig:LeftHand"), chest = BramblekinModel.BoneIndex(pose, "mixamorig:Spine2");
-
-        // The kin faces +Z, its right hand is at -X. Directions are for the item's long axis (its tip is at +X in the model); "face" is where its flat side looks.
-        if (sword && rightHand >= 0)
-            Hold(GearModels.Gear.Sword, pose, body, rightHand, new Vector3(-0.35f, 0.3f, 0.85f), new Vector3(1f, 0.2f, 1f), new Vector3(-0.22f, -0.1f, 0.2f), SwordLength);
-        if (hunter)
-        {
-            if (leftHand >= 0)
-                Hold(GearModels.Gear.Bow, pose, body, leftHand, new Vector3(0f, 1f, 0.05f), new Vector3(0f, 0f, 1f), new Vector3(0.12f, 0.05f, 0.30f), BowLength);
-            if (chest >= 0)
-                Hold(GearModels.Gear.Quiver, pose, body, chest, new Vector3(-0.35f, 0.9f, -0.2f), new Vector3(0f, 0f, 1f), new Vector3(-0.05f, 0.12f, -0.38f), QuiverLength);
-            if (rightHand >= 0 && Knows(Craft.Spears))
-                Hold(GearModels.Gear.Spear, pose, body, rightHand, new Vector3(0f, 1f, 0.1f), new Vector3(1f, 0f, 0f), new Vector3(-0.12f, 0.3f, 0.25f), SpearLength);
-        }
+        KinGear.Draw(pose, body, sword: fighter, shield: HasShield, bow: hunter, quiver: hunter);
     }
-
-    /// <summary>
-    /// One item at a bone's place: <paramref name="along"/> is where its long axis points and <paramref name="face"/> roughly where its flat side looks (both in the
-    /// body's frame), <paramref name="offset"/> how far from the bone it is centred (metres, body frame), <paramref name="length"/> how long it is (metres).
-    /// </summary>
-    private static void Hold(GearModels.Gear gear, in Model pose, Matrix4x4 body, int bone, Vector3 along, Vector3 face, Vector3 offset, float length)
-    {
-        Vector3 x = Vector3.Normalize(along);
-        Vector3 z = Vector3.Normalize(Vector3.Cross(x, face));
-        Vector3 y = Vector3.Cross(z, x);
-        var turn = new Matrix4x4(x.X, x.Y, x.Z, 0f, y.X, y.Y, y.Z, 0f, z.X, z.Y, z.Z, 0f, 0f, 0f, 0f, 1f);
-        Vector3 at = BramblekinModel.BoneWorld(pose, bone).Translation + offset;
-        GearModels.Draw(gear, Matrix4x4.CreateScale(length) * turn * Matrix4x4.CreateTranslation(at) * body);
-    }
-
-    // Lengths in metres.
-    private const float SwordLength = 0.5f, SpearLength = 1.2f, BowLength = 0.7f, QuiverLength = 0.5f;
 
     private static readonly Color ShieldColor = new(95, 55, 35, 255);
 
