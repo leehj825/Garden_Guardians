@@ -937,19 +937,25 @@ reward richer.
     thieves are the separate single ants above.
 *   **A fight:** from the first blow at the hill until no kin is in the
     zone. It is won when every defender that stood at its start is dead
-    in that same fight. Then the hill's level goes up by one and the fight
-    pays out **L eggs**, where L is the level just beaten (a win at 5 ants
-    gives 1, at 10 gives 2, at 15 gives 3, at 20 gives 4). If the fight
-    ends with any defender alive, nothing changes: the hill heals,
-    refills, and the next fight starts from the same level again. The
-    level only goes up on a complete win, and never goes down.
+    in that same fight. If the fight ends with any defender alive,
+    nothing changes: the hill heals, refills, and the next fight starts
+    from the same level again.
+*   **The prize:** after a win, the victorious troops go into the hill and
+    pick up the reward: **L eggs**, where L is the level just beaten (a
+    win at 5 ants gives 1, at 10 gives 2, at 15 gives 3, at 20 gives 4,
+    with no cap). They carry the eggs back to the capital. **The hill's
+    level goes up only when the carriers reach the capital with the
+    eggs**: until then it stays at the beaten level. If the eggs are lost
+    on the way (the carriers die or are driven off), there is no level-up
+    and no reward; the hill refills at its old level and the fight has
+    to be won again.
 *   **The Kingdom decides:** at a Kingdom look-over, the crown may order an
     assault on the hill. It needs enough fit soldiers (Guards, Soldiers
     and Hunters at 80% Health or more, any vassal village's included) —
     **half as many as there are defenders, rounded up**: 3 for 5 ants, 5
     for 10, 8 for 15 — and it isn't winter (the ants are underground).
     After a fight, no new order for a season, so a beaten party can heal
-    and the Kingdom can rebuild. The party gathers at the capital, marches
+    and the Kingdom can rebuild. A bigger hill needs a bigger army, with no cap. The party gathers at the capital, marches
     together and fights as a band; a Headline, a Chronicle entry and the
     Director's spotlight follow it.
 *   **Retreat:** the Kingdom calls a retreat when half of the party has
@@ -963,26 +969,34 @@ reward richer.
     and it loses a little Reputation, and the Kingdom remembers the
     desertion when it picks its next party. A recovered kin is as strong
     as before; the punishment is not permanent.
-*   **Eggs:** when the last defender falls, eggs lie at the hill's mouth.
-    Each surviving member of the party eats one where it stands, best
-    fighter first; any eggs left over are carried home to the capital's
-    store as food of the highest value (a hungry kin eats one like any
-    other food, and gets the same bonus). An egg fills Hunger by 40 and
-    is a permanent gain for the one who eats it (they stack, to a limit):
-    *   **Strength:** +0.04 per egg, up to +0.2 above the kin's own
-        Strength. Strength already makes blows harder and blows taken
-        lighter (see Hunting & Defending).
-    *   **Vigor (a new stat):** the kin's energy. Each egg slows its
-        hunger by 3% and speeds its walk by 1%, up to 5 eggs (15% and
-        5%). Nothing past five eggs adds more.
+*   **Eggs and the reward:** the eggs go to the capital's store when the
+    party gets home. Once they are in, the **best fighter of the raid**
+    (most ants killed, then the most Health left; a kin that fled can't
+    be it) is rewarded with the whole haul and eats it. An egg fills
+    Hunger by 40 and is a permanent gain. Eggs are not capped, and the
+    more troops a hill needs (half its ants), the more eggs a win pays,
+    so a bigger prize always costs a bigger army. To keep a pile of eggs
+    from making one kin unbeatable, the gains fade as they stack (each
+    egg adds 85% of the one before):
+    *   **Strength:** +0.04 for the first egg, +0.034 for the second, and
+        so on, adding to the kin's own Strength with no hard ceiling.
+        Strength already makes blows harder and blows taken lighter (see
+        Hunting & Defending).
+    *   **Vigor (a new stat):** the kin's energy. The first egg slows its
+        hunger by 3% and speeds its walk by 1%; later eggs add less each,
+        by the same fade.
 *   **Showing it:** the hill's level is written on its marker; the Stats
     tab lists fights fought and won, the highest level beaten, eggs
     eaten, and the deserters; the headless summary counts them. A saved
     garden keeps the hill's level, the ants' health and each kin's eggs
     eaten.
 *   **Open choices:** the zone's radius (20m), the retreat and flee
-    numbers, the egg numbers and the five-egg limit are first guesses to
-    tune once the models are in and the fights can be watched.
+    numbers, the party size (half the defenders), the egg numbers and
+    their fade (85% per egg) are first guesses to tune once the models
+    are in and the fights can be watched. Still to settle: whether the
+    whole haul goes to the best fighter or is shared down the ranks, and
+    whether the hill's guards refill at the old level or stay empty while
+    the carriers are still on the road.
 
 ## Neighbours: Alliances & War
 *   **Neighbours** are groups whose main homes are within 30m. Between
