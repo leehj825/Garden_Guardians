@@ -1,6 +1,6 @@
 # Garden Guardians — Society & Jobs Design (draft for review)
 
-Status: **steps 1 (villages), 2 (rations), 3 (soldiers, fishers) and 4 (the headman's jobs) are built; steps 5-6 are not.** The open questions below were answered with the recommendations. Written 2026-10-01 after the discussion about villages, kingdoms and paid jobs.
+Status: **steps 1 (villages), 2 (rations), 3 (soldiers, fishers), 4 (the headman's jobs) and 5 (kingdoms) are built; step 6 is not.** The open questions below were answered with the recommendations. Written 2026-10-01 after the discussion about villages, kingdoms and paid jobs.
 Please mark up the **Open questions** at the end; the plan in section 9 starts once they are answered.
 
 ---
@@ -185,3 +185,5 @@ Walls (already built) become a **village** project paid from the village store i
 5. **How harsh should the economy be?** Start generous (few paid jobs, big reserve) or tight (more jobs, starvation risk)?
    *Recommendation: start generous so it is stable, then tighten.*
 6. **Scale target:** is 5–6 villages per kingdom right, and what map size should this assume (small 100 m only, or medium/large)?
+
+*Step 5 done (2026-10-02):* **Kingdoms.** `Kingdom.cs`, `World.Realms.cs`. Three or more villages within 90 m of each other and at peace (no war between any of their clans), one of them Kingdom Age, are united: the most populous Kingdom Age village is the capital, its headman is king (a new headman is a new king), and the kingdom gets a name ("Thornreach"). Villages in reach and at peace swear fealty to an existing kingdom; one at war with the capital leaves; under three villages it falls apart; a lost capital passes to the most populous village. Vassal villages send the capital a piece of food about every 30 s while their stores are above 1.5x their reserve; one soldier in three of a kingdom's villages is pledged, and marches to a sister village's alarm (`RealmAlarmFor`) after its own village's. Saved in `KingdomSave`. Shown on village tags ("capital of X" / "in X"), the clan card, the kin inspector (KING) and the stats panel. As built, formal alliances were too rare to bind three villages (3 villages, all Kingdom Age and near, had 0 allied pairs), so peace is the test, not alliance. Headless (6 seeds x 50 min, Kingdom-Age start, 24 kin): a kingdom formed in 6 of 6 worlds (3-5 villages at most), tribute 4-67 pieces per world, 1-3 soldiers pledged; kings crowned 1-4 per world, which is high turnover (the king follows the capital's headman). Not checked: that pledged soldiers really march across the map in a raid.
