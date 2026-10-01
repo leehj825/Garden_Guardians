@@ -180,13 +180,13 @@ public sealed partial class World
     }
 
     /// <summary>The nearest store a thief ant at <paramref name="from"/> can rob: built, with food, not palisaded, within reach of its hill.</summary>
-    public Shelter? StoreForAnts(Vector3 from, Anthill hill)
+    public Shelter? StoreForAnts(Vector3 from, Anthill hill, Shelter? avoid = null)
     {
         Shelter? best = null;
         float bestDistanceSquared = float.MaxValue;
         foreach (Shelter shelter in Shelters)
         {
-            if (!shelter.IsBuilt || shelter.IsCollapsed || shelter.HasPalisade || shelter.HasFooting || shelter.IsBurrow || shelter.StoredFood <= 0)
+            if (shelter == avoid || !shelter.IsBuilt || shelter.IsCollapsed || shelter.HasPalisade || shelter.HasFooting || shelter.IsBurrow || shelter.StoredFood <= 0)
                 continue;
             if (GroundMover.HorizontalDistanceSquared(shelter.Position, hill.Position) > Anthill.ForageRadius * Anthill.ForageRadius)
                 continue;
@@ -223,6 +223,13 @@ public sealed partial class World
             _pendingFoodSpawns.Add((ant.Position, FoodShardKind.Berry));
     }
 
+    /// <summary>A thief ant that is stuck lets go of what it carries where it stands (a piece of food falls; an aphid is lost).</summary>
+    public void AntDropsLoad(Ant ant)
+    {
+        if (ant.IsLaden && !ant.CarriesAphid)
+            _pendingFoodSpawns.Add((ant.Position, FoodShardKind.Berry));
+    }
+
     /// <summary>The nearest living thief ant within <paramref name="radius"/> of <paramref name="from"/>, if any.</summary>
     public Ant? NearestLiveAnt(Vector3 from, float radius)
     {
@@ -254,6 +261,20 @@ public sealed partial class World
     private void DrawAnts(Camera3D camera)
     {
         Anthill?.Draw();
+        if (Anthill is { } eggHill && CurrentAssault is { Phase: AssaultPhase.Looting } clutch)
+        {
+            // The eggs in the crater, waiting.
+            for (int i = 0; i < Math.Min(clutch.Level, 12); i++)
+            {
+                float a = i * 2.4f;
+                Vector3 at = eggHill.Top + new Vector3(MathF.Cos(a) * 0.35f * MathF.Sqrt(i + 1f), 0.1f, MathF.Sin(a) * 0.35f * MathF.Sqrt(i + 1f));
+                Rlgl.PushMatrix();
+                Rlgl.Translatef(at.X, at.Y, at.Z);
+                Rlgl.Scalef(1f, 1.3f, 1f);
+                Detail.Sphere(Vector3.Zero, 0.2f, new Color(250, 238, 200, 255), eggHill.Position);
+                Rlgl.PopMatrix();
+            }
+        }
         foreach (Ant ant in Ants)
         {
             if (!ant.IsDead && IsVisible(ant.Position, camera))

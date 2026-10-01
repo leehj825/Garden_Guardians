@@ -31,7 +31,36 @@ public sealed partial class Bramblekin
     private float _shakenUntil;
 
     /// <summary>The Kingdom's assault on the ant hill it is part of, if any.</summary>
-    public Assault? AssaultParty { get; set; }
+    public Assault? AssaultParty
+    {
+        get => _assaultParty;
+        set
+        {
+            _assaultParty = value;
+            if (value is null)
+            {
+                _climb = ClimbStage.None;
+                ClimbT = 0f;
+                _carriesEgg = false;
+            }
+        }
+    }
+
+    private Assault? _assaultParty;
+
+    private enum ClimbStage { None, Up, Pick, Down }
+
+    /// <summary>It goes up the mound for the eggs in this long (s), takes one in this long, and comes down in this long.</summary>
+    private const float ClimbUpSeconds = 6f, PickSeconds = 1.5f, ClimbDownSeconds = 4f;
+
+    private static readonly Color EggColor = new(250, 238, 200, 255);
+
+    private ClimbStage _climb;
+    private float _pickTimer;
+    private bool _carriesEgg;
+
+    /// <summary>How far up the ant hill's mound it has climbed, 0 (at the foot) to 1 (at the top); it is drawn up the slope while this is above 0.</summary>
+    public float ClimbT { get; private set; }
 
     /// <summary>Eggs from the ant hill it has eaten: each is a lasting gain in Strength and Vigor, less each time.</summary>
     public int EggsEaten { get; set; }
@@ -55,6 +84,7 @@ public sealed partial class Bramblekin
     public void EatEgg(World world)
     {
         EggsEaten++;
+        _carriesEgg = false;
         Hunger = MathF.Max(0f, Hunger - EggNourishment);
         world.QueueFloatingText(Position, "Egg!", EggTextColor);
         Game.AddEventLog($"[ANTS] {Name} ate an egg from the ant hill (Strength {Strength:0.00}, {EggsEaten} eaten)");
@@ -72,6 +102,9 @@ public sealed partial class Bramblekin
     public string DescribeStrength() =>
         $"Strength {Strength:0.00} (born {Personality.Strength:0.00}){(IsShaken ? " SHAKEN" : "")}   Vigor: " +
         (EggsEaten == 0 ? "none" : $"{EggsEaten} {(EggsEaten == 1 ? "egg" : "eggs")}, hunger -{(1f - VigorHungerFactor) * 100f:0}%, pace +{(VigorSpeedFactor - 1f) * 100f:0.0}%");
+
+    /// <summary>A testing aid: set down at <paramref name="where"/>.</summary>
+    public void TestTeleport(Vector3 where) => _mover.Position = World.Grounded(where);
 
     private void UpdateShaken(World world)
     {
@@ -140,10 +173,7 @@ public sealed partial class Bramblekin
                 return MarchTo(hill.Mouth, 6f, deltaTime, world); // The guards are inside: on into the zone, where they come out to meet it.
 
             case AssaultPhase.Looting:
-                MarchTo(hill.Mouth, 2.5f, deltaTime, world);
-                if (GroundMover.HorizontalDistanceSquared(Position, hill.Mouth) <= 2.5f * 2.5f)
-                    assault.Carriers.Add(ID);
-                return true;
+                return Loot(assault, hill, deltaTime, world);
 
             case AssaultPhase.Returning:
                 MarchTo(assault.Muster, 5f, deltaTime, world);
@@ -154,6 +184,59 @@ public sealed partial class Bramblekin
             default: // Retreating: home, no blame.
                 return MarchTo(assault.Muster, 5f, deltaTime, world);
         }
+    }
+
+    /// <summary>
+    /// The prize: walks to the foot of the mound, climbs its garden side to the crater at the top, takes an egg and brings it down.
+    /// (It stands at the mouth all the while; it is drawn up the slope by <see cref="ClimbT"/>.)
+    /// </summary>
+    private bool Loot(Assault assault, Anthill hill, float deltaTime, World world)
+    {
+        if (assault.Carriers.Contains(ID))
+            return MarchTo(hill.Mouth, 6f, deltaTime, world); // Has its egg: waits for the others.
+        if (_climb == ClimbStage.None)
+        {
+            ClimbT = 0f;
+            MarchTo(hill.Mouth, 1.5f, deltaTime, world);
+            if (GroundMover.HorizontalDistanceSquared(Position, hill.Mouth) <= 2f * 2f)
+                _climb = ClimbStage.Up;
+            return true;
+        }
+        _mover.Idle();
+        Vector3 inward = -hill.Facing;
+        switch (_climb)
+        {
+            case ClimbStage.Up:
+                SetState(BramblekinState.Guarding);
+                _mover.Heading = new Vector2(inward.X, inward.Z);
+                ClimbT = MathF.Min(1f, ClimbT + deltaTime / ClimbUpSeconds);
+                if (ClimbT >= 1f)
+                {
+                    _climb = ClimbStage.Pick;
+                    _pickTimer = PickSeconds;
+                }
+                break;
+            case ClimbStage.Pick:
+                SetState(BramblekinState.Collecting);
+                _pickTimer -= deltaTime;
+                if (_pickTimer <= 0f)
+                {
+                    _carriesEgg = true;
+                    _climb = ClimbStage.Down;
+                }
+                break;
+            default:
+                SetState(BramblekinState.Guarding);
+                _mover.Heading = new Vector2(-inward.X, -inward.Z);
+                ClimbT = MathF.Max(0f, ClimbT - deltaTime / ClimbDownSeconds);
+                if (ClimbT <= 0f)
+                {
+                    _climb = ClimbStage.None;
+                    assault.Carriers.Add(ID);
+                }
+                break;
+        }
+        return true;
     }
 
     /// <summary>It runs on its own: out of the fight and away from the hill, shaken, and the Kingdom remembers.</summary>

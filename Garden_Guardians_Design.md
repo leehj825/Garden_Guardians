@@ -924,12 +924,15 @@ next hill tougher and the reward richer.
     for it that is farthest from the oak and the water and has the
     gentlest ground (`World.PlaceAnthill`). Its mouth faces the garden.
     It can't be destroyed: it keeps growing.
-*   **Thief ants** (`Assets/Models/Props/Ant.glb`, about 0.8m long): from
+*   **Thief ants** (`Assets/Models/Props/Ant.glb`, rigged with a six-legged
+    tripod walk by Tools/convert_beetle.py, about 0.8m long): from
     spring to autumn single ants come out of the mouth — 2, plus one per
     15 food the hill has taken, up to 6 — and rob the nearest store within
     70m (never a palisaded one), or glean loose food within 30m, and carry
     it home; in winter they stay underground. Easily swatted (5 Health,
-    a bite of 2 back at whoever hits them). Bramblekin go for any thief
+    a bite of 2 back at whoever hits them). A thief shut out by a wall for
+    8s drops what it carries, gives the errand up and keeps off that store
+    for two minutes. Bramblekin go for any thief
     near their home. There are no mass raids on villages: a thief is one
     ant at a time, and the kin defend against it as before.
 *   **The no-go zone:** round the hill is a zone 20m out. Nothing is
@@ -951,8 +954,9 @@ next hill tougher and the reward richer.
     zone. It is won when no guard is left alive while the party is in the
     zone. If it ends with any guard alive, nothing changes: the hill heals,
     refills, and the next fight starts from the same level again.
-*   **The prize:** after a win, the victorious troops go into the hill and
-    pick up the reward: **L eggs**, where L is the level just beaten (a
+*   **The prize:** after a win, the victorious troops climb the hill's
+    garden side (6s up, 1.5s to take an egg from the crater at the top, 4s
+    down; they are drawn up the slope) and pick up the reward: **L eggs**, where L is the level just beaten (a
     win at 5 ants gives 1, at 10 gives 2, at 15 gives 3, at 20 gives 4,
     with no cap). They carry the eggs back to the capital. **The hill's
     level goes up only when a carrier reaches the capital with the

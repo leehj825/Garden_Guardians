@@ -71,11 +71,15 @@ public static unsafe class PropModels
         Raylib.DrawModelEx(model, position, Vector3.UnitY, yawDegrees, new Vector3(scale), tint);
     }
 
-    /// <summary>An ant (or the like: thin legs, so seen from behind they must not vanish) at <paramref name="position"/>, facing <paramref name="yawDegrees"/> (0 faces +Z).</summary>
-    public static void DrawAnt(Vector3 position, float yawDegrees, float scale, Color tint)
+    /// <summary>
+    /// An ant walking (see <see cref="DrawWalker"/>): <paramref name="heading"/> is the way it goes, <paramref name="cycle"/> how far through
+    /// its stride it is. Its legs are thin, so seen from behind they must not vanish: no back-face culling.
+    /// </summary>
+    public static void DrawAnt(Vector3 position, Vector2 heading, float scale, Color tint, float cycle, bool walking)
     {
+        float yawDegrees = -MathF.Atan2(heading.Y, heading.X) * 180f / MathF.PI;
         Rlgl.DisableBackfaceCulling();
-        Draw(Prop.Ant, position, yawDegrees, scale, tint);
+        DrawWalker(Prop.Ant, position, yawDegrees, scale, tint, cycle, walking);
         Rlgl.EnableBackfaceCulling();
     }
 

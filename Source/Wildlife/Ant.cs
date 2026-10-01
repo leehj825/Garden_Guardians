@@ -47,6 +47,22 @@ public sealed class Ant : ICombatant
     private Bramblekin? _angryAt;
     private float _angerTimer;
     private float _biteTimer;
+    private float _walkCycle;
+    private Vector3 _lastPosition;
+
+    /// <summary>One walk cycle (a step of every leg) covers this many body lengths.</summary>
+    public const float StrideLengths = 0.55f;
+
+    /// <summary>Stuck behind a wall or a crowd for this long (s) with somewhere to go, a thief gives the errand up…</summary>
+    private const float StuckGiveUpSeconds = 8f;
+
+    /// <summary>…and keeps off that store for this long (s).</summary>
+    private const float AvoidSeconds = 120f;
+
+    private Vector3 _stuckAnchor;
+    private float _stuckTimer;
+    private Shelter? _avoidStore;
+    private float _avoidTimer;
 
     public Ant(Vector3 position, Random rng)
     {
@@ -82,6 +98,10 @@ public sealed class Ant : ICombatant
         if (IsDead)
             return;
         _mover.Idle();
+        if (_avoidTimer > 0f)
+            _avoidTimer -= deltaTime;
+        if (GaveUpWhenStuck(deltaTime, world))
+            return;
 
         // Bitten: it turns on whoever hit it, for a while.
         if (_angryAt is { IsDead: false } foe && _angerTimer > 0f)
@@ -122,7 +142,7 @@ public sealed class Ant : ICombatant
 
         // A store to rob, else a pen, else loose food, else a wander near the hill.
         if (_targetStore is not { IsCollapsed: false, IsBuilt: true, HasPalisade: false, HasFooting: false, StoredFood: > 0 })
-            _targetStore = world.StoreForAnts(Position, hill);
+            _targetStore = world.StoreForAnts(Position, hill, _avoidTimer > 0f ? _avoidStore : null);
         if (_targetStore is { } store)
         {
             if (store.Contains(Position))
@@ -167,6 +187,40 @@ public sealed class Ant : ICombatant
         }
     }
 
+    /// <summary>
+    /// Stuck for <see cref="StuckGiveUpSeconds"/> with an errand on (shut out by a wall, say): a laden thief drops what it carries, and
+    /// the store it was after is left alone for a while. True the moment it gives up.
+    /// </summary>
+    private bool GaveUpWhenStuck(float deltaTime, World world)
+    {
+        bool busy = _targetStore is not null || _targetPen is not null || _targetFood is not null || IsLaden;
+        _stuckTimer += deltaTime;
+        if (_stuckTimer < 1f)
+            return false;
+        float moved = GroundMover.HorizontalDistance(Position, _stuckAnchor);
+        _stuckAnchor = Position;
+        _stuckTimer = 0f;
+        _stuckSeconds = busy && moved < 0.4f ? _stuckSeconds + 1f : 0f;
+        if (_stuckSeconds < StuckGiveUpSeconds)
+            return false;
+        _stuckSeconds = 0f;
+        if (_targetStore is not null)
+        {
+            _avoidStore = _targetStore;
+            _avoidTimer = AvoidSeconds;
+        }
+        if (IsLaden)
+            world.AntDropsLoad(this);
+        IsLaden = CarriesAphid = false;
+        _targetStore = null;
+        _targetPen = null;
+        _targetFood = null;
+        _mover.ResetProgress();
+        return true;
+    }
+
+    private float _stuckSeconds;
+
     /// <summary>Heads for <paramref name="pen"/> and, once in it, carries off an aphid. False if the pen's empty.</summary>
     private bool TryPen(AphidPen pen, float deltaTime, World world)
     {
@@ -189,8 +243,11 @@ public sealed class Ant : ICombatant
     /// <summary>The ant model, facing the way it walks, with a berry (or an aphid) on its back when laden.</summary>
     public void Draw()
     {
-        Vector2 heading = _mover.Heading;
-        PropModels.DrawAnt(Position, MathF.Atan2(heading.X, heading.Y) * 180f / MathF.PI, ModelScale, Color.White);
+        Vector3 here = Position;
+        if (_mover.IsMoving)
+            _walkCycle += GroundMover.HorizontalDistance(_lastPosition, here) / (ModelScale * StrideLengths);
+        _lastPosition = here;
+        PropModels.DrawAnt(here, _mover.Heading, ModelScale, Color.White, _walkCycle, _mover.IsMoving);
         if (IsLaden)
             Detail.Sphere(Position + new Vector3(0f, 0.5f, 0f), 0.14f, CarriesAphid ? AphidLoadColor : LoadColor);
     }

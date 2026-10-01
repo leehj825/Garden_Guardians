@@ -23,7 +23,7 @@ public sealed partial class World
     private const float FitHealthFraction = 0.8f, FitHungerFraction = 0.6f;
 
     /// <summary>The party waits this long (s) for stragglers at each gathering, gives up on a fight that drags on this long, and on a prize that has not got home in this long.</summary>
-    private const float MusterTimeout = 60f, MarchTimeout = 90f, FightTimeout = 240f, LootTimeout = 30f, ReturnTimeout = 180f, RetreatTimeout = 120f;
+    private const float MusterTimeout = 60f, MarchTimeout = 90f, FightTimeout = 240f, LootTimeout = 60f, ReturnTimeout = 180f, RetreatTimeout = 120f;
 
     /// <summary>The share of the party that must have arrived before the next phase begins.</summary>
     private const float GatheredShare = 0.8f;
@@ -261,6 +261,23 @@ public sealed partial class World
         foreach (Bramblekin kin in party)
             kin.MakeTestSoldier();
         return StartAssault("Test", party[0].Position, party);
+    }
+
+    /// <summary>A testing aid (GARDEN_LOOT_TEST): a party stands at the foot of a level-N hill whose guards are down, and goes up for the eggs.</summary>
+    public void StartTestLoot(int level)
+    {
+        if (Anthill is not { } hill)
+            return;
+        hill.Level = Math.Max(1, level);
+        HillGuards.Clear();
+        List<Bramblekin> party = Colony.Where(k => !k.IsDead && !k.IsYoung && !k.IsElder).Take(Math.Max(3, SoldiersNeeded(hill.Level))).ToList();
+        foreach (Bramblekin kin in party)
+        {
+            kin.MakeTestSoldier();
+            kin.TestTeleport(hill.Mouth + new Vector3(Rng.Next(-2, 3), 0f, Rng.Next(-2, 3)));
+        }
+        if (StartAssault("Test", hill.Mouth + hill.Facing * 30f, party) is { } assault)
+            assault.Phase = AssaultPhase.Looting;
     }
 
     /// <summary>A soldier ran away on its own (see <see cref="Bramblekin.UpdateAssault"/>).</summary>

@@ -59,6 +59,36 @@ public sealed class Anthill
     /// <summary>How many thief ants it keeps out at once: 2, plus one per 15 food taken, up to 6.</summary>
     public int MaxThieves => Math.Min(6, 2 + Stock / 15);
 
+    /// <summary>The mound's height (m) at each distance (m) from its middle, from the model (10m wide, 5.5m high): the way up its garden side.</summary>
+    private static readonly (float R, float Y)[] Profile =
+    {
+        (Radius + 0.8f, 0f), (4.9f, 0.4f), (4.5f, 1.6f), (4f, 2.1f), (3.5f, 2.8f), (3f, 3.2f), (2.5f, 3.8f), (2.2f, 4.5f), (1.8f, 5.2f), (0.8f, 5.4f),
+    };
+
+    /// <summary>
+    /// Where a climber is, <paramref name="t"/> of the way (0 at the <see cref="Mouth"/>, 1 at the top, by the crater's rim) up the mound's garden
+    /// side, as an offset from the mouth: in towards the middle, and up.
+    /// </summary>
+    public Vector3 ClimbOffset(float t)
+    {
+        t = Math.Clamp(t, 0f, 1f);
+        float r = Profile[0].R + (Profile[^1].R - Profile[0].R) * t;
+        float y = Profile[^1].Y;
+        for (int i = 1; i < Profile.Length; i++)
+        {
+            if (r >= Profile[i].R)
+            {
+                float u = (r - Profile[i].R) / (Profile[i - 1].R - Profile[i].R);
+                y = Profile[i].Y + (Profile[i - 1].Y - Profile[i].Y) * u;
+                break;
+            }
+        }
+        return -Facing * (Profile[0].R - r) + new Vector3(0f, y, 0f);
+    }
+
+    /// <summary>The crater at the top, where the eggs lie.</summary>
+    public Vector3 Top => Position + new Vector3(0f, Profile[^1].Y, 0f);
+
     public bool IsInZone(Vector3 point, float margin = 0f) =>
         GroundMover.HorizontalDistanceSquared(point, Position) <= (ZoneRadius + margin) * (ZoneRadius + margin);
 

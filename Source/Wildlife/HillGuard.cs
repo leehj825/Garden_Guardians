@@ -37,6 +37,8 @@ public sealed class HillGuard : ICombatant
     private Vector3 _postTarget;
     private float _biteTimer;
     private float _healCarry;
+    private float _walkCycle;
+    private Vector3 _lastPosition;
 
     public HillGuard(Vector3 position, Random rng, bool hidden)
     {
@@ -174,7 +176,10 @@ public sealed class HillGuard : ICombatant
     {
         if (IsHidden)
             return;
-        Vector2 heading = _mover.Heading;
-        PropModels.DrawAnt(Position, MathF.Atan2(heading.X, heading.Y) * 180f / MathF.PI, ModelScale, Tint);
+        Vector3 here = Position;
+        if (_mover.IsMoving)
+            _walkCycle += GroundMover.HorizontalDistance(_lastPosition, here) / (ModelScale * Ant.StrideLengths);
+        _lastPosition = here;
+        PropModels.DrawAnt(here, _mover.Heading, ModelScale, Tint, _walkCycle, _mover.IsMoving);
     }
 }

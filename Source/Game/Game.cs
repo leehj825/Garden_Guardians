@@ -62,6 +62,7 @@ public static partial class Game
     /// frame, never bigger ones.
     /// </summary>
     private static float _timeScale = 1f;
+    private static bool _lootTestDone;
 
     /// <summary>
     /// Responsive UI: the screen width every hardcoded UI pixel constant
@@ -248,6 +249,12 @@ public static partial class Game
     /// </summary>
     private static void StepSimulation(World world, float realDeltaTime)
     {
+        // A development aid: GARDEN_LOOT_TEST=level starts the prize-taking of an assault on a hill of that level at once (see World.StartTestLoot).
+        if (!_lootTestDone && int.TryParse(Environment.GetEnvironmentVariable("GARDEN_LOOT_TEST"), out int lootLevel))
+        {
+            _lootTestDone = true;
+            world.StartTestLoot(lootLevel);
+        }
         _simulationBacklog += realDeltaTime * _timeScale;
         double budget = _timeScale >= 20f ? TimeLapseSimulationBudgetSeconds : _timeScale >= 10f ? FastSimulationBudgetSeconds : SimulationBudgetSeconds;
         long start = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -1185,7 +1192,7 @@ public static partial class Game
                 kin.IsStarving || kin.IsSick ? new Color(170, 60, 40, 255) : ink),
             ($"Thirst: {(int)kin.Thirst}%{(kin.Thirst >= Bramblekin.MaxThirst ? " PARCHED" : kin.IsThirsty ? " (thirsty)" : "")}   " +
              (group is not null && world.WellOf(group) is { IsDug: true } ? "a well at home" :
-              $"water {WaterMap.DistanceToWater((kin.Home?.Position ?? kin.Position).X, (kin.Home?.Position ?? kin.Position).Z):0}m from {(kin.Home is null ? "here" : "home")}"),
+              (WaterMap.DistanceToWater((kin.Home?.Position ?? kin.Position).X, (kin.Home?.Position ?? kin.Position).Z) is var waterDistance and < 10000f ? $"water {waterDistance:0}m from {(kin.Home is null ? "here" : "home")}" : "no water in the garden now")),
                 kin.Thirst >= Bramblekin.MaxThirst ? new Color(170, 60, 40, 255) : kin.IsThirsty ? ThirstBarColor : ink),
             ($"Nature: {kin.Personality.Describe()}", ink),
             ($"Aggression {kin.Personality.Aggression:0.00}   Sociability {kin.Personality.Sociability:0.00}", new Color(185, 60, 45, 255)),
