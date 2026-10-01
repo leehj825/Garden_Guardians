@@ -12,6 +12,8 @@ public enum BramblekinClip
     Walking,
     /// <summary>The guard's own walk, sword and shield at the ready (Sword_And_Shield_Walk): played whenever a guard or soldier moves.</summary>
     GuardWalking,
+    /// <summary>A guard standing still (and eating, resting): held on one frame, the sword arm down at its side with the blade pointing forward and up (Tools/make_guard_clips.py).</summary>
+    GuardIdle,
     Fishing,
     Gathering,
     Combat,
@@ -101,7 +103,8 @@ internal static unsafe class BramblekinModel
 
         _clips[BramblekinClip.Walking] = LoadClip("Walking.glb");
         _clips[BramblekinClip.Fishing] = LoadClip("FishingCast.glb");
-        _clips[BramblekinClip.GuardWalking] = LoadClip("SwordWalk.glb");
+        _clips[BramblekinClip.GuardWalking] = LoadClip("GuardWalk.glb"); // (the sword walk with the sword arm brought down: Tools/make_guard_clips.py)
+        _clips[BramblekinClip.GuardIdle] = LoadClip("GuardIdle.glb");
         _clips[BramblekinClip.Combat] = LoadClip("SwordAndShieldSlash.glb");
         _clips[BramblekinClip.Gathering] = LoadClip("GatheringObjects.glb");
         // No separate idle clip was supplied: holding Walking's first frame stands in for one.
@@ -143,7 +146,7 @@ internal static unsafe class BramblekinModel
             BramblekinState.Collecting or BramblekinState.Building or BramblekinState.Farming or
                 BramblekinState.Foraging or BramblekinState.Stockpiling or
                 BramblekinState.Raiding => BramblekinClip.Gathering,
-            _ => BramblekinClip.Idle,
+            _ => guard ? BramblekinClip.GuardIdle : BramblekinClip.Idle,
         };
     }
 

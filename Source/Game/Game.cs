@@ -369,6 +369,8 @@ public static partial class Game
             if (!_playTestDone && Environment.GetEnvironmentVariable("GARDEN_PLAY_TEST") == "1" && world.Colony.FirstOrDefault(k => !k.IsDead && !k.IsYoung && (Environment.GetEnvironmentVariable("GARDEN_PLAY_FEMALE") != "1" || k.Sex == Sex.Female)) is { } testKin)
             {
                 _playTestDone = true; // A development aid: start out controlling a kin.
+                if (Environment.GetEnvironmentVariable("GARDEN_PLAY_GUARD") == "1")
+                    testKin.MakeTestSoldier();
                 world.SelectKin(testKin);
                 play.Begin(testKin, camera);
             }

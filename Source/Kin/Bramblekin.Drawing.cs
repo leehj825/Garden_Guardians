@@ -70,7 +70,7 @@ public sealed partial class Bramblekin
         // use (a cheaper mesh skins faster too) — skinning the full one and drawing another would draw the other unposed.
         Model pose = BramblekinModel.LodView(_animModel, Sex, lod, guardLook);
         if (!speck)
-            BramblekinModel.Play(ref pose, clip, clip == BramblekinClip.Idle ? 0f : _animTime);
+            BramblekinModel.Play(ref pose, clip, clip is BramblekinClip.Idle or BramblekinClip.GuardIdle ? 0f : _animTime);
 
         // The cylinder this replaced was rotationally symmetric, so it never
         // needed to face any particular way; the rig is not, so it must be
