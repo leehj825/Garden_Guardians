@@ -3,7 +3,7 @@
     pip install numpy pillow meshoptimizer
     python3 Tools/convert_plot.py Tools/kin_src/Plot_berry.glb Assets/Models/Props/BerryPlot.glb --name berry_plot
 
-Writes the plot 1 unit across (its widest side), centred, its base on y = 0, simplified to --full triangles with a 1024 px
+Writes the plot 1 unit across (--full 0 keeps the whole mesh) (its widest side), centred, its base on y = 0, simplified to --full triangles with a 1024 px
 texture, and <name>_lod.glb with --lod triangles and a 256 px texture for when it is small on screen. Prints its height
 (in units of its width), which the game's PropModels wants.
 """
@@ -13,7 +13,7 @@ import os
 import sys
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageEnhance
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -29,6 +29,8 @@ def main():
     ap.add_argument("--name", default="plot")
     ap.add_argument("--full", type=int, default=1200)
     ap.add_argument("--lod", type=int, default=350)
+    ap.add_argument("--saturate", type=float, default=1.0, help="multiply the texture's colourfulness")
+    ap.add_argument("--brighten", type=float, default=1.0, help="multiply the texture's brightness")
     args = ap.parse_args()
     tp.NAME = args.name
 
@@ -47,13 +49,18 @@ def main():
     pos = (pos - [(lo[0] + hi[0]) / 2, lo[1], (lo[2] + hi[2]) / 2]) / width
     wpos, wuv, widx = weld(pos, uv, idx)
 
+    if args.saturate != 1.0:
+        picture = ImageEnhance.Color(picture).enhance(args.saturate)
+    if args.brighten != 1.0:
+        picture = ImageEnhance.Brightness(picture).enhance(args.brighten)
+
     def png(size):
         buf = io.BytesIO()
         picture.resize((size, size), Image.LANCZOS).save(buf, "PNG", optimize=True)
         return buf.getvalue()
 
     for path, tris, size in ((args.dst, args.full, 1024), (args.dst.replace(".glb", "_lod.glb"), args.lod, 256)):
-        kept = simplify(wpos, wuv, widx, tris)
+        kept = widx if tris <= 0 else simplify(wpos, wuv, widx, tris)  # --full 0: keep every triangle (thin leaves and berries tear when simplified)
         used, remap = np.unique(kept, return_inverse=True)
         p, u = wpos[used], wuv[used]
         n = smooth_normals(p, remap.astype(np.uint32))

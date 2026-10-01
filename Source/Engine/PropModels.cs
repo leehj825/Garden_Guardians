@@ -87,7 +87,9 @@ public static unsafe class PropModels
         Rlgl.Translatef(position.X, position.Y, position.Z);
         if (axis.LengthSquared() > 1e-8f)
             Rlgl.Rotatef(angle, axis.X, axis.Y, axis.Z);
+        Rlgl.DisableBackfaceCulling(); // Leaves and berries are single sheets: seen from the back (from above, or round the side) they must not vanish.
         Draw(plot, Vector3.Zero, 0f, width, tint);
+        Rlgl.EnableBackfaceCulling();
         Rlgl.PopMatrix();
     }
 
