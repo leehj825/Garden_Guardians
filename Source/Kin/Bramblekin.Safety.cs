@@ -115,6 +115,8 @@ public sealed partial class Bramblekin
             chance += GroupDefenseBonus;
         if (threat is WolfSpider)
             chance -= SpiderFearPenalty;
+        if (threat is InvaderSpider)
+            chance += 0.1f; // Small enough to take on.
         if (CanSling(threat))
             chance += SlingNerve;
 

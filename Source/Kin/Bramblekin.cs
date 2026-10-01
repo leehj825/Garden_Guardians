@@ -200,6 +200,7 @@ public sealed partial class Bramblekin : ICombatant
         StagBeetle => StagBeetle.BiteDamage,
         Hornet => Hornet.BiteDamage,
         Ant => Ant.BiteDamage,
+        InvaderSpider => InvaderSpider.BiteDamage,
         Bramblekin kin => kin.StrikeDamage,
         _ => 0,
     };
@@ -402,7 +403,7 @@ public sealed partial class Bramblekin : ICombatant
     public float DetectionRadius => BaseDetectionRadius + DetectionRadiusPerIntelligence * Personality.Intelligence;
 
     /// <summary>True if it can currently see a living Wolf Spider or Hornet — see <see cref="World.ResolveEncounter"/>'s Alliance rule.</summary>
-    public bool IsThreatenedByPredator => _perceivedThreat is { IsDead: false } threat && threat is WolfSpider or Hornet;
+    public bool IsThreatenedByPredator => _perceivedThreat is { IsDead: false } threat && threat is WolfSpider or Hornet or InvaderSpider;
 
     /// <summary>True if it can currently see loose Food it could take — a starving Bramblekin that can doesn't need to rob anyone.</summary>
     public bool SeesFood => _perceivedFood is { IsActive: true, IsCarried: false };
@@ -570,7 +571,7 @@ public sealed partial class Bramblekin : ICombatant
             return;
         }
 
-        if (source is WolfSpider or Hornet)
+        if (source is WolfSpider or Hornet or InvaderSpider)
             RememberDanger(source.Position, world);
 
         if (source is not null)
@@ -809,6 +810,11 @@ public sealed partial class Bramblekin : ICombatant
         {
             if (!hornet.IsDead)
                 Consider(hornet, allyDefense: false);
+        }
+        foreach (InvaderSpider invader in world.Invaders)
+        {
+            if (!invader.IsDead)
+                Consider(invader, allyDefense: false);
         }
         // The Heron: wading, it's plain to see; standing stock still, only close up.
         if (world.Heron is { IsLanded: true } heron &&

@@ -547,6 +547,7 @@ public sealed partial class World
         UpdateBeetleSpawn(deltaTime);
         Prof.Mark("UpdateBeetleSpawn");
         UpdateAnts(deltaTime);
+        UpdateInvasions(deltaTime);
         Prof.Mark("UpdateAnts");
         UpdateOak(deltaTime);
         Prof.Mark("UpdateOak");
@@ -633,6 +634,7 @@ public sealed partial class World
         }
 
         CommitAntRemovals();
+        CommitInvaderRemovals();
 
         if (_pendingHornetRemovals.Count > 0)
         {

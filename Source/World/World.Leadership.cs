@@ -395,6 +395,11 @@ public sealed partial class World
             if (!hornet.IsDead && hornet.IsChasing)
                 Consider(hornet);
         }
+        foreach (InvaderSpider invader in Invaders)
+        {
+            if (!invader.IsDead && !invader.IsWithdrawing)
+                Consider(invader);
+        }
         foreach (Bramblekin kin in _possibleThreats)
         {
             if (kin.IsDead || kin.GroupId == group.Id)

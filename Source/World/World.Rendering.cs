@@ -126,6 +126,12 @@ public sealed partial class World
                 Hornets[i].Draw();
         }
 
+        for (int i = Invaders.Count - 1; i >= 0; i--)
+        {
+            if (!Invaders[i].IsDead && IsVisible(Invaders[i].Position, camera))
+                Invaders[i].Draw();
+        }
+
         for (int i = Grubs.Count - 1; i >= 0; i--)
         {
             if (!Grubs[i].IsDead && IsVisible(Grubs[i].Position, camera))
