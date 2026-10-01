@@ -42,21 +42,11 @@ public sealed partial class World
 
     private int Population(Village village) => ClansOf(village).Sum(c => c.Members.Count(m => !m.IsDead));
 
-    /// <summary>Allied, or at least friendly: one of their clans is allied with one of the other's, or their headmen count each other friends.</summary>
-    public bool VillagesAllied(Village a, Village b)
-    {
-        if (HeadmanOf(a) is { } ha && HeadmanOf(b) is { } hb && (ha.RelationshipTo(hb) == RelationshipState.Friend || hb.RelationshipTo(ha) == RelationshipState.Friend))
-            return true;
-        foreach (Guid x in a.ClanIds)
-        {
-            foreach (Guid y in b.ClanIds)
-            {
-                if (AreAllied(x, y))
-                    return true;
-            }
-        }
-        return false;
-    }
+    /// <summary>
+    /// Villages that can be one kingdom: at peace with each other. Alliances alone are too rare to bind three villages, so peaceful
+    /// neighbours are enough; a war between any two of their clans keeps them apart.
+    /// </summary>
+    public bool VillagesAllied(Village a, Village b) => !VillagesAtWar(a, b);
 
     private bool VillagesAtWar(Village a, Village b)
     {
