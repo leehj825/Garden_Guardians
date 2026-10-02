@@ -1493,7 +1493,7 @@ village, kingdom) says who belongs together and who leads.
     pieces of meat when hunted down.
 *   **Stag Beetles** (60 HP, up to 2): see Hunting & Defending.
 *   **Garden Props:** Pebbles (solid rocks), Twigs (big sticks, where
-    fallen twigs gather) and Dandelions (where berries grow).
+    fallen twigs gather) and Dandelions (where berries grow; the big yellow and white puffs are no longer drawn, though the spots still anchor berry patches).
 *   **Stones and branches:** building material bigger than a twig. Stones
     work loose at the foot of the rocks (16 to start, one every 12s up to
     24; they never rot); thorny branches come down off the oak in a storm

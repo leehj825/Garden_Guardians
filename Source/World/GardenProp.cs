@@ -85,7 +85,7 @@ public sealed class GardenProp
                 DrawTwig();
                 break;
             case GardenPropKind.Dandelion:
-                DrawDandelion();
+                // Not drawn any more (the big yellow and white puffs): the prop still stands in the data, as an anchor for berry patches and spawns.
                 break;
         }
     }
@@ -152,25 +152,6 @@ public sealed class GardenProp
         Vector3 start = -half;
         Vector3 end = half;
         Raylib.DrawCylinderEx(start, end, radius, radius * 0.7f, 8, brown);
-
-        Rlgl.PopMatrix();
-    }
-
-    /// <summary>A tall green stem topped with a large fluffy sphere — towers well above Bramblekin scale.</summary>
-    private void DrawDandelion()
-    {
-        float stemHeight = 1.4f * _scale;
-        float stemRadius = 0.04f * _scale;
-        float puffRadius = 0.35f * _scale;
-        var stemColor = new Color(60, 130, 40, 255);
-        Color puffColor = _isYellow ? new Color(250, 210, 40, 255) : new Color(245, 245, 235, 220);
-
-        PushGroundedTiltMatrix(stemHeight / 2f);
-
-        var stemBase = new Vector3(0, -stemHeight / 2f, 0);
-        var stemTop = new Vector3(0, stemHeight / 2f, 0);
-        Raylib.DrawCylinder(stemBase, stemRadius, stemRadius, stemHeight, 8, stemColor);
-        Detail.Sphere(stemTop + new Vector3(0, puffRadius * 0.6f, 0), puffRadius, puffColor, Position);
 
         Rlgl.PopMatrix();
     }
