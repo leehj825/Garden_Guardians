@@ -245,8 +245,8 @@ public sealed unsafe partial class World
             for (int k = 0; k < CoverBlades[tier]; k++)
             {
                 float bx = x + ((float)rng.NextDouble() - 0.5f) * 0.18f, bz = z + ((float)rng.NextDouble() - 0.5f) * 0.18f;
-                float height = (0.13f + (float)rng.NextDouble() * 0.22f) * (tier == 2 ? 1.25f : 1f);
-                float width = 0.02f + (float)rng.NextDouble() * 0.02f + (tier == 2 ? 0.015f : 0f);
+                float height = (0.085f + (float)rng.NextDouble() * 0.14f) * (tier == 2 ? 1.25f : 1f);
+                float width = 0.014f + (float)rng.NextDouble() * 0.014f + (tier == 2 ? 0.01f : 0f);
                 float facing = (float)rng.NextDouble() * MathF.Tau, lean = (float)rng.NextDouble() * MathF.Tau;
                 Vector3 across = new(MathF.Cos(facing) * width, 0f, MathF.Sin(facing) * width);
                 Vector3 bend = new(MathF.Cos(lean), 0f, MathF.Sin(lean));
@@ -279,7 +279,7 @@ public sealed unsafe partial class World
         {
             float x = x0 + (float)rng.NextDouble() * CoverChunkSize, z = z0 + (float)rng.NextDouble() * CoverChunkSize;
             Color petal = petals[rng.Next(petals.Length)];
-            float stem = 0.14f + (float)rng.NextDouble() * 0.12f, spin = (float)rng.NextDouble() * MathF.Tau;
+            float stem = 0.1f + (float)rng.NextDouble() * 0.09f, spin = (float)rng.NextDouble() * MathF.Tau;
             if (!Clear(x, z, 0.1f))
                 continue;
             Vector3 root = new(x, GetHeightAt(x, z) - 0.02f, z);
@@ -291,8 +291,8 @@ public sealed unsafe partial class World
             for (int p = 0; p < petalCount; p++)
             {
                 float a0 = spin + p * MathF.Tau / petalCount, a1 = a0 + MathF.Tau / petalCount * 0.7f;
-                int p0 = b.Add(head + new Vector3(MathF.Cos(a0) * 0.05f, 0.006f, MathF.Sin(a0) * 0.05f), petal);
-                int p1 = b.Add(head + new Vector3(MathF.Cos(a1) * 0.05f, 0.006f, MathF.Sin(a1) * 0.05f), petal);
+                int p0 = b.Add(head + new Vector3(MathF.Cos(a0) * 0.04f, 0.006f, MathF.Sin(a0) * 0.04f), petal);
+                int p1 = b.Add(head + new Vector3(MathF.Cos(a1) * 0.04f, 0.006f, MathF.Sin(a1) * 0.04f), petal);
                 b.Triangle(heart, p0, p1);
             }
         }
