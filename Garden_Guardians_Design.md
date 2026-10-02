@@ -138,6 +138,14 @@ overhead camera:
 *   **Eating and drinking:** stand still by loose food, at your store (its
     own home or its clan's) or at the water's edge while hungry or thirsty
     and it eats or drinks on its own; the HUD says so.
+*   **Close-up ground:** while a kin is controlled, the ground within about
+    40 m of it is dressed in real geometry (`World.GroundCover.cs`): blades of
+    grass (about 9 tufts a square metre of bent three-triangle blades within 12 m,
+    3 of single-triangle blades to 24 m, 1.2 coarser ones beyond), flowers (a stem and
+    five petals) and small stones, with colours on the vertices (lush to dry in slow
+    patches) and the season's tint. It is built in 6 m chunks as the kin walks (three
+    a frame), never over water, homes, plantings, wells, the oak or worn paths, and
+    dropped when control ends. Nothing is simulated or saved.
 *   **Showing it:** the HUD shows its name, Health, Hunger and Thirst and
     what it needs; the garden carries on around it. The control itself is not saved: a loaded
     garden starts with nobody controlled.

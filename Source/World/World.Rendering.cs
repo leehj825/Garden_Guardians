@@ -53,6 +53,7 @@ public sealed partial class World
         var (seasonTint, seasonAmount) = SeasonTint;
         Terrain.Draw(seasonTint, seasonAmount);
         DrawTrails(camera);
+        DrawGroundCover(camera, seasonTint, seasonAmount);
         if (Overlays.HasFlag(MapOverlays.ClanRange))
             DrawTerritories(camera);
         for (int i = _splats.Count - 1; i >= 0; i--)

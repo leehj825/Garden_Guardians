@@ -1160,6 +1160,15 @@ checked with headless A/B runs (numbers are in that file).
     Kingdom Age; soldiers are scored on born Strength, not eggs. Kingdoms
     also feed the ant-hill assault (`World.Assault.cs`).
 
+## Phase 41: Close-up Ground
+*   ✅ **Ground cover round a controlled kin** (2026-10-02): the painted ground
+    is dressed within 40 m of the kin in grass blades, flowers and small
+    stones, chunked and level-of-detail'd (`World.GroundCover.cs`; about
+    70,000 triangles at most). Seen under a virtual display; not yet timed on a phone.
+*   ⬜ **Next:** a finer, smoother ground mesh with small bumps under the cover
+    (the ground is still the 0.5 m height grid under a 2048 px picture), swaying
+    grass, a draw-distance setting for phones, and cover in the Follow camera.
+
 ## Backlog: Advancing Civilizations (ideas, not scheduled)
 (Phase 35 was never used; numbering goes 34 → 36.)
 Ideas for the clans to grow past today's crafts, farming, herding,
