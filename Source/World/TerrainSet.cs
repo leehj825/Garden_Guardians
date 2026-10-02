@@ -16,6 +16,10 @@ public sealed class TerrainSet
     /// <summary>The one water level the ponds share (world Y).</summary>
     public required float PondLevel { get; init; }
 
+    /// <summary>Where the origin of the oak's own models stands (x, z), if the oak is drawn from them rather than being part of the ground model.</summary>
+    public float? OakModelX { get; init; }
+    public float? OakModelZ { get; init; }
+
     public required float OakX { get; init; }
     public required float OakZ { get; init; }
 

@@ -1169,6 +1169,16 @@ checked with headless A/B runs (numbers are in that file).
     (the ground is still the 0.5 m height grid under a 2048 px picture), swaying
     grass, a draw-distance setting for phones, (the cover now follows any close camera).
 
+## Phase 42: Models for the Oak and the Village Fittings
+*   ✅ **The Giant Oak from two models** (2026-10-02): a 19,400-triangle oak up close and a 900-triangle one far
+    off, replacing the oak that was part of the ground model (cut out by `Tools/cut_oak_from_terrain.py`).
+    Smaller than the old one (19.7 m, not 34 m) so that its trunk and roots fit the same walking
+    circles and the hive as the generated gardens' oak. The ground under it is filled from the height grid
+    and still shows some dark patches. Generated gardens still use the older 939-triangle oak.
+*   ✅ **Workbench, market stalls, basket and rune stone as models** (`Items.glb`).
+*   ⬜ **Next:** the herb bed, sundial and watchtower in code; the big spiky plants (still part of the ground
+    model, 417 triangles each); the new oak for generated gardens; tidying the ground where the old oak stood.
+
 ## Backlog: Advancing Civilizations (ideas, not scheduled)
 (Phase 35 was never used; numbering goes 34 → 36.)
 Ideas for the clans to grow past today's crafts, farming, herding,

@@ -1115,6 +1115,17 @@ village, kingdom) says who belongs together and who leads.
     (a home with no room is pulled down). If the kingdom falls, or the capital
     changes, the castle goes back to a house. Not saved: worked out afresh
     from the kingdoms.
+*   **The Giant Oak (original garden):** drawn from its own models, not part of the ground
+    (`OakModels.cs`): `Oak.glb` (about 19,400 triangles, 2048 px picture) within 75 m of the camera and
+    `Oak_lod.glb` (about 900 triangles, 1024 px, stretched to the same width) beyond. It is 19.7 m
+    tall and about 25 m across its roots, the same size as the generated gardens' oak, with its
+    trunk, hive and keep-out circles measured off the models; the ground model has the old oak cut out
+    (`Tools/cut_oak_from_terrain.py`) and the ground filled in under it. The old oak was taller (34 m)
+    and slimmer.
+*   **Village fittings:** the rune stone, the workbench, four kinds of market stall (by home number) and a
+    basket beside the stall are models (`ItemModels.cs`, `Items.glb`, split from one generated sheet by
+    `Tools/split_market_items.py`), no longer shapes drawn in code. The herb bed, sundial and a few
+    others are still drawn in code.
 *   **Invasions:** swarms of small spiders march on a village (light) or a
     kingdom (hard, in waves), sized to the target's defence; soldiers
     fight them, they withdraw after 5 minutes. Not saved.

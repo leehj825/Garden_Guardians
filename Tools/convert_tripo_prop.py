@@ -77,6 +77,7 @@ def main():
     ap.add_argument("--lod-texture", type=int, default=512)
     ap.add_argument("--height", type=float, default=1.0, help="stand this tall (m); the default 1 suits the acorn house, which the game scales itself")
     ap.add_argument("--name", default="acorn_house")
+    ap.add_argument("--xz", type=float, default=1.0, help="stretch x and z by this much after sizing (to make a lower-detail twin as wide as the full one)")
     args = ap.parse_args()
     global NAME
     NAME = args.name
@@ -93,6 +94,8 @@ def main():
     picture = Image.open(io.BytesIO(binary[offset:offset + view["byteLength"]])).convert("RGB")
 
     pos = (pos - [0.0, pos[:, 1].min(), 0.0]) / (pos[:, 1].max() - pos[:, 1].min()) * args.height  # --height tall, base at y = 0
+    pos[:, 0] *= args.xz
+    pos[:, 2] *= args.xz
     pos = pos.astype(np.float32)
 
     def png(size):
