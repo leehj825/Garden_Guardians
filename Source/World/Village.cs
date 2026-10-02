@@ -62,6 +62,9 @@ public sealed class Village
     /// <summary>The kingdom it belongs to, if any.</summary>
     public Guid? KingdomId { get; set; }
 
+    /// <summary>When (World.ElapsedSeconds) its homes first fell short, or null while it has them: a village is only abandoned after a grace period. Not saved.</summary>
+    public float? LapsedAt { get; set; }
+
     /// <summary>The headman's own clan.</summary>
     public Guid? HeadmanClan { get; set; }
 }

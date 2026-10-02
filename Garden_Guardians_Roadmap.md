@@ -1127,11 +1127,20 @@ checked with headless A/B runs (numbers are in that file).
     were 2-4 before and 2-4 after; the remaining turnover is the king dying
     (the log now says so), not headmen changing. Kingdoms still fall apart
     when a village dissolves (3 of 7 founded were gone at the end).
-*   🟡 **Realm defence checked** (`GARDEN_REALM_TEST=1`): invading a vassal
-    village, 1 of the 2-3 pledged soldiers of the sister villages came
-    within 25 m of it in two worlds, late and only sometimes. They do march,
-    but too few are pledged and the call (the sister's own alarm) comes
-    late. Still to do: pledge by rank, not by `ID % 3`, and raise the share.
+*   ✅ **Village grace** (2026-10-02): a village whose homes fall short is
+    kept 120 s before it is abandoned, so a home pulled down for an upgrade
+    or a clan moving house no longer dissolves it (and its kingdom) and
+    refounds it under a new name. Headless: villages named per 50-min world
+    fell from 4-7 to 3-7; kingdoms standing at the end were 3 of 6 worlds
+    after, 4 of 6 before, so the runs are too noisy (they are not
+    reproducible from the seed) to call it better.
+*   🟡 **Realm defence** (`GARDEN_REALM_TEST=1`): pledging is now by rank,
+    the first, third… soldier of each village by ID (at least one per
+    village; was `ID % 3`), so 2-4 are pledged rather than 2-3. Invading a
+    vassal village in three worlds, at most 1-2 pledged soldiers came
+    within 25 m, and the village's own soldiers won in under 2 minutes
+    anyway. Whether the pledged march in time for a hard invasion is still
+    unproven: that needs a stronger invasion than the village can beat.
 *   ⬜ **Events and UI polish** (Society step 6): headlines and chronicle
     entries for founding, succession and revolt, a Villages tab in History,
     more stats lines.
@@ -1139,8 +1148,7 @@ checked with headless A/B runs (numbers are in that file).
     pledged soldiers are few and arrive late (see above); invasions are easy for a
     defended village; formal alliances are too rare to bind villages, so
     peace is the test. Found in a code-vs-doc review (2026-10-02, not yet
-    fixed): pledged soldiers are chosen by `ID % 3` (a village-job guard does
-    have `Job == Guard`, set by the leader tick); a vassal can lose its headman and
+    fixed): a vassal can lose its headman and
     stay in the kingdom; a capital keeps its crown after leaving the
     Kingdom Age; soldiers are scored on born Strength, not eggs. Kingdoms
     also feed the ant-hill assault (`World.Assault.cs`).

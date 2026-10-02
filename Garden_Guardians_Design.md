@@ -1094,8 +1094,7 @@ village, kingdom) says who belongs together and who leads.
     less; shields go to fighters only.
 *   **Kingdom:** three or more villages within 90 m at peace, one in the
     Kingdom Age. The most populous such village is the capital and its
-    headman is king. Vassal villages send tribute and pledge one soldier
-    in three to march to a sister village's alarm. The old clan-over-clan
+    headman is king. Vassal villages send tribute and pledge every second soldier (at least one) to march to a sister village's alarm. The old clan-over-clan
     vassalage stays for clans outside any village.
 *   **Invasions:** swarms of small spiders march on a village (light) or a
     kingdom (hard, in waves), sized to the target's defence; soldiers

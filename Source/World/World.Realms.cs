@@ -21,8 +21,11 @@ public sealed partial class World
     private const int TributeEveryLooks = 6;
     private const float TributeStockFactor = 1.5f;
 
-    /// <summary>One soldier in this many of a kingdom's villages is pledged to the realm's defence.</summary>
-    private const int PledgeOneIn = 3;
+    /// <summary>One soldier in this many of each kingdom village's soldiers (the first, third… by ID; always at least one) is pledged to the realm's defence.</summary>
+    private const int PledgeOneIn = 2;
+
+    /// <summary>The pledged soldiers' IDs, worked out at each look of the kingdoms (not saved).</summary>
+    private readonly HashSet<int> _pledgedIds = new();
 
     public List<Kingdom> Realms { get; } = new();
 
@@ -66,6 +69,7 @@ public sealed partial class World
     /// <summary>Called with each look at the villages: kingdoms form, grow, lose members, crown kings, collect tribute and dissolve.</summary>
     private void UpdateRealms()
     {
+        _pledgedIds.Clear();
         // Existing kingdoms: drop villages that are gone or at war with the capital; dissolve below three.
         for (int i = Realms.Count - 1; i >= 0; i--)
         {
@@ -197,6 +201,9 @@ public sealed partial class World
         int pledged = 0;
         foreach (Village village in VillagesOf(kingdom))
         {
+            List<Bramblekin> soldiers = ClansOf(village).SelectMany(c => c.Members).Where(m => !m.IsDead && !m.IsYoung && m.Job == KinJob.Guard).OrderBy(m => m.ID).ToList();
+            for (int i = 0; i < soldiers.Count; i += PledgeOneIn)
+                _pledgedIds.Add(soldiers[i].ID);
             pledged += ClansOf(village).SelectMany(c => c.Members).Count(m => !m.IsDead && IsPledged(m));
             if (village == capital || kingdom.Looks % TributeEveryLooks != 0)
                 continue;
@@ -218,7 +225,7 @@ public sealed partial class World
 
     /// <summary>A soldier of a kingdom's village, one in <see cref="PledgeOneIn"/>, is sworn to defend its sister villages too.</summary>
     public bool IsPledged(Bramblekin soldier) =>
-        soldier.Job == KinJob.Guard && soldier.ID % PledgeOneIn == 0 && GroupOf(soldier) is { } clan && VillageOf(clan)?.KingdomId is not null;
+        soldier.Job == KinJob.Guard && _pledgedIds.Contains(soldier.ID) && GroupOf(soldier) is { } clan && VillageOf(clan)?.KingdomId is not null;
 
     /// <summary>The threat a pledged soldier of <paramref name="village"/> should march to: an alarm at a sister village of its kingdom. Null if none.</summary>
     public ICombatant? RealmAlarmFor(Village village)
