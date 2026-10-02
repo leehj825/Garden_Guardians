@@ -375,6 +375,11 @@ public static partial class Game
                     testKin.CyclePlayerJob();
                     testKin.CyclePlayerJob(); // Hunter, then Guard.
                 }
+                if (Enum.TryParse(Environment.GetEnvironmentVariable("GARDEN_PLAY_JOB"), out KinJob wantedJob))
+                {
+                    for (int step = 0; step < 6 && testKin.PlayerJob != wantedJob; step++)
+                        testKin.CyclePlayerJob();
+                }
                 world.SelectKin(testKin);
                 play.Begin(testKin, camera, world);
             }
@@ -1050,6 +1055,28 @@ public static partial class Game
                 continue;
             Vector3 invaderAnchor = invader.Position + new Vector3(0, InvaderSpider.BodyRadius * 2f + 0.2f, 0);
             DrawBar(camera, invaderAnchor, 0f, BarWidth(camera, invaderAnchor, InvaderSpider.BodyRadius * 2f), (float)invader.Health / InvaderSpider.MaxHealth, Color.Green);
+        }
+
+        foreach (StagBeetle beetle in world.Beetles)
+        {
+            if (beetle.IsDead || beetle.Health >= StagBeetle.MaxHealth || !IsPointOnScreen(camera, beetle.Position))
+                continue;
+            Vector3 anchor = beetle.Position + new Vector3(0, StagBeetle.BodyRadius * 2f + 0.25f, 0);
+            DrawBar(camera, anchor, 0f, BarWidth(camera, anchor, StagBeetle.BodyRadius * 2f), (float)beetle.Health / StagBeetle.MaxHealth, Color.Green);
+        }
+        foreach (Ant ant in world.Ants)
+        {
+            if (ant.IsDead || ant.Health >= Ant.MaxHealth || !IsPointOnScreen(camera, ant.Position))
+                continue;
+            Vector3 anchor = ant.Position + new Vector3(0, Ant.BodyRadius * 2f + 0.2f, 0);
+            DrawBar(camera, anchor, 0f, BarWidth(camera, anchor, Ant.BodyRadius * 2f), (float)ant.Health / Ant.MaxHealth, Color.Green);
+        }
+        foreach (HillGuard guard in world.HillGuards)
+        {
+            if (guard.IsDead || guard.IsHidden || guard.Health >= HillGuard.MaxHealth || !IsPointOnScreen(camera, guard.Position))
+                continue;
+            Vector3 anchor = guard.Position + new Vector3(0, Ant.BodyRadius * 2f + 0.2f, 0);
+            DrawBar(camera, anchor, 0f, BarWidth(camera, anchor, Ant.BodyRadius * 2f), (float)guard.Health / HillGuard.MaxHealth, Color.Green);
         }
 
         if (world.Spider is { IsDead: false } spider && spider.Health < WolfSpider.MaxHealth)

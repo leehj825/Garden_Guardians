@@ -93,7 +93,7 @@ public sealed class PlayControl
 
     private static UiButton JobToggle => new(new Rectangle(Raylib.GetScreenWidth() - 520 * Scale, Raylib.GetScreenHeight() * 0.72f - 185 * Scale, 230 * Scale, 110 * Scale));
 
-    private static string JobLabel(KinJob job) => job switch { KinJob.Hunter => "Job: Hunter", KinJob.Guard => "Job: Guard", _ => "Job: Normal" };
+    private static string JobLabel(KinJob job) => job switch { KinJob.Hunter => "Job: Hunter", KinJob.Guard => "Job: Guard", KinJob.Spearman => "Job: Spearman", KinJob.Fisher => "Job: Fisher", _ => "Job: Normal" };
 
     /// <summary>The part of the screen where a touch takes the stick: the lower left.</summary>
     private static bool InStickZone(Vector2 point) => point.X < Raylib.GetScreenWidth() * 0.42f && point.Y > Raylib.GetScreenHeight() * 0.3f;

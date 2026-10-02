@@ -23,8 +23,14 @@ public static class DebugShot
             return;
         if (text == "hill" && world.Anthill is { } hill) // an aid: the camera looks at the ant hill from the garden side
         {
-            camera.Position = hill.Position + hill.Facing * 16f + new Vector3(0f, 7f, 0f);
-            camera.Target = hill.Position + new Vector3(0f, 2f, 0f);
+            camera.Position = hill.Position + hill.Facing * 11f + new Vector3(0f, 3.2f, 0f);
+            camera.Target = hill.Position + hill.Facing * 3f + new Vector3(0f, 0.5f, 0f);
+            return;
+        }
+        if (text == "oak") // an aid: the camera looks at the oak's foot
+        {
+            camera.Position = World.OakCenter + new Vector3(30f, 4f, 0f);
+            camera.Target = World.OakCenter + new Vector3(0f, 1.5f, 0f);
             return;
         }
         string[] parts = text.Split(',');

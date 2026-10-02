@@ -207,7 +207,7 @@ public sealed partial class Bramblekin
         BramblekinClip clip;
         if (ranged || Job == KinJob.Hunter)
             clip = BramblekinClip.AimRecoil;
-        else if (Job == KinJob.Guard && world.GroupOf(this) is { } clan && World.Knows(clan, Craft.Spears))
+        else if (Job == KinJob.Spearman || (Job == KinJob.Guard && world.GroupOf(this) is { } clan && World.Knows(clan, Craft.Spears)))
             clip = BramblekinClip.SpearStab;
         else
         {
@@ -243,6 +243,9 @@ public sealed partial class Bramblekin
             return (forced, length <= 0f ? 0f : _animTime % length / length);
         }
 
+        if (ClimbT > 0f && ClimbT < 1f && _climb != ClimbStage.Pick)
+            return (BramblekinClip.Walking, null); // walking in to the eggs, or out with one
+
         if (_actionActive)
         {
             float length = BramblekinModel.ActionSeconds(_actionClip);
@@ -275,15 +278,13 @@ public sealed partial class Bramblekin
     /// <summary>The sword and shield of a soldier or raider, a hunter's bow and quiver: hung on the bones of the pose (see <see cref="KinGear"/>), so they walk and swing with it.</summary>
     private void DrawGear(in Model pose, Vector3 axis, float angleDegrees, float scale)
     {
-        bool hunter = Job == KinJob.Hunter;
-        if (!GearShown || IsYoung || !hunter)
-            return; // (Guards and hunters carry nothing for the time being: GearShown is off.)
+        bool hunter = Job == KinJob.Hunter, guard = Job == KinJob.Guard, spearman = Job == KinJob.Spearman;
+        if (IsYoung || !(hunter || guard || spearman))
+            return; // (Only a guard's wooden sword, a spearman's spear and a hunter's bow for the time being: no shields, no quiver.)
+        bool aiming = (_actionActive && _actionClip == BramblekinClip.AimRecoil) || ForcedClip == BramblekinClip.AimRecoil;
         Matrix4x4 body = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateFromAxisAngle(Vector3.Normalize(axis), angleDegrees * MathF.PI / 180f) * Matrix4x4.CreateTranslation(Position);
-        KinGear.Draw(pose, body, sword: false, shield: false, bow: hunter, quiver: hunter);
+        KinGear.Draw(pose, body, sword: guard, shield: false, bow: hunter, quiver: false, spear: spearman, bowRaised: aiming);
     }
-
-    /// <summary>Whether a hunter's bow and quiver are drawn. Off while the kin models are new and have no weapons of their own yet.</summary>
-    private const bool GearShown = false;
 
     private static readonly Color ShieldColor = new(95, 55, 35, 255);
 

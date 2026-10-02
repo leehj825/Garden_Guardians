@@ -421,7 +421,7 @@ public sealed partial class Bramblekin : ICombatant
 
     private int StrikeDamage => (int)MathF.Round(
         (BaseStrikeDamage + StrikeDamagePerAggression * Personality.Aggression + StrikeDamagePerStrength * (Strength - 0.5f)) *
-        (IsElder ? ElderStrikeFactor : 1f) * (Job == KinJob.Guard ? GuardStrikeFactor : Job == KinJob.Raider ? RaiderStrikeFactor : 1f));
+        (IsElder ? ElderStrikeFactor : 1f) * (Job is KinJob.Guard or KinJob.Spearman ? GuardStrikeFactor : Job == KinJob.Raider ? RaiderStrikeFactor : 1f));
 
     /// <summary>
     /// Armed with a shield: a clan that knows <see cref="Craft.Shields"/> issues them to those whose job is fighting — Guards (soldiers),
@@ -439,7 +439,7 @@ public sealed partial class Bramblekin : ICombatant
     private const float ToughnessPerStrength = 0.2f, GuardToughness = 0.9f;
 
     /// <summary>A blow against a creature: half as hard again with <see cref="Craft.Spears"/>, and up to half as hard again for a master hunter.</summary>
-    private int HuntingDamage => (int)MathF.Round((Knows(Craft.Spears) ? StrikeDamage * 1.5f : StrikeDamage) * (1f + 0.5f * SkillAt(Skill.Hunting)));
+    private int HuntingDamage => (int)MathF.Round((Knows(Craft.Spears) || Job == KinJob.Spearman ? StrikeDamage * 1.5f : StrikeDamage) * (1f + 0.5f * SkillAt(Skill.Hunting)));
 
     // --- Relationships & groups ----------------------------------------------------------
 

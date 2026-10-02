@@ -171,6 +171,8 @@ internal static unsafe class BramblekinModel
     /// <summary>How long (s) <paramref name="clip"/> takes at its own pace.</summary>
     public static float NaturalSeconds(BramblekinClip clip)
     {
+        if (!_ready && !Raylib.IsWindowReady())
+            return 1.2f; // (a headless run has no models: a blow takes about this long)
         EnsureLoaded(); // the simulation asks before anything is drawn
         return _clips[clip].KeyFrameCount / ClipFps;
     }

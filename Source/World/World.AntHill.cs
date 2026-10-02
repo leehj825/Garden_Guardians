@@ -287,18 +287,17 @@ public sealed partial class World
     private void DrawAnts(Camera3D camera)
     {
         Anthill?.Draw();
-        if (Anthill is { } eggHill && CurrentAssault is { Phase: AssaultPhase.Looting } clutch)
+        if (Anthill is { } eggHill)
         {
-            // The eggs in the crater, waiting.
-            for (int i = 0; i < Math.Min(clutch.Level, 12); i++)
+            // The eggs lie in the cave just inside the entrance, where they can be seen from outside (a looter takes one off the heap).
+            int eggs = Math.Min(Anthill.Level + 2, 7);
+            if (CurrentAssault is { Phase: AssaultPhase.Looting } clutch)
+                eggs = Math.Max(0, eggs - clutch.Carriers.Count);
+            var side = new Vector3(-eggHill.Facing.Z, 0f, eggHill.Facing.X);
+            for (int i = 0; i < eggs; i++)
             {
-                float a = i * 2.4f;
-                Vector3 at = eggHill.Top + new Vector3(MathF.Cos(a) * 0.35f * MathF.Sqrt(i + 1f), 0.1f, MathF.Sin(a) * 0.35f * MathF.Sqrt(i + 1f));
-                Rlgl.PushMatrix();
-                Rlgl.Translatef(at.X, at.Y, at.Z);
-                Rlgl.Scalef(1f, 1.3f, 1f);
-                Detail.Sphere(Vector3.Zero, 0.2f, new Color(250, 238, 200, 255), eggHill.Position);
-                Rlgl.PopMatrix();
+                Vector3 at = eggHill.Top + side * ((i % 3 - 1) * 0.42f) - eggHill.Facing * ((i / 3) * 0.3f) + new Vector3(0f, 0.03f, 0f);
+                PropModels.Draw(PropModels.Prop.Larvae, at, i * 67f, 0.6f, Color.White);
             }
         }
         foreach (Ant ant in Ants)
