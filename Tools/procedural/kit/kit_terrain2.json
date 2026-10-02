@@ -2,7 +2,7 @@
  {
   "name": "oak_0",
   "kind": "oak",
-  "source": "oak_tree_detail.glb / oak_tree_low.glb (Tripo; the full model, with oak_0_lod.glb for far off)",
+  "source": "oak_tree_detail.glb (Tripo, about 19,400 triangles)",
   "x": 0.0,
   "z": 0.0,
   "base": 0.0,

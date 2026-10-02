@@ -379,15 +379,9 @@ public sealed unsafe class ProceduralView
         return model;
     }
 
-    /// <summary>The oak is drawn in full (about 19,000 triangles) while the camera is within this far (m) of it, in its cheap twin (<c>_lod</c>, about 900) beyond.</summary>
-    private const float OakFullWithin = 75f;
-
     private static void DrawProp(PlacedProp prop, Color tint)
     {
-        string file = prop.Item.File;
-        if (prop.Item.Kind == KitKind.Oak && Vector3.Distance(Eye, new Vector3(prop.X, prop.Base + prop.Item.Height * 0.4f * prop.Scale, prop.Z)) >= OakFullWithin)
-            file = file[..^4] + "_lod.glb";
-        Model model = PropModel(prop.Item, file);
+        Model model = PropModel(prop.Item);
         Rlgl.PushMatrix();
         Rlgl.Translatef(prop.X, prop.Base, prop.Z);
         Rlgl.Rotatef(-prop.Yaw * 180f / MathF.PI, 0f, 1f, 0f); // Raylib turns the other way about y than the x-z plane's angle runs.

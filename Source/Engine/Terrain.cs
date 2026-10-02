@@ -140,8 +140,6 @@ public sealed class Terrain
         }
         EnsureModel();
         Raylib.DrawModel(_model, Vector3.Zero, 1f, multiply);
-        if (TerrainData.Current is { OakModelX: { } oakX, OakModelZ: { } oakZ })
-            OakModels.Draw(oakX, World.GetHeightAt(TerrainData.OakX, TerrainData.OakZ) - 0.1f, oakZ, multiply);
         if (seasonAmount <= 0f)
             return;
 

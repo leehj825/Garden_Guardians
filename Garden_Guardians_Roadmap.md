@@ -1170,14 +1170,13 @@ checked with headless A/B runs (numbers are in that file).
     grass, a draw-distance setting for phones, (the cover now follows any close camera).
 
 ## Phase 42: Models for the Oak and the Village Fittings
-*   ✅ **The Giant Oak from two models** (2026-10-02): a 19,400-triangle oak up close and a 900-triangle one far
-    off, replacing the oak that was part of the ground model (cut out by `Tools/cut_oak_from_terrain.py`).
-    Smaller than the old one (19.7 m, not 34 m) so that its trunk and roots fit the same walking
-    circles and the hive as the generated gardens' oak. The ground under it is filled from the height grid (a few thin yellow lines remain at its edge)
-   . Generated gardens use the same two models (the kit's `oak_0.glb` and `oak_0_lod.glb`; its trunk, hive and circles re-measured).
+*   ✅ **A high-poly oak for generated gardens** (2026-10-02): the kit's oak is now a 19,400-triangle model, drawn in full at
+    every distance (19.7 m tall; trunk, hive and circles re-measured). The original garden keeps its old oak, part of the
+    ground model: a version that cut the old oak out and drew two new models (full and 900 triangles by distance) was
+    tried and reverted, as the ground where the old oak stood needed patching (see git history: `Tools/cut_oak_from_terrain.py`).
 *   ✅ **Workbench, market stalls, basket and rune stone as models** (`Items.glb`).
 *   ⬜ **Next:** the herb bed, sundial and watchtower in code; the big spiky plants (still part of the ground
-    model, 417 triangles each); tidying the ground where the old oak stood.
+    model, 417 triangles each).
 
 ## Backlog: Advancing Civilizations (ideas, not scheduled)
 (Phase 35 was never used; numbering goes 34 → 36.)
