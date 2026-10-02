@@ -371,7 +371,10 @@ public static partial class Game
             {
                 _playTestDone = true; // A development aid: start out controlling a kin.
                 if (Environment.GetEnvironmentVariable("GARDEN_PLAY_GUARD") == "1")
-                    testKin.MakeTestSoldier();
+                {
+                    testKin.CyclePlayerJob();
+                    testKin.CyclePlayerJob(); // Hunter, then Guard.
+                }
                 world.SelectKin(testKin);
                 play.Begin(testKin, camera, world);
             }

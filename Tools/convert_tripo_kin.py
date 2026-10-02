@@ -3,8 +3,8 @@
     pip install numpy pillow
     python3 Tools/convert_tripo_kin.py Tools/kin_src/Male.glb   Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Walking.glb
     python3 Tools/convert_tripo_kin.py Tools/kin_src/Female.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Walking_female.glb --female
-    python3 Tools/convert_tripo_kin.py Tools/kin_src/GuardMale.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Guard_male.glb --lods --guard
-    python3 Tools/convert_tripo_kin.py Tools/kin_src/GuardFemale.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Guard_female.glb --female --lods --guard
+    python3 Tools/convert_tripo_kin.py Tools/kin_src/GuardMale.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Guard_male.glb --lods --guard --brighten 0.8
+    python3 Tools/convert_tripo_kin.py Tools/kin_src/GuardFemale.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Guard_female.glb --female --lods --guard --brighten 0.8
 
 What convert_female.py does for a decimated mesh, done directly: the model (Y-up, facing +Z, about 0.95-0.98 tall) is scaled to the
 skeleton's height of 1, turned into its bind space (Z-up, facing -Y), skinned to its 33 joints by distance to the bones, and
@@ -149,6 +149,7 @@ def main():
     ap.add_argument("--texture", type=int, default=2048)
     ap.add_argument("--lods", action="store_true")
     ap.add_argument("--guard", action="store_true", help="shield and sword follow the arms only")
+    ap.add_argument("--brighten", type=float, default=1.0, help="gamma applied to the texture (below 1 lightens; the guards' armour and leather are painted darker than the plain kin)")
     args = ap.parse_args()
 
     pos_y, nrm_y, uv, idx, picture = load_static(args.model)
@@ -173,6 +174,12 @@ def main():
     weights4 = np.zeros((len(pos), 4), "<f4")
     joints4[:, :NEIGHBOURS] = joints_idx
     weights4[:, :NEIGHBOURS] = w
+
+    if args.brighten != 1.0:
+        # Lighten the value only (hue and saturation kept, so the copper and leather stay rich rather than going grey).
+        hsv = np.asarray(picture.convert("RGB").convert("HSV")).astype("f4")
+        hsv[..., 2] = 255.0 * (hsv[..., 2] / 255.0) ** args.brighten
+        picture = Image.fromarray(np.clip(hsv, 0, 255).astype("u1"), "HSV").convert("RGB")
 
     outputs = [(args.dst, args.texture)]
     if args.lods:
