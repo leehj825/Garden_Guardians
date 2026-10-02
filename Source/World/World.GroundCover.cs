@@ -203,6 +203,8 @@ public sealed unsafe partial class World
         bool Clear(float x, float z, float margin)
         {
             var p = new Vector3(x, GetHeightAt(x, z), z);
+            if (!Terrain.Contains(p, 0.3f))
+                return false; // Off the edge of the map.
             if (IsWaterNear(p, 0.35f) || IsOnOak(p, margin) || PathSpeed(p) > 1.01f)
                 return false;
             foreach (Shelter home in homes)
