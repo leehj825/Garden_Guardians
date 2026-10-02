@@ -1,7 +1,7 @@
 """Rig a static Tripo Bramblekin (about 1,000 triangles) to the game's skeleton, with no Blender.
 
     pip install numpy pillow
-    python3 Tools/convert_tripo_kin.py Tools/kin_src/Male.glb   Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Walking.glb
+    python3 Tools/convert_tripo_kin.py Tools/kin_src/Male.glb   Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Walking.glb --lods --brighten 0.8
     python3 Tools/convert_tripo_kin.py Tools/kin_src/Female.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Walking_female.glb --female
     python3 Tools/convert_tripo_kin.py Tools/kin_src/GuardMale.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Guard_male.glb --lods --guard --brighten 0.8
     python3 Tools/convert_tripo_kin.py Tools/kin_src/GuardFemale.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Guard_female.glb --female --lods --guard --brighten 0.7
