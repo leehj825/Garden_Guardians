@@ -1173,8 +1173,8 @@ checked with headless A/B runs (numbers are in that file).
 *   ✅ **The Giant Oak from two models** (2026-10-02): a 19,400-triangle oak up close and a 900-triangle one far
     off, replacing the oak that was part of the ground model (cut out by `Tools/cut_oak_from_terrain.py`).
     Smaller than the old one (19.7 m, not 34 m) so that its trunk and roots fit the same walking
-    circles and the hive as the generated gardens' oak. The ground under it is filled from the height grid
-    and still shows some dark patches. Generated gardens use the same two models (the kit's `oak_0.glb` and `oak_0_lod.glb`; its trunk, hive and circles re-measured).
+    circles and the hive as the generated gardens' oak. The ground under it is filled from the height grid (a few thin yellow lines remain at its edge)
+   . Generated gardens use the same two models (the kit's `oak_0.glb` and `oak_0_lod.glb`; its trunk, hive and circles re-measured).
 *   ✅ **Workbench, market stalls, basket and rune stone as models** (`Items.glb`).
 *   ⬜ **Next:** the herb bed, sundial and watchtower in code; the big spiky plants (still part of the ground
     model, 417 triangles each); tidying the ground where the old oak stood.

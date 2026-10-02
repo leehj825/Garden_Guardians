@@ -1,11 +1,12 @@
 """Take the oak (its trunk and roots) out of the original ground model, leaving the ground, the reeds and the boulders.
 
     pip install numpy pillow
-    python3 Tools/cut_oak_from_terrain.py Assets/Models/Terrain/terrain.glb Assets/Models/Terrain/terrain.glb
+    python3 Tools/cut_oak_from_terrain.py Tools/kin_src/terrain_original.glb Assets/Models/Terrain/terrain.glb
 
-The oak is every triangle within --radius metres (default 27) of the trunk (x, z = 0.54, -19.39: Terrain0.OakX, OakZ) that is not ground: one with a
-corner more than --above metres (0.35) over the ground height grid in Source/World/Terrains/Terrain0.cs (which has the oak painted out), or facing
-sideways or down. Where that leaves no ground (under the trunk) the ground is filled in from the grid, coloured like the nearest ground left. The
+The oak is every triangle within --radius metres (default 27) of the trunk (x, z = 0.54, -19.39: Terrain0.OakX, OakZ) with a corner more than
+--above metres (0.35) over the ground height grid in Source/World/Terrains/Terrain0.cs (which has the oak painted out), and, inside the old oak's
+keep-out circles (Tools/oak_old_circles.json), also any that is low but steep or a little proud of the ground (root tops lying in the grass). The
+banks of the pond are steep too, so outside those circles steepness alone takes nothing. Where that leaves no ground (under the trunk) the ground is filled in from the grid, coloured like the nearest ground left. The
 picture is copied as it is. The oak is then drawn from its own models (Assets/Models/Props/Oak.glb and Oak_lod.glb, see Tools/convert_tripo_prop.py).
 """
 import argparse
@@ -17,6 +18,8 @@ import struct
 import numpy as np
 
 HERE = __file__.rsplit("/Tools/", 1)[0]
+FILL_SINK = 0.6  # metres
+POND_LEVEL = -2.327  # the ponds' water level (Terrain0.PondLevel): ground under it is left to the ground that is there
 
 
 def read_glb(path):
@@ -71,7 +74,11 @@ def main():
     cross = np.cross(pos[idx[:, 1]] - pos[idx[:, 0]], pos[idx[:, 2]] - pos[idx[:, 0]])
     up = cross[:, 1] / np.maximum(np.linalg.norm(cross, axis=1), 1e-12)
     r = np.hypot(c[:, 0] - args.oak[0], c[:, 2] - args.oak[1])
-    oak = (r < args.radius) & ((over > args.above) | (np.abs(up) < 0.6))
+    circles = np.array(json.load(open(HERE + "/Tools/oak_old_circles.json")))
+    inside = np.zeros(len(c), bool)
+    for cx, cz, cr in circles:
+        inside |= np.hypot(c[:, 0] - cx, c[:, 2] - cz) < cr + 0.5
+    oak = (r < args.radius) & ((over > args.above) | (inside & ((np.abs(up) < 0.6) | (over > 0.12))))
     keep = idx[~oak]
 
     # Ground cells (0.5 m) near the oak that no triangle left covers: remember the picture's coordinates where there is ground.
@@ -100,15 +107,19 @@ def main():
         cuv[z0:z1 + 1, x0:x1 + 1][inside] = (w0[..., None] * uvt[0] + w1[..., None] * uvt[1] + w2[..., None] * uvt[2])[inside]
         cover[z0:z1 + 1, x0:x1 + 1] |= inside
     xs, zs = np.meshgrid(gx, gx)
-    hole = (~cover) & (np.hypot(xs - args.oak[0], zs - args.oak[1]) < args.radius - 1.5)
+    hole = (~cover) & (np.hypot(xs - args.oak[0], zs - args.oak[1]) < args.radius + 1.0)
     near_idx = ndi.distance_transform_edt(~cover, return_distances=False, return_indices=True)
-    hole_cells = np.argwhere(hole[:-1, :-1] & hole[1:, :-1] & hole[:-1, 1:] & hole[1:, 1:])
+    # Cells whose centres no triangle covers are only the middle of the gaps (triangle edges cut across cells): the patch overlaps the ground round
+    # them, sunk a little (FILL_SINK) so that where ground stands it hides the patch.
+    spread = ndi.binary_dilation(hole, iterations=1) & (np.hypot(xs - args.oak[0], zs - args.oak[1]) < args.radius + 2.0)
+    hole_cells = np.argwhere(spread[:-1, :-1] | spread[1:, :-1] | spread[:-1, 1:] | spread[1:, 1:])
+    hole_cells = np.array([c for c in hole_cells if grid[c[0]:c[0] + 2, c[1]:c[1] + 2].min() >= POND_LEVEL + 0.05]).reshape(-1, 2)
     fp, fn, fu, fi = [], [], [], []
     for j, i in hole_cells:
         base = len(fp)
         for dj, di in ((0, 0), (0, 1), (1, 1), (1, 0)):
             x, z = gx[i + di], gx[j + dj]
-            gh = grid[j + dj, i + di]
+            gh = grid[j + dj, i + di] - FILL_SINK
             gl = grid[j + dj, max(i + di - 1, 0)]; gr = grid[j + dj, min(i + di + 1, n - 1)]; gb = grid[max(j + dj - 1, 0), i + di]; gf = grid[min(j + dj + 1, n - 1), i + di]
             nv = np.array([gl - gr, 1.0, gb - gf]); nv /= np.linalg.norm(nv)
             nj, ni = near_idx[0][j + dj, i + di], near_idx[1][j + dj, i + di]
