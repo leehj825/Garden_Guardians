@@ -113,13 +113,13 @@ def png_of(picture, size):
     return buf.getvalue()
 
 
-def cloth_mask(uv, picture):
+def cloth_mask(uv, picture, green=CLOTH_GREEN):
     """True where the texture under a vertex is green: the dress, whose hem hangs by her hands but must not follow them."""
     small = np.asarray(picture.resize((512, 512), Image.LANCZOS).convert("RGB"), dtype=np.float64)
     u = np.clip((uv[:, 0] * 511).astype(int), 0, 511)
     v = np.clip((uv[:, 1] * 511).astype(int), 0, 511)
     r, g, b = small[v, u, 0], small[v, u, 1], small[v, u, 2]
-    return (g > r * CLOTH_GREEN) & (g > b * 1.2) & (g > 20)
+    return (g > r * green) & (g > b * 1.2) & (g > 20)
 
 
 def largest_piece(points, tris, selected):
@@ -156,6 +156,10 @@ def skin(points, names, segs, female, guard=False, tris=None, cloth=None, arm_pa
         arm_bones = np.array([any(k in n for k in ('Shoulder', 'Arm', 'Hand')) for n in owners])
         sleeve = arm_part & ~cloth if cloth is not None else arm_part
         dist[np.ix_(sleeve, np.where(~arm_bones)[0])] = np.inf
+    if cloth is not None and not female:
+        # His vest and shorts never follow an arm (they would stream out with it in a blow); the spine and hips carry them.
+        dist[np.ix_(cloth, [i for i, n in enumerate(owners) if any(k in n for k in ('Shoulder', 'Arm', 'Hand'))])] = np.inf
+        dist[np.ix_(cloth, [i for i, n in enumerate(owners) if any(k in n for k in ('UpLeg', 'Leg', 'Foot', 'Toe'))])] *= CLOTH_LEG_PULL
     if female:
         arm = np.array([any(k in n for k in ("Shoulder", "Arm", "Hand")) for n in owners])
         leg = np.array([any(k in n for k in ("UpLeg", "Leg", "Foot", "Toe")) for n in owners])
@@ -250,7 +254,7 @@ def main():
     doc, binary = read_glb(args.skeleton)
     names, position, parent = bind_joints(doc, binary)
     segs = segments(names, position, parent, fitted_arms(position, args.arm_degrees, args.arm_scale) if args.tpose_arms else (FITTED_ARM if args.female else {}))
-    cloth = cloth_mask(uv, picture) if args.female and not args.guard else None  # (a guard's green is a tunic and a shield, which follow her arms)
+    cloth = cloth_mask(uv, picture, CLOTH_GREEN if args.female else 1.0) if not args.guard else None  # (a guard's green is a tunic and a shield, which follow her arms)
     if cloth is not None:
         print(int(cloth.sum()), "of", len(cloth), "vertices are cloth")
     joints_idx, w = skin(pos, names, segs, args.female, args.guard, idx.reshape(-1, 3), cloth, arm_part)
