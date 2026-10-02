@@ -30,6 +30,7 @@ def main():
         if item["kind"] == "oak" or (item["kind"] == "rock" and reach < 8) or (item["kind"] == "plant" and reach < 10):
             keep.append(item)
     used = {i["file"] for i in keep}
+    used |= {i["file"][:-4] + "_lod.glb" for i in keep if i["kind"] == "oak"}  # (an oak's cheap twin, drawn when it is far off)
     for path in glob.glob(os.path.join(MODELS, "props", "*.glb")):
         if "props/" + os.path.basename(path) not in used:
             os.remove(path)

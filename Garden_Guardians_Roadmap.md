@@ -1174,10 +1174,10 @@ checked with headless A/B runs (numbers are in that file).
     off, replacing the oak that was part of the ground model (cut out by `Tools/cut_oak_from_terrain.py`).
     Smaller than the old one (19.7 m, not 34 m) so that its trunk and roots fit the same walking
     circles and the hive as the generated gardens' oak. The ground under it is filled from the height grid
-    and still shows some dark patches. Generated gardens still use the older 939-triangle oak.
+    and still shows some dark patches. Generated gardens use the same two models (the kit's `oak_0.glb` and `oak_0_lod.glb`; its trunk, hive and circles re-measured).
 *   ✅ **Workbench, market stalls, basket and rune stone as models** (`Items.glb`).
 *   ⬜ **Next:** the herb bed, sundial and watchtower in code; the big spiky plants (still part of the ground
-    model, 417 triangles each); the new oak for generated gardens; tidying the ground where the old oak stood.
+    model, 417 triangles each); tidying the ground where the old oak stood.
 
 ## Backlog: Advancing Civilizations (ideas, not scheduled)
 (Phase 35 was never used; numbering goes 34 → 36.)

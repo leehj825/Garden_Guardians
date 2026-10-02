@@ -356,11 +356,12 @@ public sealed unsafe class ProceduralView
         return angle - MathF.Asin(Math.Min(1f, radius / distance)) <= halfView;
     }
 
-    private static Model PropModel(KitItem item)
+    private static Model PropModel(KitItem item, string? file = null)
     {
-        if (!PropModels.TryGetValue(item.File, out Model model))
+        file ??= item.File;
+        if (!PropModels.TryGetValue(file, out Model model))
         {
-            model = Raylib.LoadModel(AssetPath("Models/Procedural/" + item.File));
+            model = Raylib.LoadModel(AssetPath("Models/Procedural/" + file));
             if (item.Kind != KitKind.Rock)
             {
                 // Oaks and plants wear big pictures: smoothed and mipmapped, they don't show as stair-stepped pixels
@@ -373,14 +374,20 @@ public sealed unsafe class ProceduralView
                     model.Materials[m].Maps[(int)MaterialMapIndex.Albedo].Texture = texture;
                 }
             }
-            PropModels[item.File] = model;
+            PropModels[file] = model;
         }
         return model;
     }
 
+    /// <summary>The oak is drawn in full (about 19,000 triangles) while the camera is within this far (m) of it, in its cheap twin (<c>_lod</c>, about 900) beyond.</summary>
+    private const float OakFullWithin = 75f;
+
     private static void DrawProp(PlacedProp prop, Color tint)
     {
-        Model model = PropModel(prop.Item);
+        string file = prop.Item.File;
+        if (prop.Item.Kind == KitKind.Oak && Vector3.Distance(Eye, new Vector3(prop.X, prop.Base + prop.Item.Height * 0.4f * prop.Scale, prop.Z)) >= OakFullWithin)
+            file = file[..^4] + "_lod.glb";
+        Model model = PropModel(prop.Item, file);
         Rlgl.PushMatrix();
         Rlgl.Translatef(prop.X, prop.Base, prop.Z);
         Rlgl.Rotatef(-prop.Yaw * 180f / MathF.PI, 0f, 1f, 0f); // Raylib turns the other way about y than the x-z plane's angle runs.
