@@ -461,6 +461,8 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>Joins a group, starting out as loyal as it is Sociable.</summary>
     public void JoinGroup(Guid groupId)
     {
+        if (IsPlayerControlled)
+            return; // At the player's wheel it stands alone; it rejoins its clan when given back.
         GroupId = groupId;
         Loyalty = LoyaltyBaseline;
         _joinedAt = _timeHere;

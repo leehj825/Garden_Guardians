@@ -38,10 +38,10 @@ public sealed partial class Bramblekin
         GuardianAName = GuardianNames?.A,
         GuardianBName = GuardianNames?.B,
         Children = Children,
-        GroupId = GroupId,
+        GroupId = AwayGroupId ?? GroupId, // (Saved under control, a kin is saved as back in its clan.)
         Home = Home is { IsCollapsed: false } home ? home.ID : null,
-        Job = Job,
-        Loyalty = Loyalty,
+        Job = AwayGroupId is not null ? _awayJob : Job,
+        Loyalty = AwayGroupId is not null ? _awayLoyalty : Loyalty,
         Reputation = Reputation,
         Infamy = Infamy,
         HasLeftGroup = HasLeftGroup,

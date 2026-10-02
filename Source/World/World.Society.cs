@@ -48,6 +48,9 @@ public sealed partial class World
         return group;
     }
 
+    /// <summary>True while the clan <paramref name="id"/> is on the books (a player-controlled member rejoins only a clan that still stands).</summary>
+    public bool GroupExists(Guid id) => _groups.ContainsKey(id);
+
     /// <summary>
     /// Group Dynamics bookkeeping: rebuilds every group's member list from
     /// the living Bramblekin's own <see cref="Bramblekin.GroupId"/>s,
@@ -74,10 +77,21 @@ public sealed partial class World
             group.Members.Add(kin);
         }
 
+        // A member the player has taken the wheel of is away, not gone: its clan is not dissolved for want of it.
+        var away = new Dictionary<Guid, int>();
+        foreach (Bramblekin kin in Colony)
+        {
+            if (!kin.IsDead && kin.AwayGroupId is { } awayId)
+                away[awayId] = away.GetValueOrDefault(awayId) + 1;
+        }
+
         _groupRemovalBuffer.Clear();
         foreach (KinGroup group in _groups.Values)
         {
-            if (group.Members.Count >= 2)
+            int awayCount = away.GetValueOrDefault(group.Id);
+            if (group.Members.Count == 0 && awayCount > 0)
+                continue;
+            if (group.Members.Count + awayCount >= 2)
             {
                 if (group.HasSittingLeader)
                     continue;
@@ -314,6 +328,8 @@ public sealed partial class World
     /// </summary>
     private bool TryFormAlliance(Bramblekin a, Bramblekin b, bool bothThreatened)
     {
+        if (a.IsPlayerControlled || b.IsPlayerControlled)
+            return false; // A kin at the player's wheel stands alone.
         KinGroup? groupA = GroupOf(a);
         KinGroup? groupB = GroupOf(b);
         KinGroup group;

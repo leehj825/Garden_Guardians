@@ -433,6 +433,8 @@ public sealed partial class World
     {
         if (kin.Home != home && !(kin.GroupId is not null && home.GroupId == kin.GroupId))
             return false;
+        if (kin.IsPlayerControlled)
+            return true; // Standing alone: its own home's store, whatever the clan's sharing rule.
         if (home.GroupId is not { } groupId || !_groups.TryGetValue(groupId, out KinGroup? group))
             return true;
         if (group.Sharing == SharingRule.Equal || group.Leader == kin || kin.IsStarving || kin.IsYoung)

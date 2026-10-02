@@ -52,7 +52,7 @@ public sealed class PlayControl
     /// <summary>Whether the player's strikes may hit other clans' kin (off to begin with).</summary>
     public bool HitKin { get; private set; }
 
-    public void Begin(Bramblekin kin, Camera3D camera)
+    public void Begin(Bramblekin kin, Camera3D camera, World world)
     {
         Kin = kin;
         Vector2 heading = kin.Facing.LengthSquared() > 1e-6f ? Vector2.Normalize(kin.Facing) : Vector2.UnitX;
@@ -65,15 +65,15 @@ public sealed class PlayControl
         for (int i = 0; i < Raylib.GetTouchPointCount(); i++)
             _spent.Add(Raylib.GetTouchPointId(i)); // The press that chose "Control" is not a first touch of the stick or the view.
         kin.PlayerMayHitKin = HitKin;
-        kin.SetPlayerControlled(true);
+        kin.SetPlayerControlled(true, world);
     }
 
     /// <summary>Hands the kin back to its own mind and puts the camera high over it, ready for the Follow camera to take up.</summary>
-    public void End(ref Camera3D camera)
+    public void End(ref Camera3D camera, World world)
     {
         if (Kin is { } kin)
         {
-            kin.SetPlayerControlled(false);
+            kin.SetPlayerControlled(false, world);
             camera.Target = kin.Position;
             camera.Position = kin.Position + new Vector3(-MathF.Sin(_yaw) * 12f, 14f, -MathF.Cos(_yaw) * 12f);
         }
@@ -89,6 +89,10 @@ public sealed class PlayControl
     private static UiButton ExitButton => new(new Rectangle(20 * Scale, 20 * Scale, 260 * Scale, 110 * Scale));
     private static UiButton KinToggle => new(new Rectangle(Raylib.GetScreenWidth() - 520 * Scale, Raylib.GetScreenHeight() * 0.72f - 55 * Scale, 230 * Scale, 110 * Scale));
 
+    private static UiButton JobToggle => new(new Rectangle(Raylib.GetScreenWidth() - 520 * Scale, Raylib.GetScreenHeight() * 0.72f - 185 * Scale, 230 * Scale, 110 * Scale));
+
+    private static string JobLabel(KinJob job) => job switch { KinJob.Hunter => "Job: Hunter", KinJob.Guard => "Job: Guard", _ => "Job: Normal" };
+
     /// <summary>The part of the screen where a touch takes the stick: the lower left.</summary>
     private static bool InStickZone(Vector2 point) => point.X < Raylib.GetScreenWidth() * 0.42f && point.Y > Raylib.GetScreenHeight() * 0.3f;
 
@@ -97,7 +101,7 @@ public sealed class PlayControl
     {
         if (Kin is not { IsDead: false } kin)
         {
-            End(ref camera);
+            End(ref camera, world);
             return;
         }
 
@@ -139,7 +143,7 @@ public sealed class PlayControl
             }
             else if (ExitButton.Contains(at))
             {
-                End(ref camera);
+                End(ref camera, world);
                 return;
             }
             else if (KinToggle.Contains(at))
@@ -147,6 +151,11 @@ public sealed class PlayControl
                 HitKin = !HitKin;
                 kin.PlayerMayHitKin = HitKin;
                 _spent.Add(id); // This touch has done its one thing.
+            }
+            else if (JobToggle.Contains(at))
+            {
+                kin.CyclePlayerJob();
+                _spent.Add(id);
             }
             else if (_lookTouch == -1)
             {
@@ -187,7 +196,7 @@ public sealed class PlayControl
             attackHeld = true;
         if (Raylib.IsKeyPressed(KeyboardKey.Escape))
         {
-            End(ref camera);
+            End(ref camera, world);
             return;
         }
 
@@ -235,6 +244,7 @@ public sealed class PlayControl
         string attackLabel = "Attack";
         Raylib.DrawText(attackLabel, (int)(AttackCenter.X - Raylib.MeasureText(attackLabel, attackFont) / 2f), (int)(AttackCenter.Y - attackFont / 2f), attackFont, Color.White);
         KinToggle.Draw(HitKin ? "Kin: on" : "Kin: off", highlighted: HitKin);
+        JobToggle.Draw(JobLabel(kin.PlayerJob), highlighted: kin.PlayerJob != KinJob.None);
         ExitButton.Draw("Exit", highlighted: false);
 
         // Status.

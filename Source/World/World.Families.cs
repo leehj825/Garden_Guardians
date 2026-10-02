@@ -38,7 +38,7 @@ public sealed partial class World
     /// </summary>
     private bool TryCourt(Bramblekin a, Bramblekin b)
     {
-        if (!a.CanCourt || !b.CanCourt || a.Sex == b.Sex || a.IsCloseKinOf(b))
+        if (!a.CanCourt || !b.CanCourt || a.Sex == b.Sex || a.IsCloseKinOf(b) || a.IsPlayerControlled || b.IsPlayerControlled)
             return false;
         if (a.RelationshipTo(b) == RelationshipState.Enemy)
             return false;

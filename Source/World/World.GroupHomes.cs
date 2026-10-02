@@ -483,6 +483,8 @@ public sealed partial class World
     /// </summary>
     private bool TryJoinSettledGroup(Bramblekin a, Bramblekin b)
     {
+        if (a.IsPlayerControlled || b.IsPlayerControlled)
+            return false;
         (Bramblekin? loner, Bramblekin? member) =
             a.GroupId is null && b.GroupId is not null ? (a, b)
             : b.GroupId is null && a.GroupId is not null ? (b, a)

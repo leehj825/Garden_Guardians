@@ -372,7 +372,7 @@ public static partial class Game
                 if (Environment.GetEnvironmentVariable("GARDEN_PLAY_GUARD") == "1")
                     testKin.MakeTestSoldier();
                 world.SelectKin(testKin);
-                play.Begin(testKin, camera);
+                play.Begin(testKin, camera, world);
             }
             bool playing = play.IsActive;
             if (!_showChronicle && !playing)
@@ -493,7 +493,7 @@ public static partial class Game
                     director.Stop();
                     followCamera.Release();
                     _timeScale = 1f;
-                    play.Begin(chosen, camera);
+                    play.Begin(chosen, camera, world);
                     playing = true;
                 }
             }
@@ -639,8 +639,31 @@ public static partial class Game
         float reportTimer = 0f;
         int steps = 0;
         bool assaultStarted = assaultLevel <= 0;
+        // A development aid: GARDEN_CONTROL_TEST=<seconds> takes the wheel of a clan member at 60 s for that long (as Guard), then gives it back.
+        float controlFor = float.TryParse(Environment.GetEnvironmentVariable("GARDEN_CONTROL_TEST"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float parsedControl) ? parsedControl : 0f;
+        Bramblekin? controlled = null;
+        int controlPhase = controlFor > 0f ? 0 : 3;
         while (world.ElapsedSeconds < endTime)
         {
+            if (controlPhase == 0 && world.ElapsedSeconds >= 60f &&
+                world.Colony.FirstOrDefault(k => !k.IsDead && !k.IsYoung && world.GroupOf(k) is { } g && g.Members.Count >= 2) is { } pick)
+            {
+                controlPhase = 1;
+                controlled = pick;
+                Guid clan = pick.GroupId!.Value;
+                pick.CyclePlayerJob();
+                pick.CyclePlayerJob(); // Hunter, then Guard.
+                pick.SetPlayerControlled(true, world);
+                Console.WriteLine($"[CONTROL] {pick.Name} taken at {world.ElapsedSeconds:0}s: clan {pick.GroupId?.ToString() ?? "none"} (was {clan}), job {pick.Job}, village job {pick.VillageJob}");
+            }
+            else if (controlPhase == 1 && controlled is not null && world.ElapsedSeconds >= 60f + controlFor)
+            {
+                controlPhase = 2;
+                world.CommitPendingChanges();
+                Console.WriteLine($"[CONTROL] {controlled.Name} before release: dead {controlled.IsDead}, clan {controlled.GroupId?.ToString() ?? "none"}, clan still stands {controlled.AwayGroupId is { } a && world.GroupExists(a)}");
+                controlled.SetPlayerControlled(false, world);
+                Console.WriteLine($"[CONTROL] {controlled.Name} released: clan {controlled.GroupId?.ToString() ?? "none"}, job {controlled.Job}");
+            }
             if (!assaultStarted && world.ElapsedSeconds >= assaultAt)
             {
                 assaultStarted = true;
