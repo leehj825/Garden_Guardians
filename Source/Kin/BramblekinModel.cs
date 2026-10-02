@@ -150,8 +150,7 @@ internal static unsafe class BramblekinModel
         return state switch
         {
             BramblekinState.Fishing => BramblekinClip.Fishing,
-            BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or
-                BramblekinState.Dueling => BramblekinClip.Combat,
+            // (No fighting loop of its own: a blow plays its own clip when it is struck, see Bramblekin.BeginBlow; between blows it stands.)
             BramblekinState.Collecting or BramblekinState.Building or BramblekinState.Farming or
                 BramblekinState.Foraging or BramblekinState.Stockpiling or
                 BramblekinState.Raiding => BramblekinClip.Gathering,
