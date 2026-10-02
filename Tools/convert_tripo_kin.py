@@ -54,14 +54,15 @@ def load_static(path):
     return pos, nrm, uv, idx, picture
 
 
-def repose_tpose_arms(points, normals, degrees=58.0, root=0.13, height=0.45):
+def repose_tpose_arms(points, normals, degrees=58.0, root=0.19, height=0.44, ramp=0.06, band=(0.26, 0.50)):
     """Lower the arms of a model that stands with them held straight out (a T-pose) to the angle the skeleton's own arms are at (about 58 degrees
     down), turning every arm vertex about the shoulder, the part beside the body blending in (bind space: x to the side, z up). The clips are built on
-    that skeleton, so a mesh whose arms stay out would keep them out through every pose."""
+    that skeleton, so a mesh whose arms stay out would keep them out through every pose. An arm is what lies farther out than <root> to the side
+    and between the heights of <band>: the hair and the ears do not reach that far at that height."""
     out, out_n = points.copy(), normals.copy()
     for side in (1.0, -1.0):
         x, z = points[:, 0] * side, points[:, 2]
-        f = np.clip((x - root) / 0.07, 0.0, 1.0) * ((z > height - 0.12) & (z < height + 0.15))
+        f = np.clip((x - root) / ramp, 0.0, 1.0) * ((z > band[0]) & (z < band[1]))
         a = np.radians(degrees) * f
         c, s = np.cos(a), np.sin(a)
         dx, dz = x - root, z - height
@@ -181,6 +182,7 @@ def main():
     ap.add_argument("--female", action="store_true")
     ap.add_argument("--texture", type=int, default=2048)
     ap.add_argument("--tpose-arms", action="store_true", help="the model's arms are held straight out: lower them to the skeleton's own angle (and fit nothing to the arms)")
+    ap.add_argument("--arm-degrees", type=float, default=58.0, help="how far --tpose-arms lowers them (a model whose arms already droop needs less)")
     ap.add_argument("--lods", action="store_true", help="also write _lod1 and _lod2: the mesh cut to --lod-tris triangles, with smaller pictures")
     ap.add_argument("--lod-tris", type=int, nargs=2, default=(4000, 1000), help="triangles in the first and second lower level of detail")
     ap.add_argument("--guard", action="store_true", help="shield and sword follow the arms only")
@@ -198,7 +200,7 @@ def main():
     pos = to_bind(pos_y, scale)
     nrm = to_bind(nrm_y)
     if args.tpose_arms:
-        pos, nrm = repose_tpose_arms(pos, nrm)
+        pos, nrm = repose_tpose_arms(pos, nrm, args.arm_degrees)
 
     doc, binary = read_glb(args.skeleton)
     names, position, parent = bind_joints(doc, binary)

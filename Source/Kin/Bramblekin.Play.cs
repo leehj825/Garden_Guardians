@@ -179,6 +179,7 @@ public sealed partial class Bramblekin
     private void PlayerStrike(World world)
     {
         _strikeCooldown = PlayerStrikeCooldown;
+        BeginBlow(world);
         _swing = PlayerSwingSeconds;
         SetState(BramblekinState.Fighting);
 

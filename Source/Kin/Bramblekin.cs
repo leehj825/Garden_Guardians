@@ -680,6 +680,11 @@ public sealed partial class Bramblekin : ICombatant
             return;
         if (_onRaft && PoleAcross(deltaTime, world))
             return; // Out on the water: nothing else can be done until it lands.
+        if (_actionLock > 0f)
+        {
+            _actionLock -= deltaTime; // A blow or a pick-up is being played out: it is finished before the kin moves or does anything else.
+            return;
+        }
         if (IsPlayerControlled)
         {
             UpdatePlayerControl(deltaTime, world); // The player is at the wheel: no mind of its own.

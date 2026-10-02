@@ -30,6 +30,7 @@ public sealed partial class Bramblekin
         if (GroundMover.HorizontalDistance(Position, food.Position) <= PickupDistance)
         {
             ReleaseFoodClaim();
+            StartAction(BramblekinClip.PickingUp, lockMovement: true); // bends to pick it up, and finishes that first
             World.PickUpFood(food);
             _carried = food;
             _perceivedFood = null;
@@ -142,6 +143,7 @@ public sealed partial class Bramblekin
             world.NoteDefended(this, target);
         if (target is not Bramblekin)
             Train(Skill.Hunting, world, target is StagBeetle or WolfSpider ? 2f : 1f);
+        BeginBlow(world);
         target.TakeHit(target is Bramblekin ? StrikeDamage : HuntingDamage, this, world);
     }
 

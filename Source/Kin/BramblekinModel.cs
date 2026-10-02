@@ -175,8 +175,11 @@ internal static unsafe class BramblekinModel
     /// <summary>The longest an action clip (a blow, a stab, bending to pick something up) is let run (s): a longer one is played faster so that it still ends within this.</summary>
     private static readonly Dictionary<BramblekinClip, float> ActionCap = new()
     {
-        [BramblekinClip.SpearStab] = 2.0f,
-        [BramblekinClip.PickingUp] = 3.0f,
+        [BramblekinClip.Combat] = 0.8f,
+        [BramblekinClip.SwordAttack] = 0.7f,
+        [BramblekinClip.SpearStab] = 1.2f,
+        [BramblekinClip.AimRecoil] = 0.6f,
+        [BramblekinClip.PickingUp] = 1.6f,
     };
 
     /// <summary>How long (s) an action clip plays for: its own length, or the cap if that is shorter (it is then sped up).</summary>

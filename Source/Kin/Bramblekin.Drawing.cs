@@ -190,19 +190,45 @@ public sealed partial class Bramblekin
     private float _actionStart;
     private bool _actionActive, _nextBlowIsAttack;
 
+    /// <summary>Seconds left of an action the kin must finish before it moves or does anything else (a blow, a pick-up): see <see cref="StartAction"/>.</summary>
+    private float _actionLock;
+
+    /// <summary>Starts <paramref name="clip"/> playing from its first frame; with <paramref name="lockMovement"/> the kin stands where it is until the clip is done.</summary>
+    private void StartAction(BramblekinClip clip, bool lockMovement)
+    {
+        _actionClip = clip;
+        _actionStart = _animTime;
+        _actionActive = true;
+        _actionLock = lockMovement ? BramblekinModel.ActionSeconds(clip) : 0f;
+    }
+
+    /// <summary>
+    /// A blow is struck: the clip for the kin's job plays through, and the kin stands still until it is done. A hunter (or anyone shooting) takes aim and
+    /// recoils; a guard whose clan has Spears stabs; soldiers and other fighters alternate the sword and shield slash and the sword and shield attack.
+    /// </summary>
+    private void BeginBlow(World world, bool ranged = false)
+    {
+        BramblekinClip clip;
+        if (ranged || Job == KinJob.Hunter)
+            clip = BramblekinClip.AimRecoil;
+        else if (Job == KinJob.Guard && world.GroupOf(this) is { } clan && World.Knows(clan, Craft.Spears))
+            clip = BramblekinClip.SpearStab;
+        else
+        {
+            clip = _nextBlowIsAttack ? BramblekinClip.SwordAttack : BramblekinClip.Combat;
+            _nextBlowIsAttack = !_nextBlowIsAttack;
+        }
+        StartAction(clip, lockMovement: true);
+    }
+
     /// <summary>The action clip the kin's state and job call for while it stands still, if any: blows, stabs, aiming and picking things up. Null: nothing but the usual clips.</summary>
     private BramblekinClip? ActionWanted(World world)
     {
         switch (State)
         {
-            case BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or BramblekinState.Dueling:
-                if (Job == KinJob.Hunter)
-                    return BramblekinClip.AimRecoil; // a hunter takes aim
-                if (Job == KinJob.Guard && world.GroupOf(this) is { } clan && World.Knows(clan, Craft.Spears))
-                    return BramblekinClip.SpearStab; // a guard with a spear stabs
-                return BramblekinClip.Combat; // soldiers and fighters: the slash, then the attack, and again
-            case BramblekinState.Collecting or BramblekinState.Foraging or BramblekinState.Stockpiling:
-                return BramblekinClip.PickingUp;
+            // (Blows are started where they are struck: see BeginBlow.)
+            case BramblekinState.Collecting or BramblekinState.Foraging or BramblekinState.Stockpiling or BramblekinState.Eating or BramblekinState.Drinking:
+                return BramblekinClip.PickingUp; // bending to pick up, to eat, to drink
             default:
                 return null;
         }
@@ -225,21 +251,14 @@ public sealed partial class Bramblekin
         {
             float length = BramblekinModel.ActionSeconds(_actionClip);
             float elapsed = _animTime - _actionStart;
-            if (elapsed < length && !_mover.IsMoving)
+            if (elapsed < length && (_actionLock > 0f || !_mover.IsMoving))
                 return (_actionClip, elapsed / length);
             _actionActive = false;
         }
 
         if (!_mover.IsMoving && ActionWanted(world) is { } wanted)
         {
-            if (wanted == BramblekinClip.Combat)
-            {
-                wanted = _nextBlowIsAttack ? BramblekinClip.SwordAttack : BramblekinClip.Combat;
-                _nextBlowIsAttack = !_nextBlowIsAttack;
-            }
-            _actionClip = wanted;
-            _actionStart = _animTime;
-            _actionActive = true;
+            StartAction(wanted, lockMovement: false);
             return (wanted, 0f);
         }
         return (BramblekinModel.ClipFor(State, _mover.IsMoving), null);

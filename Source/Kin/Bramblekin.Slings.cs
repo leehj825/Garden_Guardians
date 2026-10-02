@@ -64,6 +64,7 @@ public sealed partial class Bramblekin
         if (_strikeCooldown > 0f)
             return true;
         _strikeCooldown = SlingCooldown;
+        BeginBlow(world, ranged: true);
         world.LoosePebble(this, target, _rng.NextDouble() < SlingAccuracy(target), StrikeDamage);
         return true;
     }

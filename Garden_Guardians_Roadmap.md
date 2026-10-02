@@ -1310,3 +1310,5 @@ matter most:
 *   ⬜ **Tuning.** Every rate and threshold is a constant at the top of its
     class (`World`, `Bramblekin`, `Shelter`, the wildlife); the headless
     survival trend is the tool for revisiting them.
+
+**Phase 43 follow-up – action timing:** blow clips are sped up to caps (slash 0.8 s, sword attack 0.7 s, spear stab 1.2 s, aim recoil 0.6 s) and the kin is frozen (no moving or other actions) until the clip finishes. The pick-up clip (1.6 s cap) plays for picking up food, eating, drinking, foraging and stockpiling. Kin meshes are re-posed from T-pose to the skeleton's A-pose bind (male arms 58°, female 45°) so arms hang naturally.
