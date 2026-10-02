@@ -283,7 +283,7 @@ public sealed partial class Bramblekin
             return; // (Only a guard's wooden sword, a spearman's spear and a hunter's bow for the time being: no shields, no quiver.)
         bool aiming = (_actionActive && _actionClip == BramblekinClip.AimRecoil) || ForcedClip == BramblekinClip.AimRecoil;
         Matrix4x4 body = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateFromAxisAngle(Vector3.Normalize(axis), angleDegrees * MathF.PI / 180f) * Matrix4x4.CreateTranslation(Position);
-        KinGear.Draw(pose, body, sword: guard, shield: false, bow: hunter, quiver: false, spear: spearman, bowRaised: aiming);
+        KinGear.Draw(pose, body, sword: guard, shield: false, bow: hunter, quiver: false, spear: spearman, bowRaised: aiming, stabbing: (_actionActive && _actionClip == BramblekinClip.SpearStab) || ForcedClip == BramblekinClip.SpearStab);
     }
 
     private static readonly Color ShieldColor = new(95, 55, 35, 255);

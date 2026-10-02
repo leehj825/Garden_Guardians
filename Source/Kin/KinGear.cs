@@ -98,7 +98,7 @@ public static unsafe class KinGear
     }
 
     /// <summary>Draws the gear a Bramblekin of this job carries; <paramref name="body"/> is where it stands and how big (mesh units to world).</summary>
-    public static void Draw(in Model pose, Matrix4x4 body, bool sword, bool shield, bool bow, bool quiver, bool spear = false, bool bowRaised = false)
+    public static void Draw(in Model pose, Matrix4x4 body, bool sword, bool shield, bool bow, bool quiver, bool spear = false, bool bowRaised = false, bool stabbing = false)
     {
         var forward = Vector3.UnitZ; // the mesh faces +Z; its left hand is at +X
         if (sword && Hand(pose, "mixamorig:RightHand", "mixamorig:RightForeArm", out Vector3 right, out Vector3 rightFingers))
@@ -108,12 +108,19 @@ public static unsafe class KinGear
             Vector3 centre = right + along * (0.3f * SwordLength);
             GearModels.Draw(GearModels.Gear.Sword, Matrix4x4.CreateScale(SwordLength) * Frame(along, -Vector3.UnitX, centre) * body);
         }
-        if (spear && Hand(pose, "mixamorig:RightHand", "mixamorig:RightForeArm", out Vector3 grip, out Vector3 gripFingers))
+        if (spear && Hand(pose, "mixamorig:RightHand", "mixamorig:RightForeArm", out Vector3 grip, out _))
         {
-            // Held a third of the way up its shaft, point forward and up (the hand turns it: a stab drives it forward).
-            Vector3 along = Turned(pose, "mixamorig:RightHand", new Vector3(0f, -0.35f, 1f));
-            Vector3 centre = grip + along * (0.25f * SpearLength);
-            GearModels.Draw(GearModels.Gear.Spear, Matrix4x4.CreateScale(SpearLength) * Frame(along, -Vector3.UnitX, centre) * body);
+            // Carried pointing forward (a touch up), held low in the right hand; in a stab it is gripped in both hands and driven forward along them.
+            Vector3 along = Vector3.Normalize(new Vector3(0f, 0.12f, 1f));
+            Vector3 centre = grip + along * (0.3f * SpearLength);
+            if (stabbing && Hand(pose, "mixamorig:LeftHand", "mixamorig:LeftForeArm", out Vector3 front, out _) && Vector3.DistanceSquared(front, grip) > 1e-4f)
+            {
+                along = Vector3.Normalize(front - grip); // the leading hand is the left one: the point goes that way
+                if (Vector3.Dot(along, forward) < 0f)
+                    along = -along;
+                centre = (front + grip) * 0.5f + along * (0.25f * SpearLength);
+            }
+            GearModels.Draw(GearModels.Gear.Spear, Matrix4x4.CreateScale(SpearLength) * Frame(along, Vector3.UnitY, centre) * body);
         }
         if ((shield || bow) && Hand(pose, "mixamorig:LeftHand", "mixamorig:LeftForeArm", out Vector3 left, out Vector3 leftFingers))
         {
@@ -128,7 +135,8 @@ public static unsafe class KinGear
             {
                 // Held by its grip against the inside of the palm, standing along the hand with its belly forward.
                 // Hanging from the fist by its grip, tips down (and the whole bow swings with the hand).
-                Vector3 along = Vector3.Normalize(-Vector3.UnitY + BowBindUp * Turned(pose, "mixamorig:LeftHand", Vector3.UnitX));
+                // Carried upright in the hand, its belly forward and its string side up (the same way up as when it is drawn).
+                Vector3 along = Vector3.Normalize(Vector3.UnitY + 0.15f * forward);
                 Vector3 centre = left - Vector3.UnitX * 0.03f + forward * 0.02f;
                 Vector3 facing = forward;
                 if (bowRaised)
