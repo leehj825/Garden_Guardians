@@ -6,8 +6,8 @@ namespace GardenGuardians;
 public sealed unsafe partial class World
 {
     // --- Ground cover: the close-up garden floor ------------------------------------------------------------------------------
-    // The ground is one painted texture, flat and smeared when seen from a kin's own height. While the player controls a kin, the ground
-    // within about 40 m of it is dressed in real geometry: blades of grass (many and fine up close, fewer and coarser farther out),
+    // The ground is one painted texture, flat and smeared when seen from a kin's own height. Whenever the camera is close in (and always while the player controls a kin), the ground
+    // within about 40 m of what it looks at is dressed in real geometry: blades of grass (many and fine up close, fewer and coarser farther out),
     // flowers and small stones, built in 6 m chunks as the kin walks (a few a frame), each chunk one mesh with colours on its vertices.
     // Nothing is simulated or saved: the same chunk always grows the same cover, and it is dropped when the kin is given back.
 
@@ -42,43 +42,68 @@ public sealed unsafe partial class World
     private Raylib_cs.Material _coverMaterial;
     private bool _coverMaterialReady;
 
-    /// <summary>The grass, flowers and stones round the controlled kin, if there is one. Called after the ground is drawn.</summary>
+    /// <summary>Zoomed out beyond this far (m, eye to what it looks at) there is no cover; closer than <see cref="CoverFullZoom"/> it reaches its full radius, between them it shrinks.</summary>
+    private const float CoverOffZoom = 45f, CoverFullZoom = 20f, CoverFarRadius = 20f;
+
+    /// <summary>Seconds without any cover wanted before what was built is freed.</summary>
+    private const float CoverIdleSeconds = 4f;
+
+    private float _coverIdle;
+
+    /// <summary>
+    /// The grass, flowers and stones where the camera is close in: round the controlled kin if there is one, else round what the camera looks
+    /// at. Detail is picked by the nearer of that spot and the camera's own, so the ground at the bottom of the screen is the finest.
+    /// Called after the ground is drawn.
+    /// </summary>
     private void DrawGroundCover(Camera3D camera, Color seasonTint, float seasonAmount)
     {
         Bramblekin? kin = Colony.FirstOrDefault(k => k.IsPlayerControlled && !k.IsDead);
-        if (kin is null)
+        float zoom = Vector3.Distance(camera.Position, camera.Target);
+        float radius = kin is not null || zoom <= CoverFullZoom ? CoverRadius
+            : zoom >= CoverOffZoom ? 0f
+            : CoverRadius + (CoverFarRadius - CoverRadius) * (zoom - CoverFullZoom) / (CoverOffZoom - CoverFullZoom);
+        if (radius <= 0f)
         {
-            if (_cover.Count > 0)
+            _coverIdle += Raylib.GetFrameTime();
+            if (_cover.Count > 0 && _coverIdle > CoverIdleSeconds)
                 ReleaseGroundCover();
             return;
         }
+        _coverIdle = 0f;
         if (!_coverMaterialReady)
         {
             _coverMaterial = Raylib.LoadMaterialDefault();
             _coverMaterialReady = true;
         }
 
-        Vector3 at = kin.Position;
-        int reach = (int)MathF.Ceiling(CoverRadius / CoverChunkSize) + 1;
+        Vector3 at = kin?.Position ?? camera.Target;
+        Vector3 eye = camera.Position;
+        int reach = (int)MathF.Ceiling(radius / CoverChunkSize) + 1;
         int kx = (int)MathF.Floor(at.X / CoverChunkSize), kz = (int)MathF.Floor(at.Z / CoverChunkSize);
+        int ex = (int)MathF.Floor(eye.X / CoverChunkSize), ez = (int)MathF.Floor(eye.Z / CoverChunkSize);
         Vector3 forward = Vector3.Normalize(camera.Target - camera.Position);
-        var wanted = new List<((int X, int Z) Key, float Distance, int Tier)>();
-        for (int dx = -reach; dx <= reach; dx++)
+        var wanted = new Dictionary<(int X, int Z), (float Distance, int Tier)>();
+        foreach ((int cx0, int cz0) in new[] { (kx, kz), (ex, ez) })
         {
-            for (int dz = -reach; dz <= reach; dz++)
+            for (int dx = -reach; dx <= reach; dx++)
             {
-                (int X, int Z) key = (kx + dx, kz + dz);
-                float centreX = (key.X + 0.5f) * CoverChunkSize, centreZ = (key.Z + 0.5f) * CoverChunkSize;
-                float distance = MathF.Sqrt((centreX - at.X) * (centreX - at.X) + (centreZ - at.Z) * (centreZ - at.Z));
-                if (distance > CoverRadius)
-                    continue;
-                int tier = distance < CoverTierFrom[1] ? 0 : distance < CoverTierFrom[2] ? 1 : 2;
-                wanted.Add((key, distance, tier));
+                for (int dz = -reach; dz <= reach; dz++)
+                {
+                    (int X, int Z) key = (cx0 + dx, cz0 + dz);
+                    float centreX = (key.X + 0.5f) * CoverChunkSize, centreZ = (key.Z + 0.5f) * CoverChunkSize;
+                    float fromAt = MathF.Sqrt((centreX - at.X) * (centreX - at.X) + (centreZ - at.Z) * (centreZ - at.Z));
+                    float fromEye = MathF.Sqrt((centreX - eye.X) * (centreX - eye.X) + (centreZ - eye.Z) * (centreZ - eye.Z));
+                    float distance = MathF.Min(fromAt, fromEye);
+                    if (distance > radius || wanted.ContainsKey(key))
+                        continue;
+                    int tier = distance < CoverTierFrom[1] ? 0 : distance < CoverTierFrom[2] ? 1 : 2;
+                    wanted[key] = (distance, tier);
+                }
             }
         }
 
         int built = 0;
-        foreach (var (key, distance, tier) in wanted.OrderBy(w => w.Distance))
+        foreach (var (key, (distance, tier)) in wanted.OrderBy(w => w.Value.Distance))
         {
             if (!_cover.TryGetValue(key, out CoverChunkMesh? chunk) || chunk.Tier != tier)
             {
@@ -110,7 +135,8 @@ public sealed unsafe partial class World
         foreach ((int X, int Z) key in _cover.Keys.ToList())
         {
             float centreX = (key.X + 0.5f) * CoverChunkSize, centreZ = (key.Z + 0.5f) * CoverChunkSize;
-            if ((centreX - at.X) * (centreX - at.X) + (centreZ - at.Z) * (centreZ - at.Z) <= CoverKeepRadius * CoverKeepRadius)
+            float nearest = MathF.Min((centreX - at.X) * (centreX - at.X) + (centreZ - at.Z) * (centreZ - at.Z), (centreX - eye.X) * (centreX - eye.X) + (centreZ - eye.Z) * (centreZ - eye.Z));
+            if (nearest <= CoverKeepRadius * CoverKeepRadius)
                 continue;
             if (!_cover[key].Empty)
                 Raylib.UnloadMesh(_cover[key].Mesh);

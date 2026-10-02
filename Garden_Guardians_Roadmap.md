@@ -1161,13 +1161,13 @@ checked with headless A/B runs (numbers are in that file).
     also feed the ant-hill assault (`World.Assault.cs`).
 
 ## Phase 41: Close-up Ground
-*   ✅ **Ground cover round a controlled kin** (2026-10-02): the painted ground
-    is dressed within 40 m of the kin in grass blades, flowers and small
+*   ✅ **Ground cover where the camera is close** (2026-10-02): the painted ground
+    is dressed within 40 m of the controlled kin, or of what a close camera looks at (eye within 20 m; shrinking to 20 m at 45 m; none beyond) in grass blades, flowers and small
     stones, chunked and level-of-detail'd (`World.GroundCover.cs`; about
     70,000 triangles at most). Seen under a virtual display; not yet timed on a phone.
 *   ⬜ **Next:** a finer, smoother ground mesh with small bumps under the cover
     (the ground is still the 0.5 m height grid under a 2048 px picture), swaying
-    grass, a draw-distance setting for phones, and cover in the Follow camera.
+    grass, a draw-distance setting for phones, (the cover now follows any close camera).
 
 ## Backlog: Advancing Civilizations (ideas, not scheduled)
 (Phase 35 was never used; numbering goes 34 → 36.)
