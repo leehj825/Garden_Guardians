@@ -367,7 +367,7 @@ public static partial class Game
             //    Target and pinch to zoom. Runs before the tap input below
             //    so the rest of the frame sees an already-settled camera.
             // (The History screen takes over touches and drags while it's open.)
-            if (!_playTestDone && Environment.GetEnvironmentVariable("GARDEN_PLAY_TEST") == "1" && world.Colony.FirstOrDefault(k => !k.IsDead && !k.IsYoung && (Environment.GetEnvironmentVariable("GARDEN_PLAY_FEMALE") != "1" || k.Sex == Sex.Female)) is { } testKin)
+            if (!_playTestDone && Environment.GetEnvironmentVariable("GARDEN_PLAY_TEST") == "1" && world.Colony.FirstOrDefault(k => !k.IsDead && !k.IsYoung && (Environment.GetEnvironmentVariable("GARDEN_PLAY_FEMALE") != "1" || k.Sex == Sex.Female) && (Environment.GetEnvironmentVariable("GARDEN_PLAY_MALE") != "1" || k.Sex == Sex.Male)) is { } testKin)
             {
                 _playTestDone = true; // A development aid: start out controlling a kin.
                 if (Environment.GetEnvironmentVariable("GARDEN_PLAY_GUARD") == "1")

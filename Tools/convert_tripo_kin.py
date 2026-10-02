@@ -16,6 +16,7 @@ written as the skeleton's glb with the mesh, weights and texture replaced, so ev
   --lods     also write <name>_lod1.glb and <name>_lod2.glb: the same mesh with a 1024 px and a 512 px texture.
 """
 import argparse
+import ctypes
 import io
 import os
 import sys
@@ -51,6 +52,26 @@ def load_static(path):
     offset = view.get("byteOffset", 0)
     picture = Image.open(io.BytesIO(binary[offset:offset + view["byteLength"]])).convert("RGB")
     return pos, nrm, uv, idx, picture
+
+
+def repose_tpose_arms(points, normals, degrees=58.0, root=0.13, height=0.45):
+    """Lower the arms of a model that stands with them held straight out (a T-pose) to the angle the skeleton's own arms are at (about 58 degrees
+    down), turning every arm vertex about the shoulder, the part beside the body blending in (bind space: x to the side, z up). The clips are built on
+    that skeleton, so a mesh whose arms stay out would keep them out through every pose."""
+    out, out_n = points.copy(), normals.copy()
+    for side in (1.0, -1.0):
+        x, z = points[:, 0] * side, points[:, 2]
+        f = np.clip((x - root) / 0.07, 0.0, 1.0) * ((z > height - 0.12) & (z < height + 0.15))
+        a = np.radians(degrees) * f
+        c, s = np.cos(a), np.sin(a)
+        dx, dz = x - root, z - height
+        arm = f > 0
+        out[arm, 0] = side * (root + (dx * c + dz * s)[arm])
+        out[arm, 2] = (height + (-dx * s + dz * c))[arm]
+        nx, nz = normals[:, 0] * side, normals[:, 2]
+        out_n[arm, 0] = side * (nx * c + nz * s)[arm]
+        out_n[arm, 2] = (-nx * s + nz * c)[arm]
+    return out, out_n
 
 
 def png_of(picture, size):
@@ -140,6 +161,18 @@ def skin(points, names, segs, female, guard=False, tris=None, cloth=None):
     return index, w
 
 
+def simplified(pos, nrm, uv, flat, joints, weights, triangles):
+    """The mesh cut to about <triangles> triangles by edge collapses that keep its shape (meshoptimizer), the edges along picture seams left as they
+    are (so the picture still fits), with each surviving vertex keeping its own normal, picture coordinates, bones and weights."""
+    import meshoptimizer
+    out = np.zeros(len(flat), np.uint32)
+    count = meshoptimizer.simplify(out, flat.astype(np.uint32), pos.astype("f4"), target_index_count=triangles * 3, target_error=ctypes.c_float(1.0),
+                                   options=meshoptimizer.SIMPLIFY_LOCK_BORDER)
+    out = out[:count].astype(np.int64)
+    used, inverse = np.unique(out, return_inverse=True)
+    return pos[used], nrm[used], uv[used], inverse.astype("<u2"), joints[used], weights[used]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("model")
@@ -147,7 +180,9 @@ def main():
     ap.add_argument("dst")
     ap.add_argument("--female", action="store_true")
     ap.add_argument("--texture", type=int, default=2048)
-    ap.add_argument("--lods", action="store_true")
+    ap.add_argument("--tpose-arms", action="store_true", help="the model's arms are held straight out: lower them to the skeleton's own angle (and fit nothing to the arms)")
+    ap.add_argument("--lods", action="store_true", help="also write _lod1 and _lod2: the mesh cut to --lod-tris triangles, with smaller pictures")
+    ap.add_argument("--lod-tris", type=int, nargs=2, default=(4000, 1000), help="triangles in the first and second lower level of detail")
     ap.add_argument("--guard", action="store_true", help="shield and sword follow the arms only")
     ap.add_argument("--brighten", type=float, default=1.0, help="gamma applied to the texture (below 1 lightens; the guards' armour and leather are painted darker than the plain kin)")
     args = ap.parse_args()
@@ -162,10 +197,12 @@ def main():
 
     pos = to_bind(pos_y, scale)
     nrm = to_bind(nrm_y)
+    if args.tpose_arms:
+        pos, nrm = repose_tpose_arms(pos, nrm)
 
     doc, binary = read_glb(args.skeleton)
     names, position, parent = bind_joints(doc, binary)
-    segs = segments(names, position, parent, FITTED_ARM if args.female else {})
+    segs = segments(names, position, parent, FITTED_ARM if args.female and not args.tpose_arms else {})
     cloth = cloth_mask(uv, picture) if args.female and not args.guard else None  # (a guard's green is a tunic and a shield, which follow her arms)
     if cloth is not None:
         print(int(cloth.sum()), "of", len(cloth), "vertices are cloth")
@@ -181,16 +218,20 @@ def main():
         hsv[..., 2] = 255.0 * (hsv[..., 2] / 255.0) ** args.brighten
         picture = Image.fromarray(np.clip(hsv, 0, 255).astype("u1"), "HSV").convert("RGB")
 
-    outputs = [(args.dst, args.texture)]
+    outputs = [(args.dst, args.texture, None)]
     if args.lods:
         stem = args.dst[:-4]
-        outputs += [(stem + "_lod1.glb", 1024), (stem + "_lod2.glb", 512)]
-    for path, size in outputs:
+        outputs += [(stem + "_lod1.glb", 1024, args.lod_tris[0]), (stem + "_lod2.glb", 512, args.lod_tris[1])]
+    flat = idx.reshape(-1)
+    for path, size, tris in outputs:
+        p_, n_, u_, i_, j_, w_ = pos, nrm, uv, flat, joints4, weights4
+        if tris is not None and tris * 3 < len(flat):
+            p_, n_, u_, i_, j_, w_ = simplified(pos, nrm, uv, flat, joints4, weights4, tris)
         d, b = read_glb(args.skeleton)
-        d, out = build(d, b, pos.astype("<f4"), nrm.astype("<f4"), uv, idx.reshape(-1), joints4, weights4, png_of(picture, size))
+        d, out = build(d, b, p_.astype("<f4"), n_.astype("<f4"), u_, i_, j_, w_, png_of(picture, size))
         d["images"][0]["name"] = "Bramblekin_" + ("female" if args.female else "male") + "_basecolor"
         write_glb(path, d, out)
-        print("wrote", path, len(pos), "vertices,", len(idx) // 3, "triangles,", size, "px texture")
+        print("wrote", path, len(p_), "vertices,", len(i_) // 3, "triangles,", size, "px texture")
 
 
 if __name__ == "__main__":

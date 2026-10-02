@@ -1170,13 +1170,25 @@ checked with headless A/B runs (numbers are in that file).
     grass, a draw-distance setting for phones, (the cover now follows any close camera).
 
 ## Phase 42: Models for the Oak and the Village Fittings
-*   ✅ **A high-poly oak for generated gardens** (2026-10-02): the kit's oak is now a 19,400-triangle model, drawn in full at
+*   ✅ **A high-poly oak for generated gardens** (2026-10-02): the kit's oak is now a 49,600-triangle model (`oak_tree.glb`), drawn in full at
     every distance (19.7 m tall; trunk, hive and circles re-measured). The original garden keeps its old oak, part of the
     ground model: a version that cut the old oak out and drew two new models (full and 900 triangles by distance) was
     tried and reverted, as the ground where the old oak stood needed patching (see git history: `Tools/cut_oak_from_terrain.py`).
 *   ✅ **Workbench, market stalls, basket and rune stone as models** (`Items.glb`).
 *   ⬜ **Next:** the herb bed, sundial and watchtower in code; the big spiky plants (still part of the ground
     model, 417 triangles each).
+
+## Phase 43: New Kin Models and Animations
+*   ✅ **New male and female Bramblekin models for everyone** (2026-10-02): 19,800 triangles up close, about 4,000 and 1,000
+    further off (`Tools/convert_tripo_kin.py`, which now cuts the lower levels itself with meshoptimizer and can lower a T-posed
+    model's arms to the skeleton's angle). Guards and hunters use them too, with no sword, shield, helmet, bow or quiver for the time being.
+*   ✅ **Four new animation clips, each played from start to end:** the bayonet stab for guards whose clan has Spears (3.3 s played in 2 s), the sword
+    and shield slash then attack as a pair for soldiers and other fighters, the standing aim and recoil for hunters, and picking up
+    (9.6 s played in 3 s) for collecting, foraging and stockpiling (`Tools/convert_fbx.py --clip-only`, then `Tools/retarget_clip.py`).
+*   🟡 **Reviewed, not applied:** the generated armour and weapons sheet (`armor_weapons.glb`): a round shield (890 triangles), sword (750),
+    spear (570), bow (1,360), an arrow (350), a helmet (2,750) and a leaf cuirass with skirt (13,060). See the review in the conversation: sizes,
+    pivots and the work needed (decimation, skinning, scale) before fitting them.
+*   ⬜ **Next:** fit the weapons, helmet and armour to the hand and head bones and the torso; the guard idle and walk clips (sword carried) are unused.
 
 ## Backlog: Advancing Civilizations (ideas, not scheduled)
 (Phase 35 was never used; numbering goes 34 → 36.)

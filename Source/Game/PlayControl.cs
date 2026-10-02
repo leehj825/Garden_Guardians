@@ -57,6 +57,8 @@ public sealed class PlayControl
         Kin = kin;
         Vector2 heading = kin.Facing.LengthSquared() > 1e-6f ? Vector2.Normalize(kin.Facing) : Vector2.UnitX;
         _yaw = MathF.Atan2(heading.X, heading.Y);
+        if (float.TryParse(Environment.GetEnvironmentVariable("GARDEN_PLAY_YAW"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float turnDegrees))
+            _yaw += turnDegrees * MathF.PI / 180f; // A development aid: look at the kin from another side (180 for its front).
         _pitch = 0.4f;
         _focus = kin.Position + new Vector3(0f, LookHeight, 0f);
         _stickTouch = _lookTouch = _attackTouch = -1;

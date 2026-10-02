@@ -117,7 +117,7 @@ overhead camera:
     two is not dissolved for want of it. It eats only from its own home's
     store (whatever the clan's sharing rule). The **Job** button (above
     **Kin**) steps through **Normal, Hunter, Guard**: Guard gives the
-    soldier's blow and toughness and the guard kit, Hunter the hunter's kit;
+    soldier's blow and toughness (the models carry no guard kit or hunter's kit at present);
     it has no shield (shields come from its clan's crafts). **Exit** (or Esc) gives it back: it rejoins its old clan if that still
     stands (with its old loyalty and job) and otherwise stays solitary. A garden saved
     while someone is controlled saves it as still in its clan.
@@ -1115,9 +1115,20 @@ village, kingdom) says who belongs together and who leads.
     (a home with no room is pulled down). If the kingdom falls, or the capital
     changes, the castle goes back to a house. Not saved: worked out afresh
     from the kingdoms.
+*   **Bramblekin models and clips:** one male and one female model for everyone, guards and hunters too (the
+    sword, shield and helmet that the old guard models wore, and the hunter's bow and quiver, are gone for now;
+    the new weapons and armour will be fitted later). Each is a 19,800-triangle model with a 2048 px picture up
+    close (150 px or more tall on screen), about 4,000 triangles and 1024 px from 90 px, about 1,000 and 512 px
+    below that (`Tools/convert_tripo_kin.py --tpose-arms --lods`, from `male_kin.glb` and `female_kin.glb`; the arms are
+    lowered from the models' T-pose to the skeleton's own angle). Action clips play from start to finish
+    (`ChooseClip`): a guard whose clan has Spears stabs (`BayonetStab`, 3.3 s played in 2 s); soldiers and other
+    fighters alternate the sword and shield slash and the sword and shield attack; a hunter takes aim
+    (`StandingAimRecoil`); picking things up (collecting, foraging, stockpiling) plays `PickingUp` (9.6 s in 3 s).
+    Walking takes over the moment the kin moves. Clips from other Mixamo downloads are fitted to our skeleton by
+    `Tools/retarget_clip.py`.
 *   **The Giant Oak:** in the original garden it is still part of the ground model (the old, tall trunk
     and roots). Generated gardens draw it from a model of their own, the high-poly oak (`oak_0.glb`, about
-    19,400 triangles, a 2048 px picture) at every distance, 19.7 m tall and about 25 m across its roots, with its
+    49,600 triangles, a 2048 px picture) at every distance, 19.7 m tall and about 25 m across its roots, with its
     trunk, hive and keep-out circles measured off the model (`Tools/procedural/measure_oak.py`).
 *   **Village fittings:** the rune stone, the workbench, four kinds of market stall (by home number) and a
     basket beside the stall are models (`ItemModels.cs`, `Items.glb`, split from one generated sheet by
