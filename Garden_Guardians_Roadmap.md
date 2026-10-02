@@ -1124,7 +1124,12 @@ checked with headless A/B runs (numbers are in that file).
     follows the capital's headman); pledged soldiers marching to a sister
     village were not verified in a real raid; invasions are easy for a
     defended village; formal alliances are too rare to bind villages, so
-    peace is the test.
+    peace is the test. Found in a code-vs-doc review (2026-10-02, not yet
+    fixed): pledged soldiers are chosen by `ID % 3` and by `Job == Guard`
+    (not checked against `VillageJob`); a vassal can lose its headman and
+    stay in the kingdom; a capital keeps its crown after leaving the
+    Kingdom Age; soldiers are scored on born Strength, not eggs. Kingdoms
+    also feed the ant-hill assault (`World.Assault.cs`).
 
 ## Backlog: Advancing Civilizations (ideas, not scheduled)
 (Phase 35 was never used; numbering goes 34 → 36.)

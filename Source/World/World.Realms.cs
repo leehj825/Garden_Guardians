@@ -5,7 +5,7 @@ namespace GardenGuardians;
 public sealed partial class World
 {
     // --- Kingdoms: alliances of villages (Garden_Guardians_Society_Design.md, section 4.4) ------------------------------------
-    // Three or more allied villages near each other, one of them in the Kingdom Age, are offered a crown: the most populous such village
+    // Three or more villages near each other and at peace (alliances are too rare to bind three), one of them in the Kingdom Age, are offered a crown: the most populous such village
     // is the capital and its headman is king. Vassal villages keep their headmen, send the capital a little food from what they have in
     // store, and pledge a third of their soldiers to march to any sister village's defence. A village that goes to war with the capital
     // leaves; with fewer than three villages the kingdom dissolves. (The older clan-over-clan vassalage in World.Kingdoms stays for clans
@@ -101,7 +101,7 @@ public sealed partial class World
             CrownKing(kingdom, capital);
         }
 
-        // Allied villages nearby swear fealty to an existing kingdom.
+        // Villages nearby and at peace swear fealty to an existing kingdom.
         foreach (Village village in Villages.Where(v => v.KingdomId is null).ToList())
         {
             foreach (Kingdom kingdom in Realms)
@@ -118,7 +118,7 @@ public sealed partial class World
             }
         }
 
-        // New kingdoms: groups of three or more allied villages near each other, one of them Kingdom Age.
+        // New kingdoms: groups of three or more villages near each other and at peace, one of them Kingdom Age.
         List<Village> free = Villages.Where(v => v.KingdomId is null && HeadmanOf(v) is not null).ToList();
         var seen = new HashSet<Village>();
         foreach (Village start in free)
