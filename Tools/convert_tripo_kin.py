@@ -60,6 +60,7 @@ def repose_tpose_arms(points, normals, degrees=58.0, root=0.19, height=0.44, ram
     that skeleton, so a mesh whose arms stay out would keep them out through every pose. An arm is what lies farther out than <root> to the side
     and between the heights of <band>: the hair and the ears do not reach that far at that height."""
     out, out_n = points.copy(), normals.copy()
+    held = np.zeros(len(points), bool)
     for side in (1.0, -1.0):
         x, z = points[:, 0] * side, points[:, 2]
         f = np.clip((x - root) / ramp, 0.0, 1.0) * ((z > band[0]) & (z < band[1]))
@@ -67,12 +68,13 @@ def repose_tpose_arms(points, normals, degrees=58.0, root=0.19, height=0.44, ram
         c, s = np.cos(a), np.sin(a)
         dx, dz = x - root, z - height
         arm = f > 0
+        held |= arm
         out[arm, 0] = side * (root + (dx * c + dz * s)[arm])
         out[arm, 2] = (height + (-dx * s + dz * c))[arm]
         nx, nz = normals[:, 0] * side, normals[:, 2]
         out_n[arm, 0] = side * (nx * c + nz * s)[arm]
         out_n[arm, 2] = (-nx * s + nz * c)[arm]
-    return out, out_n
+    return out, out_n, held
 
 
 def png_of(picture, size):
@@ -116,9 +118,14 @@ def largest_piece(points, tris, selected):
     return np.array([bool(selected[v]) and find(rep[v]) == biggest for v in range(len(points))])
 
 
-def skin(points, names, segs, female, guard=False, tris=None, cloth=None):
+def skin(points, names, segs, female, guard=False, tris=None, cloth=None, arm_part=None):
     owners = list(segs)
     dist = np.stack([np.min([point_segment_distance(points, a, b) for a, b in segs[n]], axis=0) for n in owners], axis=1)
+    if arm_part is not None:
+        # What the re-pose turned as an arm follows the arm bones alone (not the spine or hips beside it), so a sleeve never tears between them.
+        arm_bones = np.array([any(k in n for k in ('Shoulder', 'Arm', 'Hand')) for n in owners])
+        sleeve = arm_part & ~cloth if cloth is not None else arm_part
+        dist[np.ix_(sleeve, np.where(~arm_bones)[0])] = np.inf
     if female:
         arm = np.array([any(k in n for k in ("Shoulder", "Arm", "Hand")) for n in owners])
         leg = np.array([any(k in n for k in ("UpLeg", "Leg", "Foot", "Toe")) for n in owners])
@@ -200,7 +207,9 @@ def main():
     pos = to_bind(pos_y, scale)
     nrm = to_bind(nrm_y)
     if args.tpose_arms:
-        pos, nrm = repose_tpose_arms(pos, nrm, args.arm_degrees)
+        pos, nrm, arm_part = repose_tpose_arms(pos, nrm, args.arm_degrees)
+    else:
+        arm_part = None
 
     doc, binary = read_glb(args.skeleton)
     names, position, parent = bind_joints(doc, binary)
@@ -208,7 +217,7 @@ def main():
     cloth = cloth_mask(uv, picture) if args.female and not args.guard else None  # (a guard's green is a tunic and a shield, which follow her arms)
     if cloth is not None:
         print(int(cloth.sum()), "of", len(cloth), "vertices are cloth")
-    joints_idx, w = skin(pos, names, segs, args.female, args.guard, idx.reshape(-1, 3), cloth)
+    joints_idx, w = skin(pos, names, segs, args.female, args.guard, idx.reshape(-1, 3), cloth, arm_part)
     joints4 = np.zeros((len(pos), 4), "u1")
     weights4 = np.zeros((len(pos), 4), "<f4")
     joints4[:, :NEIGHBOURS] = joints_idx

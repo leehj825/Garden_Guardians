@@ -25,9 +25,9 @@ public static unsafe class PropModels
     public const float HouseCapTop = 0.72f;
 
     /// <summary>The props; each has a full model and a cheap one (a fifth or so of the triangles, a 512px texture) for when it is small on screen.</summary>
-    public enum Prop { House, Bush, Spider, Tent, BerryPlot, CressPlot, MushroomPlot, GrainPlot, Beetle, Ant, AntHill, Castle }
+    public enum Prop { House, Bush, Spider, Tent, BerryPlot, CressPlot, MushroomPlot, GrainPlot, Beetle, Ant, AntHill, Castle, Larvae }
 
-    private static readonly string[] Files = { "AcornHouse", "BerryFarm", "Spider", "Tent", "BerryPlot", "CressPlot", "MushroomPlot", "GrainPlot", "Beetle", "Ant", "AntHill", "Castle" };
+    private static readonly string[] Files = { "AcornHouse", "BerryFarm", "Spider", "Tent", "BerryPlot", "CressPlot", "MushroomPlot", "GrainPlot", "Beetle", "Ant", "AntHill", "Castle", "Larvae" };
 
     /// <summary>Below this many pixels across, the cheap model.</summary>
     private const float FullPixels = 110f;
@@ -41,8 +41,8 @@ public static unsafe class PropModels
         if (_ready[i])
             return;
         _full[i] = Raylib.LoadModel(AssetPath + Files[i] + ".glb");
-        _cheap[i] = prop is Prop.Spider or Prop.Beetle or Prop.Ant or Prop.AntHill ? _full[i] : Raylib.LoadModel(AssetPath + Files[i] + "_lod.glb"); // The spider, the beetle and the ants are light already: one model.
-        if (prop is Prop.House or Prop.Tent or Prop.BerryPlot or Prop.CressPlot or Prop.MushroomPlot or Prop.GrainPlot or Prop.AntHill or Prop.Ant or Prop.Castle)
+        _cheap[i] = prop is Prop.Spider or Prop.Beetle or Prop.Ant or Prop.Larvae ? _full[i] : Raylib.LoadModel(AssetPath + Files[i] + "_lod.glb"); // The spider, the beetle and the ants are light already: one model.
+        if (prop is Prop.House or Prop.Tent or Prop.BerryPlot or Prop.CressPlot or Prop.MushroomPlot or Prop.GrainPlot or Prop.AntHill or Prop.Ant or Prop.Castle or Prop.Larvae)
         {
             // The house's pictures are big and painterly: smoothed and mipmapped, they don't shimmer or show as pixels.
             Smooth(_full[i]);

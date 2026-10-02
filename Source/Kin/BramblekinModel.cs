@@ -170,7 +170,11 @@ internal static unsafe class BramblekinModel
     }
 
     /// <summary>How long (s) <paramref name="clip"/> takes at its own pace.</summary>
-    public static float NaturalSeconds(BramblekinClip clip) => _clips[clip].KeyFrameCount / ClipFps;
+    public static float NaturalSeconds(BramblekinClip clip)
+    {
+        EnsureLoaded(); // the simulation asks before anything is drawn
+        return _clips[clip].KeyFrameCount / ClipFps;
+    }
 
     /// <summary>The longest an action clip (a blow, a stab, bending to pick something up) is let run (s): a longer one is played faster so that it still ends within this.</summary>
     private static readonly Dictionary<BramblekinClip, float> ActionCap = new()

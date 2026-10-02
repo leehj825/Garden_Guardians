@@ -354,7 +354,7 @@ public static partial class Game
         var director = new Director();
         var play = new PlayControl();
         Camera3D overview = camera;
-        DebugShot.Place(ref camera);
+        DebugShot.Place(ref camera, world);
         float autosaveTimer = AutosaveInterval;
 
         // --- Main loop -------------------------------------------------------

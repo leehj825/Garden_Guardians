@@ -70,7 +70,7 @@ public sealed unsafe partial class World
             return;
         }
         _coverIdle = 0f;
-        if (!_coverMaterialReady)
+        if (!_coverMaterialReady || _coverMaterial.Maps is null)
         {
             _coverMaterial = Raylib.LoadMaterialDefault();
             _coverMaterialReady = true;

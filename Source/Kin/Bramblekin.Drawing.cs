@@ -154,11 +154,7 @@ public sealed partial class Bramblekin
             _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
             if (_carriesEgg)
             {
-                Rlgl.PushMatrix();
-                Rlgl.Translatef(Position.X, Position.Y + BodyHeight + 0.12f, Position.Z);
-                Rlgl.Scalef(1f, 1.3f, 1f);
-                Detail.Sphere(Vector3.Zero, 0.14f, EggColor, Position);
-                Rlgl.PopMatrix();
+                PropModels.Draw(PropModels.Prop.Larvae, Position + new Vector3(0f, BodyHeight + 0.02f, 0f), 0f, 0.4f, Color.White);
             }
             DrawSack(facing);
             if (_carriedTwig is not null)

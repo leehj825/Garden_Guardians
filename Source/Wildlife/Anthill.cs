@@ -68,10 +68,10 @@ public sealed class Anthill
     /// <summary>How many thief ants it keeps out at once: 2, plus one per 15 food taken, up to 6.</summary>
     public int MaxThieves => Math.Min(6, 2 + Stock / 15);
 
-    /// <summary>The mound's height (m) at each distance (m) from its middle, from the model (10m wide, 5.5m high): the way up its garden side.</summary>
+    /// <summary>The mound's height (m) at each distance (m) from its middle, from the model (10m wide, 4.2m high): the way up its garden side.</summary>
     private static readonly (float R, float Y)[] Profile =
     {
-        (Radius + 0.8f, 0f), (4.9f, 0.4f), (4.5f, 1.6f), (4f, 2.1f), (3.5f, 2.8f), (3f, 3.2f), (2.5f, 3.8f), (2.2f, 4.5f), (1.8f, 5.2f), (0.8f, 5.4f),
+        (Radius + 0.8f, 0f), (4.9f, 0.2f), (4.5f, 0.5f), (4f, 0.9f), (3.5f, 1.3f), (3f, 1.9f), (2.5f, 2.5f), (2.2f, 2.9f), (1.8f, 3.3f), (1.2f, 4f),
     };
 
     /// <summary>
