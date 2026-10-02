@@ -130,6 +130,8 @@ def skin(points, names, segs, female, guard=False, tris=None, cloth=None, arm_pa
         arm = np.array([any(k in n for k in ("Shoulder", "Arm", "Hand")) for n in owners])
         leg = np.array([any(k in n for k in ("UpLeg", "Leg", "Foot", "Toe")) for n in owners])
         not_arm = dist[:, arm].min(axis=1) > ARM_RADIUS
+        if arm_part is not None:
+            not_arm &= ~arm_part  # (what was turned as an arm is an arm, however thick)
         if cloth is not None:
             not_arm |= cloth
             dist[np.ix_(cloth, np.where(leg)[0])] *= CLOTH_LEG_PULL
