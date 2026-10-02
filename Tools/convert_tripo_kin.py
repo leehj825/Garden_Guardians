@@ -54,7 +54,7 @@ def load_static(path):
     return pos, nrm, uv, idx, picture
 
 
-def repose_tpose_arms(points, normals, degrees=58.0, root=0.19, height=0.44, ramp=0.06, band=(0.26, 0.50)):
+def repose_tpose_arms(points, normals, degrees=58.0, root=0.19, height=0.44, ramp=0.06, band=(0.26, 0.50), scale=1.0):
     """Lower the arms of a model that stands with them held straight out (a T-pose) to the angle the skeleton's own arms are at (about 58 degrees
     down), turning every arm vertex about the shoulder, the part beside the body blending in (bind space: x to the side, z up). The clips are built on
     that skeleton, so a mesh whose arms stay out would keep them out through every pose. An arm is what lies farther out than <root> to the side
@@ -66,7 +66,7 @@ def repose_tpose_arms(points, normals, degrees=58.0, root=0.19, height=0.44, ram
         f = np.clip((x - root) / ramp, 0.0, 1.0) * ((z > band[0]) & (z < band[1]))
         a = np.radians(degrees) * f
         c, s = np.cos(a), np.sin(a)
-        dx, dz = x - root, z - height
+        dx, dz = (x - root) * np.where(f > 0, scale, 1.0), z - height  # (an arm is shortened along its length, about the shoulder)
         arm = f > 0
         held |= arm
         out[arm, 0] = side * (root + (dx * c + dz * s)[arm])
@@ -75,6 +75,21 @@ def repose_tpose_arms(points, normals, degrees=58.0, root=0.19, height=0.44, ram
         out_n[arm, 0] = side * (nx * c + nz * s)[arm]
         out_n[arm, 2] = (-nx * s + nz * c)[arm]
     return out, out_n, held
+
+
+def fitted_arms(position, degrees, scale, skeleton_degrees=58.0, root=0.19, height=0.44):
+    """The skeleton's left arm, forearm and hand joints moved to where the re-posed mesh's arm lies (shortened by <scale> and hanging at
+    <degrees> instead of the skeleton's own angle), for the bone segments the skin weights are measured against (the right side is mirrored)."""
+    out = {}
+    for n in ("Arm", "ForeArm", "Hand"):
+        x, y, z = position["Left" + n]
+        a = np.radians(-skeleton_degrees)  # back to the arm held straight out...
+        dx, dz = x - root, z - height
+        dx, dz = dx * np.cos(a) + dz * np.sin(a), -dx * np.sin(a) + dz * np.cos(a)
+        dx *= scale  # ...shortened...
+        a = np.radians(degrees)  # ...and lowered to the mesh's angle
+        out[n] = np.array([root + dx * np.cos(a) + dz * np.sin(a), y, height - dx * np.sin(a) + dz * np.cos(a)])
+    return out
 
 
 def png_of(picture, size):
@@ -191,6 +206,7 @@ def main():
     ap.add_argument("--female", action="store_true")
     ap.add_argument("--texture", type=int, default=2048)
     ap.add_argument("--tpose-arms", action="store_true", help="the model's arms are held straight out: lower them to the skeleton's own angle (and fit nothing to the arms)")
+    ap.add_argument("--arm-scale", type=float, default=1.0, help="how much of their length --tpose-arms leaves the arms")
     ap.add_argument("--arm-degrees", type=float, default=58.0, help="how far --tpose-arms lowers them (a model whose arms already droop needs less)")
     ap.add_argument("--lods", action="store_true", help="also write _lod1 and _lod2: the mesh cut to --lod-tris triangles, with smaller pictures")
     ap.add_argument("--lod-tris", type=int, nargs=2, default=(4000, 1000), help="triangles in the first and second lower level of detail")
@@ -209,13 +225,13 @@ def main():
     pos = to_bind(pos_y, scale)
     nrm = to_bind(nrm_y)
     if args.tpose_arms:
-        pos, nrm, arm_part = repose_tpose_arms(pos, nrm, args.arm_degrees)
+        pos, nrm, arm_part = repose_tpose_arms(pos, nrm, args.arm_degrees, scale=args.arm_scale)
     else:
         arm_part = None
 
     doc, binary = read_glb(args.skeleton)
     names, position, parent = bind_joints(doc, binary)
-    segs = segments(names, position, parent, FITTED_ARM if args.female and not args.tpose_arms else {})
+    segs = segments(names, position, parent, fitted_arms(position, args.arm_degrees, args.arm_scale) if args.tpose_arms else (FITTED_ARM if args.female else {}))
     cloth = cloth_mask(uv, picture) if args.female and not args.guard else None  # (a guard's green is a tunic and a shield, which follow her arms)
     if cloth is not None:
         print(int(cloth.sum()), "of", len(cloth), "vertices are cloth")
