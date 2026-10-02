@@ -132,7 +132,7 @@ def skin(points, names, segs, female, guard=False, tris=None, cloth=None):
         w[fixed, 0] = 1.0
     elif not female:
         # A plain kin's whole head is rigid too (one bone), so its face does not wobble as the neck and shoulders swing in the walk.
-        head = (points[:, 2] >= HEAD_BASE) | ((points[:, 2] >= CHIN_Z) & (np.abs(points[:, 0]) < CHIN_X))
+        head = points[:, 2] >= CHIN_Z  # (all the way across: the cheeks reach 0.19 to the side)
         index[head] = 0
         index[head, 0] = names.index("Head")
         w[head] = 0.0
