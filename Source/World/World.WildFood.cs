@@ -136,7 +136,7 @@ public sealed partial class World
             shore.Length > 0)
         {
             Vector3 spot = shore[Rng.Next(shore.Length)];
-            if (!IsBlocked(spot, FoodShard.Radius + 0.1f))
+            if (!IsBlockedOrAntZone(spot, FoodShard.Radius + 0.1f))
                 _pendingFoodSpawns.Add((spot, FoodShardKind.Cress));
         }
 
@@ -187,6 +187,6 @@ public sealed partial class World
             spot = rock.Position + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * (rock.FootprintRadius + 0.4f + (float)Rng.NextDouble() * 0.8f);
         }
         spot = Grounded(spot);
-        return Terrain.Contains(spot, 1f) && !IsBlocked(spot, FoodShard.Radius + 0.1f) ? spot : null;
+        return Terrain.Contains(spot, 1f) && !IsBlockedOrAntZone(spot, FoodShard.Radius + 0.1f) ? spot : null;
     }
 }

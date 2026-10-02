@@ -95,13 +95,41 @@ overhead camera:
     hands-free, above all at 20x or 50x. Once a second it looks over
     everything worth watching (`World.DirectorShots`): headlines and
     births put in its spotlight (fading over 30s), leadership duels,
-    fights between kin, raids, the Wolf Spider hunting or pouncing, the
-    Owl and the Heron at work, beetle hunts — and, when nothing's
+    fights between kin, raids, the Wolf Spider hunting or pouncing,
+    beetle hunts — and, when nothing's
     happening, the liveliest village. It flies to the best, keeps the
     camera on its subject for 3–8s (cutting in early for anything much
     bigger), avoids repeating what it showed in the last 40s, and names
     what it's showing in a strip under the top buttons. A pan, the Map
     button, a banner tap or picking a Bramblekin hands the camera back.
+
+## Playing a Bramblekin
+*   **Taking the wheel:** with a Bramblekin selected, the **Control**
+    button (left of **Follow**, under the Kin Inspector) hands it to the
+    player: its own mind stops (no job, no fleeing, no sleeping, no
+    errands) and the game runs at 1x. It still gets hungry and thirsty,
+    sick, and hurt, and it can die — then control ends. **Exit** (or Esc)
+    gives it back to its own mind and flies the camera up over it again.
+*   **The view:** a third-person camera 4.8m behind it, over its shoulder,
+    like an action game, kept above the ground.
+*   **Controls (touch):** a stick on the lower left walks it, relative to
+    where the camera looks (it jogs 35% faster than it walks, slides along
+    obstacles, the water's edge and the map's edge); a drag anywhere else
+    turns the camera (sideways) and tilts it (up and down); **Attack** on
+    the right swings. A **Kin: off/on** switch beside it lets the swing hit
+    Bramblekin of other clans (always off to begin with); wildlife, ants
+    and the like are always fair game. Desktop: W A S D or the arrows to
+    move, Q/E or the mouse to turn, Space to attack.
+*   **The swing:** it strikes the nearest thing in front within about 1.4m
+    of its edge, with the blow it would deal in a hunt (a Bramblekin takes
+    its fighting blow), every 0.7s, and plays the combat animation. A
+    hill guard takes 1 from anyone not in an assault.
+*   **Eating and drinking:** stand still by loose food, at your store (its
+    own home or its clan's) or at the water's edge while hungry or thirsty
+    and it eats or drinks on its own; the HUD says so.
+*   **Showing it:** the HUD shows its name, Health, Hunger and Thirst and
+    what it needs; the garden carries on around it. Not saved: a loaded
+    garden starts with nobody controlled.
 
 ## Player Interaction (what's left of it)
 *   **Kin inspection & the follow camera:** tapping a Bramblekin selects
@@ -415,8 +443,7 @@ overhead camera:
     down for **8 pieces of meat**. A Bramblekin attacks one only when a
     groupmate is on it or within 8m — or alone when hungry and at least
     0.75 Aggressive — or when its Leader sends it as a Hunter.
-*   **Small game** — Grubs, and frogs on the pond's bank (see Food &
-    Wildlife) — is prey for anyone: a hungry Bramblekin that can't see
+*   **Small game** — Grubs (see Food & Wildlife) — is prey for anyone: a hungry Bramblekin that can't see
     Food hunts it; a settler with a low store hunts it near home; a
     Hunter goes after it when there's no Stag Beetle to hunt.
 *   **Defending home:** residents who see a raider heading for their home
@@ -785,7 +812,7 @@ overhead camera:
     inherited by children (both parents' crafts), carried along by anyone
     who leaves, and taught to allies (odds 0.05 per decision, farming
     first, then granary, spears, palisade, grain, mushrooms, cress,
-    fishing, stonework, cisterns, wells, slings, hearth, snares, herb-lore, herding, smoking, shields). When a clan is ready for several, the one it
+    fishing, stonework, cisterns, wells, slings, hearth, snares, herb-lore, herding, shields). When a clan is ready for several, the one it
     works out is picked at random.
     *   **Granary** (needs farming and a House): each House gets a round
         granary beside it and holds half as much again in store.
@@ -831,13 +858,12 @@ overhead camera:
         a flood, and ants can't dig into it.
     *   **Slings** (needs spears): slings of twisted grass that loose
         pebbles at anything too quick to catch or too dangerous to close
-        with — a Hornet, a frog on the bank, the Heron. A slinger in range
-        (3.5m) stands its ground and looses a pebble every 1.4s (hitting a
-        Hornet 60% of the time, a frog 70%, the Heron 85%) for its full
-        blow; the pebble is seen flying. Close enough to strike, it strikes
-        instead (surer, and quicker). Knowing it can hit back from a few
-        paces off, it's 25% likelier to stand and fight a chasing swarm or
-        the Heron rather than run. And a Guard with a sling doesn't give a
+        with — a Hornet. A slinger in range (3.5m) stands its ground and
+        looses a pebble every 1.4s (hitting a Hornet 60% of the time) for
+        its full blow; the pebble is seen flying. Close enough to strike,
+        it strikes instead (surer, and quicker). Knowing it can hit back
+        from a few paces off, it's 25% likelier to stand and fight a
+        chasing swarm rather than run. And a Guard with a sling doesn't give a
         hornets' nest within 14m of home a wide berth: while it's fit (60%
         Health or more) it picks the swarm off from just outside its reach.
     *   **Hearth** (needs a House, and worked out in autumn or winter,
@@ -877,10 +903,6 @@ overhead camera:
         herd dies out gathers a new pair in time; one that moves house
         drives its herd along; a pen whose clan is gone empties as the herd
         strays.
-    *   **Smoking the bees** (needs a hearth, and a comb of honey already
-        taken — stings and all): with a lit hearth at home to take a brand
-        from, the clan's honey-takers rouse the bees one time in ten
-        instead of more than half.
     *   **Shields** (needs spears, and a hunting or martial tradition):
         round shields of stag-beetle shell — every blow and bite on a grown
         member does two-thirds of its damage (at least 1). Carried on the
@@ -900,20 +922,146 @@ overhead camera:
     and the already weak — about 17 deaths in 13 years out of some 290
     cases. Three ill at once in a clan is an outbreak (a headline). The
     sick carry a pale green blotch over their heads; the HUD counts them.
-*   **Ants:** in the garden's second year a rival ant colony digs in at
-    an edge, as far as it can from any home. From spring to autumn its
-    hill sends out ants — 2, plus one per 15 food it has taken, up to 6 —
-    that rob the nearest store within 55m (never a palisaded one), or
-    glean loose food near the hill, and carry it home; in winter they stay
-    underground. Easily swatted (5 Health), they bite back at whoever
-    hits them. Bramblekin go for any ant near their home, or one biting
-    them. About 34 food stolen from stores in 13 years, 118 ants swatted.
+*   **Ants:** a colony lives in a fixed ant hill in a corner of the garden
+    (see The Ant Hill below). From spring to autumn single thief ants
+    leave it — 2, plus one per 15 food it has taken, up to 6 — and rob the
+    nearest store within 70m (never a palisaded one), or glean loose food
+    within 30m of the hill, and carry it home; in winter they stay
+    underground.
+    Easily swatted (5 Health), they bite back at whoever hits them.
+    Bramblekin go for any ant near their home, or one biting them. There
+    are no mass raids on villages: a thief is one ant at a time, and the
+    kin defend against it as before.
 *   **Floods:** a spring or autumn storm is a downpour 40% of the time.
     The water rises through it over the lowest 15% of the garden, then
     drains away over a minute. Under water, loose food and twigs float
     away and bushes lose their ripe berries; a flooded Tent loses its
     store and is swept away at even odds, a flooded House loses half its
     store. About three floods in 13 years.
+
+## The Ant Hill
+The ant colony is the garden's dungeon: a big, fixed hill in one corner,
+guarded by ants, which only a Kingdom's army can break into. Each
+assault that wipes out the guards and brings its prize home makes the
+next hill tougher and the reward richer.
+
+*   **The hill:** a model (`Assets/Models/Props/AntHill.glb`, drawn 10m
+    wide, solid for 4.4m round its middle) that stands in a corner of the
+    map from the first day and never moves. The corner is the terrain's
+    own, the same for every garden on it: of the four, the one with room
+    for it that is farthest from the oak and the water and has the
+    gentlest ground (`World.PlaceAnthill`). Its mouth faces the garden.
+    It can't be destroyed: it keeps growing.
+*   **Thief ants** (`Assets/Models/Props/Ant.glb`, rigged with a six-legged
+    tripod walk by Tools/convert_beetle.py, about 0.8m long): from
+    spring to autumn single ants come out of the mouth — 2, plus one per
+    15 food the hill has taken, up to 6 — and rob the nearest store within
+    70m (never a palisaded one), or glean loose food within 30m, and carry
+    it home; in winter they stay underground. Easily swatted (5 Health,
+    a bite of 2 back at whoever hits them). A thief shut out by a wall for
+    8s drops what it carries, gives the errand up and keeps off that store
+    for two minutes. Bramblekin go for any thief
+    near their home. There are no mass raids on villages: a thief is one
+    ant at a time, and the kin defend against it as before.
+*   **The no-go zone:** round the hill is a zone 12m out (the attack range). Nothing is
+    built, planted, settled, set down (food, stones, branches, snares,
+    wells, walls, feast sites, shrines) or wandered to in it, and every
+    clan treats it as a standing danger. The only way in is a Kingdom
+    assault.
+*   **Guards:** the hill's level L (1 to start) sets how many guard it:
+    **5 × L ants** — 5, 10, 15, 20 and so on, with no cap. A guard (24
+    Health, bites for 4 every 1s, walks at 2 m/s, about 1m long) stands
+    falls on any Bramblekin that enters the zone and chases
+    it until it is dead or 6m clear of the zone. They fight to the death. Only an army can kill them: a Bramblekin
+    that is not in a Kingdom's assault scratches a guard for 1 at most
+    (a bystander that wanders in can't clear a hill, only die), so the
+    guards are only ever brought down by a Kingdom's picked soldiers.
+*   **Sentries and alert:** in quiet times only 2 guards (the sentries)
+    roam about the hill, within 6m of its foot; all the rest wait inside.
+    When any Bramblekin comes within 6m of the zone's edge the hill is on
+    alert: the guards inside come out one by one over a couple of seconds
+    and stand ready — they still attack only inside the zone. Ten seconds
+    after the last Bramblekin has gone, all but the sentries go back in.
+*   **Healing and refilling:** when no kin has been in the zone for 10s,
+    wounded guards go back inside the hill and heal (1 Health a second),
+    and every guard that died is replaced (one every 3s, up to the hill's
+    level), so the next fight meets the full 5 × L. In winter the guards
+    stay inside unless someone comes in.
+*   **A fight:** from the first blow at the hill until no kin is in the
+    zone. It is won when no guard is left alive while the party is in the
+    zone. If it ends with any guard alive, nothing changes: the hill heals,
+    refills, and the next fight starts from the same level again.
+*   **The prize:** after a win, the victorious troops climb the hill's
+    garden side (6s up, 1.5s to take an egg from the crater at the top, 4s
+    down; they are drawn up the slope) and pick up the reward: **L eggs**, where L is the level just beaten (a
+    win at 5 ants gives 1, at 10 gives 2, at 15 gives 3, at 20 gives 4,
+    with no cap). They carry the eggs back to the capital. **The hill's
+    level goes up only when a carrier reaches the capital with the
+    eggs**: until then it stays at the beaten level (and its guards refill
+    at that level). If the carriers die, or the eggs aren't home in 180s,
+    there is no level-up and no reward; the fight has to be won again.
+*   **The Kingdom decides:** at each look at a kingdom (every 5s) the crown
+    may order an assault (one look in four once it is ready). It needs a
+    king and enough fit soldiers (Guards and Hunters of any of its
+    villages, grown, not elderly or sick, at 80% Health or more and not
+    hungry) — **half as many as there are guards, rounded up**: 3 for 5,
+    5 for 10, 8 for 15, 10 for 20 — **and half as many again for each
+    assault on this level that has failed since the last win** (a failed
+    first try means 5 soldiers next time, then 6, 8…); the Kingdom waits
+    until it has them, and the count starts again after a win. It goes in
+    daylight and not in winter. After a
+    fight (won or not), no new order for a season. The strongest and
+    bravest are picked. A bigger hill needs a bigger army, with no cap. A
+    Headline, a Chronicle entry and the Director's spotlight follow it.
+*   **The march:** the party **musters** at the capital's middle (up to
+    60s for stragglers), **marches** together to a staging point 8m
+    outside the zone (up to 90s), then **fights**. On the road a soldier
+    still answers a threat (a Hornet, the Wolf Spider) as any kin would
+    and then goes on.
+*   **Retreat:** the Kingdom calls a retreat when half of the party has
+    died or run away, or a fight drags on past 240s. A retreat takes
+    everyone home, with no blame.
+*   **Running away:** each kin in the fight decides for itself. Once its
+    Health is at 35% or lower it weighs fleeing against fighting on, once
+    (again if it is patched up past 60% and hurt again): it stays with
+    odds of Courage × 1.15, so the very brave (0.87 and up) never run.
+    A kin that runs, when the party hasn't been ordered back, flees the
+    hill and is **shaken**: its Strength drops by a fifth for two days and
+    it loses 0.05 Reputation. A recovered kin is as strong as before.
+*   **Eggs and the reward:** the eggs go to the capital's middle with the
+    carriers. When a carrier gets there, the eggs are **shared down the
+    ranking** of the raid: the survivors (not those who ran) are ranked by
+    guards killed, then by Health left, and the eggs are handed out one
+    each from the top (round again if there are more eggs than survivors).
+    Each kin eats its egg on the spot. An egg fills Hunger by 40 and is a
+    permanent gain. Eggs are not capped; to keep a pile from making one
+    kin unbeatable, the gains fade as they stack (each egg adds 85% of the
+    one before):
+    *   **Strength:** +0.04 for the first egg, +0.034 for the second, and
+        so on, adding to the kin's own Strength with no hard ceiling.
+        Strength makes blows harder and blows taken lighter (see Hunting &
+        Defending). A shaken kin has a fifth less.
+    *   **Vigor (a new stat):** the kin's energy. The first egg slows its
+        hunger by 3% and speeds its walk by 1%; later eggs add less each,
+        by the same fade.
+*   **Showing it:** the Kin Inspector shows Strength (born, and with
+    eggs), shaken, and Vigor; the Stats tab lists the hill's level and
+    guards, assaults sent, won and called off, guards slain, best level
+    beaten, eggs eaten and soldiers who ran; the headless summary counts
+    them. A saved garden keeps the hill's level, the assaults won, the
+    eggs eaten and each kin's own eggs eaten (not an assault under way:
+    a loaded garden starts with none, like invasions).
+*   **Tuning:** headless `--assault N [--assault-at S]` sends a test
+    assault on a level-N hill at S seconds (default 60): the strongest
+    grown kin there are, as many as the hill needs, made Guards. In a
+    mature garden (12 seeds each, hornets and the Wolf Spider about) it
+    won about 75% at level 1, 65% at 3, 65% at 6 and 50% at 8; a real
+    kingdom's picked soldiers, shielded and with spears, did better still
+    (nearly every assault up to level 8 in the long runs, usually with no
+    losses) — so the guards may need to be tougher in later levels. Still
+    first guesses, to tune by watching real fights: the
+    zone's 12m, the guards' strength, the retreat and flee numbers, the
+    party size and the egg numbers.
 
 ## Neighbours: Alliances & War
 *   **Neighbours** are groups whose main homes are within 30m. Between
@@ -1010,7 +1158,7 @@ overhead camera:
 *   **Coming to a belief:** at each decision, a settled clan with no belief
     may come to revere something it has lived close to, with odds 0.006 ×
     (0.5 + half its Leader's Intelligence and Persuasiveness): **the Great
-    Oak** (living within 35m of it, or having tasted its honey), **the
+    Oak** (living within 35m of it), **the
     Still Water** (living within 12m of the pond), **the Spider** (having
     brought it down, or lost kin to danger near home), or **the Moon**
     (keeping a hearth through the nights). A guest clan with no belief of
@@ -1080,18 +1228,9 @@ overhead camera:
     attacked. An alarm wakes the whole clan for 8s. Raiding parties keep
     going (and a shrewd Leader waits for dark to send one), and errands
     are seen through.
-*   **The Owl:** on about two nights in five (never in the first few
-    days) it glides out of the Giant Oak, circles high over the garden and
-    drops on a Bramblekin out in the open — a sleeper or a youngster
-    first. Nobody indoors is in reach, nor anyone within 6m of a lit
-    hearth. Its talons take 12 Health from someone awake, 24 from a
-    sleeper. After a strike it mantles over its catch for a moment, the
-    only time it can be fought; hurt to half it flies back to the oak for
-    the night, and brought down it's 4 meat. At most three strikes a
-    night; it goes home at dawn.
 *   **Lights in the dark:** lit hearths throw a warm glow, Houses' windows
-    shine, fireflies blink over the grass (not in winter), and the Owl's
-    eyes gleam — drawn after the darkness, so they stand out.
+    shine and fireflies blink over the grass (not in winter) — drawn after
+    the darkness, so they stand out.
 
 ## Memory
 *   **Danger:** a Bramblekin stung by a Hornet or bitten by the Spider
@@ -1245,8 +1384,8 @@ overhead camera:
     spring-fed, so a drought doesn't touch it. Its banks are somewhere to
     drink and to grow cress; it counts as water for anyone weighing up how
     far they live from some (settling, cisterns, wells, watered crops,
-    the Kin Inspector); and nothing is built or planted on it. Fishing,
-    frogs and the heron stay at the ponds. About a third of all trips for
+    the Kin Inspector); and nothing is built or planted on it. Fishing
+    stays at the ponds. About a third of all trips for
     water end at the creek. Drawn as a ribbon of water with the spring's
     stone at its head and the pool at its foot.
 *   **The Giant Oak:** the foot of a real tree stands at the garden's back
@@ -1265,19 +1404,6 @@ overhead camera:
     where the trunk is now.
 
 ## Food & Wildlife
-*   **The beehive in the oak:** a papery hive hangs on the trunk, facing
-    the garden. From spring to autumn the bees make a comb of honey about
-    every 45s (faster in summer), up to eight. By day, a bold Bramblekin
-    (Courage 0.45 or more, fed and fit) within 45m may go for one on its
-    own account after a rest, and a Leader living in reach sends its
-    boldest free member now and then. It climbs up from the foot of the
-    trunk (2.5s) and comes down with a comb — the richest food there is:
-    eaten, it fills 20 more than anything else; stored, it counts as two;
-    given as a courtship gift, it sways the odds twice as much; and it
-    never spoils. More than half the time the bees rouse: a swarm of five
-    chases the taker for 14s, stinging for 2 Health, until it gets
-    indoors; kin can swat them (one bee a blow) or run. A clan that knows
-    to smoke them out seldom rouses them (see Crafts).
 *   **Food:** wild Berries grow passively (one every 0.8s, up to 75 on
     the map, both scaled by the season), about two-thirds in eight Berry
     Patches around Dandelions. Besides them, all at their season's pace
@@ -1306,29 +1432,6 @@ overhead camera:
     (ignoring claims), skitter away from nearby Bramblekin, and drop 1–4
     pieces of meat when hunted down.
 *   **Stag Beetles** (60 HP, up to 2): see Hunting & Defending.
-*   **Frogs** (6 HP): come up onto the pond's bank from spring to autumn
-    (one every 25s — faster in spring — up to 6 on a full pond, fewer as
-    a drought shrinks it), sit, and hop along the water's edge. Any
-    Bramblekin within 1.8m may startle one (it notices 40% of the time,
-    looking up twice a second; the Heron, always): it leaps into the
-    water and stays under 6–12s, out of reach, then hops back out onto
-    the bank. They're small game like Grubs — hunted by the hungry, by
-    Hunters and to stock a low store — and each drops 2 pieces of meat;
-    a slinger can hit one before it notices. In winter they go down into
-    the mud.
-*   **The Heron** (50 HP): every 4–8 minutes, from spring to autumn and
-    while the pond is at least half full, a great grey heron flies down
-    to a quiet stretch of shore (away from homes) and stays 80–140s. It
-    stands stock still in the shallows, then wades along; it spears frogs
-    within 0.9m, and lunges (10 damage, every 2.2s) at any Bramblekin
-    within 1.7m that's out in the open at the water's edge (not by its
-    door), stalking one within 5m at 0.9 m/s — slower than a walk. Wading,
-    Bramblekin see it within 5m; standing still, only within 2.2m, so a
-    drinker can walk right up to it. Hurt down to 20 HP it takes off —
-    though beating its way up takes 0.8s, and until it's up a band of kin
-    on it can still bring it down, for 6 pieces of meat. It leaves when its time's
-    up, when winter comes, or when a drought shrinks the pond below a
-    third. A killing lunge reads "was speared by the heron".
 *   **Garden Props:** Pebbles (solid rocks), Twigs (big sticks, where
     fallen twigs gather) and Dandelions (where berries grow).
 *   **Stones and branches:** building material bigger than a twig. Stones

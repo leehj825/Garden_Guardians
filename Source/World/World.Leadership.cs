@@ -97,7 +97,6 @@ public sealed partial class World
             UpdateCrafts(group);
             PlaceSnares(group);
             TendHerd(group);
-            SendForHoney(group);
             TryHoldFeast(group, leader);
             UpdateBelief(group, leader);
             UpdateWells(group);

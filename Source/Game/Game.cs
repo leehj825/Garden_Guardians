@@ -62,6 +62,8 @@ public static partial class Game
     /// frame, never bigger ones.
     /// </summary>
     private static float _timeScale = 1f;
+    private static bool _lootTestDone;
+    private static bool _playTestDone;
 
     /// <summary>
     /// Responsive UI: the screen width every hardcoded UI pixel constant
@@ -198,7 +200,7 @@ public static partial class Game
         Projection = CameraProjection.Perspective,
     };
 
-    /// <summary>The terrain number in the GARDEN_TERRAIN environment variable, if there is one (0-3 baked; 1000000 and up grown from a seed): a development aid that overrides the choice for a new garden and headless runs.</summary>
+    /// <summary>The terrain number in the GARDEN_TERRAIN environment variable, if there is one (0 baked; 1000000 and up grown from a seed): a development aid that overrides the choice for a new garden and headless runs.</summary>
     private static int? ForcedTerrain => int.TryParse(Environment.GetEnvironmentVariable("GARDEN_TERRAIN"), out int terrain) ? terrain : null;
 
     /// <summary>
@@ -248,6 +250,12 @@ public static partial class Game
     /// </summary>
     private static void StepSimulation(World world, float realDeltaTime)
     {
+        // A development aid: GARDEN_LOOT_TEST=level starts the prize-taking of an assault on a hill of that level at once (see World.StartTestLoot).
+        if (!_lootTestDone && int.TryParse(Environment.GetEnvironmentVariable("GARDEN_LOOT_TEST"), out int lootLevel))
+        {
+            _lootTestDone = true;
+            world.StartTestLoot(lootLevel);
+        }
         _simulationBacklog += realDeltaTime * _timeScale;
         double budget = _timeScale >= 20f ? TimeLapseSimulationBudgetSeconds : _timeScale >= 10f ? FastSimulationBudgetSeconds : SimulationBudgetSeconds;
         long start = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -343,6 +351,7 @@ public static partial class Game
         var touchCamera = new TouchCameraController();
         var followCamera = new FollowCamera(camera);
         var director = new Director();
+        var play = new PlayControl();
         Camera3D overview = camera;
         DebugShot.Place(ref camera);
         float autosaveTimer = AutosaveInterval;
@@ -357,7 +366,16 @@ public static partial class Game
             //    Target and pinch to zoom. Runs before the tap input below
             //    so the rest of the frame sees an already-settled camera.
             // (The History screen takes over touches and drags while it's open.)
-            if (!_showChronicle)
+            if (!_playTestDone && Environment.GetEnvironmentVariable("GARDEN_PLAY_TEST") == "1" && world.Colony.FirstOrDefault(k => !k.IsDead && !k.IsYoung && (Environment.GetEnvironmentVariable("GARDEN_PLAY_FEMALE") != "1" || k.Sex == Sex.Female)) is { } testKin)
+            {
+                _playTestDone = true; // A development aid: start out controlling a kin.
+                if (Environment.GetEnvironmentVariable("GARDEN_PLAY_GUARD") == "1")
+                    testKin.MakeTestSoldier();
+                world.SelectKin(testKin);
+                play.Begin(testKin, camera);
+            }
+            bool playing = play.IsActive;
+            if (!_showChronicle && !playing)
                 touchCamera.Update(ref camera, world.Terrain.Size / 2f);
 
             // Responsive UI: the Debug Time Scale buttons' geometry (and the
@@ -380,7 +398,8 @@ public static partial class Game
                 (int)(290 * uiScale), speedButtonHeight));
             UiButton? autoButton = _showChronicle ? null : new UiButton(new Rectangle(historyButton.Bounds.X + historyButton.Bounds.Width + speedButtonMargin, speedButtonMargin,
                 (int)(190 * uiScale), speedButtonHeight));
-            UiButton? followButton = _showChronicle ? null : FollowButton(world);
+            UiButton? followButton = _showChronicle || playing ? null : FollowButton(world);
+            UiButton? controlButton = followButton is null ? null : ControlButton(world, followButton);
             UiButton? newGardenButton = _showChronicle ? NewGardenButton(historyButton, speedButtonMargin) : null;
             UiButton? gardenSlotButton = newGardenButton is null ? null : GardenSlotButton(newGardenButton, speedButtonMargin);
             UiButton? terrainButton = gardenSlotButton is null ? null : TerrainModeButton(gardenSlotButton, speedButtonMargin);
@@ -395,7 +414,11 @@ public static partial class Game
             //    ground tap.
             bool mousePressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
             Vector2 mousePosition = Raylib.GetMousePosition();
-            if (mousePressed && TapBanner(mousePosition, followCamera))
+            if (playing)
+            {
+                // PlayControl reads the touches itself (below).
+            }
+            else if (mousePressed && TapBanner(mousePosition, followCamera))
             {
                 director.Stop(); // Flew to the banner's big moment.
             }
@@ -463,12 +486,36 @@ public static partial class Game
                 director.Stop();
                 followCamera.ShowWholeMap();
             }
+            else if (mousePressed && controlButton is not null && controlButton.Contains(mousePosition))
+            {
+                if (world.SelectedKin is { IsDead: false } chosen)
+                {
+                    director.Stop();
+                    followCamera.Release();
+                    _timeScale = 1f;
+                    play.Begin(chosen, camera);
+                    playing = true;
+                }
+            }
             else if (mousePressed && followButton is not null && followButton.Contains(mousePosition))
                 followCamera.ToggleFollow(world);
             else
                 input.Update(camera, world);
-            followCamera.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture);
-            director.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture || followCamera.IsBusy);
+            if (playing)
+            {
+                play.Update(ref camera, world, rawDeltaTime);
+                if (!play.IsActive)
+                {
+                    playing = false;
+                    if (!followCamera.IsFollowing)
+                        followCamera.ToggleFollow(world); // Back to watching it from above.
+                }
+            }
+            else
+            {
+                followCamera.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture);
+                director.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture || followCamera.IsBusy);
+            }
 
             // 2) Simulation, in fixed steps (see StepSimulation).
             long simStart = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -495,6 +542,16 @@ public static partial class Game
             DrawStatusBars(camera, world);
             DrawNameTag(camera, world);
             DrawFloatingTexts(camera, world);
+            if (playing)
+            {
+                play.DrawHud(world);
+                Raylib.EndDrawing();
+                _drawMs += (System.Diagnostics.Stopwatch.GetElapsedTime(drawStart).TotalMilliseconds - _drawMs) * 0.05;
+                if (DebugShot.Finished())
+                    break;
+                world.CommitPendingChanges();
+                continue;
+            }
             speedDownButton.Draw("-", highlighted: false, disabled: _timeScale <= TimeScaleSteps[0]);
             DrawSpeedLabel(speedLabelBounds, uiScale);
             speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
@@ -510,6 +567,7 @@ public static partial class Game
             if (!_showChronicle)
                 DrawKinPanel(world); // The History screen covers it (its header names the selected clan).
             followButton?.Draw(followCamera.IsFollowing ? "Following" : "Follow", highlighted: followCamera.IsFollowing);
+            controlButton?.Draw("Control", highlighted: false);
             int hudTop = DrawHud(world);
             DrawBanner(hudTop);
             if (!_showChronicle)
@@ -552,7 +610,7 @@ public static partial class Game
     /// display, and for tuning — pass a <paramref name="seed"/> to replay
     /// the exact same run.
     /// </summary>
-    public static void RunHeadless(float simulatedSeconds, int? seed, string? loadPath = null, string? savePath = null)
+    public static void RunHeadless(float simulatedSeconds, int? seed, string? loadPath = null, string? savePath = null, int assaultLevel = 0, float assaultAt = 60f, int assaultFailures = 0)
     {
         _isHeadless = true;
         const float step = 1f / 60f;
@@ -580,8 +638,15 @@ public static partial class Game
         float endTime = world.ElapsedSeconds + simulatedSeconds;
         float reportTimer = 0f;
         int steps = 0;
+        bool assaultStarted = assaultLevel <= 0;
         while (world.ElapsedSeconds < endTime)
         {
+            if (!assaultStarted && world.ElapsedSeconds >= assaultAt)
+            {
+                assaultStarted = true;
+                World.AssaultsEnabled = false; // Only the test one.
+                world.StartTestAssault(assaultLevel, assaultFailures);
+            }
             world.Update(step);
             world.CommitPendingChanges();
             Prof.Mark("Commit");
@@ -616,7 +681,9 @@ public static partial class Game
             $"Weather: {world.BountifulSeasons} bountiful seasons, {world.Droughts} droughts, {world.HarshWinters} harsh winters, {world.Storms} storms, " +
             $"{world.Floods} floods ({world.HomesFlooded} homes flooded, {world.FoodWashedAway} food washed away).");
         Console.WriteLine(
-            $"Ants: {(world.Anthill is { } hill ? $"a hill with {hill.Stock} food" : "none yet")}; {world.AntThefts} food stolen from stores, {world.AntsKilled} ants swatted. " +
+            $"Ants: {(world.Anthill is { } hill ? $"a level {hill.Level} hill with {hill.Stock} food" : "none yet")}; {world.AntThefts} food stolen from stores, {world.AntsKilled} thief ants swatted. " +
+            $"Assaults on the hill: {world.AssaultsLaunched} sent, {world.AssaultsWon} won ({world.EggsEaten} eggs eaten, best level beaten {world.HighestHillLevelBeaten}), {world.AssaultsCalledOff} called off, " +
+            $"{world.AssaultsLost} lost; {world.GuardsSlain} guards slain, {world.Deserters} soldiers ran away. " +
             $"The oak dropped {world.AcornsFallen} acorns. Ways found round the pond: {WaterMap.RoutesFound}.");
         Console.WriteLine(
             $"Eras: {world.Groups.Count(g => World.EraOf(g) == Era.StoneAge)} clans in the Stone Age, {world.Groups.Count(g => World.EraOf(g) == Era.FarmingAge)} Farming, {world.Groups.Count(g => World.EraOf(g) == Era.VillageAge)} Village, {world.Groups.Count(g => World.EraOf(g) == Era.KingdomAge)} Kingdom; ages reached: {world.EraTransitions[1]} Farming, {world.EraTransitions[2]} Village, {world.EraTransitions[3]} Kingdom. Paths: {world.PathCells} worn cells, {world.RoadCells} paved. {world.Groups.Count(g => World.Knows(g, Craft.Tools))} clans have tools, {world.Groups.Count(g => World.Knows(g, Craft.Roads))} roads, {world.Groups.Count(g => World.Knows(g, Craft.Writing))} writing ({world.RunesCarved} deeds carved), {world.Groups.Count(g => World.Knows(g, Craft.Watchtowers))} watchtowers ({world.HornsSounded} horns), {world.Groups.Count(g => World.Knows(g, Craft.Calendar))} calendars ({world.SolsticesKept} solstices), {world.Groups.Count(g => World.Knows(g, Craft.Medicine))} medicine ({world.TradeInfections} trade infections), {world.Groups.Count(g => world.IsKingdom(g))} kingdoms ({world.FealtiesSworn} fealties, {world.VassalsFreed} vassals freed), {world.Groups.Count(g => World.Knows(g, Craft.Exploration))} exploring ({world.CellsMapped} cells mapped by scouts, {world.FarShoresFound} far shores reached), {world.Groups.Count(g => World.Knows(g, Craft.Rafts))} rafts ({world.RaftCrossings} crossings, {world.RaftMishaps} capsized).\n" +
@@ -667,15 +734,9 @@ public static partial class Game
             $"Snares: {world.SnareCatches} grubs caught, {world.SnaresReset} snares set again; at the end {world.Groups.Count(g => World.Knows(g, Craft.Snares))} clans snare, " +
             $"{world.Snares.Count(s => s.IsSet)} of {world.Snares.Count} snares set.");
         Console.WriteLine(
-            $"Pond life: {world.FrogsCaught} frogs caught by kin, {world.FrogsTakenByHeron} by the heron; the heron came {world.HeronVisits} times, " +
-            $"lunged {world.HeronStabs} times, was driven off {world.HeronsDrivenOff} times and brought down {world.HeronsKilled} times.");
-        Console.WriteLine(
             $"Herding: {world.PensFenced} pens fenced, {world.HoneydewDrops} drops of honeydew, {world.AphidsBred} aphids bred; lost {world.AphidsLostToAnts} to ants, " +
             $"{world.AphidsLostToSpider} to the spider, {world.AphidsRustled} rustled in raids; at the end {world.Groups.Count(g => World.Knows(g, Craft.Herding))} clans herd, " +
             $"{world.Pens.Sum(p => p.Aphids)} aphids in {world.Pens.Count(p => p.Aphids > 0)} pens.");
-        Console.WriteLine(
-            $"Honey: {world.HoneyTaken} combs taken from the hive ({world.HiveHoney} left in it), {world.SwarmsRoused} swarms roused, {world.BeeStings} stings, " +
-            $"{world.BeesSwatted} bees swatted; {world.HoneyGifts} combs given as courtship gifts; {world.Groups.Count(g => World.Knows(g, Craft.Smoking))} clans smoke the bees out.");
         Console.WriteLine(
             $"Feasts: {world.FeastsHeld} harvest feasts held, {world.FeastGuests} guests from other clans came, {world.FeastCouples} couples met across clans at one, " +
             $"{world.FeastAlliances} alliances made over one.");
@@ -688,8 +749,7 @@ public static partial class Game
             $"{world.Groups.Count(g => World.Knows(g, Craft.Shields))} clans carry shields at the end; the greatest champion alive has won " +
             $"{(world.Colony.Count(k => !k.IsDead) > 0 ? world.Colony.Where(k => !k.IsDead).Max(k => k.ChampionWins) : 0)}.");
         Console.WriteLine(
-            $"Nights: {world.NightsPassed} nights; {world.WatchesPosted} watches posted, {world.AlarmsRaised} alarms raised, {world.NightRaids} raids set out in the dark. " +
-            $"The owl came out {world.OwlVisits} nights, struck {world.OwlStrikes} times ({world.OwlKills} killed), was driven off {world.OwlsDrivenOff} times and brought down {world.OwlsKilled} times.");
+            $"Nights: {world.NightsPassed} nights; {world.WatchesPosted} watches posted, {world.AlarmsRaised} alarms raised, {world.NightRaids} raids set out in the dark.");
         Console.WriteLine(
             $"Building: a Tent takes {world.AverageTentBuildSeconds:0}s on average, a House upgrade {world.AverageHouseUpgradeSeconds:0}s; " +
             $"{world.StagesOlderThan(600f)} of {world.Shelters.Count(s => !s.IsBuilt || s.IsUpgrading)} construction stages under way have stalled over 10 min.");
@@ -1159,6 +1219,10 @@ public static partial class Game
         return new UiButton(new Rectangle(x, y, width, height));
     }
 
+    /// <summary>The "Control" button, just left of "Follow": take the selected Bramblekin's wheel (see <see cref="PlayControl"/>).</summary>
+    private static UiButton ControlButton(World world, UiButton follow) =>
+        new(new Rectangle(follow.Bounds.X - follow.Bounds.Width - 10 * UiScale, follow.Bounds.Y, follow.Bounds.Width, follow.Bounds.Height));
+
     /// <summary>What the Kin Inspector says about <paramref name="kin"/>, line by line.</summary>
     private static List<(string Text, Color Color)> KinPanelLines(World world, Bramblekin kin, Color ink)
     {
@@ -1183,12 +1247,13 @@ public static partial class Game
                 kin.IsStarving || kin.IsSick ? new Color(170, 60, 40, 255) : ink),
             ($"Thirst: {(int)kin.Thirst}%{(kin.Thirst >= Bramblekin.MaxThirst ? " PARCHED" : kin.IsThirsty ? " (thirsty)" : "")}   " +
              (group is not null && world.WellOf(group) is { IsDug: true } ? "a well at home" :
-              $"water {WaterMap.DistanceToWater((kin.Home?.Position ?? kin.Position).X, (kin.Home?.Position ?? kin.Position).Z):0}m from {(kin.Home is null ? "here" : "home")}"),
+              (WaterMap.DistanceToWater((kin.Home?.Position ?? kin.Position).X, (kin.Home?.Position ?? kin.Position).Z) is var waterDistance and < 10000f ? $"water {waterDistance:0}m from {(kin.Home is null ? "here" : "home")}" : "no water in the garden now")),
                 kin.Thirst >= Bramblekin.MaxThirst ? new Color(170, 60, 40, 255) : kin.IsThirsty ? ThirstBarColor : ink),
             ($"Nature: {kin.Personality.Describe()}", ink),
             ($"Aggression {kin.Personality.Aggression:0.00}   Sociability {kin.Personality.Sociability:0.00}", new Color(185, 60, 45, 255)),
             ($"Intelligence {kin.Personality.Intelligence:0.00} ({kin.DetectionRadius:0}m)   Courage {kin.Personality.Courage:0.00}", new Color(60, 100, 170, 255)),
             ($"Rebellion {kin.Personality.Rebelliousness:0.00}  Persuasion {kin.Personality.Persuasiveness:0.00}  Diligence {kin.Personality.Diligence:0.00}", new Color(60, 130, 70, 255)),
+            ($"{kin.DescribeStrength()}", new Color(150, 80, 40, 255)),
             ($"Skills: {kin.DescribeSkills()}{(kin.DescribeTrade() is { } trade ? $"  ({trade})" : "")}", new Color(150, 100, 40, 255)),
             (group is null ? "Group: none" : $"Group: {group.Name ?? group.ShortId}, {group.Members.Count} members" +
                 (DescribeClan(world, group) is { } about ? $" ({about})" : ""), ink),
@@ -1304,7 +1369,7 @@ public static partial class Game
             $"Bramblekin {living}: {solitary} solitary, {world.Groups.Count} groups (largest {largestGroup}, {world.Groups.Count(World.KnowsFarming)} farming)   " +
             $"Alliances {world.CurrentAlliances}   Wars {world.CurrentWars}",
             $"Foraging {Count(BramblekinState.Foraging) + Count(BramblekinState.Hunting)}   Eating {Count(BramblekinState.Eating)}   Drinking {Count(BramblekinState.Drinking)}   " +
-            $"Fleeing {Count(BramblekinState.Fleeing)}   Fighting {Count(BramblekinState.Fighting)}   Robbing {Count(BramblekinState.Attacking)}   Asleep {Count(BramblekinState.Sleeping)}{(world.Feasts.Count > 0 ? $"   Feasting {Count(BramblekinState.Feasting)}" : "")}{(world.Owl is { IsLeaving: false } ? "   Owl out!" : "")}",
+            $"Fleeing {Count(BramblekinState.Fleeing)}   Fighting {Count(BramblekinState.Fighting)}   Robbing {Count(BramblekinState.Attacking)}   Asleep {Count(BramblekinState.Sleeping)}{(world.Feasts.Count > 0 ? $"   Feasting {Count(BramblekinState.Feasting)}" : "")}",
             $"Arrived {world.Arrivals}   Died: starved {world.DeathsByStarvation}, thirst {world.DeathsByThirst}, old age {world.DeathsByOldAge}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}, sickness {world.DeathsBySickness}   Sick {world.SickCount}",
             $"Born {world.Births} (gen {world.MaxGeneration})   Couples {world.LivingCouples}   Politics: {world.Departures} left, {world.Splinters} splits, {world.Coups} coups, {world.Exiles} exiles   Raids {world.StoreRaids}",
         };

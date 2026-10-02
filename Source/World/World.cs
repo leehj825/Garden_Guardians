@@ -304,6 +304,8 @@ public sealed partial class World
         Rng = rng;
         SyncPondLevel(); // The pond as usual — whatever a garden before this one left it at.
 
+        RebuildObstacles(); // The oak, to start with: the hill's corner is the terrain's own (see PlaceAnthill), whatever props this garden gets.
+        PlaceAnthill();
         SpawnGardenProps();
         RebuildObstacles();
         PickBerryPatches();
@@ -344,7 +346,7 @@ public sealed partial class World
         for (int i = 0; i < GardenPropCount; i++)
         {
             Vector3 candidate = Terrain.RandomPoint(Rng, margin: 1f);
-            for (int attempt = 0; attempt < 10 && (IsWater(candidate) || GroundMover.HorizontalDistance(candidate, OakCenter) < OakRadius + 1f); attempt++)
+            for (int attempt = 0; attempt < 10 && (IsWater(candidate) || IsInAntZone(candidate) || GroundMover.HorizontalDistance(candidate, OakCenter) < OakRadius + 1f); attempt++)
                 candidate = Terrain.RandomPoint(Rng, margin: 1f); // Not in the pond, nor where the oak stands.
             var kind = (GardenPropKind)Rng.Next(3);
             float rotation = (float)(Rng.NextDouble() * MathF.Tau);
@@ -365,6 +367,8 @@ public sealed partial class World
         foreach (Well well in Wells)
             _obstacles.Add(new Obstacle(new Vector2(well.Position.X, well.Position.Z), Well.Radius));
         AddWallObstacles();
+        if (Anthill is { } hill)
+            _obstacles.Add(new Obstacle(new Vector2(hill.Position.X, hill.Position.Z), Anthill.Radius));
 
         foreach (List<Obstacle> cell in _obstacleCells)
             cell.Clear();
@@ -499,8 +503,6 @@ public sealed partial class World
             Beetles[i].Update(deltaTime, this);
         Prof.Mark("Beetles");
 
-        UpdatePondLife(deltaTime);
-        Prof.Mark("UpdatePondLife");
         IndexRipeCrops();
         Prof.Mark("IndexRipeCrops");
 
@@ -559,8 +561,6 @@ public sealed partial class World
         Prof.Mark("UpdateWallBuilding");
         UpdateGoods(deltaTime);
         Prof.Mark("UpdateGoods");
-        UpdateBeehive(deltaTime);
-        Prof.Mark("UpdateBeehive");
         UpdateArrivals(deltaTime);
         Prof.Mark("UpdateArrivals");
         UpdateFoodDespawn(deltaTime);
@@ -842,7 +842,7 @@ public sealed partial class World
         for (int attempt = 0; attempt < 30; attempt++)
         {
             candidate = Terrain.RandomPoint(Rng, edgeMargin);
-            if (!IsBlocked(candidate, clearance) && !IsCramped(candidate))
+            if (!IsBlockedOrAntZone(candidate, clearance) && !IsCramped(candidate))
                 return candidate;
         }
         return candidate; // Practically unreachable: obstacles cover a tiny fraction of the map.
@@ -863,10 +863,17 @@ public sealed partial class World
                 2 => new Vector3(along, 0f, -half),
                 _ => new Vector3(along, 0f, half),
             };
-            if (!IsBlocked(candidate, clearance))
+            if (!IsBlockedOrAntZone(candidate, clearance))
                 return candidate;
         }
         return candidate;
+    }
+
+    /// <summary>Selects <paramref name="kin"/> as if it had been tapped.</summary>
+    public void SelectKin(Bramblekin kin)
+    {
+        SelectedKin = kin;
+        _selectedClanId = null;
     }
 
     /// <summary>

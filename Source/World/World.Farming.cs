@@ -199,7 +199,7 @@ public sealed partial class World
                 spot = Grounded(home.Position + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * distance);
             }
 
-            if (!Terrain.Contains(spot, 3f) || IsBlocked(spot, Crop.Radius + 0.2f) || IsCramped(spot))
+            if (!Terrain.Contains(spot, 3f) || IsBlockedOrAntZone(spot, Crop.Radius + 0.2f) || IsCramped(spot))
                 continue;
             if (Shelters.Any(s => IsInHomeYard(s, spot, kind, home)))
                 continue;

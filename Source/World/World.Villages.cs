@@ -200,7 +200,7 @@ public sealed partial class World
         for (float r = village.PatrolRadius; r > 3f; r -= 1f)
         {
             Vector3 p = Grounded(village.Centre + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * r);
-            if (Terrain.Contains(p, 2f) && !IsBlocked(p, 0.4f))
+            if (Terrain.Contains(p, 2f) && !IsBlockedOrAntZone(p, 0.4f))
                 return p;
         }
         return village.Centre;

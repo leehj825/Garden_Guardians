@@ -29,6 +29,7 @@ public sealed partial class Bramblekin
 
     /// <summary>True if it (or its group) remembers danger near <paramref name="point"/>.</summary>
     private bool IsDangerous(Vector3 point, World world) =>
+        (AssaultParty is null && world.IsInAntZone(point)) || // The ant hill's zone: nobody goes there but a Kingdom's army.
         _dangers.IsNear(point, DangerRadius, world.ElapsedSeconds, DangerMemory) ||
         (world.GroupOf(this) is { } group && group.Dangers.IsNear(point, DangerRadius, world.ElapsedSeconds, DangerMemory));
 

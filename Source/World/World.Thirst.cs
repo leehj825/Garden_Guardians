@@ -35,7 +35,7 @@ public sealed partial class World
         if (WaterMap.IsNearCreek(kin.Position.X, kin.Position.Z, 2f))
             CreekDrinks++;
         if (kin.Home is { } home)
-            WaterTrekMeters += WaterMap.DistanceToWater(home.Position.X, home.Position.Z);
+            WaterTrekMeters += MathF.Min(WaterMap.DistanceToWater(home.Position.X, home.Position.Z), 500f);
     }
 
     /// <summary>A sip from <paramref name="cistern"/>. False if it's dry.</summary>

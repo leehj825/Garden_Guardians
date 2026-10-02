@@ -4,7 +4,7 @@
     python3 Tools/convert_tripo_kin.py Tools/kin_src/Male.glb   Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Walking.glb
     python3 Tools/convert_tripo_kin.py Tools/kin_src/Female.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Walking_female.glb --female
     python3 Tools/convert_tripo_kin.py Tools/kin_src/GuardMale.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Guard_male.glb --lods --guard
-    python3 Tools/convert_tripo_kin.py Tools/kin_src/GuardFemale.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Guard_female.glb --female --lods --guard --outside 0.14
+    python3 Tools/convert_tripo_kin.py Tools/kin_src/GuardFemale.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Guard_female.glb --female --lods --guard
 
 What convert_female.py does for a decimated mesh, done directly: the model (Y-up, facing +Z, about 0.95-0.98 tall) is scaled to the
 skeleton's height of 1, turned into its bind space (Z-up, facing -Y), skinned to its 33 joints by distance to the bones, and
@@ -29,7 +29,13 @@ from convert_female import (EPSILON, FITTED_ARM, NEIGHBOURS, POWER, accessor, bi
 
 Image.MAX_IMAGE_PIXELS = None
 ARM_RADIUS = 0.07      # beyond this far from every arm bone a vertex is not arm (hair, skirt)
-GUARD_OUTSIDE = 0.2    # beyond this far to the side (bind space) a guard vertex is shield or sword
+CLOTH_LEG_PULL = 1.8   # the dress feels a leg this much farther off than it is, so the hem stays with her hips instead of streaming out behind a raised leg
+CLOTH_GREEN = 1.1      # a vertex whose texture is this much greener than it is red (and more than that than blue) is cloth (her dress): no arm bone carries it
+RIGID_X = 0.2         # a guard's shield (left) and sword (right) lie beyond this far to the side (bind space), between the knees and the helmet
+HEAD_BASE = 0.6        # above this height a guard's helmet, brim and hair go with the head alone...
+BLADE_BOX = ((-1.0, -0.315), (-0.25, -0.165))  # ...except the sword blade, which rises beside the helmet: x and y limits (bind space)
+CHIN_Z, CHIN_X = 0.5, 0.15  # the chin and jaw reach down below HEAD_BASE (to the neck): within this far of the middle, from this height, they go with the head too
+BLADE_FOOT = 0.4       # ...from this height up
 LEG_TOP = 0.28         # above this height (bind space) nothing follows the legs (hair, dress)
 
 
@@ -53,33 +59,85 @@ def png_of(picture, size):
     return buf.getvalue()
 
 
-def skin(points, names, segs, female, guard=False, outside_x=GUARD_OUTSIDE):
+def cloth_mask(uv, picture):
+    """True where the texture under a vertex is green: the dress, whose hem hangs by her hands but must not follow them."""
+    small = np.asarray(picture.resize((512, 512), Image.LANCZOS).convert("RGB"), dtype=np.float64)
+    u = np.clip((uv[:, 0] * 511).astype(int), 0, 511)
+    v = np.clip((uv[:, 1] * 511).astype(int), 0, 511)
+    r, g, b = small[v, u, 0], small[v, u, 1], small[v, u, 2]
+    return (g > r * CLOTH_GREEN) & (g > b * 1.2) & (g > 20)
+
+
+def largest_piece(points, tris, selected):
+    """The biggest connected piece of the mesh among the <paramref name=selected> vertices (joined by the faces between them): a held shield or sword, not the hair beside it."""
+    key = {}
+    rep = np.array([key.setdefault(tuple(np.round(p, 4)), len(key)) for p in points])
+    parent = list(range(len(key)))
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    for t in tris:
+        if selected[t].all():
+            a, b, c = rep[t]
+            parent[find(a)] = find(b)
+            parent[find(b)] = find(c)
+    sizes = {}
+    for v in np.where(selected)[0]:
+        sizes[find(rep[v])] = sizes.get(find(rep[v]), 0) + 1
+    if not sizes:
+        return selected
+    biggest = max(sizes, key=sizes.get)
+    return np.array([bool(selected[v]) and find(rep[v]) == biggest for v in range(len(points))])
+
+
+def skin(points, names, segs, female, guard=False, tris=None, cloth=None):
     owners = list(segs)
     dist = np.stack([np.min([point_segment_distance(points, a, b) for a, b in segs[n]], axis=0) for n in owners], axis=1)
     if female:
         arm = np.array([any(k in n for k in ("Shoulder", "Arm", "Hand")) for n in owners])
         leg = np.array([any(k in n for k in ("UpLeg", "Leg", "Foot", "Toe")) for n in owners])
         not_arm = dist[:, arm].min(axis=1) > ARM_RADIUS
+        if cloth is not None:
+            not_arm |= cloth
+            dist[np.ix_(cloth, np.where(leg)[0])] *= CLOTH_LEG_PULL
         dist[np.ix_(not_arm, np.where(arm)[0])] = np.inf
         high = points[:, 2] > LEG_TOP
         dist[np.ix_(high, np.where(leg)[0])] = np.inf
-    if guard:
-        # A guard's shield (left) and sword (right) stand out from the body: out there only that side's arm carries them, never the
-        # spine or the legs, so they stay with the hand instead of bending with the torso.
-        for sign, side in ((1, "Left"), (-1, "Right")):
-            outside = points[:, 0] * sign > outside_x
-            bad = np.array([not (side in n and any(k in n for k in ("Shoulder", "Arm", "Hand"))) for n in owners])
-            limited = dist.copy()
-            limited[np.ix_(outside, np.where(bad)[0])] = np.inf
-            ok = np.isfinite(limited).any(axis=1)  # (hair and the like that no arm bone may carry keep their usual bones)
-            dist[ok] = limited[ok]
     order = np.argsort(dist, axis=1)[:, :NEIGHBOURS]
     d = np.take_along_axis(dist, order, axis=1)
     w = 1.0 / (d + EPSILON) ** POWER
     w[~np.isfinite(d)] = 0.0
     w /= w.sum(axis=1, keepdims=True)
-    index = np.array([names.index(owners[k]) for k in range(len(owners))])[order]
-    return index.astype("u1"), w.astype("<f4")
+    index = np.array([names.index(owners[k]) for k in range(len(owners))])[order].astype("u1")
+    w = w.astype("<f4")
+    if guard:
+        # The held things and the helmet are rigid: one bone each, so a sword or shield never bends, and a brim never follows an arm.
+        x, y, z = points[:, 0], points[:, 1], points[:, 2]
+        rigid = np.full(len(points), -1)
+        between = (z > 0.12) & (z < HEAD_BASE)
+        for side, bone in ((1, "LeftHand"), (-1, "RightHand")):
+            held = largest_piece(points, tris, (x * side > RIGID_X) & between)
+            rigid[held] = names.index(bone)
+        blade = (z >= BLADE_FOOT) & (x > BLADE_BOX[0][0]) & (x <= BLADE_BOX[0][1]) & (y >= BLADE_BOX[1][0]) & (y <= BLADE_BOX[1][1])
+        rigid[blade] = names.index("RightHand")
+        rigid[((z >= HEAD_BASE) | ((z >= CHIN_Z) & (np.abs(x) < CHIN_X))) & ~blade] = names.index("Head")
+        fixed = rigid >= 0
+        index[fixed] = 0
+        index[fixed, 0] = rigid[fixed]
+        w[fixed] = 0.0
+        w[fixed, 0] = 1.0
+    elif not female:
+        # A plain kin's whole head is rigid too (one bone), so its face does not wobble as the neck and shoulders swing in the walk.
+        head = points[:, 2] >= CHIN_Z  # (all the way across: the cheeks reach 0.19 to the side)
+        index[head] = 0
+        index[head, 0] = names.index("Head")
+        w[head] = 0.0
+        w[head, 0] = 1.0
+    return index, w
 
 
 def main():
@@ -90,7 +148,6 @@ def main():
     ap.add_argument("--female", action="store_true")
     ap.add_argument("--texture", type=int, default=2048)
     ap.add_argument("--lods", action="store_true")
-    ap.add_argument("--outside", type=float, default=GUARD_OUTSIDE, help="with --guard: how far to the side (bind space) the arms alone carry the vertices")
     ap.add_argument("--guard", action="store_true", help="shield and sword follow the arms only")
     args = ap.parse_args()
 
@@ -108,7 +165,10 @@ def main():
     doc, binary = read_glb(args.skeleton)
     names, position, parent = bind_joints(doc, binary)
     segs = segments(names, position, parent, FITTED_ARM if args.female else {})
-    joints_idx, w = skin(pos, names, segs, args.female, args.guard, args.outside)
+    cloth = cloth_mask(uv, picture) if args.female and not args.guard else None  # (a guard's green is a tunic and a shield, which follow her arms)
+    if cloth is not None:
+        print(int(cloth.sum()), "of", len(cloth), "vertices are cloth")
+    joints_idx, w = skin(pos, names, segs, args.female, args.guard, idx.reshape(-1, 3), cloth)
     joints4 = np.zeros((len(pos), 4), "u1")
     weights4 = np.zeros((len(pos), 4), "<f4")
     joints4[:, :NEIGHBOURS] = joints_idx

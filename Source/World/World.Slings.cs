@@ -27,7 +27,7 @@ public sealed partial class World
 
     public int PebbleHits { get; private set; }
 
-    /// <summary>Hornets, frogs and blows at the Heron that ended in a kill.</summary>
+    /// <summary>Hornets brought down by a sling.</summary>
     public int SlingKills { get; private set; }
 
     /// <summary>
@@ -51,11 +51,11 @@ public sealed partial class World
 
         PebbleHits++;
         target.TakeHit(damage, slinger, this);
-        if (target is Heron { IsSlain: false } || !target.IsDead)
-            return; // (A heron driven off isn't dead, only flying.)
+        if (!target.IsDead)
+            return;
         SlingKills++;
         if (SlingKills == 1)
-            Game.AddEventLog($"[HUNT] {slinger.Name} brought down a {(target is Hornet ? "hornet" : target is Frog ? "frog" : "heron")} with a sling - the first sling kill");
+            Game.AddEventLog($"[HUNT] {slinger.Name} brought down a hornet with a sling - the first sling kill");
     }
 
     private void UpdatePebbles(float deltaTime)

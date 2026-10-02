@@ -19,6 +19,21 @@ public sealed partial class Bramblekin
     /// </summary>
     public void Draw(World world)
     {
+        // Climbing the ant hill's mound for the eggs: drawn up the slope, from where it stands at the foot.
+        if (ClimbT > 0f && world.Anthill is { } hill)
+        {
+            Vector3 lift = hill.ClimbOffset(ClimbT);
+            Rlgl.PushMatrix();
+            Rlgl.Translatef(lift.X, lift.Y, lift.Z);
+            DrawBody(world);
+            Rlgl.PopMatrix();
+            return;
+        }
+        DrawBody(world);
+    }
+
+    private void DrawBody(World world)
+    {
         KinGroup? group = world.GroupOf(this);
         Color color = State == BramblekinState.Fleeing
             ? LerpColor(Color.White, PanicColor, 0.6f)
@@ -55,7 +70,7 @@ public sealed partial class Bramblekin
         // use (a cheaper mesh skins faster too) — skinning the full one and drawing another would draw the other unposed.
         Model pose = BramblekinModel.LodView(_animModel, Sex, lod, guardLook);
         if (!speck)
-            BramblekinModel.Play(ref pose, clip, clip == BramblekinClip.Idle ? 0f : _animTime);
+            BramblekinModel.Play(ref pose, clip, clip is BramblekinClip.Idle or BramblekinClip.GuardIdle ? 0f : _animTime);
 
         // The cylinder this replaced was rotationally symmetric, so it never
         // needed to face any particular way; the rig is not, so it must be
@@ -133,6 +148,14 @@ public sealed partial class Bramblekin
         if (props) // what it carries is too small to see from far off
         {
             _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
+            if (_carriesEgg)
+            {
+                Rlgl.PushMatrix();
+                Rlgl.Translatef(Position.X, Position.Y + BodyHeight + 0.12f, Position.Z);
+                Rlgl.Scalef(1f, 1.3f, 1f);
+                Detail.Sphere(Vector3.Zero, 0.14f, EggColor, Position);
+                Rlgl.PopMatrix();
+            }
             DrawSack(facing);
             if (_carriedTwig is not null)
                 Twig.DrawCarried(Position + new Vector3(0, BodyHeight * 0.55f, 0), facing);

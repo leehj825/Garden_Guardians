@@ -74,9 +74,6 @@ public sealed partial class Bramblekin
     /// </summary>
     private void ChooseSocialAction(World world)
     {
-        if (TryStartHoneyForay(world))
-            return;
-
         if (!IsYoung && _rng.NextDouble() < Personality.Sociability * SocialSeekFactor && NearestStranger(world) is { } stranger)
         {
             _companion = stranger;

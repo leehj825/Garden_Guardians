@@ -81,7 +81,7 @@ public sealed partial class World
         GardenProp rock = rocks[Rng.Next(rocks.Length)];
         float angle = (float)(Rng.NextDouble() * MathF.Tau);
         Vector3 spot = rock.Position + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * (rock.FootprintRadius + 0.3f + (float)Rng.NextDouble() * 1.2f);
-        if (Terrain.Contains(spot, 1f) && !IsBlocked(spot, Material.StoneRadius))
+        if (Terrain.Contains(spot, 1f) && !IsBlockedOrAntZone(spot, Material.StoneRadius))
             ActivateMaterial(spot, MaterialKind.Stone);
     }
 
@@ -90,7 +90,7 @@ public sealed partial class World
     {
         float angle = (float)(Rng.NextDouble() * MathF.Tau);
         Vector3 spot = center + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * (near + (float)Rng.NextDouble() * (far - near));
-        if (Terrain.Contains(spot, 2f) && !IsBlocked(spot, Material.BranchLength / 2f))
+        if (Terrain.Contains(spot, 2f) && !IsBlockedOrAntZone(spot, Material.BranchLength / 2f))
             ActivateMaterial(spot, MaterialKind.Branch);
     }
 

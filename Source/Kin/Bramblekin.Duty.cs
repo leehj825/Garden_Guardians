@@ -152,7 +152,7 @@ public sealed partial class Bramblekin
         return TryFishing(home, deltaTime, world) || DoGatherDuty(deltaTime, world);
     }
 
-    /// <summary>Hunter: goes after the Stag Beetle the Leader picked, or else small game it can see (a Grub, or a frog on the bank).</summary>
+    /// <summary>Hunter: goes after the Stag Beetle the Leader picked, or else small game it can see (a Grub).</summary>
     private bool DoHuntDuty(KinGroup group, float deltaTime, World world)
     {
         if (Health <= MaxHealth * DutyStandDownHealthFraction)

@@ -59,8 +59,7 @@ public sealed partial class Bramblekin
         {
             world.ConsumeFood(food);
             _carried = null;
-            Hunger = MathF.Max(0f, Hunger - FoodNourishment - (_mealCooked ? World.CookedNourishmentBonus : 0f) -
-                                   (food.Kind == FoodShardKind.Honey ? World.HoneyNourishmentBonus : 0f));
+            Hunger = MathF.Max(0f, Hunger - FoodNourishment - (_mealCooked ? World.CookedNourishmentBonus : 0f));
             QuenchWith(food.Kind);
             Heal(FoodHealing + (_mealCooked ? World.CookedHealingBonus : 0));
             if (_mealCooked)
@@ -112,8 +111,7 @@ public sealed partial class Bramblekin
     /// cooldown. When robbing, the first blow that lands takes the victim's
     /// food (see <see cref="World.StealFood"/>). Blood is thicker than
     /// water: it never deals a close relative (parent, child, sibling) the
-    /// blow that would kill it. A slinger stops short of a Hornet, a frog or
-    /// the Heron and looses pebbles instead (see <see cref="TrySling"/>).
+    /// blow that would kill it. A slinger stops short of a Hornet and looses pebbles instead (see <see cref="TrySling"/>).
     /// </summary>
     private void PursueAndStrike(ICombatant target, float speed, float deltaTime, World world)
     {
@@ -143,7 +141,7 @@ public sealed partial class Bramblekin
         if (State == BramblekinState.Fighting && _threatIsAllyDefense)
             world.NoteDefended(this, target);
         if (target is not Bramblekin)
-            Train(Skill.Hunting, world, target is StagBeetle or WolfSpider or Heron ? 2f : 1f);
+            Train(Skill.Hunting, world, target is StagBeetle or WolfSpider ? 2f : 1f);
         target.TakeHit(target is Bramblekin ? StrikeDamage : HuntingDamage, this, world);
     }
 
@@ -199,7 +197,7 @@ public sealed partial class Bramblekin
 
     /// <summary>Walks toward <paramref name="target"/>, steering round Pebbles. Returns true on arrival.</summary>
     private bool MoveTo(Vector3 target, float speed, float deltaTime, World world) =>
-        _mover.MoveTowards(target, speed * AgeSpeedFactor * (IsSick ? SickSpeedFactor : 1f) * WorkPace * world.PathSpeed(Position), deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius));
+        _mover.MoveTowards(target, speed * AgeSpeedFactor * VigorSpeedFactor * (IsSick ? SickSpeedFactor : 1f) * WorkPace * world.PathSpeed(Position), deltaTime, world, static (w, p) => !w.IsBlocked(p, BodyRadius));
 
     private void StartPause()
     {
@@ -247,7 +245,7 @@ public sealed partial class Bramblekin
             float angle = (float)(_rng.NextDouble() * MathF.Tau);
             float distance = MathF.Sqrt((float)_rng.NextDouble()) * radius;
             Vector3 candidate = center + new Vector3(MathF.Cos(angle) * distance, 0f, MathF.Sin(angle) * distance);
-            if (world.Terrain.Contains(candidate, EdgeMargin + 1f) && !world.IsBlocked(candidate, BodyRadius))
+            if (world.Terrain.Contains(candidate, EdgeMargin + 1f) && !world.IsBlockedOrAntZone(candidate, BodyRadius))
                 return candidate;
         }
         return world.RandomFreePoint(BodyRadius, EdgeMargin + 1f);
@@ -261,7 +259,7 @@ public sealed partial class Bramblekin
         {
             away = Vector2.Normalize(away);
             Vector3 candidate = Position + new Vector3(away.X, 0f, away.Y) * distance;
-            if (world.Terrain.Contains(candidate, EdgeMargin + 1f) && !world.IsBlocked(candidate, BodyRadius))
+            if (world.Terrain.Contains(candidate, EdgeMargin + 1f) && !world.IsBlockedOrAntZone(candidate, BodyRadius))
                 return candidate;
         }
         return RandomWanderPoint(world, distance);
@@ -273,7 +271,7 @@ public sealed partial class Bramblekin
         float angle = (float)(_rng.NextDouble() * MathF.Tau);
         float distance = (float)_rng.NextDouble() * radius;
         Vector3 candidate = center + new Vector3(MathF.Cos(angle) * distance, 0f, MathF.Sin(angle) * distance);
-        return world.Terrain.Contains(candidate, EdgeMargin + 1f) && !world.IsBlocked(candidate, BodyRadius) ? candidate : center;
+        return world.Terrain.Contains(candidate, EdgeMargin + 1f) && !world.IsBlockedOrAntZone(candidate, BodyRadius) ? candidate : center;
     }
 
     /// <summary>The nearest living Bramblekin it can see that it has never met.</summary>

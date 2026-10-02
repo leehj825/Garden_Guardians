@@ -52,7 +52,7 @@ public sealed partial class World
             float angle = (float)(Rng.NextDouble() * MathF.Tau);
             float reach = SnareMinReach + (float)Rng.NextDouble() * (SnareMaxReach - SnareMinReach);
             var spot = home + new Vector3(MathF.Cos(angle) * reach, 0f, MathF.Sin(angle) * reach);
-            if (!Terrain.Contains(spot, 1f) || WaterMap.IsWet(spot.X, spot.Z) || IsBlocked(spot, 0.3f))
+            if (!Terrain.Contains(spot, 1f) || WaterMap.IsWet(spot.X, spot.Z) || IsBlockedOrAntZone(spot, 0.3f))
                 continue;
             if (Shelters.Any(s => !s.IsCollapsed && GroundMover.HorizontalDistance(spot, s.Position) < s.Radius + 1f) ||
                 Crops.Any(c => GroundMover.HorizontalDistance(spot, c.Position) < Crop.Radius + 0.6f) ||

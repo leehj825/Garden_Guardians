@@ -91,8 +91,7 @@ public sealed partial class World
     /// <summary>
     /// Nightfall and dawn: each settled clan of a few posts one member to
     /// keep watch by home through the night — a Guard if it has one, else
-    /// its bravest — and stands it down at dawn. The Owl comes out on some
-    /// nights, and goes home at dawn.
+    /// its bravest — and stands it down at dawn.
     /// </summary>
     private void UpdateNight(float deltaTime)
     {
@@ -104,7 +103,6 @@ public sealed partial class World
             {
                 NightsPassed++;
                 _nightWatchTimer = 0f;
-                MaybeSendOwl();
             }
             else
             {
@@ -112,7 +110,6 @@ public sealed partial class World
                     group.NightWatch = null;
             }
         }
-        UpdateOwl(deltaTime);
         if (!night)
             return;
 
@@ -156,102 +153,6 @@ public sealed partial class World
     /// <summary>A raiding party sets out in the dark.</summary>
     public void NoteNightRaid() => NightRaids++;
 
-    // --- The Owl ----------------------------------------------------------------------------
-
-    /// <summary>The Owl comes out on about this share of nights.</summary>
-    private const double OwlNightChance = 0.4;
-
-    /// <summary>…though never in the garden's first few days.</summary>
-    private const float OwlFirstNightAfter = 3f * DayLength;
-
-    /// <summary>The Owl, while it's out hunting (or flying home).</summary>
-    public Owl? Owl { get; private set; }
-
-    public int OwlVisits { get; private set; }
-    public int OwlStrikes { get; private set; }
-    public int OwlKills { get; private set; }
-    public int OwlsDrivenOff { get; private set; }
-    public int OwlsKilled { get; private set; }
-
-    /// <summary>Where it roosts: high in the Giant Oak's hollow, on the garden side.</summary>
-    private static Vector3 OwlRoost => OakCenter + new Vector3(0f, TerrainData.OakTrunkHeight * 0.7f, OakRadius * 0.8f);
-
-    private void MaybeSendOwl()
-    {
-        if (Owl is not null || ElapsedSeconds < OwlFirstNightAfter || Rng.NextDouble() >= OwlNightChance)
-            return;
-        Owl = new Owl(OwlRoost, OwlHuntingGround(Vector3.Zero), Rng);
-        OwlVisits++;
-        Game.AddEventLog("[WILD] An owl glides out of the oak - anyone sleeping in the open had better beware");
-        if (OwlVisits == 1)
-            Headline("The owl", "An owl glided out of the oak: anyone sleeping in the open had better beware", OakCenter, true);
-    }
-
-    private void UpdateOwl(float deltaTime)
-    {
-        if (Owl is { } owl && !owl.Update(deltaTime, this))
-            Owl = null;
-    }
-
-    /// <summary>Where the Owl circles next: over some Bramblekin out in the open, if it can find one, else anywhere near <paramref name="fallback"/>.</summary>
-    public Vector3 OwlHuntingGround(Vector3 fallback)
-    {
-        for (int attempt = 0; attempt < 6 && Colony.Count > 0; attempt++)
-        {
-            Bramblekin kin = Colony[Rng.Next(Colony.Count)];
-            if (!kin.IsDead && !kin.IsInsideHome)
-                return Grounded(kin.Position);
-        }
-        return Grounded(fallback + new Vector3((float)Rng.NextDouble() * 20f - 10f, 0f, (float)Rng.NextDouble() * 20f - 10f));
-    }
-
-    /// <summary>True if <paramref name="spot"/> lies in the light of a lit hearth, where the Owl never strikes.</summary>
-    public bool IsInHearthLight(Vector3 spot)
-    {
-        foreach (Shelter shelter in Shelters)
-        {
-            if (shelter.IsHearthLit && GroundMover.HorizontalDistanceSquared(shelter.HearthPosition, spot) <= Owl.HearthLightRadius * Owl.HearthLightRadius)
-                return true;
-        }
-        return false;
-    }
-
-    public void NoteOwlStrike(Owl owl, Bramblekin prey)
-    {
-        OwlStrikes++;
-        if (prey.Health <= (prey.IsAsleep ? Owl.SleeperTalonDamage : Owl.TalonDamage))
-            OwlKills++;
-    }
-
-    /// <summary>The Owl goes home — driven off by <paramref name="driver"/>, or because the night is over.</summary>
-    public void NoteOwlLeft(Owl owl, Bramblekin? driver)
-    {
-        if (driver is null)
-            return;
-        OwlsDrivenOff++;
-        Game.AddEventLog($"[WILD] {driver.Name} drove the owl back to the oak");
-        CreditBravery(driver);
-    }
-
-    /// <summary>The Owl brought down: a meal of meat, and a tale.</summary>
-    public void KillOwl(Owl owl, Bramblekin killer)
-    {
-        if (owl.IsSlain)
-            return;
-        owl.MarkSlain();
-        OwlsKilled++;
-        Vector3 at = Grounded(owl.Position);
-        ScatterFoodAround(at, Owl.MeatYield, 0.6f, FoodShardKind.Meat);
-        CreditMeat(killer, Owl.MeatYield);
-        CreditBravery(killer);
-        KinGroup? clan = GroupOf(killer);
-        string who = clan is null ? killer.Name : $"{killer.Name} of {clan.Title}";
-        Headline("The owl", $"{who} brought down the owl", at, false, clan);
-    }
-
-    /// <summary>Standing up to the Owl is remembered: a little standing in its clan.</summary>
-    private static void CreditBravery(Bramblekin kin) => kin.AddReputation(0.05f);
-
     // --- Drawing ---------------------------------------------------------------------------------
 
     /// <summary>The sky darkens toward a deep blue at night.</summary>
@@ -264,17 +165,10 @@ public sealed partial class World
     /// <summary>Fireflies over the grass on a warm night.</summary>
     private static int FireflyCount => Scaled(60);
 
-    private void DrawOwl(Camera3D camera)
-    {
-        if (Owl is { IsSlain: false } owl && IsVisible(owl.Position, camera))
-            owl.Draw();
-    }
-
     /// <summary>
     /// What still shines once night has fallen (drawn after the darkness is
     /// laid over the garden — see Game): the glow round every lit hearth,
-    /// lit windows, fireflies over the grass (not in winter), and the Owl's
-    /// eyes. Drawn additively, so light adds to whatever it falls on.
+    /// lit windows, fireflies over the grass (not in winter). Drawn additively, so light adds to whatever it falls on.
     /// </summary>
     public void DrawNightLights(Camera3D camera)
     {
@@ -306,7 +200,6 @@ public sealed partial class World
         DrawFeastLanterns(darkness);
         DrawShrineCandles(darkness);
 
-        Owl?.DrawEyes(darkness);
 
         Raylib.EndBlendMode();
         Rlgl.DrawRenderBatchActive();

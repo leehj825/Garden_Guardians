@@ -12,7 +12,7 @@ public sealed partial class Bramblekin
     /// <summary>Seconds to fit another pebble and swing again.</summary>
     private const float SlingCooldown = 1.4f;
 
-    /// <summary>Knowing it can hit back from a few paces off, it's this much likelier to stand up to a Hornet or the Heron.</summary>
+    /// <summary>Knowing it can hit back from a few paces off, it's this much likelier to stand up to a Hornet.</summary>
     private const float SlingNerve = 0.25f;
 
     /// <summary>A Guard with a sling clears any hornets' nest it sees within this far (m) of home…</summary>
@@ -23,17 +23,14 @@ public sealed partial class Bramblekin
 
     /// <summary>
     /// What a sling is for (see <see cref="Craft.Slings"/>): things too quick
-    /// to catch, or too dangerous to close with — a Hornet, a frog on the
-    /// bank, the Heron.
+    /// to catch, or too dangerous to close with — a Hornet.
     /// </summary>
-    private bool CanSling(ICombatant target) => target is Hornet or Frog or Heron && !IsYoung && Knows(Craft.Slings);
+    private bool CanSling(ICombatant target) => target is Hornet && !IsYoung && Knows(Craft.Slings);
 
-    /// <summary>How often a pebble finds its mark: a darting Hornet least, the Heron's big grey bulk most.</summary>
+    /// <summary>How often a pebble finds its mark: a darting Hornet.</summary>
     private static float SlingAccuracy(ICombatant target) => target switch
     {
-        Hornet => 0.6f,
-        Frog => 0.7f,
-        _ => 0.85f,
+        _ => 0.6f,
     };
 
     /// <summary>

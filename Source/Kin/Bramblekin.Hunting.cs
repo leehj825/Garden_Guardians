@@ -53,10 +53,10 @@ public sealed partial class Bramblekin
         return true;
     }
 
-    /// <summary>The small game it last saw, if it's still there to be caught (a frog that's dived under the water isn't).</summary>
-    private ICombatant? LivePrey => _perceivedPrey is { IsDead: false } prey && prey is not Frog { IsHidden: true } ? prey : null;
+    /// <summary>The small game it last saw, if it's still there to be caught (a Grub that's been caught already isn't).</summary>
+    private ICombatant? LivePrey => _perceivedPrey is { IsDead: false } prey ? prey : null;
 
-    /// <summary>Hunts visible small game — a Grub, or a frog on the bank (hungry, or to stock a store).</summary>
+    /// <summary>Hunts visible small game — a Grub (hungry, or to stock a store).</summary>
     private void HuntPrey(ICombatant prey, float deltaTime, World world)
     {
         SetState(BramblekinState.Hunting);

@@ -404,7 +404,7 @@ public sealed partial class World
             float angle = (float)(Rng.NextDouble() * MathF.Tau);
             float distance = 15f + (float)Rng.NextDouble() * (PioneerMaxTrek - 15f);
             Vector3 candidate = from + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * distance;
-            if (!Terrain.Contains(candidate, 8f) || IsBlocked(candidate, Shelter.HouseRadius + 0.3f))
+            if (!Terrain.Contains(candidate, 8f) || IsBlockedOrAntZone(candidate, Shelter.HouseRadius + 0.3f))
                 continue;
 
             float nearestHome = PioneerMaxTrek;
