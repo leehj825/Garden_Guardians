@@ -1096,6 +1096,16 @@ village, kingdom) says who belongs together and who leads.
     Kingdom Age. The most populous such village is the capital and its
     headman is king. Vassal villages send tribute and pledge every second soldier (at least one) to march to a sister village's alarm. The old clan-over-clan
     vassalage stays for clans outside any village.
+*   **The castle:** the capital's king's home (else the house nearest the
+    village's middle) is raised into a **castle** model (`Castle.glb`, from
+    `Tools/kin_src/Castle.glb` by `convert_tripo_prop.py`): about twice as wide as
+    an acorn house (a 2.6 m radius, about 5.4 m across, 4.4 m tall), with its palisade
+    ring, yard and fittings scaled to match. Everything standing on the ground
+    it takes is cleared: scenery, crops, snares, a well, pieces of wall are
+    removed, aphid pens and neighbouring homes are moved out beyond the ring
+    (a home with no room is pulled down). If the kingdom falls, or the capital
+    changes, the castle goes back to a house. Not saved: worked out afresh
+    from the kingdoms.
 *   **Invasions:** swarms of small spiders march on a village (light) or a
     kingdom (hard, in waves), sized to the target's defence; soldiers
     fight them, they withdraw after 5 minutes. Not saved.

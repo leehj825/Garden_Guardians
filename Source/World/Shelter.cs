@@ -97,7 +97,18 @@ public sealed class Shelter
         StoredFood = stored;
     }
 
-    public Vector3 Position { get; }
+    public Vector3 Position { get; private set; }
+
+    /// <summary>Sets the home down somewhere else (a castle rising beside it has taken its ground).</summary>
+    public void MoveTo(Vector3 groundPoint) => Position = World.Grounded(groundPoint);
+
+    /// <summary>The kingdom's capital house, raised into a castle (see World.Castles): twice as wide as an acorn house. Not saved; worked out afresh from the kingdoms.</summary>
+    public bool IsCastle { get; set; }
+
+    public const float CastleRadius = 2.6f;
+
+    /// <summary>A castle is drawn this much wider than its footing (m), the same way the acorn house is.</summary>
+    private const float CastleDrawWidthFactor = 2f * 1.04f;
 
     public ShelterTier Tier { get; private set; } = ShelterTier.Tent;
 
@@ -199,7 +210,9 @@ public sealed class Shelter
     /// <summary>Where the hearth sits: out front, off to the side away from the cistern.</summary>
     /// <summary>Where a lived-in House's window is (lit at night — see World.DrawNightLights); null for anything else.</summary>
     public Vector3? WindowPosition => IsBuilt && !IsBurrow && !IsAbandoned && Tier == ShelterTier.House
-        ? Position + new Vector3(0f, 0.02f, 0f) + new Vector3(0f, 0.36f * Radius * 2.6f * 0.8f / PropModels.HouseWidth, -(0.36f * Radius * 2.6f * 0.8f / PropModels.HouseWidth))
+        ? Position + new Vector3(0f, 0.02f, 0f) + (IsCastle
+            ? new Vector3(0f, 0.3f * Radius * CastleDrawWidthFactor / PropModels.CastleWidth, -(0.3f * Radius * CastleDrawWidthFactor / PropModels.CastleWidth))
+            : new Vector3(0f, 0.36f * Radius * 2.6f * 0.8f / PropModels.HouseWidth, -(0.36f * Radius * 2.6f * 0.8f / PropModels.HouseWidth)))
         : null;
 
     public Vector3 HearthPosition => Position + new Vector3(Radius * 0.2f, 0f, -(Radius + 0.5f));
@@ -258,7 +271,7 @@ public sealed class Shelter
 
     public bool StoreIsFull => StoredFood >= StoreCapacity;
 
-    public float Radius => Tier switch { ShelterTier.House => HouseRadius, ShelterTier.Burrow => BurrowRadius, _ => TentRadius };
+    public float Radius => Tier switch { ShelterTier.House => IsCastle ? CastleRadius : HouseRadius, ShelterTier.Burrow => BurrowRadius, _ => TentRadius };
 
     /// <summary>The one Bramblekin it belongs to, for a personal home.</summary>
     public Bramblekin? Owner { get; set; }
@@ -399,10 +412,20 @@ public sealed class Shelter
         }
         else
         {
-            // The acorn house model, its door turned to face out (+X).
-            float scale = radius * 2.6f * 0.8f / PropModels.HouseWidth;
-            PropModels.Draw(PropModels.Prop.House, basePosition, 180f, scale, Tint(Color.White));
-            roofTop = basePosition.Y + PropModels.HouseCapTop * scale;
+            if (IsCastle)
+            {
+                // The capital's castle.
+                float castleScale = radius * CastleDrawWidthFactor / PropModels.CastleWidth;
+                PropModels.Draw(PropModels.Prop.Castle, basePosition, 180f, castleScale, Tint(Color.White));
+                roofTop = basePosition.Y + castleScale; // The model is 1 unit tall.
+            }
+            else
+            {
+                // The acorn house model, its door turned to face out (+X).
+                float scale = radius * 2.6f * 0.8f / PropModels.HouseWidth;
+                PropModels.Draw(PropModels.Prop.House, basePosition, 180f, scale, Tint(Color.White));
+                roofTop = basePosition.Y + PropModels.HouseCapTop * scale;
+            }
         }
 
         if (groupColor is { } color)

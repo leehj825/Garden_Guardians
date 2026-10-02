@@ -167,6 +167,7 @@ public sealed partial class World
 
         foreach (Kingdom kingdom in Realms)
             RunRealm(kingdom);
+        UpdateCastles();
     }
 
     /// <summary>

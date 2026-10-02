@@ -644,6 +644,8 @@ public static partial class Game
         bool assaultStarted = assaultLevel <= 0;
         // A development aid: GARDEN_CONTROL_TEST=<seconds> takes the wheel of a clan member at 60 s for that long (as Guard), then gives it back.
         float controlFor = float.TryParse(Environment.GetEnvironmentVariable("GARDEN_CONTROL_TEST"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float parsedControl) ? parsedControl : 0f;
+        bool stopAtCastle = Environment.GetEnvironmentVariable("GARDEN_STOP_AT_CASTLE") == "1";
+        float? castleSeen = null;
         Bramblekin? controlled = null;
         // A development aid: GARDEN_REALM_TEST=1 invades a vassal village of the first kingdom (once it has stood a minute) and reports how many
         // pledged soldiers of its sister villages come to its defence.
@@ -701,6 +703,13 @@ public static partial class Game
             world.Update(step);
             world.CommitPendingChanges();
             Prof.Mark("Commit");
+            // A development aid: GARDEN_STOP_AT_CASTLE=1 ends the run (and saves, with --save) a minute after the first castle is raised.
+            if (stopAtCastle && world.CastlesRaised > 0)
+            {
+                castleSeen ??= world.ElapsedSeconds;
+                if (world.ElapsedSeconds - castleSeen > 60f)
+                    break;
+            }
             steps++;
 
             reportTimer += step;
@@ -712,6 +721,7 @@ public static partial class Game
         }
 
         Console.WriteLine($"[REALMS] kingdoms now {world.Realms.Count}, founded {world.KingdomsFounded}, kings crowned {world.KingsCrowned}, villages named {world.VillagesNamed}, tribute {world.Realms.Sum(k => k.TributePaid)}, pledged {world.Realms.Sum(k => k.Pledged)}");
+        Console.WriteLine($"[CASTLE] raised {world.CastlesRaised}; {world.DescribeCastleGround()}");
         Prof.Report(steps);
         Console.WriteLine();
         Console.WriteLine("=== Summary ===");

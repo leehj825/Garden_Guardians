@@ -1127,6 +1127,13 @@ checked with headless A/B runs (numbers are in that file).
     were 2-4 before and 2-4 after; the remaining turnover is the king dying
     (the log now says so), not headmen changing. Kingdoms still fall apart
     when a village dissolves (3 of 7 founded were gone at the end).
+*   ✅ **The castle** (2026-10-02): the capital's home is drawn as a castle
+    model, twice as wide as the acorn house, and the ground it takes is
+    cleared (`World.Castles.cs`; crops, scenery, snares, wells and wall
+    pieces removed, pens and neighbouring homes moved out). Headless, 3
+    worlds: nothing left inside the cleared ring. Not yet: which side the
+    castle's gate faces (the model is drawn the way the house is), a castle
+    that is more than a bigger house (a keep, a bigger store, a garrison).
 *   ✅ **Village grace** (2026-10-02): a village whose homes fall short is
     kept 120 s before it is abandoned, so a home pulled down for an upgrade
     or a clan moving house no longer dissolves it (and its kingdom) and

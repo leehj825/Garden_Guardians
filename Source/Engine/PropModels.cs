@@ -19,15 +19,15 @@ public static unsafe class PropModels
         : Path.Combine(AppContext.BaseDirectory, "Assets", "Models", "Props") + Path.DirectorySeparatorChar;
 
     /// <summary>Each model is 1 unit tall, at the origin; this is how wide it is (m), for scaling it to a size.</summary>
-    public const float HouseWidth = 0.82f, BushWidth = 0.795f, SpiderWidth = 1.0f, TentWidth = 1.117f;
+    public const float HouseWidth = 0.82f, BushWidth = 0.795f, SpiderWidth = 1.0f, TentWidth = 1.117f, CastleWidth = 1.23f;
 
     /// <summary>The acorn house's window (with the leaves) faces +Z, and it has firewood, a sack, a sword and shield round its foot; its cap's top is this fraction of its height (the stem rises above).</summary>
     public const float HouseCapTop = 0.72f;
 
     /// <summary>The props; each has a full model and a cheap one (a fifth or so of the triangles, a 512px texture) for when it is small on screen.</summary>
-    public enum Prop { House, Bush, Spider, Tent, BerryPlot, CressPlot, MushroomPlot, GrainPlot, Beetle, Ant, AntHill }
+    public enum Prop { House, Bush, Spider, Tent, BerryPlot, CressPlot, MushroomPlot, GrainPlot, Beetle, Ant, AntHill, Castle }
 
-    private static readonly string[] Files = { "AcornHouse", "BerryFarm", "Spider", "Tent", "BerryPlot", "CressPlot", "MushroomPlot", "GrainPlot", "Beetle", "Ant", "AntHill" };
+    private static readonly string[] Files = { "AcornHouse", "BerryFarm", "Spider", "Tent", "BerryPlot", "CressPlot", "MushroomPlot", "GrainPlot", "Beetle", "Ant", "AntHill", "Castle" };
 
     /// <summary>Below this many pixels across, the cheap model.</summary>
     private const float FullPixels = 110f;
@@ -42,7 +42,7 @@ public static unsafe class PropModels
             return;
         _full[i] = Raylib.LoadModel(AssetPath + Files[i] + ".glb");
         _cheap[i] = prop is Prop.Spider or Prop.Beetle or Prop.Ant or Prop.AntHill ? _full[i] : Raylib.LoadModel(AssetPath + Files[i] + "_lod.glb"); // The spider, the beetle and the ants are light already: one model.
-        if (prop is Prop.House or Prop.Tent or Prop.BerryPlot or Prop.CressPlot or Prop.MushroomPlot or Prop.GrainPlot or Prop.AntHill or Prop.Ant)
+        if (prop is Prop.House or Prop.Tent or Prop.BerryPlot or Prop.CressPlot or Prop.MushroomPlot or Prop.GrainPlot or Prop.AntHill or Prop.Ant or Prop.Castle)
         {
             // The house's pictures are big and painterly: smoothed and mipmapped, they don't shimmer or show as pixels.
             Smooth(_full[i]);
@@ -66,7 +66,7 @@ public static unsafe class PropModels
     public static void Draw(Prop prop, Vector3 position, float yawDegrees, float scale, Color tint)
     {
         EnsureLoaded(prop);
-        float pixels = Detail.Pixels(position, scale * (prop switch { Prop.House => HouseWidth, Prop.Bush => BushWidth, Prop.Tent => TentWidth, Prop.Spider => SpiderWidth, _ => 1f }));
+        float pixels = Detail.Pixels(position, scale * (prop switch { Prop.House => HouseWidth, Prop.Bush => BushWidth, Prop.Tent => TentWidth, Prop.Castle => CastleWidth, Prop.Spider => SpiderWidth, _ => 1f }));
         Model model = pixels >= FullPixels ? _full[(int)prop] : _cheap[(int)prop];
         Raylib.DrawModelEx(model, position, Vector3.UnitY, yawDegrees, new Vector3(scale), tint);
     }
