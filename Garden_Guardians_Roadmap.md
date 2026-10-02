@@ -2,7 +2,7 @@
 
 **Status key:** ✅ Done · 🟡 In progress (partly done) · ⬜ Not started · ❌ Removed/superseded
 
-*Last updated: 2026-09-30*
+*Last updated: 2026-10-02*
 
 ## Progress Snapshot
 The game is an **Emergent Survival** simulation (Phase 7) that has grown
@@ -27,10 +27,16 @@ Since Phase 26 the garden has **day and night** (sleep, a night watch, the
 Owl), **aphid herding**, a **beehive** in the oak, **harvest feasts**,
 **shrines and beliefs**, **shields and champions**, an automatic
 **Director** camera and a **timeline** on the History screen.
+Since Phase 40 (2026-10) the clans are organised in **society levels**:
+**villages** with a headman and a pooled store, **paid jobs** (soldiers,
+fishers, healers, builders, scouts) fed from it, **kingdoms** of three or
+more villages with a king and tribute, and **spider invasions** that
+test them.
 Code lives under `Source/` (one type per file; see the
-Design doc's Code Layout). The player is a spectator with a
-Google-Maps-style camera whose only action is tapping a Bramblekin to
-inspect it. See `Garden_Guardians_Design.md` for the full current design.
+Design doc's Code Layout). The player is mostly a spectator with a
+Google-Maps-style camera who taps a Bramblekin to inspect it, and can
+take the wheel of one (the **Control** button: third-person camera,
+stick, attack). See `Garden_Guardians_Design.md` for the full current design.
 
 ## Phase 0: Engine & Tooling
 *   ✅ **Engine:** Raylib via Raylib-cs on a .NET 8 project, 1 unit = 1
@@ -1086,7 +1092,42 @@ triangles. The four baked terrains stay as they are.
     (`WaterMap.SetWalls`), so everything that walks goes round, through the gates. Saved with the garden.
     *Not yet:* stone cost for the wall, enemy clans besieging it, gates that close at night, walls following later-built homes.
 
-## Phases 35+: Advancing Civilizations (ideas, not scheduled)
+## Phase 40: Society, Provisioning and Invasions
+Design and rationale: `Garden_Guardians_Society_Design.md`. Every step was
+checked with headless A/B runs (numbers are in that file).
+*   ✅ **Villages** (`Village.cs`, `World.Villages.cs`): formed from homes
+    within 14 m of each other (clans not at war, one in the Farming Age);
+    named, with a middle and a headman chosen from the clan chiefs; merge,
+    abandon, save, tag on the map, shown in the clan card, stats and History.
+    Not yet: shared landmarks (well, market, shrine, granary).
+*   ✅ **Rations** (`World.Rations.cs`): the village's pooled store is the
+    stock of its homes; income-driven `AllowedPaid` caps the paid jobs;
+    paid guards are brought food so they stay on post.
+*   ✅ **Soldiers and fishers:** guards patrol a ring round the village,
+    answer any home's alarm and pick up food near the route; `KinJob.Fisher`
+    keeps fishers on the shore all day. Born `Strength` trait, soldier
+    training, shields issued to fighters only.
+*   ✅ **The headman's jobs:** the headman turns `AllowedPaid` into soldiers
+    (60%), a healer, builders and a scout (`VillageJob`s, overriding clan
+    job lists); fed builders speed the wall.
+*   ✅ **Kingdoms** (`Kingdom.cs`, `World.Realms.cs`): three or more villages
+    within 90 m at peace, one in the Kingdom Age; the largest is the
+    capital and its headman king; fealty, tribute, pledged soldiers that
+    answer a sister village's alarm; saved (`KingdomSave`).
+*   ✅ **Spider invasions** (`InvaderSpider.cs`, `World.Invasions.cs`):
+    swarms in waves scaled to the target's defence; light ones hit a
+    village, hard ones a kingdom. Not saved.
+*   ⬜ **Events and UI polish** (Society step 6): headlines and chronicle
+    entries for founding, succession and revolt, a Villages tab in History,
+    more stats lines.
+*   ⬜ **Open problems:** kings are crowned 1-4 times per world (the crown
+    follows the capital's headman); pledged soldiers marching to a sister
+    village were not verified in a real raid; invasions are easy for a
+    defended village; formal alliances are too rare to bind villages, so
+    peace is the test.
+
+## Backlog: Advancing Civilizations (ideas, not scheduled)
+(Phase 35 was never used; numbering goes 34 → 36.)
 Ideas for the clans to grow past today's crafts, farming, herding,
 fishing, wells, palisades, shrines, feasts, alliances and wars. Suggested
 first picks: roads, workshops with tools, and the tech tree with eras.
@@ -1121,15 +1162,16 @@ first picks: roads, workshops with tools, and the tech tree with eras.
     the clan's discoveries and new ages are carved into the chronicle, and it
     teaches allies 1.5x as readily. Not yet: runes that improve teaching
     beyond crafts, lore that outlives a clan, readable stone text in-game.
-*   🟡 **Kingdoms and vassals:** Done (first slice): a clan that loses a war
+*   ✅ **Kingdoms and vassals:** First slice: a clan that loses a war
     and agrees to tribute is its conqueror's vassal while it pays; a Kingdom
     Age clan can also win a small allied neighbour's fealty (tribute each
     season, no end); vassals are taught the liege's crafts 1.5x as readily.
-    A clan with vassals is a kingdom's capital (shown on the clan card and
-    Stats tab); gold lines join liege and vassal homes (Links toggle). A
-    vassal that grows as big as its liege breaks free, and one whose term
-    is served is released. Not yet: a leader title, liege protection of
-    vassals in war, a capital model, territory taken in conquest.
+    Gold lines join liege and vassal homes (Links toggle); a vassal that
+    grows as big as its liege breaks free, and one whose term is served is
+    released. This clan-over-clan vassalage is kept for clans outside any
+    village. **Superseded for villages by Phase 40:** true kingdoms now
+    have a capital, a king, tribute and pledged soldiers. Not yet: liege
+    protection of vassals in war, territory taken in conquest.
 *   🟡 **Defense and siege:** Done (first slice): Watchtowers (Village Age,
     Palisade and Spears) raise a lookout with an alarm horn by the main home;
     it spots the Wolf Spider, chasing Hornets or a warring clan's fighters
@@ -1181,6 +1223,18 @@ first picks: roads, workshops with tools, and the tech tree with eras.
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:
+*   ⬜ **Society follow-ups (see Phase 40):**
+    *   Make the crown sticky (the king keeps it until death or revolt) to
+        stop the 1-4 coronations per world.
+    *   A headless test that pledged soldiers really arrive at a sister
+        village under attack.
+    *   Balance invasions (share per defence point, spider toughness, waves)
+        against a target such as "a defended kingdom loses at most 1-2 kin
+        per hard invasion", and save invasions in progress.
+    *   Village landmarks (well, market, shrine, granary).
+    *   Tie the ration reserve to the season so garrisons shrink in winter.
+    *   Worn roads between a kingdom's villages for tribute and marching.
+    *   Temples and priests as a fourth kind of leader (see Religion above).
 *   ⬜ **Real pathfinding round rocks and homes.** Walkers find their way
     round the pond on a grid (Phase 17), but still steer round rocks,
     homes and the oak with a short sideways detour when stuck. Fine at

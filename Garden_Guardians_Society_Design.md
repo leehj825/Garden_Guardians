@@ -1,7 +1,6 @@
-# Garden Guardians — Society & Jobs Design (draft for review)
+# Garden Guardians — Society & Jobs Design
 
-Status: **steps 1 (villages), 2 (rations), 3 (soldiers, fishers), 4 (the headman's jobs) and 5 (kingdoms) are built; step 6 is not.** The open questions below were answered with the recommendations. Written 2026-10-01 after the discussion about villages, kingdoms and paid jobs.
-Please mark up the **Open questions** at the end; the plan in section 9 starts once they are answered.
+Status: **steps 1 (villages), 2 (rations), 3 (soldiers, fishers), 4 (the headman's jobs) and 5 (kingdoms) are built; step 6 (events and UI polish) is not.** Written 2026-10-01, updated 2026-10-02. Decisions are in section 11; the roadmap entry is Phase 40 in `Garden_Guardians_Roadmap.md`.
 
 ---
 
@@ -18,7 +17,7 @@ Today the game has two ideas tangled together: *how advanced a clan is* (its "ag
 | Piece | Where | What it does now |
 |---|---|---|
 | Clan | `Kin/KinGroup.cs` | `Members`, one `Leader`, `Home` + `Annexes` (extra homes), `Era`, `LiegeId`. Founded from encounters; named after the leader's family. |
-| Jobs | `Kin/Society.cs` `KinJob` | **Eight already exist:** Gatherer, Builder, Hunter, Guard, Farmer, Raider, Healer, Scout. Handed out by the Leader (`World.AssignJobs`). |
+| Jobs | `Kin/Society.cs` `KinJob` | **Eight existed at the start (Fisher is the ninth, added in step 3):** Gatherer, Builder, Hunter, Guard, Farmer, Raider, Healer, Scout. Handed out by the Leader (`World.AssignJobs`). |
 | Duty | `Kin/Bramblekin.Duty.cs` | A kin does its job **only when "fed and safe"** (the need order is hunger/thirst → safety → duty → settling → social). So today no job is ever *paid*; a Guard who is hungry stops guarding and forages. |
 | Store | `World/Shelter.cs` | Each home has `StoredFood`; clan's `SharingRule` (Equal / LeaderFirst) says who may eat from it. |
 | "Village" | `World/World.GroupHomes.cs` | **Only a counter** (`VillagesFounded`): a clan that builds a second home (annex) is "a village". It has no name, members, centre or leader of its own. |
@@ -26,7 +25,7 @@ Today the game has two ideas tangled together: *how advanced a clan is* (its "ag
 | Kingdom | `World/World.Kingdoms.cs` | A Kingdom-Age clan makes a smaller ally swear fealty (`LiegeId`); vassals pay tribute and can break free. The "king" is simply that clan's leader. |
 | Governance | `World.Council`, `World.Succession`, `World.Champions` | Leader's council of up to 3, named heirs, duels settling disputes, tribute. Re-usable for the new levels. |
 
-**Correction to what I said in chat:** jobs *do* exist. What is missing is that they are unpaid, and that "village" and "kingdom" are not things.
+*As of the start of this work:* jobs existed but were unpaid, and "village" and "kingdom" were not objects. Steps 1-5 changed both.
 
 ## 3. Principles
 
@@ -148,15 +147,15 @@ Each has a banner/colour and a line in the Clans and History views.
 
 ## 9. Build plan (each step independently testable)
 
-*Step 1 done (2026-10-01):* `Village` objects (`Source/World/Village.cs`, `World.Villages.cs`): formed from homes within 14 m of each other (clans not at war), at least one clan in the Farming Age; a clan belongs to the village its main home stands in; a name, middle and headman chosen from the clans' chiefs (claim to lead + clan size + friends' votes); merge/abandon handling; saved; shown as a gold-edged tag over the village and in the clan card, stats and History. Headless runs: 3 seeds x 50 min of game time give 2-4 stable villages each, multi-clan ones included, no renaming churn.
-
 
 1. **Village object** — formation, name, centre, headman election, dissolve; shown in the Clans view and as a banner on the map. *Test:* headless run: villages form/dissolve sensibly; no kin lose their clan.
+
+   *Step 1 done (2026-10-01):* `Village` objects (`Source/World/Village.cs`, `World.Villages.cs`): formed from homes within 14 m of each other (clans not at war), at least one clan in the Farming Age; a clan belongs to the village its main home stands in; a name, middle and headman chosen from the clans' chiefs (claim to lead + clan size + friends' votes); merge/abandon handling; saved; shown as a gold-edged tag over the village and in the clan card, stats and History. Headless runs: 3 seeds x 50 min of game time give 2-4 stable villages each, multi-clan ones included, no renaming churn.
 2. **Village store + rations** *(built 2026-10-01: see below)* — pooled store, paid kin eat from it, cap formula. Start with Guard only. *Test:* with rations on, guards guard longer, village food stays ≥ reserve, no new starvation deaths vs. baseline.
 3. **Soldier + Gatherer + Fisher jobs** — patrol-route pickup rule, fishing as a job. *Test:* job counts vs. cap; food income vs. upkeep.
 4. **Remaining paid jobs** — Scout, Builder, Healer on rations; headman assigns.
 5. **Kingdom object** — alliance of ≥ 3 villages, king, capital store, tribute, pledged soldiers (army).
-6. **Events & UI polish** — founding/succession/revolt headlines, history entries, stats lines.
+6. **Events & UI polish** *(not built)* — founding/succession/revolt headlines, chronicle entries, a Villages tab in History, stats lines.
 
 Walls (already built) become a **village** project paid from the village store in step 4.
 
@@ -173,18 +172,18 @@ Walls (already built) become a **village** project paid from the village store i
 * **Old saves** → all new save fields nullable; first tick re-derives villages from existing homes.
 * **Performance** → village/kingdom updates run at Leader-tick rate (seconds), not per frame.
 
-## 11. Open questions (please answer)
+## 11. Decisions
 
-1. **Village membership:** only one clan's homes, or may several clans share a village?
-   *Recommendation: several, with a headman chosen among the chiefs (it gives villages their own politics).*
-2. **Leader selection** at village/kingdom level: strongest, best-liked, or council vote?
-   *Recommendation: claim-to-lead score + council vote; duel only as the tie-break/dispute.*
-3. **Old kingdom mechanism** (clan over clan): keep for small realms, or replace entirely by village alliances?
-   *Recommendation: keep it for clans outside any village; true kingdoms are village alliances.*
-4. **Soldier food pickup:** side-effect near patrol route only (recommended), or a full "collector" duty?
-5. **How harsh should the economy be?** Start generous (few paid jobs, big reserve) or tight (more jobs, starvation risk)?
-   *Recommendation: start generous so it is stable, then tighten.*
-6. **Scale target:** is 5–6 villages per kingdom right, and what map size should this assume (small 100 m only, or medium/large)?
+| # | Question | Decision |
+|---|---|---|
+| 1 | Village membership | Several clans may share a village; headman chosen among the chiefs. **Built.** |
+| 2 | Leader selection | Claim-to-lead score + votes; duel only as tie-break. **Built** for headmen; kings follow the capital's headman. |
+| 3 | Old clan-over-clan kingdoms | Kept for clans outside any village. **Built.** |
+| 4 | Soldier food pickup | Side effect near the patrol route only (4 m). **Built.** |
+| 5 | Economy harshness | Started generous (reserve 0.7 per villager, half of income spent). Tighten later from headless sweeps. |
+| 6 | Scale target | **Open.** Kingdoms formed with 3-5 villages on the 100 m map; 5-6 per kingdom and larger maps are untested. |
+
+## 12. Build notes
 
 *Step 5 done (2026-10-02):* **Kingdoms.** `Kingdom.cs`, `World.Realms.cs`. Three or more villages within 90 m of each other and at peace (no war between any of their clans), one of them Kingdom Age, are united: the most populous Kingdom Age village is the capital, its headman is king (a new headman is a new king), and the kingdom gets a name ("Thornreach"). Villages in reach and at peace swear fealty to an existing kingdom; one at war with the capital leaves; under three villages it falls apart; a lost capital passes to the most populous village. Vassal villages send the capital a piece of food about every 30 s while their stores are above 1.5x their reserve; one soldier in three of a kingdom's villages is pledged, and marches to a sister village's alarm (`RealmAlarmFor`) after its own village's. Saved in `KingdomSave`. Shown on village tags ("capital of X" / "in X"), the clan card, the kin inspector (KING) and the stats panel. As built, formal alliances were too rare to bind three villages (3 villages, all Kingdom Age and near, had 0 allied pairs), so peace is the test, not alliance. Headless (6 seeds x 50 min, Kingdom-Age start, 24 kin): a kingdom formed in 6 of 6 worlds (3-5 villages at most), tribute 4-67 pieces per world, 1-3 soldiers pledged; kings crowned 1-4 per world, which is high turnover (the king follows the capital's headman). Not checked: that pledged soldiers really march across the map in a raid.
 
