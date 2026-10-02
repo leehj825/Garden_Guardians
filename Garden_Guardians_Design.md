@@ -1359,10 +1359,12 @@ village, kingdom) says who belongs together and who leads.
 *   **Big moments** — a war, a conquest, a peace or tribute, a famine
     (4 starving to death in one season), a new village, a clan splitting
     or ending, a coup, an alliance, farming worked out, a drought or a
-    harsh winter — go up on a **banner** just above the HUD for a few
+    harsh winter — go up on a **banner** at the top of the screen, under the buttons, for a few
     seconds (the urgent ones — war, conquest, famine — longer, in red).
     Tap it to fly the camera there. The speed is the player's alone: no
-    banner ever changes it.
+    banner ever changes it. The **Alerts: on/off** button beside **Stats**
+    hides them (the headlines still reach the log and the chronicle); the
+    choice is remembered.
 
 ## Save & Load
 *   **The garden carries on:** the game autosaves every 30s of real time

@@ -27,7 +27,7 @@ public static partial class Game
 
     /// <summary>
     /// Big-moment banners: picks up the World's headlines, shows them one
-    /// at a time just above the HUD (an urgent one longer, and never dropped
+    /// at a time at the top of the screen (an urgent one longer, and never dropped
     /// for a routine one). It never touches the speed: that's the player's
     /// alone. Held while the History screen is open.
     /// </summary>
@@ -35,6 +35,8 @@ public static partial class Game
     {
         foreach (Moment moment in world.TakeMoments())
         {
+            if (!_alertsOn)
+                continue; // Alerts are off: the headline is still in the log and the chronicle.
             _bannerQueue.Add(moment);
             if (_bannerQueue.Count > BannerQueueCapacity)
             {
@@ -79,10 +81,36 @@ public static partial class Game
         _banner = null;
     }
 
-    /// <summary>The current banner, centred just above the HUD: its title, the headline, and what a tap does.</summary>
-    private static void DrawBanner(int hudTop)
+    private enum AlertsView
     {
-        if (_banner is not { } banner || _showChronicle)
+        On,
+        Off,
+    }
+
+    private const string AlertsSetting = "alerts";
+
+    /// <summary>Whether alert banners are shown (the Alerts button beside Stats switches them; kept in <see cref="Preferences"/>). Off, the headlines still reach the log and the chronicle.</summary>
+    private static bool _alertsOn = true;
+
+    /// <summary>Where the Alerts button was drawn last frame, for taps.</summary>
+    private static Rectangle _alertsButtonBounds;
+
+    /// <summary>A tap on the Alerts button shows or hides the banners, and remembers the choice. Returns true if the tap was on it.</summary>
+    private static bool TapAlertsButton(Vector2 point)
+    {
+        if (!Raylib.CheckCollisionPointRec(point, _alertsButtonBounds))
+            return false;
+        _alertsOn = !_alertsOn;
+        if (!_alertsOn)
+            ClearBanners();
+        Preferences.Set(AlertsSetting, _alertsOn ? AlertsView.On : AlertsView.Off);
+        return true;
+    }
+
+    /// <summary>The current banner, centred at the top of the screen under the buttons: its title, the headline, and what a tap does.</summary>
+    private static void DrawBanner(int top)
+    {
+        if (_banner is not { } banner || _showChronicle || !_alertsOn)
             return;
 
         int titleSize = ScaledFontSize(0.8f);
@@ -95,7 +123,7 @@ public static partial class Game
             Math.Max(Raylib.MeasureText(text, textSize), Raylib.MeasureText(hint, textSize))) + pad * 2;
         int height = titleSize + textSize + pad * 2 + (hint.Length > 0 ? textSize + pad / 2 : 0) + pad / 2;
         int x = (Raylib.GetScreenWidth() - width) / 2;
-        int y = hudTop - height - pad;
+        int y = top + pad / 2;
         _bannerBounds = new Rectangle(x, y, width, height);
 
         // Fades out over its last second.

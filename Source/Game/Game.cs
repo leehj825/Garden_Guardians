@@ -320,6 +320,7 @@ public static partial class Game
         Preferences.Load(Preferences.DefaultPath);
         _logView = Preferences.Get(LogViewSetting, LogView.Brief);
         _statsView = Preferences.Get(StatsViewSetting, StatsView.Shown);
+        _alertsOn = Preferences.Get(AlertsSetting, AlertsView.On) == AlertsView.On;
         World.Overlays = Preferences.Get(OverlaySetting, MapOverlays.All);
         _gardenSlot = (int)Preferences.Get(GardenSetting, GardenSlot.Garden1);
         TerrainData.GrowNewGardens = Preferences.Get(TerrainSetting, TerrainMode.Fixed) == TerrainMode.Random;
@@ -472,6 +473,10 @@ public static partial class Game
             {
                 // Showed or hid the stats bar.
             }
+            else if (mousePressed && TapAlertsButton(mousePosition))
+            {
+                // Showed or hid the alert banners.
+            }
             else if (mousePressed && overlayButtons is not null && overlayButtons.Any(o => o.Button.Contains(mousePosition)))
             {
                 World.Overlays ^= overlayButtons.First(o => o.Button.Contains(mousePosition)).Flag;
@@ -569,7 +574,8 @@ public static partial class Game
             followButton?.Draw(followCamera.IsFollowing ? "Following" : "Follow", highlighted: followCamera.IsFollowing);
             controlButton?.Draw("Control", highlighted: false);
             int hudTop = DrawHud(world);
-            DrawBanner(hudTop);
+            int captionHeight = director.Caption is null ? 0 : ScaledFontSize(0.55f) + 2 * ((int)(10 * UiScale) + 2) + 6;
+            DrawBanner((int)(speedButtonMargin * 2 + speedButtonHeight) + captionHeight);
             if (!_showChronicle)
                 DrawDirectorCaption(director, (int)(speedButtonMargin * 2 + speedButtonHeight));
             if (_showChronicle)
@@ -1410,6 +1416,13 @@ public static partial class Game
             Raylib.DrawRectangleRec(_statsButtonBounds, new Color(0, 0, 0, statsHovered ? 190 : 150));
             Raylib.DrawRectangleLinesEx(_statsButtonBounds, 2f, new Color(255, 255, 255, 110));
             Raylib.DrawText(statsLabel, (int)_statsButtonBounds.X + statsPad, (int)_statsButtonBounds.Y + statsPad, statsFont, Color.RayWhite);
+
+            // The Alerts switch sits beside it.
+            _alertsButtonBounds = new Rectangle(_statsButtonBounds.X + statsWidth + 10, _statsButtonBounds.Y, Raylib.MeasureText("Alerts: off", statsFont) + statsPad * 2, statsHeight);
+            bool alertsHovered = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), _alertsButtonBounds);
+            Raylib.DrawRectangleRec(_alertsButtonBounds, new Color(0, 0, 0, alertsHovered ? 190 : 150));
+            Raylib.DrawRectangleLinesEx(_alertsButtonBounds, 2f, new Color(255, 255, 255, 110));
+            Raylib.DrawText(_alertsOn ? "Alerts: on" : "Alerts: off", (int)_alertsButtonBounds.X + statsPad, (int)_alertsButtonBounds.Y + statsPad, statsFont, Color.RayWhite);
             return (int)_statsButtonBounds.Y;
         }
 
