@@ -111,6 +111,16 @@ overhead camera:
     errands) and the game runs at 1x. It still gets hungry and thirsty,
     sick, and hurt, and it can die — then control ends. **Exit** (or Esc)
     gives it back to its own mind and flies the camera up over it again.
+*   **Standing alone:** while controlled the kin belongs to no clan, village
+    or kingdom: it takes no village job, is not rationed, counts for nothing
+    in its clan's defence, and no group can recruit or court it. A clan of
+    two is not dissolved for want of it. It eats only from its own home's
+    store (whatever the clan's sharing rule). The **Job** button (above
+    **Kin**) steps through **Normal, Hunter, Guard**: Guard gives the
+    soldier's blow and toughness and the guard kit, Hunter the hunter's kit;
+    it has no shield (shields come from its clan's crafts). **Exit** (or Esc) gives it back: it rejoins its old clan if that still
+    stands (with its old loyalty and job) and otherwise stays solitary. A garden saved
+    while someone is controlled saves it as still in its clan.
 *   **The view:** a third-person camera 4.8m behind it, over its shoulder,
     like an action game, kept above the ground.
 *   **Controls (touch):** a stick on the lower left walks it, relative to
@@ -129,7 +139,7 @@ overhead camera:
     own home or its clan's) or at the water's edge while hungry or thirsty
     and it eats or drinks on its own; the HUD says so.
 *   **Showing it:** the HUD shows its name, Health, Hunger and Thirst and
-    what it needs; the garden carries on around it. Not saved: a loaded
+    what it needs; the garden carries on around it. The control itself is not saved: a loaded
     garden starts with nobody controlled.
 
 ## Player Interaction (what's left of it)

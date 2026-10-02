@@ -632,6 +632,9 @@ public static partial class Game
             Console.WriteLine($"Couldn't load {loadPath}");
             return;
         }
+        // A development aid: GARDEN_START_ERA=0..3 grants every clan that age at the start (as the start-age choice in the menu does).
+        if (int.TryParse(Environment.GetEnvironmentVariable("GARDEN_START_ERA"), out int startEra) && loadPath is null)
+            world.GrantEra((Era)Math.Clamp(startEra, 0, 3));
         Console.WriteLine($"Garden Guardians headless run: {simulatedSeconds:0}s simulated, seed {(seed?.ToString() ?? "random")}");
         PrintReport(world);
 
@@ -642,9 +645,34 @@ public static partial class Game
         // A development aid: GARDEN_CONTROL_TEST=<seconds> takes the wheel of a clan member at 60 s for that long (as Guard), then gives it back.
         float controlFor = float.TryParse(Environment.GetEnvironmentVariable("GARDEN_CONTROL_TEST"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float parsedControl) ? parsedControl : 0f;
         Bramblekin? controlled = null;
+        // A development aid: GARDEN_REALM_TEST=1 invades a vassal village of the first kingdom (once it has stood a minute) and reports how many
+        // pledged soldiers of its sister villages come to its defence.
+        bool realmTest = Environment.GetEnvironmentVariable("GARDEN_REALM_TEST") == "1";
+        Village? realmTarget = null;
+        float realmStart = 0f, realmLog = 0f;
         int controlPhase = controlFor > 0f ? 0 : 3;
         while (world.ElapsedSeconds < endTime)
         {
+            if (realmTest)
+            {
+                if (realmTarget is null && world.Realms.FirstOrDefault(k => world.ElapsedSeconds - k.FoundedAt > 60f && world.VillagesOf(k).Any(v => v.Id != k.Capital)) is { } realm &&
+                    world.VillagesOf(realm).Where(v => v.Id != realm.Capital).OrderByDescending(v => world.VillagesOf(realm).Where(o => o != v).Sum(o => world.ClansOf(o).SelectMany(c => c.Members).Count(world.IsPledged))).First() is { } target)
+                {
+                    realmTarget = target;
+                    realmStart = world.ElapsedSeconds;
+                    world.StartVillageInvasion(target, 8);
+                    Console.WriteLine($"[REALM-TEST] t={realmStart:0}s: invading {target.Name} of {realm.Name}; pledged elsewhere: {world.VillagesOf(realm).Where(o => o != target).Sum(o => world.ClansOf(o).SelectMany(c => c.Members).Count(world.IsPledged))}");
+                }
+                else if (realmTarget is not null && world.ElapsedSeconds >= realmLog && world.ElapsedSeconds < realmStart + 120f)
+                {
+                    realmLog = world.ElapsedSeconds + 10f;
+                    Kingdom? kingdom = world.RealmOf(realmTarget);
+                    var sisters = kingdom is null ? new List<Village>() : world.VillagesOf(kingdom).Where(o => o != realmTarget).ToList();
+                    var pledged = sisters.SelectMany(o => world.ClansOf(o).SelectMany(c => c.Members)).Where(m => !m.IsDead && world.IsPledged(m)).ToList();
+                    int near = pledged.Count(m => GroundMover.HorizontalDistance(m.Position, realmTarget.Centre) < 25f);
+                    Console.WriteLine($"[REALM-TEST] +{world.ElapsedSeconds - realmStart:0}s: spiders {world.InvadersAt(realmTarget)}, pledged {pledged.Count}, within 25 m of the village {near}");
+                }
+            }
             if (controlPhase == 0 && world.ElapsedSeconds >= 60f &&
                 world.Colony.FirstOrDefault(k => !k.IsDead && !k.IsYoung && world.GroupOf(k) is { } g && g.Members.Count >= 2) is { } pick)
             {
@@ -683,6 +711,7 @@ public static partial class Game
             }
         }
 
+        Console.WriteLine($"[REALMS] kingdoms now {world.Realms.Count}, founded {world.KingdomsFounded}, kings crowned {world.KingsCrowned}, villages named {world.VillagesNamed}, tribute {world.Realms.Sum(k => k.TributePaid)}, pledged {world.Realms.Sum(k => k.Pledged)}");
         Prof.Report(steps);
         Console.WriteLine();
         Console.WriteLine("=== Summary ===");

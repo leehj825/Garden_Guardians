@@ -1117,16 +1117,30 @@ checked with headless A/B runs (numbers are in that file).
 *   ✅ **Spider invasions** (`InvaderSpider.cs`, `World.Invasions.cs`):
     swarms in waves scaled to the target's defence; light ones hit a
     village, hard ones a kingdom. Not saved.
+*   ✅ **Control is independent of society** (2026-10-02): a kin the player
+    controls leaves its clan, village and kingdom, chooses Normal, Hunter or
+    Guard, and rejoins its clan on exit (`Bramblekin.Play.cs`;
+    `GARDEN_CONTROL_TEST=<s>` checks it headless).
+*   ✅ **Sticky crown** (2026-10-02): a sitting king keeps the crown while he
+    lives in the capital's clans; a new headman no longer displaces him.
+    Headless (6 seeds x 50 min, Kingdom-Age start): kings crowned per world
+    were 2-4 before and 2-4 after; the remaining turnover is the king dying
+    (the log now says so), not headmen changing. Kingdoms still fall apart
+    when a village dissolves (3 of 7 founded were gone at the end).
+*   🟡 **Realm defence checked** (`GARDEN_REALM_TEST=1`): invading a vassal
+    village, 1 of the 2-3 pledged soldiers of the sister villages came
+    within 25 m of it in two worlds, late and only sometimes. They do march,
+    but too few are pledged and the call (the sister's own alarm) comes
+    late. Still to do: pledge by rank, not by `ID % 3`, and raise the share.
 *   ⬜ **Events and UI polish** (Society step 6): headlines and chronicle
     entries for founding, succession and revolt, a Villages tab in History,
     more stats lines.
-*   ⬜ **Open problems:** kings are crowned 1-4 times per world (the crown
-    follows the capital's headman); pledged soldiers marching to a sister
-    village were not verified in a real raid; invasions are easy for a
+*   ⬜ **Open problems:** kingdoms dissolve when a village does (3 of 7 founded);
+    pledged soldiers are few and arrive late (see above); invasions are easy for a
     defended village; formal alliances are too rare to bind villages, so
     peace is the test. Found in a code-vs-doc review (2026-10-02, not yet
-    fixed): pledged soldiers are chosen by `ID % 3` and by `Job == Guard`
-    (not checked against `VillageJob`); a vassal can lose its headman and
+    fixed): pledged soldiers are chosen by `ID % 3` (a village-job guard does
+    have `Job == Guard`, set by the leader tick); a vassal can lose its headman and
     stay in the kingdom; a capital keeps its crown after leaving the
     Kingdom Age; soldiers are scored on born Strength, not eggs. Kingdoms
     also feed the ant-hill assault (`World.Assault.cs`).

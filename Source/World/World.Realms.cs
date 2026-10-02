@@ -165,18 +165,25 @@ public sealed partial class World
             RunRealm(kingdom);
     }
 
-    /// <summary>The capital's headman is king; when the headman changes, so does the king.</summary>
+    /// <summary>
+    /// The capital's headman is the first king, and the crown is his for life: a new headman does not displace a sitting king who still
+    /// lives in the capital's clans. A new king is crowned (the capital's headman) when the king dies, leaves the capital, or the capital changes.
+    /// </summary>
     private void CrownKing(Kingdom kingdom, Village capital)
     {
         if (capital.HeadmanId is not { } headman || kingdom.KingId == headman)
+            return;
+        if (KingOf(kingdom) is { } sitting && (sitting.GroupId ?? sitting.AwayGroupId) is { } home && capital.ClanIds.Contains(home))
             return;
         Bramblekin? king = HeadmanOf(capital);
         if (king is null)
             return;
         bool first = kingdom.KingId is null;
+        Bramblekin? previous = first ? null : Colony.FirstOrDefault(k => k.ID == kingdom.KingId && !k.IsDead);
+        string why = first ? "" : previous is null ? " (the old king died)" : $" (after {previous.Name} left the capital's clans)";
         kingdom.KingId = headman;
         KingsCrowned++;
-        Game.AddEventLog($"[KINGDOM] {king.Name} {(first ? "is crowned" : "becomes king")} of {kingdom.Name}");
+        Game.AddEventLog($"[KINGDOM] {king.Name} {(first ? "is crowned" : "becomes king")} of {kingdom.Name}{why}");
         Chronicle($"{king.Name} {(first ? "was crowned" : "became king")} of the kingdom of {kingdom.Name}", ClansOf(capital).ToArray());
     }
 
