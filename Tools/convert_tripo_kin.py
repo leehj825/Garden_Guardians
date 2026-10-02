@@ -77,6 +77,21 @@ def repose_tpose_arms(points, normals, degrees=58.0, root=0.19, height=0.44, ram
     return out, out_n, held
 
 
+def make_fists(points, start, shrink=0.6, swell=1.35, band=(0.26, 0.50)):
+    """Close the hands of a model whose arms are held straight out: everything farther out than <start> (the fingers, the hand) is pulled in
+    to <shrink> of its length along the arm and thickened by <swell> about the arm's own axis, so the spread twigs become a fist."""
+    out = points.copy()
+    for side in (1.0, -1.0):
+        x = points[:, 0] * side
+        ring = (x > start - 0.03) & (x <= start) & (points[:, 2] > band[0]) & (points[:, 2] < band[1])
+        centre = points[ring].mean(axis=0)
+        hand = (x > start) & (points[:, 2] > band[0]) & (points[:, 2] < band[1])
+        out[hand, 0] = side * (start + (x[hand] - start) * shrink)
+        out[hand, 1] = centre[1] + (points[hand, 1] - centre[1]) * swell
+        out[hand, 2] = centre[2] + (points[hand, 2] - centre[2]) * swell
+    return out
+
+
 def fitted_arms(position, degrees, scale, skeleton_degrees=58.0, root=0.19, height=0.44):
     """The skeleton's left arm, forearm and hand joints moved to where the re-posed mesh's arm lies (shortened by <scale> and hanging at
     <degrees> instead of the skeleton's own angle), for the bone segments the skin weights are measured against (the right side is mirrored)."""
@@ -206,6 +221,7 @@ def main():
     ap.add_argument("--female", action="store_true")
     ap.add_argument("--texture", type=int, default=2048)
     ap.add_argument("--tpose-arms", action="store_true", help="the model's arms are held straight out: lower them to the skeleton's own angle (and fit nothing to the arms)")
+    ap.add_argument("--fist-start", type=float, help="close the hands: what lies farther out than this (bind space) is pulled in and thickened into a fist (see make_fists)")
     ap.add_argument("--arm-scale", type=float, default=1.0, help="how much of their length --tpose-arms leaves the arms")
     ap.add_argument("--arm-degrees", type=float, default=58.0, help="how far --tpose-arms lowers them (a model whose arms already droop needs less)")
     ap.add_argument("--lods", action="store_true", help="also write _lod1 and _lod2: the mesh cut to --lod-tris triangles, with smaller pictures")
@@ -225,6 +241,8 @@ def main():
     pos = to_bind(pos_y, scale)
     nrm = to_bind(nrm_y)
     if args.tpose_arms:
+        if args.fist_start:
+            pos = make_fists(pos, args.fist_start)
         pos, nrm, arm_part = repose_tpose_arms(pos, nrm, args.arm_degrees, scale=args.arm_scale)
     else:
         arm_part = None
