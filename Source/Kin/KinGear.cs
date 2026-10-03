@@ -142,18 +142,19 @@ public static unsafe class KinGear
             {
                 // Held by its grip against the inside of the palm, standing along the hand with its belly forward.
                 // Hanging from the fist by its grip, tips down (and the whole bow swings with the hand).
-                // Carried at the side, lying along the way it faces, its wood part down and the string on top (its belly, which the string spans, faces down).
+                // The bow's wood bulges towards its model +Y and the string runs across the other side. Carried at the side it lies along the way the kin
+                // faces, wood down and string on top; drawn, it stands upright across the stretched arm with the wood to the front and the string behind.
                 Vector3 along = Vector3.Normalize(forward - 0.1f * Vector3.UnitY);
+                Vector3 woodWay = -Vector3.UnitY;
                 Vector3 centre = left - Vector3.UnitX * 0.03f + forward * 0.05f;
-                Vector3 facing = -Vector3.UnitY;
                 if (bowRaised)
                 {
-                    // Aiming: the arm is stretched out ahead, and the bow stands upright across it, at a right angle, its belly towards the target.
-                    facing = leftFingers;
-                    along = Vector3.UnitY - Vector3.Dot(Vector3.UnitY, facing) * facing;
+                    woodWay = leftFingers;
+                    along = Vector3.UnitY - Vector3.Dot(Vector3.UnitY, woodWay) * woodWay;
                     along = along.LengthSquared() < 1e-6f ? Vector3.UnitY : Vector3.Normalize(along);
-                    centre = left + facing * 0.02f;
+                    centre = left + woodWay * 0.02f;
                 }
+                Vector3 facing = Vector3.Cross(along, woodWay); // (the frame's third axis: model +Y then points the wood's way)
                 GearModels.Draw(GearModels.Gear.Bow, Matrix4x4.CreateScale(BowLength) * Frame(along, facing, centre) * body);
             }
         }

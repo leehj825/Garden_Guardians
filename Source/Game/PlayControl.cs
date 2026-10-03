@@ -59,7 +59,7 @@ public sealed class PlayControl
         _yaw = MathF.Atan2(heading.X, heading.Y);
         if (float.TryParse(Environment.GetEnvironmentVariable("GARDEN_PLAY_YAW"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float turnDegrees))
             _yaw += turnDegrees * MathF.PI / 180f; // A development aid: look at the kin from another side (180 for its front).
-        _pitch = 0.4f;
+        _pitch = float.TryParse(Environment.GetEnvironmentVariable("GARDEN_PLAY_PITCH"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float testPitch) ? testPitch : 0.4f; // (GARDEN_PLAY_PITCH: a development aid)
         _focus = kin.Position + new Vector3(0f, LookHeight, 0f);
         _stickTouch = _lookTouch = _attackTouch = -1;
         _stick = Vector2.Zero;
