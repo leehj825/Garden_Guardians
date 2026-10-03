@@ -17,9 +17,7 @@ public sealed partial class World
     private const float ArrowLieSeconds = 4f;
 
     /// <summary>Drawn length (m) of an arrow.</summary>
-    private const float ArrowLength = 0.6f;
-
-    private static readonly Color ArrowShaftColor = new(150, 105, 60, 255), ArrowHeadColor = new(120, 120, 125, 255), ArrowFletchColor = new(235, 230, 215, 255);
+    private const float ArrowLength = 0.7f;
 
     private sealed class ArrowShot
     {
@@ -145,27 +143,30 @@ public sealed partial class World
         }
     }
 
-    /// <summary>Each arrow: a wooden shaft, a stone head and a white fletching, along the way it flies.</summary>
+    /// <summary>An arrow that has landed stands in the ground, point down and leaning this far (radians) from the vertical, the way it was flying.</summary>
+    private const float ArrowStuckLean = 0.35f;
+
+    /// <summary>Each arrow: the arrow model (Assets/Models/Props/Gear/Arrow.glb, Tools/make_arrow.py) with its point forward, along the way it flies; a landed one is stuck point down in the ground.</summary>
     private void DrawArrows()
     {
         foreach (ArrowShot arrow in _arrows)
         {
-            Vector3 d = arrow.Landed ? Vector3.Normalize(new Vector3(arrow.Direction.X, MathF.Min(arrow.Direction.Y, -0.3f), arrow.Direction.Z)) : arrow.Direction;
+            Vector3 d = arrow.Direction;
             Vector3 tip = arrow.At;
-            Vector3 tail = tip - d * ArrowLength;
-            Vector3 headBase = tip - d * 0.07f;
-            Raylib.DrawCylinderEx(tail, headBase, 0.014f, 0.014f, 5, ArrowShaftColor);
-            Raylib.DrawCylinderEx(headBase, tip, 0.035f, 0f, 5, ArrowHeadColor);
-
-            Vector3 side = Vector3.Cross(d, Vector3.UnitY);
-            side = side.LengthSquared() > 1e-6f ? Vector3.Normalize(side) : Vector3.UnitX;
-            Vector3 up = Vector3.Normalize(Vector3.Cross(side, d));
-            Vector3 feather = tail + d * 0.09f;
-            foreach (Vector3 way in new[] { side, up })
+            if (arrow.Landed)
             {
-                Raylib.DrawTriangle3D(tail, feather + way * 0.06f, feather - way * 0.06f, ArrowFletchColor);
-                Raylib.DrawTriangle3D(tail, feather - way * 0.06f, feather + way * 0.06f, ArrowFletchColor);
+                var flat = new Vector3(d.X, 0f, d.Z);
+                flat = flat.LengthSquared() > 1e-6f ? Vector3.Normalize(flat) : Vector3.UnitX;
+                d = Vector3.Normalize(flat * MathF.Sin(ArrowStuckLean) + new Vector3(0f, -MathF.Cos(ArrowStuckLean), 0f));
+                tip = new Vector3(arrow.At.X, GetHeightAt(arrow.At.X, arrow.At.Z) - 0.05f, arrow.At.Z); // (the point is in the ground)
             }
+            Vector3 centre = tip - d * (ArrowLength * 0.5f);
+            Vector3 side = Vector3.Cross(d, Vector3.UnitY);
+            side = side.LengthSquared() > 1e-6f ? Vector3.Normalize(side) : Vector3.UnitZ;
+            Vector3 up = Vector3.Normalize(Vector3.Cross(side, d));
+            // The model lies along +X: its frame has X along the flight, and the other two axes square to it.
+            var frame = new Matrix4x4(d.X, d.Y, d.Z, 0f, up.X, up.Y, up.Z, 0f, side.X, side.Y, side.Z, 0f, centre.X, centre.Y, centre.Z, 1f);
+            GearModels.Draw(GearModels.Gear.Arrow, Matrix4x4.CreateScale(ArrowLength) * frame);
         }
     }
 }
