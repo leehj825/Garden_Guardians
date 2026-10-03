@@ -15,13 +15,16 @@ public sealed partial class Bramblekin
 
     /// <summary>A hunter's arrow flies this far (m) before it drops, and its bow takes this long (s) to be ready again; the arrow leaves the bow this long (s) into the aim clip.</summary>
     public const float ArrowRange = 12f;
-    private const float PlayerShotCooldown = 1.0f, ArrowReleaseDelay = 0.3f;
+    private const float ArrowReleaseDelay = 0.3f;
 
     /// <summary>The aim is helped towards a target within this half-angle (radians) of where the player looks.</summary>
     private const float AimAssistCone = 0.5f;
 
     /// <summary>A strike reaches this far (m) past the edges of the two bodies, and takes this long (s) to recover from; its swing lasts this long (s).</summary>
-    private const float PlayerReach = 1.4f, PlayerStrikeCooldown = 0.7f, PlayerSwingSeconds = 0.5f;
+    private const float PlayerReach = 1.4f;
+
+    /// <summary>The next blow or shot may start this share of the way to the end of the clip of the last one: the player's combo runs on with no gap.</summary>
+    private const float BlowRecoveredShare = 0.97f;
 
     /// <summary>It stands still this near (m) to food, its store or the water, hungry or thirsty, and eats or drinks on its own.</summary>
     private const float PlayerFoodReach = 2f, PlayerStoreReach = 3.5f, PlayerWaterReach = 2.5f;
@@ -165,14 +168,7 @@ public sealed partial class Bramblekin
 
         if (_swing > 0f)
         {
-            _swing -= deltaTime;
-            if (_arrowDelay > 0f)
-            {
-                _arrowDelay -= deltaTime;
-                if (_arrowDelay <= 0f)
-                    LoosePlayerArrow(world);
-            }
-            SetState(BramblekinState.Fighting);
+            UpdatePlayerBlow(deltaTime, world);
             return;
         }
         if (State == BramblekinState.Eating)
@@ -208,6 +204,19 @@ public sealed partial class Bramblekin
             _mover.Idle();
     }
 
+    /// <summary>A blow or shot under way: its time runs down (the clip's own, so the next one can start the moment it ends) and the arrow leaves the bow on its cue.</summary>
+    private void UpdatePlayerBlow(float deltaTime, World world)
+    {
+        _swing -= deltaTime;
+        if (_arrowDelay > 0f)
+        {
+            _arrowDelay -= deltaTime;
+            if (_arrowDelay <= 0f)
+                LoosePlayerArrow(world);
+        }
+        SetState(BramblekinState.Fighting);
+    }
+
     /// <summary>One step along the stick: a jog, or a run with the run toggle on.</summary>
     private void MovePlayer(float deltaTime, World world)
     {
@@ -229,10 +238,11 @@ public sealed partial class Bramblekin
     /// <summary>The bow is drawn: the kin turns to the way it will shoot, the aim clip plays, and the arrow follows partway through (see <see cref="LoosePlayerArrow"/>).</summary>
     private void PlayerAim(World world)
     {
-        _strikeCooldown = PlayerShotCooldown;
         _jumpClipPlaying = false;
         BeginBlow(world, ranged: true);
-        _swing = PlayerSwingSeconds;
+        float clipSeconds = BramblekinModel.ActionSeconds(_actionClip);
+        _strikeCooldown = clipSeconds * BlowRecoveredShare;
+        _swing = clipSeconds;
         _arrowDelay = ArrowReleaseDelay;
         SetState(BramblekinState.Fighting);
         Vector3 toward = AimDirection(world);
@@ -242,11 +252,13 @@ public sealed partial class Bramblekin
     }
 
     /// <summary>Where an arrow loosed now would go: at the nearest target within reach and near the player's line of sight, else the way the player looks.</summary>
-    private Vector3 AimDirection(World world)
+    private Vector3 AimDirection(World world) => AimDirection(world, out _);
+
+    private Vector3 AimDirection(World world, out ICombatant? best)
     {
         Vector2 look = PlayerLook.LengthSquared() > 1e-6f ? Vector2.Normalize(PlayerLook) : _mover.Heading;
         Vector3 from = Position + new Vector3(0f, BodyHeight * 0.75f, 0f);
-        ICombatant? best = null;
+        best = null;
         float bestDistance = ArrowRange;
         foreach (ICombatant candidate in world.ArrowTargets(this))
         {
@@ -261,6 +273,38 @@ public sealed partial class Bramblekin
             return new Vector3(look.X, 0.03f, look.Y);
         Vector3 to = best.Position + new Vector3(0f, MathF.Max(0.15f, best.CollisionRadius), 0f) - from;
         return Vector3.Normalize(to);
+    }
+
+    /// <summary>A hunter under control is shown where its next arrow goes: a red ring round the target it has locked on to, else a yellow mark where the aim (the camera's way) reaches, with the arrow's path.</summary>
+    private void DrawAimMarker(World world)
+    {
+        Vector3 direction = AimDirection(world, out ICombatant? target);
+        Vector3 from = Position + new Vector3(0f, BodyHeight * 0.75f, 0f);
+        var flatNormal = new Vector3(1f, 0f, 0f);
+        if (target is not null)
+        {
+            Vector3 at = target.Position;
+            float ground = World.GetHeightAt(at.X, at.Z) + 0.06f;
+            float radius = MathF.Max(0.3f, target.CollisionRadius + 0.25f);
+            var red = new Color(235, 50, 40, 230);
+            Raylib.DrawCircle3D(new Vector3(at.X, ground, at.Z), radius, flatNormal, 90f, red);
+            Raylib.DrawCircle3D(new Vector3(at.X, ground, at.Z), radius * 0.8f, flatNormal, 90f, red);
+            Vector3 top = new(at.X, at.Y + MathF.Max(0.6f, target.CollisionRadius * 2f) + 0.2f, at.Z);
+            Raylib.DrawLine3D(top, top + new Vector3(0f, 0.25f, 0f), red); // (an arrow-shaped marker above it)
+            Raylib.DrawLine3D(top, top + new Vector3(0.08f, 0.12f, 0f), red);
+            Raylib.DrawLine3D(top, top + new Vector3(-0.08f, 0.12f, 0f), red);
+            return;
+        }
+
+        Vector3 end = from + direction * ArrowRange;
+        var yellow = new Color(255, 225, 80, 230);
+        Raylib.DrawLine3D(from, end, new Color(255, 225, 80, 110));
+        float floor = World.GetHeightAt(end.X, end.Z) + 0.06f;
+        var mark = new Vector3(end.X, floor, end.Z);
+        Raylib.DrawCircle3D(mark, 0.55f, flatNormal, 90f, yellow);
+        Raylib.DrawCircle3D(mark, 0.25f, flatNormal, 90f, yellow);
+        Raylib.DrawLine3D(mark + new Vector3(-0.8f, 0f, 0f), mark + new Vector3(0.8f, 0f, 0f), yellow);
+        Raylib.DrawLine3D(mark + new Vector3(0f, 0f, -0.8f), mark + new Vector3(0f, 0f, 0.8f), yellow);
     }
 
     /// <summary>The arrow leaves the bow.</summary>
@@ -344,10 +388,11 @@ public sealed partial class Bramblekin
     /// <summary>A swing at whatever is nearest in front: wildlife, an ant, an enemy — and, if the player allows it, Bramblekin of other clans.</summary>
     private void PlayerStrike(World world)
     {
-        _strikeCooldown = PlayerStrikeCooldown;
         _jumpClipPlaying = false;
         BeginBlow(world);
-        _swing = PlayerSwingSeconds;
+        float clipSeconds = BramblekinModel.ActionSeconds(_actionClip);
+        _strikeCooldown = clipSeconds * BlowRecoveredShare;
+        _swing = clipSeconds;
         SetState(BramblekinState.Fighting);
 
         Vector2 heading = _mover.Heading.LengthSquared() > 1e-6f ? Vector2.Normalize(_mover.Heading) : Vector2.UnitX;

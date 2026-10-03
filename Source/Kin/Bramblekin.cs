@@ -683,6 +683,8 @@ public sealed partial class Bramblekin : ICombatant
         if (_actionLock > 0f)
         {
             _actionLock -= deltaTime; // A blow or a pick-up is being played out: it is finished before the kin moves or does anything else.
+            if (IsPlayerControlled)
+                UpdatePlayerBlow(deltaTime, world); // (the arrow still leaves the bow partway through the clip)
             return;
         }
         if (IsPlayerControlled)

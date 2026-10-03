@@ -19,6 +19,9 @@ public sealed partial class Bramblekin
     /// </summary>
     public void Draw(World world)
     {
+        if (IsPlayerControlled && Job == KinJob.Hunter && !IsYoung)
+            DrawAimMarker(world);
+
         // Climbing the ant hill's mound for the eggs: drawn up the slope, from where it stands at the foot.
         if (ClimbT > 0f && world.Anthill is { } hill)
         {
