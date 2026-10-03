@@ -119,7 +119,7 @@ public sealed partial class Bramblekin
         if (TrySling(target, world))
             return;
 
-        float reach = BodyRadius + target.CollisionRadius + StrikeReach;
+        float reach = BodyRadius + target.CollisionRadius + StrikeReach + Profile.Reach;
         Vector3 targetPosition = target.Position;
         if (GroundMover.HorizontalDistanceSquared(Position, targetPosition) > reach * reach)
         {
@@ -133,7 +133,7 @@ public sealed partial class Bramblekin
 
         if (_strikeCooldown > 0f)
             return;
-        _strikeCooldown = StrikeCooldownDuration;
+        _strikeCooldown = StrikeCooldownDuration * Profile.Cooldown;
         if (target is Bramblekin relative && relative.Health <= StrikeDamage && relative.IsCloseKinOf(this))
             return;
 

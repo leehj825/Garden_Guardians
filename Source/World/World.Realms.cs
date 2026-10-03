@@ -202,7 +202,7 @@ public sealed partial class World
         int pledged = 0;
         foreach (Village village in VillagesOf(kingdom))
         {
-            List<Bramblekin> soldiers = ClansOf(village).SelectMany(c => c.Members).Where(m => !m.IsDead && !m.IsYoung && m.Job == KinJob.Guard).OrderBy(m => m.ID).ToList();
+            List<Bramblekin> soldiers = ClansOf(village).SelectMany(c => c.Members).Where(m => !m.IsDead && !m.IsYoung && m.Job == KinJob.Swordsman).OrderBy(m => m.ID).ToList();
             for (int i = 0; i < soldiers.Count; i += PledgeOneIn)
                 _pledgedIds.Add(soldiers[i].ID);
             pledged += ClansOf(village).SelectMany(c => c.Members).Count(m => !m.IsDead && IsPledged(m));
@@ -226,7 +226,7 @@ public sealed partial class World
 
     /// <summary>A soldier of a kingdom's village, one in <see cref="PledgeOneIn"/>, is sworn to defend its sister villages too.</summary>
     public bool IsPledged(Bramblekin soldier) =>
-        soldier.Job == KinJob.Guard && _pledgedIds.Contains(soldier.ID) && GroupOf(soldier) is { } clan && VillageOf(clan)?.KingdomId is not null;
+        soldier.Job == KinJob.Swordsman && _pledgedIds.Contains(soldier.ID) && GroupOf(soldier) is { } clan && VillageOf(clan)?.KingdomId is not null;
 
     /// <summary>The threat a pledged soldier of <paramref name="village"/> should march to: an alarm at a sister village of its kingdom. Null if none.</summary>
     public ICombatant? RealmAlarmFor(Village village)

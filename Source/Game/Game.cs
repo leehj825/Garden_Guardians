@@ -370,10 +370,10 @@ public static partial class Game
             if (!_playTestDone && Environment.GetEnvironmentVariable("GARDEN_PLAY_TEST") == "1" && world.Colony.FirstOrDefault(k => !k.IsDead && !k.IsYoung && (Environment.GetEnvironmentVariable("GARDEN_PLAY_FEMALE") != "1" || k.Sex == Sex.Female) && (Environment.GetEnvironmentVariable("GARDEN_PLAY_MALE") != "1" || k.Sex == Sex.Male)) is { } testKin)
             {
                 _playTestDone = true; // A development aid: start out controlling a kin.
-                if (Environment.GetEnvironmentVariable("GARDEN_PLAY_GUARD") == "1")
+                if (Environment.GetEnvironmentVariable("GARDEN_PLAY_SWORDSMAN") == "1")
                 {
                     testKin.CyclePlayerJob();
-                    testKin.CyclePlayerJob(); // Hunter, then Guard.
+                    testKin.CyclePlayerJob(); // Hunter, then Swordsman.
                 }
                 if (Enum.TryParse(Environment.GetEnvironmentVariable("GARDEN_PLAY_JOB"), out KinJob wantedJob))
                 {
@@ -656,7 +656,7 @@ public static partial class Game
         float reportTimer = 0f;
         int steps = 0;
         bool assaultStarted = assaultLevel <= 0;
-        // A development aid: GARDEN_CONTROL_TEST=<seconds> takes the wheel of a clan member at 60 s for that long (as Guard), then gives it back.
+        // A development aid: GARDEN_CONTROL_TEST=<seconds> takes the wheel of a clan member at 60 s for that long (as Swordsman), then gives it back.
         float controlFor = float.TryParse(Environment.GetEnvironmentVariable("GARDEN_CONTROL_TEST"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float parsedControl) ? parsedControl : 0f;
         bool stopAtCastle = Environment.GetEnvironmentVariable("GARDEN_STOP_AT_CASTLE") == "1";
         float? castleSeen = null;
@@ -696,7 +696,7 @@ public static partial class Game
                 controlled = pick;
                 Guid clan = pick.GroupId!.Value;
                 pick.CyclePlayerJob();
-                pick.CyclePlayerJob(); // Hunter, then Guard.
+                pick.CyclePlayerJob(); // Hunter, then Swordsman.
                 pick.SetPlayerControlled(true, world);
                 Console.WriteLine($"[CONTROL] {pick.Name} taken at {world.ElapsedSeconds:0}s: clan {pick.GroupId?.ToString() ?? "none"} (was {clan}), job {pick.Job}, village job {pick.VillageJob}");
             }
@@ -830,6 +830,7 @@ public static partial class Game
             $"Building: a Tent takes {world.AverageTentBuildSeconds:0}s on average, a House upgrade {world.AverageHouseUpgradeSeconds:0}s; " +
             $"{world.StagesOlderThan(600f)} of {world.Shelters.Count(s => !s.IsBuilt || s.IsUpgrading)} construction stages under way have stalled over 10 min.");
         PrintSurvivalTrend(world);
+        PrintJobTrend(world);
         PrintLeadership(world);
         PrintRebellion(world);
         PrintLineage(world);
@@ -885,6 +886,21 @@ public static partial class Game
                 $"{world.DeathsIn(status, DeathCause.Starvation)} starved, {world.DeathsIn(status, DeathCause.Predator)} to predators, " +
                 $"{world.DeathsIn(status, DeathCause.Kin)} to kin, {world.DeathsIn(status, DeathCause.OldAge)} of old age, {world.DeathsIn(status, DeathCause.Sickness)} of sickness, " +
                 $"{world.DeathsIn(status, DeathCause.Thirst)} of thirst)");
+        }
+    }
+
+    /// <summary>Headless summary: grown kin's deaths per kin-hour by job, and how many died to predators and to other kin: how the fighting jobs fare.</summary>
+    private static void PrintJobTrend(World world)
+    {
+        Console.WriteLine("Job trend (grown kin, per kin-hour in each job):");
+        foreach (KinJob job in Enum.GetValues<KinJob>())
+        {
+            double hours = world.KinHoursAs(job);
+            if (hours <= 0.05)
+                continue;
+            Console.WriteLine(
+                $"  JOB {job,-11} deaths {world.DeathsAs(job) / hours,5:0.0}/h   predators {world.DeathsAs(job, DeathCause.Predator) / hours,5:0.0}/h   kin {world.DeathsAs(job, DeathCause.Kin) / hours,5:0.0}/h   " +
+                $"({world.DeathsAs(job)} deaths over {hours:0.0} kin-hours)");
         }
     }
 
@@ -1037,8 +1053,8 @@ public static partial class Game
             float width = BarWidth(camera, barAnchor, Bramblekin.BodyRadius * 2f);
             if (BodyPixels(camera, barAnchor, Bramblekin.BodyRadius * 2f) < HideBarsBelowPixels)
                 continue; // too far to read a bar: leave it out
-            if (b.Health < Bramblekin.MaxHealth)
-                DrawBar(camera, barAnchor, 0f, width, (float)b.Health / Bramblekin.MaxHealth, Color.Green);
+            if (b.Health < b.HealthCap)
+                DrawBar(camera, barAnchor, 0f, width, (float)b.Health / b.HealthCap, Color.Green);
             float below = width * 0.21f;
             if (b.IsHungry)
             {
@@ -1339,7 +1355,7 @@ public static partial class Game
             ((kin.ParentNames is { } parents ? $"Child of {parents.Mother} & {parents.Father}" : "Wandered in from the edge") +
                 (kin.GuardianNames is { } guardians ? $", raised by {guardians.A} & {guardians.B}" : ""), ink),
             (kin.DescribeFamily(), kin.Partner is not null ? new Color(190, 70, 120, 255) : ink),
-            ($"State: {kin.State}   Health: {kin.Health} / {Bramblekin.MaxHealth}", ink),
+            ($"State: {kin.State}   Health: {kin.Health} / {kin.HealthCap}", ink),
             ($"Job: {(kin.IsYoung ? "none (young)" : group is null ? "none (on its own)" : kin.Job.ToString())}{(kin.VillageJob != KinJob.None ? $"  (village: {kin.VillageJob}{(kin.IsPaid ? ", paid" : ", unpaid")})" : "")}{(world.Realms.FirstOrDefault(k => k.KingId == kin.ID) is { } crown ? $"  KING of {crown.Name}" : "")}", ink),
             ($"Hunger: {(int)kin.Hunger}%{(kin.IsStarving ? " STARVING" : kin.IsHungry ? " (hungry)" : "")}{(kin.HasFood ? "  +food" : "")}{(kin.IsSick ? "  SICK" : "")}",
                 kin.IsStarving || kin.IsSick ? new Color(170, 60, 40, 255) : ink),

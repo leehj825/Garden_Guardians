@@ -46,6 +46,9 @@ public sealed partial class Bramblekin
     /// <summary>The run toggle: while on (and moving) the kin runs.</summary>
     public bool PlayerRunning { get; set; }
 
+    /// <summary>Set while the shoot button is held (a Hunter's bow: the Attack button is a plain blow for every job).</summary>
+    public bool PlayerWantsShoot { get; set; }
+
     /// <summary>Set for the frame the jump button is pressed.</summary>
     public bool PlayerWantsJump { get; set; }
 
@@ -67,7 +70,7 @@ public sealed partial class Bramblekin
     /// <summary>Whether a strike may hit Bramblekin of other clans too (it always hits wildlife).</summary>
     public bool PlayerMayHitKin { get; set; }
 
-    /// <summary>The job the player has chosen for the kin while it is under control: None ("normal"), Hunter, Guard, Spearman or Fisher.</summary>
+    /// <summary>The job the player has chosen for the kin while it is under control: None ("normal"), Hunter, Swordsman, Spearman or Fisher.</summary>
     public KinJob PlayerJob { get; private set; }
 
     /// <summary>The clan (if any) the kin belongs to again when the player gives it back. While set, the kin has no clan, village or kingdom.</summary>
@@ -76,10 +79,10 @@ public sealed partial class Bramblekin
     private KinJob _awayJob;
     private float _awayLoyalty;
 
-    /// <summary>Steps the player's job choice round: normal, Hunter, Guard, Spearman, Fisher.</summary>
+    /// <summary>Steps the player's job choice round: normal, Hunter, Swordsman, Spearman, Fisher.</summary>
     public void CyclePlayerJob()
     {
-        PlayerJob = PlayerJob switch { KinJob.None => KinJob.Hunter, KinJob.Hunter => KinJob.Guard, KinJob.Guard => KinJob.Spearman, KinJob.Spearman => KinJob.Fisher, _ => KinJob.None };
+        PlayerJob = PlayerJob switch { KinJob.None => KinJob.Hunter, KinJob.Hunter => KinJob.Swordsman, KinJob.Swordsman => KinJob.Spearman, KinJob.Spearman => KinJob.Fisher, _ => KinJob.None };
         if (IsPlayerControlled)
             AssignJob(PlayerJob);
     }
@@ -116,6 +119,7 @@ public sealed partial class Bramblekin
         PlayerMove = Vector2.Zero;
         PlayerWantsStrike = false;
         PlayerWantsJump = false;
+        PlayerWantsShoot = false;
         PlayerRunning = false;
         IsAirborne = false;
         _jumpClipPlaying = false;
@@ -182,12 +186,14 @@ public sealed partial class Bramblekin
             return;
         }
 
+        if (PlayerWantsShoot && Job == KinJob.Hunter && _strikeCooldown <= 0f)
+        {
+            PlayerAim(world);
+            return;
+        }
         if (PlayerWantsStrike && _strikeCooldown <= 0f)
         {
-            if (Job == KinJob.Hunter)
-                PlayerAim(world);
-            else
-                PlayerStrike(world);
+            PlayerStrike(world);
             return;
         }
 
@@ -232,7 +238,7 @@ public sealed partial class Bramblekin
     {
         if (target is not Bramblekin)
             Train(Skill.Hunting, world, target is StagBeetle or WolfSpider ? 2f : 1f);
-        return target is Bramblekin ? StrikeDamage : HuntingDamage;
+        return (int)MathF.Round(BaseStrike * Profile.Arrow * (target is Bramblekin ? 1f : 1f + 0.5f * SkillAt(Skill.Hunting)));
     }
 
     /// <summary>The bow is drawn: the kin turns to the way it will shoot, the aim clip plays, and the arrow follows partway through (see <see cref="LoosePlayerArrow"/>).</summary>
@@ -404,7 +410,7 @@ public sealed partial class Bramblekin
             if (candidate is null || candidate.IsDead || ReferenceEquals(candidate, this))
                 return;
             float distance = GroundMover.HorizontalDistance(Position, candidate.Position);
-            if (distance > BodyRadius + candidate.CollisionRadius + PlayerReach || distance >= bestDistance)
+            if (distance > BodyRadius + candidate.CollisionRadius + PlayerReach + Profile.Reach || distance >= bestDistance)
                 return;
             if (distance > 0.7f)
             {

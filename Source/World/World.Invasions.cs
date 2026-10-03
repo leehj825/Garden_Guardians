@@ -65,7 +65,7 @@ public sealed partial class World
         {
             if (kin.IsDead || kin.IsYoung)
                 continue;
-            strength += kin.Job == KinJob.Guard || kin.VillageJob == KinJob.Guard ? 1f : 0.25f;
+            strength += kin.Job == KinJob.Swordsman || kin.VillageJob == KinJob.Swordsman ? 1f : 0.25f;
         }
         return strength;
     }

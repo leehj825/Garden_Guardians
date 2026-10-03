@@ -39,7 +39,7 @@ public enum BramblekinState
 
     // --- Duty (a group member's job) ---
 
-    /// <summary>A Guard returning to its post by the group's home.</summary>
+    /// <summary>A Swordsman returning to its post by the group's home.</summary>
     Guarding,
 
     /// <summary>Planting or harvesting its group's berry bushes — see Bramblekin.Farming.</summary>

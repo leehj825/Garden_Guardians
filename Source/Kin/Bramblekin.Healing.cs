@@ -23,7 +23,7 @@ public sealed partial class Bramblekin
     private float _tendTimer;
 
     /// <summary>Sick, or hurt enough to be worth a Healer's time.</summary>
-    public bool NeedsCare => !IsDead && (IsSick || Health < MaxHealth * CareHealthFraction);
+    public bool NeedsCare => !IsDead && (IsSick || Health < HealthCap * CareHealthFraction);
 
     /// <summary>
     /// Healer: goes to the groupmate near home most in need — the sick
@@ -92,7 +92,7 @@ public sealed partial class Bramblekin
             _sickness = MathF.Max(0.01f, _sickness - (20f + 20f * skill));
             eased = before - _sickness;
         }
-        int healed = Math.Min(MaxHealth - Health, 3 + (int)MathF.Round(3f * skill));
+        int healed = Math.Min(HealthCap - Health, 3 + (int)MathF.Round(3f * skill));
         Health += healed;
         return (healed, eased);
     }

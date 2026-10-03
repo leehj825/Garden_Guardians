@@ -158,7 +158,7 @@ public sealed class KinGroup
     /// <summary>The Stag Beetle the Leader sent its Hunters after, if any.</summary>
     public StagBeetle? HuntTarget { get; set; }
 
-    /// <summary>The threat near home the Leader sent its Guards against, if any.</summary>
+    /// <summary>The threat near home the Leader sent its Swordsmen against, if any.</summary>
     public ICombatant? DefendTarget { get; set; }
 
     /// <summary>The enemy store the Leader sent its Raiders against, if any — see World.Neighbours.</summary>

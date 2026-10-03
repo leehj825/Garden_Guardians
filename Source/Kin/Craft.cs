@@ -60,7 +60,7 @@ public enum Craft
     Herding = 32768,
 
 
-    /// <summary>Shields of stag-beetle shell, issued to those whose job is fighting (Guards, Raiders, Hunters): a third less from every blow and bite, a Guard still less (see Bramblekin.HasShield, TakeDamage).</summary>
+    /// <summary>Shields of stag-beetle shell, issued to those whose job is fighting (Swordsmen, Raiders, Hunters): a third less from every blow and bite, a Swordsman still less (see Bramblekin.HasShield, TakeDamage).</summary>
     Shields = 131072,
 
     /// <summary>A workbench by each House and tools to work with: the whole clan works a quarter faster (see Bramblekin.WorkPace). Needs the Farming Age.</summary>

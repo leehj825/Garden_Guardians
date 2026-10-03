@@ -11,7 +11,7 @@ public sealed partial class Bramblekin
     /// <summary>…and this long at Intelligence 0.</summary>
     private const float MaxSettleDelay = 50f;
 
-    /// <summary>At or below this fraction of <see cref="MaxHealth"/>, a Bramblekin with a home goes and rests in it…</summary>
+    /// <summary>At or below this fraction of <see cref="HealthCap"/>, a Bramblekin with a home goes and rests in it…</summary>
     private const float RestHealthFraction = 0.6f;
 
     /// <summary>…until it's back up to this fraction.</summary>
@@ -129,7 +129,7 @@ public sealed partial class Bramblekin
             return false;
 
         bool resting = State is BramblekinState.Resting or BramblekinState.HeadingHome;
-        if (Health <= MaxHealth * RestHealthFraction || (resting && Health < MaxHealth * RestedHealthFraction))
+        if (Health <= HealthCap * RestHealthFraction || (resting && Health < HealthCap * RestedHealthFraction))
         {
             RestAtHome(home, deltaTime, world);
             return true;

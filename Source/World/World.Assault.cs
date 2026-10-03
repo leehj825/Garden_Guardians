@@ -54,7 +54,7 @@ public sealed partial class World
             {
                 foreach (Bramblekin kin in clan.Members)
                 {
-                    bool fighter = kin.Job is KinJob.Guard or KinJob.Hunter || kin.VillageJob is KinJob.Guard or KinJob.Hunter;
+                    bool fighter = kin.Job is KinJob.Swordsman or KinJob.Hunter || kin.VillageJob is KinJob.Swordsman or KinJob.Hunter;
                     if (!fighter || kin.IsDead || kin.IsYoung || kin.IsElder || kin.IsSick || kin.AssaultParty is not null)
                         continue;
                     if (kin.Health < Bramblekin.MaxHealth * FitHealthFraction || kin.Hunger > Bramblekin.MaxHunger * FitHungerFraction)

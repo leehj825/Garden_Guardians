@@ -5,17 +5,32 @@ namespace GardenGuardians;
 
 public sealed partial class Bramblekin
 {
-    /// <summary>A Guard stays within this many meters of home.</summary>
-    private const float GuardPostRadius = 3f;
+    /// <summary>A Swordsman stays within this many meters of home.</summary>
+    private const float SwordsmanPostRadius = 3f;
 
     /// <summary>A Gatherer brings in Food lying within this many meters of home.</summary>
     private const float GatherRange = 25f;
 
-    /// <summary>Hunters and Guards stand down to rest once Health is at or below this fraction.</summary>
+    /// <summary>Hunters and Swordsmen stand down to rest once Health is at or below this fraction.</summary>
     private const float DutyStandDownHealthFraction = 0.5f;
 
     /// <summary>Its job from its group's Leader — see <see cref="World.DecideGroupGoal"/>.</summary>
-    public KinJob Job { get; private set; }
+    public KinJob Job
+    {
+        get => _job;
+        private set
+        {
+            if (value == _job)
+                return;
+            int oldCap = HealthCap;
+            _job = value;
+            // A new job has its own most Health: the same share of it stays (a wounded kin stays wounded), never less than 1.
+            if (!IsDead)
+                Health = Math.Clamp((int)MathF.Round(Health * (float)HealthCap / oldCap), Health > 0 ? 1 : 0, HealthCap);
+        }
+    }
+
+    private KinJob _job;
 
     public void AssignJob(KinJob job) => Job = job;
 
@@ -40,7 +55,7 @@ public sealed partial class Bramblekin
 
         return Job switch
         {
-            KinJob.Guard => DoGuardDuty(group, deltaTime, world),
+            KinJob.Swordsman => DoSwordsmanDuty(group, deltaTime, world),
             KinJob.Hunter => DoHuntDuty(group, deltaTime, world),
             KinJob.Builder => DoBuilderDuty(group, deltaTime, world),
             KinJob.Gatherer => DoGatherDuty(deltaTime, world),
@@ -63,13 +78,13 @@ public sealed partial class Bramblekin
     private float _patrolLook;
 
     /// <summary>
-    /// Guard: attacks the threat the Leader rallied the group against (in a village, any of its clans' alarms near any of its homes);
+    /// Swordsman: attacks the threat the Leader rallied the group against (in a village, any of its clans' alarms near any of its homes);
     /// in a village it is a soldier: it patrols the village's edge, picks up food lying by the route and takes it to the stores; elsewhere
     /// it keeps close to home.
     /// </summary>
-    private bool DoGuardDuty(KinGroup group, float deltaTime, World world)
+    private bool DoSwordsmanDuty(KinGroup group, float deltaTime, World world)
     {
-        if (Health <= MaxHealth * DutyStandDownHealthFraction || Home is not { IsBuilt: true } home)
+        if (Health <= HealthCap * DutyStandDownHealthFraction || Home is not { IsBuilt: true } home)
             return false;
 
         Village? village = World.SocietyJobsEnabled ? world.VillageOf(group) : null;
@@ -93,7 +108,7 @@ public sealed partial class Bramblekin
         if (village is not null)
             return DoPatrol(village, group, deltaTime, world);
 
-        if (GroundMover.HorizontalDistanceSquared(Position, home.Position) > GuardPostRadius * GuardPostRadius)
+        if (GroundMover.HorizontalDistanceSquared(Position, home.Position) > SwordsmanPostRadius * SwordsmanPostRadius)
         {
             SetState(BramblekinState.Guarding);
             MoveTo(home.Position, WalkSpeed, deltaTime, world);
@@ -155,7 +170,7 @@ public sealed partial class Bramblekin
     /// <summary>Hunter: goes after the Stag Beetle the Leader picked, or else small game it can see (a Grub).</summary>
     private bool DoHuntDuty(KinGroup group, float deltaTime, World world)
     {
-        if (Health <= MaxHealth * DutyStandDownHealthFraction)
+        if (Health <= HealthCap * DutyStandDownHealthFraction)
             return false;
 
         if (group.HuntTarget is { IsDead: false } beetle)
@@ -183,7 +198,7 @@ public sealed partial class Bramblekin
     /// </summary>
     private bool DoRaidDuty(KinGroup group, float deltaTime, World world)
     {
-        if (Health <= MaxHealth * DutyStandDownHealthFraction)
+        if (Health <= HealthCap * DutyStandDownHealthFraction)
             return false;
 
         if (_carried is not null)

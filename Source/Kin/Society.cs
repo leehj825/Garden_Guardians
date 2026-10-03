@@ -34,7 +34,7 @@ public enum KinJob
     Hunter,
 
     /// <summary>Stays by the home and attacks whatever threatens it.</summary>
-    Guard,
+    Swordsman,
 
     /// <summary>Plants the group's berry bushes and harvests them into the stores (once the group knows farming).</summary>
     Farmer,
