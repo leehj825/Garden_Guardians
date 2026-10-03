@@ -1185,10 +1185,23 @@ checked with headless A/B runs (numbers are in that file).
 *   ✅ **Four new animation clips, each played from start to end:** the bayonet stab for guards whose clan has Spears (3.3 s played in 2 s), the sword
     and shield slash then attack as a pair for soldiers and other fighters, the standing aim and recoil for hunters, and picking up
     (9.6 s played in 3 s) for collecting, foraging and stockpiling (`Tools/convert_fbx.py --clip-only`, then `Tools/retarget_clip.py`).
+*   ✅ **Look of the kin (2026-10-02/03):** arms re-posed to hang and shortened, hands closed into fists, skin weights
+    rebuilt (arm part on arm bones only, cloth off the arms and, for him, the legs), rigid heads, walk arm swing kept at 45%
+    (`--arm-degrees`, `--arm-scale`, `--fist-start`, `Tools/damp_arm_swing.py`, `Tools/hand_closeup.py`).
+*   ✅ **Action timing:** blow clips sped up (slash 0.8 s, sword attack 0.7 s, stab 1.2 s, aim 0.6 s); the kin is frozen until the clip is
+    done; the looping fight move between blows is gone; picking up (1.6 s) is played for food, eating and drinking too.
+*   ✅ **Jobs and gear:** the Job button steps Normal, Hunter, Guard, Spearman (new), Fisher; guard's wooden sword, spearman's spear (forward carry,
+    two-handed stab), hunter's bow (wood down / string up at the side, wood forward when aiming); a controlled Fisher fishes at the water and eats
+    its catch. Hunter aim clip turned 40° so the body is not seen thin.
+*   ✅ **Ant hill and wildlife:** detailed hill model with a far one, turned so its cave entrance faces the garden; looters walk in for the
+    eggs, which lie in the cave as the larvae model and are visible from outside (and carried as it); guards (14 Health, bite 3, bystander blows 2,
+    heal 0.5/s) and thief ants (4 Health) weaker; health bars for beetles, ants and hill guards when hurt.
+*   ✅ **World:** the generated world's oak is drawn 1.1 m sunk so its roots are buried.
+*   ✅ **Developer aids:** `GARDEN_CAMERA=hill|oak`, `GARDEN_PLAY_JOB=<job>`, `GARDEN_PLAY_PITCH`.
 *   🟡 **Reviewed, not applied:** the generated armour and weapons sheet (`armor_weapons.glb`): a round shield (890 triangles), sword (750),
     spear (570), bow (1,360), an arrow (350), a helmet (2,750) and a leaf cuirass with skirt (13,060). See the review in the conversation: sizes,
     pivots and the work needed (decimation, skinning, scale) before fitting them.
-*   ⬜ **Next:** fit the weapons, helmet and armour to the hand and head bones and the torso; the guard idle and walk clips (sword carried) are unused.
+*   ⬜ **Next:** fit the shield, helmet, armour and a quiver; make the Spearman and Fisher jobs available to clans (today only a controlled kin takes them); the guard idle and walk clips are unused.
 
 ## Backlog: Advancing Civilizations (ideas, not scheduled)
 (Phase 35 was never used; numbering goes 34 → 36.)
@@ -1310,7 +1323,3 @@ matter most:
 *   ⬜ **Tuning.** Every rate and threshold is a constant at the top of its
     class (`World`, `Bramblekin`, `Shelter`, the wildlife); the headless
     survival trend is the tool for revisiting them.
-
-**Phase 43 follow-up – action timing:** blow clips are sped up to caps (slash 0.8 s, sword attack 0.7 s, spear stab 1.2 s, aim recoil 0.6 s) and the kin is frozen (no moving or other actions) until the clip finishes. The pick-up clip (1.6 s cap) plays for picking up food, eating, drinking, foraging and stockpiling. Kin meshes are re-posed from T-pose to the skeleton's A-pose bind (male arms 58°, female 45°) so arms hang naturally. Arm-part vertices follow only the arm bones; female re-posed at 58° too. The ant hill is the detailed model (9.8k triangles, 1.5k far model) and the egg reward is drawn as the larvae model. The walk clip's arm swing is kept at 45% (Tools/damp_arm_swing.py) so the hands hang evenly. Arms are re-posed hanging (male 74°, female 36° down, clear of her skirt) and shortened (85%, 88%); the skin weights are measured against bone segments moved to match (--arm-scale, fitted_arms). Hands are closed into fists in the mesh (--fist-start, make_fists: pulled in to 60% and thickened 35%). Vests and dresses never follow the arms (male too: cloth mask), male cloth resists the legs; the aim clip is turned 40° towards the camera so the body is not seen side-on and thin.
-
-**Phase 43 follow-up – jobs, gear, ant hill:** a controlled kin's Job button now steps Normal, Hunter, Guard, Spearman, Fisher. Guard carries the wooden sword (right hand), Spearman the spear (and always stabs, 1.5x damage), Hunter the bow (raised across the stretched arm when aiming); Fisher fishes when standing still at the water and eats what it lands. Beetles, ants and hill guards show health bars when hurt; hill guards and ants are weaker (guards 14 Health, bite 3, bystander blows 2, healing 0.5/s; ants 4 Health). The ant hill's cave entrance (turned to face the garden) is the way in: looters walk in, take an egg from the heap lying just inside (visible from outside, drawn with the larvae model) and walk out. The generated world's oak is drawn 1.1 m sunk so its roots are buried. Developer aids: `GARDEN_CAMERA=hill|oak`, `GARDEN_PLAY_JOB=<job>`.

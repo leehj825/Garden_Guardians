@@ -116,9 +116,13 @@ overhead camera:
     in its clan's defence, and no group can recruit or court it. A clan of
     two is not dissolved for want of it. It eats only from its own home's
     store (whatever the clan's sharing rule). The **Job** button (above
-    **Kin**) steps through **Normal, Hunter, Guard**: Guard gives the
-    soldier's blow and toughness (the models carry no guard kit or hunter's kit at present);
-    it has no shield (shields come from its clan's crafts). **Exit** (or Esc) gives it back: it rejoins its old clan if that still
+    **Kin**) steps through **Normal, Hunter, Guard, Spearman, Fisher**. Guard gives the
+    soldier's blow and toughness and carries a wooden sword in the right hand; Spearman carries a spear
+    (pointing forward, held in both hands for the stab, hits half as hard again, always plays the bayonet
+    stab); Hunter carries a bow (at the side wood down and string on top, upright across the stretched arm with the wood to the front when
+    aiming) and plays the aim and recoil; Fisher fishes when it stands still at the water's edge (a cast every
+    about 5 s, odds by season and skill) and eats what it lands. Normal kin carry nothing, and no one
+    carries a shield or quiver at present (shields come from the clan's crafts). **Exit** (or Esc) gives it back: it rejoins its old clan if that still
     stands (with its old loyalty and job) and otherwise stays solitary. A garden saved
     while someone is controlled saves it as still in its clan.
 *   **The view:** a third-person camera 4.8m behind it, over its shoulder,
@@ -133,7 +137,7 @@ overhead camera:
     move, Q/E or the mouse to turn, Space to attack.
 *   **The swing:** it strikes the nearest thing in front within about 1.4m
     of its edge, with the blow it would deal in a hunt (a Bramblekin takes
-    its fighting blow), every 0.7s, and plays the combat animation. A
+    its fighting blow), every 0.7s, and plays the blow's own clip (see Bramblekin models and clips); the kin stands still until the clip is done. A
     hill guard takes 1 from anyone not in an assault.
 *   **Eating and drinking:** stand still by loose food, at your store (its
     own home or its clan's) or at the water's edge while hungry or thirsty
@@ -210,7 +214,7 @@ overhead camera:
     tall as the screen allows). The choice is remembered
     (`settings.txt`, beside the save) — and kept through a new garden.
 *   **Health, hunger and thirst bars** (green, orange, blue) float over
-    any Bramblekin that's hurt, hungry or thirsty (and a wounded Spider). They grow with the zoom — about 2.4×
+    any Bramblekin that's hurt, hungry or thirsty (and a wounded Spider, invader, stag beetle, ant or hill guard: a health bar once it is hurt). They grow with the zoom — about 2.4×
     as wide as the creature looks on screen — so zoomed in close they're
     easy to read, while at the whole-map view they shrink back to the
     same small 34px bars (the floor, and 150px the ceiling, both scaled
@@ -948,7 +952,7 @@ overhead camera:
     nearest store within 70m (never a palisaded one), or glean loose food
     within 30m of the hill, and carry it home; in winter they stay
     underground.
-    Easily swatted (5 Health), they bite back at whoever hits them.
+    Easily swatted (4 Health), they bite back at whoever hits them.
     Bramblekin go for any ant near their home, or one biting them. There
     are no mass raids on villages: a thief is one ant at a time, and the
     kin defend against it as before.
@@ -970,30 +974,34 @@ next hill tougher and the reward richer.
     map from the first day and never moves. The corner is the terrain's
     own, the same for every garden on it: of the four, the one with room
     for it that is farthest from the oak and the water and has the
-    gentlest ground (`World.PlaceAnthill`). Its mouth faces the garden.
+    gentlest ground (`World.PlaceAnthill`). The model (`AntHill.glb`, 9,800 triangles, with a 1,500-triangle one for when it is far off) is
+    turned so that its cave entrance faces the garden.
     It can't be destroyed: it keeps growing.
 *   **Thief ants** (`Assets/Models/Props/Ant.glb`, rigged with a six-legged
     tripod walk by Tools/convert_beetle.py, about 0.8m long): from
     spring to autumn single ants come out of the mouth — 2, plus one per
     15 food the hill has taken, up to 6 — and rob the nearest store within
     70m (never a palisaded one), or glean loose food within 30m, and carry
-    it home; in winter they stay underground. Easily swatted (5 Health,
+    it home; in winter they stay underground. Easily swatted (4 Health,
     a bite of 2 back at whoever hits them). A thief shut out by a wall for
     8s drops what it carries, gives the errand up and keeps off that store
     for two minutes. Bramblekin go for any thief
     near their home. There are no mass raids on villages: a thief is one
     ant at a time, and the kin defend against it as before.
+*   **The eggs:** the heap of eggs (the larvae model, `Larvae.glb`, 484 triangles) always lies just inside the cave
+    entrance where it can be seen from outside, two more than the hill's level up to 7; during the prize a looter takes
+    one off the heap. A kin that wins an egg carries it overhead as the same model.
 *   **The no-go zone:** round the hill is a zone 12m out (the attack range). Nothing is
     built, planted, settled, set down (food, stones, branches, snares,
     wells, walls, feast sites, shrines) or wandered to in it, and every
     clan treats it as a standing danger. The only way in is a Kingdom
     assault.
 *   **Guards:** the hill's level L (1 to start) sets how many guard it:
-    **5 × L ants** — 5, 10, 15, 20 and so on, with no cap. A guard (24
-    Health, bites for 4 every 1s, walks at 2 m/s, about 1m long) stands
+    **5 × L ants** — 5, 10, 15, 20 and so on, with no cap. A guard (14
+    Health, bites for 3 every 1s, walks at 2 m/s, about 1m long) stands
     falls on any Bramblekin that enters the zone and chases
     it until it is dead or 6m clear of the zone. They fight to the death. Only an army can kill them: a Bramblekin
-    that is not in a Kingdom's assault scratches a guard for 1 at most
+    that is not in a Kingdom's assault scratches a guard for 2 at most
     (a bystander that wanders in can't clear a hill, only die), so the
     guards are only ever brought down by a Kingdom's picked soldiers.
 *   **Sentries and alert:** in quiet times only 2 guards (the sentries)
@@ -1003,7 +1011,7 @@ next hill tougher and the reward richer.
     and stand ready — they still attack only inside the zone. Ten seconds
     after the last Bramblekin has gone, all but the sentries go back in.
 *   **Healing and refilling:** when no kin has been in the zone for 10s,
-    wounded guards go back inside the hill and heal (1 Health a second),
+    wounded guards go back inside the hill and heal (half a Health a second),
     and every guard that died is replaced (one every 3s, up to the hill's
     level), so the next fight meets the full 5 × L. In winter the guards
     stay inside unless someone comes in.
@@ -1011,9 +1019,8 @@ next hill tougher and the reward richer.
     zone. It is won when no guard is left alive while the party is in the
     zone. If it ends with any guard alive, nothing changes: the hill heals,
     refills, and the next fight starts from the same level again.
-*   **The prize:** after a win, the victorious troops climb the hill's
-    garden side (6s up, 1.5s to take an egg from the crater at the top, 4s
-    down; they are drawn up the slope) and pick up the reward: **L eggs**, where L is the level just beaten (a
+*   **The prize:** after a win, the victorious troops walk into the cave
+    entrance (3s in, 1.5s to take an egg from the heap lying just inside, 2.5s out; they are drawn walking in) and pick up the reward: **L eggs**, where L is the level just beaten (a
     win at 5 ants gives 1, at 10 gives 2, at 15 gives 3, at 20 gives 4,
     with no cap). They carry the eggs back to the capital. **The hill's
     level goes up only when a carrier reaches the capital with the
@@ -1115,21 +1122,27 @@ village, kingdom) says who belongs together and who leads.
     (a home with no room is pulled down). If the kingdom falls, or the capital
     changes, the castle goes back to a house. Not saved: worked out afresh
     from the kingdoms.
-*   **Bramblekin models and clips:** one male and one female model for everyone, guards and hunters too (the
-    sword, shield and helmet that the old guard models wore, and the hunter's bow and quiver, are gone for now;
-    the new weapons and armour will be fitted later). Each is a 19,800-triangle model with a 2048 px picture up
-    close (150 px or more tall on screen), about 4,000 triangles and 1024 px from 90 px, about 1,000 and 512 px
-    below that (`Tools/convert_tripo_kin.py --tpose-arms --lods`, from `male_kin.glb` and `female_kin.glb`; the arms are
-    lowered from the models' T-pose to the skeleton's own angle). Action clips play from start to finish
-    (`ChooseClip`): a guard whose clan has Spears stabs (`BayonetStab`, 3.3 s played in 2 s); soldiers and other
-    fighters alternate the sword and shield slash and the sword and shield attack; a hunter takes aim
-    (`StandingAimRecoil`); picking things up (collecting, foraging, stockpiling) plays `PickingUp` (9.6 s in 3 s).
-    Walking takes over the moment the kin moves. Clips from other Mixamo downloads are fitted to our skeleton by
-    `Tools/retarget_clip.py`.
+*   **Bramblekin models and clips:** one male and one female model for everyone, guards and hunters too. Each is a
+    19,800-triangle model with a 2048 px picture up close (150 px or more tall on screen), about 4,000 triangles and
+    1024 px from 90 px, about 1,000 and 512 px below that (`Tools/convert_tripo_kin.py --lods --tpose-arms`, from
+    `male_kin.glb` and `female_kin.glb`). The arms are re-posed from the T-pose to hang (male 74°, female 36° down,
+    shortened to 85% and 88%: `--arm-degrees`, `--arm-scale`), the hands closed into fists (`--fist-start`), the
+    skin weights measured against bone segments moved to match, what was re-posed as free arm follows the arm bones only,
+    vests and dresses never follow the arms (a green-texture cloth mask) or, for his, the legs, and the whole head
+    is one rigid bone so it cannot squash when the body turns under it. The walk clip keeps 45% of its arm swing
+    (`Tools/damp_arm_swing.py`). Developer aids: `Tools/preview_pose.py`, `Tools/hand_closeup.py`.
+    Action clips play from start to finish (`ChooseClip`) and the kin stands where it is until a blow or
+    pick-up clip is done (`_actionLock`; there is no looping fight move between blows): a spearman (or a guard whose clan has
+    Spears) stabs (`BayonetStab`, 3.3 s played in 1.2 s); soldiers and other fighters alternate the sword and shield slash
+    (0.8 s) and the sword and shield attack (0.7 s); a hunter takes aim (`StandingAimRecoil`, turned 40° towards the camera so a
+    side-on body is not thin, 0.6 s); picking up (1.6 s) plays for collecting, foraging, stockpiling, picking up food, eating and
+    drinking. Walking takes over the moment the kin moves. Clips from other Mixamo downloads are fitted to our
+    skeleton by `Tools/retarget_clip.py`. Gear (`KinGear.cs`, drawn on the hand bones): the guard's wooden sword, the spearman's spear, the hunter's bow
+    (the bow model's wood bulges towards its +Y, the string runs across the other side).
 *   **The Giant Oak:** in the original garden it is still part of the ground model (the old, tall trunk
     and roots). Generated gardens draw it from a model of their own, the high-poly oak (`oak_0.glb`, about
     49,600 triangles, a 2048 px picture) at every distance, 19.7 m tall and about 25 m across its roots, with its
-    trunk, hive and keep-out circles measured off the model (`Tools/procedural/measure_oak.py`).
+    trunk, hive and keep-out circles measured off the model (`Tools/procedural/measure_oak.py`). It is drawn 1.1 m below the levelled ground it stands on, its roots partly buried.
 *   **Village fittings:** the rune stone, the workbench, four kinds of market stall (by home number) and a
     basket beside the stall are models (`ItemModels.cs`, `Items.glb`, split from one generated sheet by
     `Tools/split_market_items.py`), no longer shapes drawn in code. The herb bed, sundial and a few
