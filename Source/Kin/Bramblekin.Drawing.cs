@@ -91,6 +91,8 @@ public sealed partial class Bramblekin
         // axis/angle) rather than two separate draws-with-rotation.
         Vector2 facing = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;
         float yawRadians = MathF.Atan2(facing.X, facing.Y) + BramblekinModel.ForwardYawOffset;
+        if (IsAiming)
+            yawRadians -= AimBodyTurn; // (the whole body turns so that the bow arm, which the clip holds out to the kin's left, points the way it shoots)
         Quaternion yaw = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawRadians);
 
         Vector3 normal = World.GetNormalAt(Position.X, Position.Z);
@@ -288,13 +290,19 @@ public sealed partial class Bramblekin
 
     // --- What it carries ------------------------------------------------------------------------
 
+    /// <summary>While the aim clip plays.</summary>
+    private bool IsAiming => (_actionActive && _actionClip == BramblekinClip.AimRecoil) || ForcedClip == BramblekinClip.AimRecoil;
+
+    /// <summary>In the aim clip the bow arm points this far (radians, about 34°) to the left of the way the body faces, measured from the clip's drawn pose.</summary>
+    private const float AimBodyTurn = 0.59f;
+
     /// <summary>The sword and shield of a soldier or raider, a hunter's bow and quiver: hung on the bones of the pose (see <see cref="KinGear"/>), so they walk and swing with it.</summary>
     private void DrawGear(in Model pose, Vector3 axis, float angleDegrees, float scale)
     {
         bool hunter = Job == KinJob.Hunter, guard = Job == KinJob.Guard, spearman = Job == KinJob.Spearman;
         if (IsYoung || !(hunter || guard || spearman))
             return; // (Only a guard's wooden sword, a spearman's spear and a hunter's bow for the time being: no shields, no quiver.)
-        bool aiming = (_actionActive && _actionClip == BramblekinClip.AimRecoil) || ForcedClip == BramblekinClip.AimRecoil;
+        bool aiming = IsAiming;
         Matrix4x4 body = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateFromAxisAngle(Vector3.Normalize(axis), angleDegrees * MathF.PI / 180f) * Matrix4x4.CreateTranslation(Position);
         KinGear.Draw(pose, body, sword: guard, shield: false, bow: hunter, quiver: false, spear: spearman, bowRaised: aiming, stabbing: (_actionActive && _actionClip == BramblekinClip.SpearStab) || ForcedClip == BramblekinClip.SpearStab);
     }
