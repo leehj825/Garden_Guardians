@@ -486,3 +486,7 @@ $RECYCLE.BIN/
 # Android native build (produced by Platforms/Android/build-raylib.sh)
 Platforms/Android/.build/
 Platforms/Android/libs/*/
+
+# Raw source art for the Tools/convert_*.py scripts (large; kept out of the repo, not used by the game)
+Tools/kin_src/
+Tools/previews/
