@@ -2,7 +2,7 @@
 
 **Status key:** ✅ Done · 🟡 In progress (partly done) · ⬜ Not started · ❌ Removed/superseded
 
-*Last updated: 2026-09-30*
+*Last updated: 2026-10-02*
 
 ## Progress Snapshot
 The game is an **Emergent Survival** simulation (Phase 7) that has grown
@@ -27,10 +27,16 @@ Since Phase 26 the garden has **day and night** (sleep, a night watch, the
 Owl), **aphid herding**, a **beehive** in the oak, **harvest feasts**,
 **shrines and beliefs**, **shields and champions**, an automatic
 **Director** camera and a **timeline** on the History screen.
+Since Phase 40 (2026-10) the clans are organised in **society levels**:
+**villages** with a headman and a pooled store, **paid jobs** (soldiers,
+fishers, healers, builders, scouts) fed from it, **kingdoms** of three or
+more villages with a king and tribute, and **spider invasions** that
+test them.
 Code lives under `Source/` (one type per file; see the
-Design doc's Code Layout). The player is a spectator with a
-Google-Maps-style camera whose only action is tapping a Bramblekin to
-inspect it. See `Garden_Guardians_Design.md` for the full current design.
+Design doc's Code Layout). The player is mostly a spectator with a
+Google-Maps-style camera who taps a Bramblekin to inspect it, and can
+take the wheel of one (the **Control** button: third-person camera,
+stick, attack). See `Garden_Guardians_Design.md` for the full current design.
 
 ## Phase 0: Engine & Tooling
 *   ✅ **Engine:** Raylib via Raylib-cs on a .NET 8 project, 1 unit = 1
@@ -1086,7 +1092,106 @@ triangles. The four baked terrains stay as they are.
     (`WaterMap.SetWalls`), so everything that walks goes round, through the gates. Saved with the garden.
     *Not yet:* stone cost for the wall, enemy clans besieging it, gates that close at night, walls following later-built homes.
 
-## Phases 35+: Advancing Civilizations (ideas, not scheduled)
+## Phase 40: Society, Provisioning and Invasions
+Design and rationale: `Garden_Guardians_Society_Design.md`. Every step was
+checked with headless A/B runs (numbers are in that file).
+*   ✅ **Villages** (`Village.cs`, `World.Villages.cs`): formed from homes
+    within 14 m of each other (clans not at war, one in the Farming Age);
+    named, with a middle and a headman chosen from the clan chiefs; merge,
+    abandon, save, tag on the map, shown in the clan card, stats and History.
+    Not yet: shared landmarks (well, market, shrine, granary).
+*   ✅ **Rations** (`World.Rations.cs`): the village's pooled store is the
+    stock of its homes; income-driven `AllowedPaid` caps the paid jobs;
+    paid guards are brought food so they stay on post.
+*   ✅ **Soldiers and fishers:** guards patrol a ring round the village,
+    answer any home's alarm and pick up food near the route; `KinJob.Fisher`
+    keeps fishers on the shore all day. Born `Strength` trait, soldier
+    training, shields issued to fighters only.
+*   ✅ **The headman's jobs:** the headman turns `AllowedPaid` into soldiers
+    (60%), a healer, builders and a scout (`VillageJob`s, overriding clan
+    job lists); fed builders speed the wall.
+*   ✅ **Kingdoms** (`Kingdom.cs`, `World.Realms.cs`): three or more villages
+    within 90 m at peace, one in the Kingdom Age; the largest is the
+    capital and its headman king; fealty, tribute, pledged soldiers that
+    answer a sister village's alarm; saved (`KingdomSave`).
+*   ✅ **Spider invasions** (`InvaderSpider.cs`, `World.Invasions.cs`):
+    swarms in waves scaled to the target's defence; light ones hit a
+    village, hard ones a kingdom. Not saved.
+*   ✅ **Control is independent of society** (2026-10-02): a kin the player
+    controls leaves its clan, village and kingdom, chooses Normal, Hunter or
+    Guard, and rejoins its clan on exit (`Bramblekin.Play.cs`;
+    `GARDEN_CONTROL_TEST=<s>` checks it headless).
+*   ✅ **Sticky crown** (2026-10-02): a sitting king keeps the crown while he
+    lives in the capital's clans; a new headman no longer displaces him.
+    Headless (6 seeds x 50 min, Kingdom-Age start): kings crowned per world
+    were 2-4 before and 2-4 after; the remaining turnover is the king dying
+    (the log now says so), not headmen changing. Kingdoms still fall apart
+    when a village dissolves (3 of 7 founded were gone at the end).
+*   ✅ **The castle** (2026-10-02): the capital's home is drawn as a castle
+    model, twice as wide as the acorn house, and the ground it takes is
+    cleared (`World.Castles.cs`; crops, scenery, snares, wells and wall
+    pieces removed, pens and neighbouring homes moved out). Headless, 3
+    worlds: nothing left inside the cleared ring. Not yet: which side the
+    castle's gate faces (the model is drawn the way the house is), a castle
+    that is more than a bigger house (a keep, a bigger store, a garrison).
+*   ✅ **Village grace** (2026-10-02): a village whose homes fall short is
+    kept 120 s before it is abandoned, so a home pulled down for an upgrade
+    or a clan moving house no longer dissolves it (and its kingdom) and
+    refounds it under a new name. Headless: villages named per 50-min world
+    fell from 4-7 to 3-7; kingdoms standing at the end were 3 of 6 worlds
+    after, 4 of 6 before, so the runs are too noisy (they are not
+    reproducible from the seed) to call it better.
+*   🟡 **Realm defence** (`GARDEN_REALM_TEST=1`): pledging is now by rank,
+    the first, third… soldier of each village by ID (at least one per
+    village; was `ID % 3`), so 2-4 are pledged rather than 2-3. Invading a
+    vassal village in three worlds, at most 1-2 pledged soldiers came
+    within 25 m, and the village's own soldiers won in under 2 minutes
+    anyway. Whether the pledged march in time for a hard invasion is still
+    unproven: that needs a stronger invasion than the village can beat.
+*   ⬜ **Events and UI polish** (Society step 6): headlines and chronicle
+    entries for founding, succession and revolt, a Villages tab in History,
+    more stats lines.
+*   ⬜ **Open problems:** kingdoms dissolve when a village does (3 of 7 founded);
+    pledged soldiers are few and arrive late (see above); invasions are easy for a
+    defended village; formal alliances are too rare to bind villages, so
+    peace is the test. Found in a code-vs-doc review (2026-10-02, not yet
+    fixed): a vassal can lose its headman and
+    stay in the kingdom; a capital keeps its crown after leaving the
+    Kingdom Age; soldiers are scored on born Strength, not eggs. Kingdoms
+    also feed the ant-hill assault (`World.Assault.cs`).
+
+## Phase 41: Close-up Ground
+*   ✅ **Ground cover where the camera is close** (2026-10-02): the painted ground
+    is dressed within 40 m of the controlled kin, or of what a close camera looks at (eye within 20 m; shrinking to 20 m at 45 m; none beyond) in grass blades, flowers and small
+    stones, chunked and level-of-detail'd (`World.GroundCover.cs`; about
+    70,000 triangles at most). Seen under a virtual display; not yet timed on a phone.
+*   ⬜ **Next:** a finer, smoother ground mesh with small bumps under the cover
+    (the ground is still the 0.5 m height grid under a 2048 px picture), swaying
+    grass, a draw-distance setting for phones, (the cover now follows any close camera).
+
+## Phase 42: Models for the Oak and the Village Fittings
+*   ✅ **A high-poly oak for generated gardens** (2026-10-02): the kit's oak is now a 49,600-triangle model (`oak_tree.glb`), drawn in full at
+    every distance (19.7 m tall; trunk, hive and circles re-measured). The original garden keeps its old oak, part of the
+    ground model: a version that cut the old oak out and drew two new models (full and 900 triangles by distance) was
+    tried and reverted, as the ground where the old oak stood needed patching (see git history: `Tools/cut_oak_from_terrain.py`).
+*   ✅ **Workbench, market stalls, basket and rune stone as models** (`Items.glb`).
+*   ⬜ **Next:** the herb bed, sundial and watchtower in code; the big spiky plants (still part of the ground
+    model, 417 triangles each).
+
+## Phase 43: New Kin Models and Animations
+*   ✅ **New male and female Bramblekin models for everyone** (2026-10-02): 19,800 triangles up close, about 4,000 and 1,000
+    further off (`Tools/convert_tripo_kin.py`, which now cuts the lower levels itself with meshoptimizer and can lower a T-posed
+    model's arms to the skeleton's angle). Guards and hunters use them too, with no sword, shield, helmet, bow or quiver for the time being.
+*   ✅ **Four new animation clips, each played from start to end:** the bayonet stab for guards whose clan has Spears (3.3 s played in 2 s), the sword
+    and shield slash then attack as a pair for soldiers and other fighters, the standing aim and recoil for hunters, and picking up
+    (9.6 s played in 3 s) for collecting, foraging and stockpiling (`Tools/convert_fbx.py --clip-only`, then `Tools/retarget_clip.py`).
+*   🟡 **Reviewed, not applied:** the generated armour and weapons sheet (`armor_weapons.glb`): a round shield (890 triangles), sword (750),
+    spear (570), bow (1,360), an arrow (350), a helmet (2,750) and a leaf cuirass with skirt (13,060). See the review in the conversation: sizes,
+    pivots and the work needed (decimation, skinning, scale) before fitting them.
+*   ⬜ **Next:** fit the weapons, helmet and armour to the hand and head bones and the torso; the guard idle and walk clips (sword carried) are unused.
+
+## Backlog: Advancing Civilizations (ideas, not scheduled)
+(Phase 35 was never used; numbering goes 34 → 36.)
 Ideas for the clans to grow past today's crafts, farming, herding,
 fishing, wells, palisades, shrines, feasts, alliances and wars. Suggested
 first picks: roads, workshops with tools, and the tech tree with eras.
@@ -1121,15 +1226,16 @@ first picks: roads, workshops with tools, and the tech tree with eras.
     the clan's discoveries and new ages are carved into the chronicle, and it
     teaches allies 1.5x as readily. Not yet: runes that improve teaching
     beyond crafts, lore that outlives a clan, readable stone text in-game.
-*   🟡 **Kingdoms and vassals:** Done (first slice): a clan that loses a war
+*   ✅ **Kingdoms and vassals:** First slice: a clan that loses a war
     and agrees to tribute is its conqueror's vassal while it pays; a Kingdom
     Age clan can also win a small allied neighbour's fealty (tribute each
     season, no end); vassals are taught the liege's crafts 1.5x as readily.
-    A clan with vassals is a kingdom's capital (shown on the clan card and
-    Stats tab); gold lines join liege and vassal homes (Links toggle). A
-    vassal that grows as big as its liege breaks free, and one whose term
-    is served is released. Not yet: a leader title, liege protection of
-    vassals in war, a capital model, territory taken in conquest.
+    Gold lines join liege and vassal homes (Links toggle); a vassal that
+    grows as big as its liege breaks free, and one whose term is served is
+    released. This clan-over-clan vassalage is kept for clans outside any
+    village. **Superseded for villages by Phase 40:** true kingdoms now
+    have a capital, a king, tribute and pledged soldiers. Not yet: liege
+    protection of vassals in war, territory taken in conquest.
 *   🟡 **Defense and siege:** Done (first slice): Watchtowers (Village Age,
     Palisade and Spears) raise a lookout with an alarm horn by the main home;
     it spots the Wolf Spider, chasing Hornets or a warring clan's fighters
@@ -1181,6 +1287,18 @@ first picks: roads, workshops with tools, and the tech tree with eras.
 ## What's Left / Not Yet Scheduled
 These are real gaps in the current build, in roughly the order they'd
 matter most:
+*   ⬜ **Society follow-ups (see Phase 40):**
+    *   Make the crown sticky (the king keeps it until death or revolt) to
+        stop the 1-4 coronations per world.
+    *   A headless test that pledged soldiers really arrive at a sister
+        village under attack.
+    *   Balance invasions (share per defence point, spider toughness, waves)
+        against a target such as "a defended kingdom loses at most 1-2 kin
+        per hard invasion", and save invasions in progress.
+    *   Village landmarks (well, market, shrine, granary).
+    *   Tie the ration reserve to the season so garrisons shrink in winter.
+    *   Worn roads between a kingdom's villages for tribute and marching.
+    *   Temples and priests as a fourth kind of leader (see Religion above).
 *   ⬜ **Real pathfinding round rocks and homes.** Walkers find their way
     round the pond on a grid (Phase 17), but still steer round rocks,
     homes and the oak with a short sideways detour when stuck. Fine at
@@ -1192,3 +1310,7 @@ matter most:
 *   ⬜ **Tuning.** Every rate and threshold is a constant at the top of its
     class (`World`, `Bramblekin`, `Shelter`, the wildlife); the headless
     survival trend is the tool for revisiting them.
+
+**Phase 43 follow-up – action timing:** blow clips are sped up to caps (slash 0.8 s, sword attack 0.7 s, spear stab 1.2 s, aim recoil 0.6 s) and the kin is frozen (no moving or other actions) until the clip finishes. The pick-up clip (1.6 s cap) plays for picking up food, eating, drinking, foraging and stockpiling. Kin meshes are re-posed from T-pose to the skeleton's A-pose bind (male arms 58°, female 45°) so arms hang naturally. Arm-part vertices follow only the arm bones; female re-posed at 58° too. The ant hill is the detailed model (9.8k triangles, 1.5k far model) and the egg reward is drawn as the larvae model. The walk clip's arm swing is kept at 45% (Tools/damp_arm_swing.py) so the hands hang evenly. Arms are re-posed hanging (male 74°, female 36° down, clear of her skirt) and shortened (85%, 88%); the skin weights are measured against bone segments moved to match (--arm-scale, fitted_arms). Hands are closed into fists in the mesh (--fist-start, make_fists: pulled in to 60% and thickened 35%). Vests and dresses never follow the arms (male too: cloth mask), male cloth resists the legs; the aim clip is turned 40° towards the camera so the body is not seen side-on and thin.
+
+**Phase 43 follow-up – jobs, gear, ant hill:** a controlled kin's Job button now steps Normal, Hunter, Guard, Spearman, Fisher. Guard carries the wooden sword (right hand), Spearman the spear (and always stabs, 1.5x damage), Hunter the bow (raised across the stretched arm when aiming); Fisher fishes when standing still at the water and eats what it lands. Beetles, ants and hill guards show health bars when hurt; hill guards and ants are weaker (guards 14 Health, bite 3, bystander blows 2, healing 0.5/s; ants 4 Health). The ant hill's cave entrance (turned to face the garden) is the way in: looters walk in, take an egg from the heap lying just inside (visible from outside, drawn with the larvae model) and walk out. The generated world's oak is drawn 1.1 m sunk so its roots are buried. Developer aids: `GARDEN_CAMERA=hill|oak`, `GARDEN_PLAY_JOB=<job>`.

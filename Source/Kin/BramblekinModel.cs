@@ -16,7 +16,16 @@ public enum BramblekinClip
     GuardIdle,
     Fishing,
     Gathering,
+    /// <summary>The sword and shield slash (the first blow of a soldier's or fighter's pair).</summary>
     Combat,
+    /// <summary>The sword and shield attack (the second blow of the pair).</summary>
+    SwordAttack,
+    /// <summary>A guard with a spear: the bayonet stab.</summary>
+    SpearStab,
+    /// <summary>A hunter: the standing aim and recoil.</summary>
+    AimRecoil,
+    /// <summary>Bending to pick something up (food, a twig).</summary>
+    PickingUp,
 }
 
 /// <summary>
@@ -71,7 +80,7 @@ internal static unsafe class BramblekinModel
     private static Model _femaleModel;
 
     /// <summary>Every mesh: [male 0 / female 1, level of detail].</summary>
-    private static readonly Model[,] _lods = new Model[4, Lods];
+    private static readonly Model[,] _lods = new Model[2, Lods];
     private static readonly Dictionary<BramblekinClip, ModelAnimation> _clips = new();
     private static bool _ready;
 
@@ -89,17 +98,12 @@ internal static unsafe class BramblekinModel
         _femaleModel = Raylib.LoadModel(AssetPath + "Walking_female.glb");
         _lods[0, 0] = _baseModel;
         _lods[1, 0] = _femaleModel;
-        // The guard (soldier) versions, 2 male / 3 female: they wear their sword and shield in the mesh.
-        _lods[2, 0] = Raylib.LoadModel(AssetPath + "Guard_male.glb");
-        _lods[3, 0] = Raylib.LoadModel(AssetPath + "Guard_female.glb");
         for (int lod = 1; lod < Lods; lod++)
         {
             _lods[0, lod] = Raylib.LoadModel(AssetPath + $"Walking_lod{lod}.glb");
             _lods[1, lod] = Raylib.LoadModel(AssetPath + $"Walking_female_lod{lod}.glb");
-            _lods[2, lod] = Raylib.LoadModel(AssetPath + $"Guard_male_lod{lod}.glb");
-            _lods[3, lod] = Raylib.LoadModel(AssetPath + $"Guard_female_lod{lod}.glb");
         }
-        // Same skeleton, ~2,000 triangles and a 256px texture instead of ~50,000 and 2048px.
+        // Same skeleton: about 4,000 triangles and a 1024 px picture, then 1,000 and 512 px, instead of 19,800 and 2048 px.
 
         _clips[BramblekinClip.Walking] = LoadClip("Walking.glb");
         _clips[BramblekinClip.Fishing] = LoadClip("FishingCast.glb");
@@ -107,6 +111,10 @@ internal static unsafe class BramblekinModel
         _clips[BramblekinClip.GuardIdle] = LoadClip("GuardIdle.glb");
         _clips[BramblekinClip.Combat] = LoadClip("SwordAndShieldSlash.glb");
         _clips[BramblekinClip.Gathering] = LoadClip("GatheringObjects.glb");
+        _clips[BramblekinClip.SwordAttack] = LoadClip("SwordAndShieldAttack.glb");
+        _clips[BramblekinClip.SpearStab] = LoadClip("BayonetStab.glb");
+        _clips[BramblekinClip.AimRecoil] = LoadClip("StandingAimRecoil.glb");
+        _clips[BramblekinClip.PickingUp] = LoadClip("PickingUp.glb");
         // No separate idle clip was supplied: holding Walking's first frame stands in for one.
         _clips[BramblekinClip.Idle] = _clips[BramblekinClip.Walking];
 
@@ -135,18 +143,18 @@ internal static unsafe class BramblekinModel
     /// </summary>
     public static BramblekinClip ClipFor(BramblekinState state, bool isMoving, bool guard = false)
     {
+        // (A guard has no sword and shield in its mesh now, so it moves like anyone: the guard walk and idle clips are not used for the time being.)
         if (isMoving)
-            return guard ? BramblekinClip.GuardWalking : BramblekinClip.Walking;
+            return BramblekinClip.Walking;
 
         return state switch
         {
             BramblekinState.Fishing => BramblekinClip.Fishing,
-            BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or
-                BramblekinState.Dueling => BramblekinClip.Combat,
+            // (No fighting loop of its own: a blow plays its own clip when it is struck, see Bramblekin.BeginBlow; between blows it stands.)
             BramblekinState.Collecting or BramblekinState.Building or BramblekinState.Farming or
                 BramblekinState.Foraging or BramblekinState.Stockpiling or
                 BramblekinState.Raiding => BramblekinClip.Gathering,
-            _ => guard ? BramblekinClip.GuardIdle : BramblekinClip.Idle,
+            _ => BramblekinClip.Idle,
         };
     }
 
@@ -159,6 +167,33 @@ internal static unsafe class BramblekinModel
         int frame = (int)(timeSeconds * ClipFps) % animation.KeyFrameCount;
         return frame < 0 ? frame + animation.KeyFrameCount : frame;
     }
+
+    /// <summary>How long (s) <paramref name="clip"/> takes at its own pace.</summary>
+    public static float NaturalSeconds(BramblekinClip clip)
+    {
+        if (!_ready && !Raylib.IsWindowReady())
+            return 1.2f; // (a headless run has no models: a blow takes about this long)
+        EnsureLoaded(); // the simulation asks before anything is drawn
+        return _clips[clip].KeyFrameCount / ClipFps;
+    }
+
+    /// <summary>The longest an action clip (a blow, a stab, bending to pick something up) is let run (s): a longer one is played faster so that it still ends within this.</summary>
+    private static readonly Dictionary<BramblekinClip, float> ActionCap = new()
+    {
+        [BramblekinClip.Combat] = 0.8f,
+        [BramblekinClip.SwordAttack] = 0.7f,
+        [BramblekinClip.SpearStab] = 1.2f,
+        [BramblekinClip.AimRecoil] = 0.6f,
+        [BramblekinClip.PickingUp] = 1.6f,
+    };
+
+    /// <summary>How long (s) an action clip plays for: its own length, or the cap if that is shorter (it is then sped up).</summary>
+    public static float ActionSeconds(BramblekinClip clip) =>
+        ActionCap.TryGetValue(clip, out float cap) ? MathF.Min(cap, NaturalSeconds(clip)) : NaturalSeconds(clip);
+
+    /// <summary>Poses <paramref name="instance"/> a share <paramref name="progress"/> (0 to 1) of the way through <paramref name="clip"/>.</summary>
+    public static void PlayProgress(ref Model instance, BramblekinClip clip, float progress) =>
+        Raylib.UpdateModelAnimation(instance, _clips[clip], Math.Clamp((int)(progress * _clips[clip].KeyFrameCount), 0, Math.Max(0, _clips[clip].KeyFrameCount - 1)));
 
     public static void Play(ref Model instance, BramblekinClip clip, float timeSeconds) =>
         Raylib.UpdateModelAnimation(instance, _clips[clip], FrameAt(clip, timeSeconds));
@@ -193,7 +228,7 @@ internal static unsafe class BramblekinModel
     /// </summary>
     public static Model LodView(in Model instance, Sex sex, int lod, bool guard = false)
     {
-        Model source = _lods[(guard ? 2 : 0) + (sex == Sex.Female ? 1 : 0), Math.Clamp(lod, 0, Lods - 1)];
+        Model source = _lods[sex == Sex.Female ? 1 : 0, Math.Clamp(lod, 0, Lods - 1)];
         Model view = instance;
         view.MeshCount = source.MeshCount;
         view.MaterialCount = source.MaterialCount;

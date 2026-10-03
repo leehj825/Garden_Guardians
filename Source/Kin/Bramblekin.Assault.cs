@@ -50,8 +50,8 @@ public sealed partial class Bramblekin
 
     private enum ClimbStage { None, Up, Pick, Down }
 
-    /// <summary>It goes up the mound for the eggs in this long (s), takes one in this long, and comes down in this long.</summary>
-    private const float ClimbUpSeconds = 6f, PickSeconds = 1.5f, ClimbDownSeconds = 4f;
+    /// <summary>It goes into the cave for the eggs in this long (s), takes one in this long, and comes down in this long.</summary>
+    private const float ClimbUpSeconds = 3f, PickSeconds = 1.5f, ClimbDownSeconds = 2.5f;
 
     private static readonly Color EggColor = new(250, 238, 200, 255);
 

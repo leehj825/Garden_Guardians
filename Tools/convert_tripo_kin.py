@@ -1,10 +1,10 @@
 """Rig a static Tripo Bramblekin (about 1,000 triangles) to the game's skeleton, with no Blender.
 
     pip install numpy pillow
-    python3 Tools/convert_tripo_kin.py Tools/kin_src/Male.glb   Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Walking.glb
+    python3 Tools/convert_tripo_kin.py Tools/kin_src/Male.glb   Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Walking.glb --lods --brighten 0.8
     python3 Tools/convert_tripo_kin.py Tools/kin_src/Female.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Walking_female.glb --female
-    python3 Tools/convert_tripo_kin.py Tools/kin_src/GuardMale.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Guard_male.glb --lods --guard
-    python3 Tools/convert_tripo_kin.py Tools/kin_src/GuardFemale.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Guard_female.glb --female --lods --guard
+    python3 Tools/convert_tripo_kin.py Tools/kin_src/GuardMale.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Guard_male.glb --lods --guard --brighten 0.8
+    python3 Tools/convert_tripo_kin.py Tools/kin_src/GuardFemale.glb Tools/kin_src/Walking_skeleton.glb Assets/Models/Bramblekin/Guard_female.glb --female --lods --guard --brighten 0.7
 
 What convert_female.py does for a decimated mesh, done directly: the model (Y-up, facing +Z, about 0.95-0.98 tall) is scaled to the
 skeleton's height of 1, turned into its bind space (Z-up, facing -Y), skinned to its 33 joints by distance to the bones, and
@@ -16,6 +16,7 @@ written as the skeleton's glb with the mesh, weights and texture replaced, so ev
   --lods     also write <name>_lod1.glb and <name>_lod2.glb: the same mesh with a 1024 px and a 512 px texture.
 """
 import argparse
+import ctypes
 import io
 import os
 import sys
@@ -53,19 +54,72 @@ def load_static(path):
     return pos, nrm, uv, idx, picture
 
 
+def repose_tpose_arms(points, normals, degrees=58.0, root=0.19, height=0.44, ramp=0.06, band=(0.26, 0.50), scale=1.0):
+    """Lower the arms of a model that stands with them held straight out (a T-pose) to the angle the skeleton's own arms are at (about 58 degrees
+    down), turning every arm vertex about the shoulder, the part beside the body blending in (bind space: x to the side, z up). The clips are built on
+    that skeleton, so a mesh whose arms stay out would keep them out through every pose. An arm is what lies farther out than <root> to the side
+    and between the heights of <band>: the hair and the ears do not reach that far at that height."""
+    out, out_n = points.copy(), normals.copy()
+    held = np.zeros(len(points), bool)
+    for side in (1.0, -1.0):
+        x, z = points[:, 0] * side, points[:, 2]
+        f = np.clip((x - root) / ramp, 0.0, 1.0) * ((z > band[0]) & (z < band[1]))
+        a = np.radians(degrees) * f
+        c, s = np.cos(a), np.sin(a)
+        dx, dz = (x - root) * np.where(f > 0, scale, 1.0), z - height  # (an arm is shortened along its length, about the shoulder)
+        arm = f > 0
+        held |= (f >= 1.0)  # (the ramp beside the body, where a vest or sleeve meets the shoulder, is skinned as usual)
+        out[arm, 0] = side * (root + (dx * c + dz * s)[arm])
+        out[arm, 2] = (height + (-dx * s + dz * c))[arm]
+        nx, nz = normals[:, 0] * side, normals[:, 2]
+        out_n[arm, 0] = side * (nx * c + nz * s)[arm]
+        out_n[arm, 2] = (-nx * s + nz * c)[arm]
+    return out, out_n, held
+
+
+def make_fists(points, start, shrink=0.6, swell=1.35, band=(0.26, 0.50)):
+    """Close the hands of a model whose arms are held straight out: everything farther out than <start> (the fingers, the hand) is pulled in
+    to <shrink> of its length along the arm and thickened by <swell> about the arm's own axis, so the spread twigs become a fist."""
+    out = points.copy()
+    for side in (1.0, -1.0):
+        x = points[:, 0] * side
+        ring = (x > start - 0.03) & (x <= start) & (points[:, 2] > band[0]) & (points[:, 2] < band[1])
+        centre = points[ring].mean(axis=0)
+        hand = (x > start) & (points[:, 2] > band[0]) & (points[:, 2] < band[1])
+        out[hand, 0] = side * (start + (x[hand] - start) * shrink)
+        out[hand, 1] = centre[1] + (points[hand, 1] - centre[1]) * swell
+        out[hand, 2] = centre[2] + (points[hand, 2] - centre[2]) * swell
+    return out
+
+
+def fitted_arms(position, degrees, scale, skeleton_degrees=58.0, root=0.19, height=0.44):
+    """The skeleton's left arm, forearm and hand joints moved to where the re-posed mesh's arm lies (shortened by <scale> and hanging at
+    <degrees> instead of the skeleton's own angle), for the bone segments the skin weights are measured against (the right side is mirrored)."""
+    out = {}
+    for n in ("Arm", "ForeArm", "Hand"):
+        x, y, z = position["Left" + n]
+        a = np.radians(-skeleton_degrees)  # back to the arm held straight out...
+        dx, dz = x - root, z - height
+        dx, dz = dx * np.cos(a) + dz * np.sin(a), -dx * np.sin(a) + dz * np.cos(a)
+        dx *= scale  # ...shortened...
+        a = np.radians(degrees)  # ...and lowered to the mesh's angle
+        out[n] = np.array([root + dx * np.cos(a) + dz * np.sin(a), y, height - dx * np.sin(a) + dz * np.cos(a)])
+    return out
+
+
 def png_of(picture, size):
     buf = io.BytesIO()
     picture.resize((size, size), Image.LANCZOS).save(buf, "PNG", optimize=True)
     return buf.getvalue()
 
 
-def cloth_mask(uv, picture):
+def cloth_mask(uv, picture, green=CLOTH_GREEN):
     """True where the texture under a vertex is green: the dress, whose hem hangs by her hands but must not follow them."""
     small = np.asarray(picture.resize((512, 512), Image.LANCZOS).convert("RGB"), dtype=np.float64)
     u = np.clip((uv[:, 0] * 511).astype(int), 0, 511)
     v = np.clip((uv[:, 1] * 511).astype(int), 0, 511)
     r, g, b = small[v, u, 0], small[v, u, 1], small[v, u, 2]
-    return (g > r * CLOTH_GREEN) & (g > b * 1.2) & (g > 20)
+    return (g > r * green) & (g > b * 1.2) & (g > 20)
 
 
 def largest_piece(points, tris, selected):
@@ -94,13 +148,24 @@ def largest_piece(points, tris, selected):
     return np.array([bool(selected[v]) and find(rep[v]) == biggest for v in range(len(points))])
 
 
-def skin(points, names, segs, female, guard=False, tris=None, cloth=None):
+def skin(points, names, segs, female, guard=False, tris=None, cloth=None, arm_part=None):
     owners = list(segs)
     dist = np.stack([np.min([point_segment_distance(points, a, b) for a, b in segs[n]], axis=0) for n in owners], axis=1)
+    if arm_part is not None:
+        # What the re-pose turned as an arm follows the arm bones alone (not the spine or hips beside it), so a sleeve never tears between them.
+        arm_bones = np.array([any(k in n for k in ('Shoulder', 'Arm', 'Hand')) for n in owners])
+        sleeve = arm_part & ~cloth if cloth is not None else arm_part
+        dist[np.ix_(sleeve, np.where(~arm_bones)[0])] = np.inf
+    if cloth is not None and not female:
+        # His vest and shorts never follow an arm (they would stream out with it in a blow); the spine and hips carry them.
+        dist[np.ix_(cloth, [i for i, n in enumerate(owners) if any(k in n for k in ('Shoulder', 'Arm', 'Hand'))])] = np.inf
+        dist[np.ix_(cloth, [i for i, n in enumerate(owners) if any(k in n for k in ('UpLeg', 'Leg', 'Foot', 'Toe'))])] *= CLOTH_LEG_PULL
     if female:
         arm = np.array([any(k in n for k in ("Shoulder", "Arm", "Hand")) for n in owners])
         leg = np.array([any(k in n for k in ("UpLeg", "Leg", "Foot", "Toe")) for n in owners])
         not_arm = dist[:, arm].min(axis=1) > ARM_RADIUS
+        if arm_part is not None:
+            not_arm &= ~arm_part  # (what was turned as an arm is an arm, however thick)
         if cloth is not None:
             not_arm |= cloth
             dist[np.ix_(cloth, np.where(leg)[0])] *= CLOTH_LEG_PULL
@@ -130,14 +195,27 @@ def skin(points, names, segs, female, guard=False, tris=None, cloth=None):
         index[fixed, 0] = rigid[fixed]
         w[fixed] = 0.0
         w[fixed, 0] = 1.0
-    elif not female:
-        # A plain kin's whole head is rigid too (one bone), so its face does not wobble as the neck and shoulders swing in the walk.
+    else:
+        # A plain kin's whole head is rigid too (one bone), so its face does not wobble as the neck and shoulders swing in the walk — nor squash when
+        # the body turns under it in the aim (hers too: the hair below the chin still blends into the shoulders).
         head = points[:, 2] >= CHIN_Z  # (all the way across: the cheeks reach 0.19 to the side)
         index[head] = 0
         index[head, 0] = names.index("Head")
         w[head] = 0.0
         w[head, 0] = 1.0
     return index, w
+
+
+def simplified(pos, nrm, uv, flat, joints, weights, triangles):
+    """The mesh cut to about <triangles> triangles by edge collapses that keep its shape (meshoptimizer), the edges along picture seams left as they
+    are (so the picture still fits), with each surviving vertex keeping its own normal, picture coordinates, bones and weights."""
+    import meshoptimizer
+    out = np.zeros(len(flat), np.uint32)
+    count = meshoptimizer.simplify(out, flat.astype(np.uint32), pos.astype("f4"), target_index_count=triangles * 3, target_error=ctypes.c_float(1.0),
+                                   options=meshoptimizer.SIMPLIFY_LOCK_BORDER)
+    out = out[:count].astype(np.int64)
+    used, inverse = np.unique(out, return_inverse=True)
+    return pos[used], nrm[used], uv[used], inverse.astype("<u2"), joints[used], weights[used]
 
 
 def main():
@@ -147,8 +225,14 @@ def main():
     ap.add_argument("dst")
     ap.add_argument("--female", action="store_true")
     ap.add_argument("--texture", type=int, default=2048)
-    ap.add_argument("--lods", action="store_true")
+    ap.add_argument("--tpose-arms", action="store_true", help="the model's arms are held straight out: lower them to the skeleton's own angle (and fit nothing to the arms)")
+    ap.add_argument("--fist-start", type=float, help="close the hands: what lies farther out than this (bind space) is pulled in and thickened into a fist (see make_fists)")
+    ap.add_argument("--arm-scale", type=float, default=1.0, help="how much of their length --tpose-arms leaves the arms")
+    ap.add_argument("--arm-degrees", type=float, default=58.0, help="how far --tpose-arms lowers them (a model whose arms already droop needs less)")
+    ap.add_argument("--lods", action="store_true", help="also write _lod1 and _lod2: the mesh cut to --lod-tris triangles, with smaller pictures")
+    ap.add_argument("--lod-tris", type=int, nargs=2, default=(4000, 1000), help="triangles in the first and second lower level of detail")
     ap.add_argument("--guard", action="store_true", help="shield and sword follow the arms only")
+    ap.add_argument("--brighten", type=float, default=1.0, help="gamma applied to the texture (below 1 lightens; the guards' armour and leather are painted darker than the plain kin)")
     args = ap.parse_args()
 
     pos_y, nrm_y, uv, idx, picture = load_static(args.model)
@@ -161,29 +245,45 @@ def main():
 
     pos = to_bind(pos_y, scale)
     nrm = to_bind(nrm_y)
+    if args.tpose_arms:
+        if args.fist_start:
+            pos = make_fists(pos, args.fist_start)
+        pos, nrm, arm_part = repose_tpose_arms(pos, nrm, args.arm_degrees, scale=args.arm_scale)
+    else:
+        arm_part = None
 
     doc, binary = read_glb(args.skeleton)
     names, position, parent = bind_joints(doc, binary)
-    segs = segments(names, position, parent, FITTED_ARM if args.female else {})
-    cloth = cloth_mask(uv, picture) if args.female and not args.guard else None  # (a guard's green is a tunic and a shield, which follow her arms)
+    segs = segments(names, position, parent, fitted_arms(position, args.arm_degrees, args.arm_scale) if args.tpose_arms else (FITTED_ARM if args.female else {}))
+    cloth = cloth_mask(uv, picture, CLOTH_GREEN if args.female else 0.9) if not args.guard else None  # (a guard's green is a tunic and a shield, which follow her arms)
     if cloth is not None:
         print(int(cloth.sum()), "of", len(cloth), "vertices are cloth")
-    joints_idx, w = skin(pos, names, segs, args.female, args.guard, idx.reshape(-1, 3), cloth)
+    joints_idx, w = skin(pos, names, segs, args.female, args.guard, idx.reshape(-1, 3), cloth, arm_part)
     joints4 = np.zeros((len(pos), 4), "u1")
     weights4 = np.zeros((len(pos), 4), "<f4")
     joints4[:, :NEIGHBOURS] = joints_idx
     weights4[:, :NEIGHBOURS] = w
 
-    outputs = [(args.dst, args.texture)]
+    if args.brighten != 1.0:
+        # Lighten the value only (hue and saturation kept, so the copper and leather stay rich rather than going grey).
+        hsv = np.asarray(picture.convert("RGB").convert("HSV")).astype("f4")
+        hsv[..., 2] = 255.0 * (hsv[..., 2] / 255.0) ** args.brighten
+        picture = Image.fromarray(np.clip(hsv, 0, 255).astype("u1"), "HSV").convert("RGB")
+
+    outputs = [(args.dst, args.texture, None)]
     if args.lods:
         stem = args.dst[:-4]
-        outputs += [(stem + "_lod1.glb", 1024), (stem + "_lod2.glb", 512)]
-    for path, size in outputs:
+        outputs += [(stem + "_lod1.glb", 1024, args.lod_tris[0]), (stem + "_lod2.glb", 512, args.lod_tris[1])]
+    flat = idx.reshape(-1)
+    for path, size, tris in outputs:
+        p_, n_, u_, i_, j_, w_ = pos, nrm, uv, flat, joints4, weights4
+        if tris is not None and tris * 3 < len(flat):
+            p_, n_, u_, i_, j_, w_ = simplified(pos, nrm, uv, flat, joints4, weights4, tris)
         d, b = read_glb(args.skeleton)
-        d, out = build(d, b, pos.astype("<f4"), nrm.astype("<f4"), uv, idx.reshape(-1), joints4, weights4, png_of(picture, size))
+        d, out = build(d, b, p_.astype("<f4"), n_.astype("<f4"), u_, i_, j_, w_, png_of(picture, size))
         d["images"][0]["name"] = "Bramblekin_" + ("female" if args.female else "male") + "_basecolor"
         write_glb(path, d, out)
-        print("wrote", path, len(pos), "vertices,", len(idx) // 3, "triangles,", size, "px texture")
+        print("wrote", path, len(p_), "vertices,", len(i_) // 3, "triangles,", size, "px texture")
 
 
 if __name__ == "__main__":

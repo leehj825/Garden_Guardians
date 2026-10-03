@@ -14,11 +14,11 @@ public sealed class HillGuard : ICombatant
     private const float ModelScale = 1.0f;
 
     public const float BodyRadius = 0.38f;
-    public const int MaxHealth = 24;
-    public const int BiteDamage = 4;
+    public const int MaxHealth = 14;
+    public const int BiteDamage = 3;
 
     /// <summary>A Bramblekin that is not in a Kingdom's assault scratches a guard for no more than this: only an army can bring one down.</summary>
-    public const int BystanderDamage = 1;
+    public const int BystanderDamage = 2;
 
     private const float Speed = 2.0f;
     private const float BiteInterval = 1.0f;
@@ -27,7 +27,7 @@ public sealed class HillGuard : ICombatant
     private const float BiteReach = 0.4f;
 
     /// <summary>Wounds close at this many Health a second while it is inside.</summary>
-    private const float HealPerSecond = 1f;
+    private const float HealPerSecond = 0.5f;
 
     /// <summary>When posted it stands about the hill between these distances (m) from its middle.</summary>
     private const float PostMin = Anthill.Radius + 2f, PostMax = Anthill.Radius + 6f;

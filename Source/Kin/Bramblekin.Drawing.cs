@@ -64,13 +64,17 @@ public sealed partial class Bramblekin
         // feet (baked in when it was rigged), so — like the cylinder it
         // replaced — it pivots flush on the ground at Position.
         EnsureAnimModel();
-        bool guardLook = WearsGuardKit;
-        BramblekinClip clip = BramblekinModel.ClipFor(State, _mover.IsMoving, guardLook);
+        (BramblekinClip clip, float? progress) = ChooseClip(world);
         // Skinning is done on the CPU into the mesh being drawn, so it is done on the mesh of the level of detail in
         // use (a cheaper mesh skins faster too) — skinning the full one and drawing another would draw the other unposed.
-        Model pose = BramblekinModel.LodView(_animModel, Sex, lod, guardLook);
+        Model pose = BramblekinModel.LodView(_animModel, Sex, lod);
         if (!speck)
-            BramblekinModel.Play(ref pose, clip, clip is BramblekinClip.Idle or BramblekinClip.GuardIdle ? 0f : _animTime);
+        {
+            if (progress is { } share)
+                BramblekinModel.PlayProgress(ref pose, clip, share);
+            else
+                BramblekinModel.Play(ref pose, clip, clip is BramblekinClip.Idle or BramblekinClip.GuardIdle ? 0f : _animTime);
+        }
 
         // The cylinder this replaced was rotationally symmetric, so it never
         // needed to face any particular way; the rig is not, so it must be
@@ -128,7 +132,7 @@ public sealed partial class Bramblekin
         {
 
 
-            if (State is BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or BramblekinState.Dueling && Job is not (KinJob.Guard or KinJob.Raider))
+            if (State is BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or BramblekinState.Dueling && Job is not (KinJob.Guard or KinJob.Raider or KinJob.Hunter))
             {
                 Color thornColor = State == BramblekinState.Attacking ? BloodyThornColor : ThornColor;
                 var grip = Position + new Vector3(0, BodyHeight * 0.6f, 0);
@@ -150,11 +154,7 @@ public sealed partial class Bramblekin
             _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
             if (_carriesEgg)
             {
-                Rlgl.PushMatrix();
-                Rlgl.Translatef(Position.X, Position.Y + BodyHeight + 0.12f, Position.Z);
-                Rlgl.Scalef(1f, 1.3f, 1f);
-                Detail.Sphere(Vector3.Zero, 0.14f, EggColor, Position);
-                Rlgl.PopMatrix();
+                PropModels.Draw(PropModels.Prop.Larvae, Position + new Vector3(0f, BodyHeight + 0.02f, 0f), 0f, 0.4f, Color.White);
             }
             DrawSack(facing);
             if (_carriedTwig is not null)
@@ -177,6 +177,92 @@ public sealed partial class Bramblekin
     /// <summary>From this many pixels tall, the small props (thorn, shield, rod, poultice…) are drawn.</summary>
     private const float PropPixels = 40f;
 
+    // --- Which clip, and how far through it ------------------------------------------------------
+
+    /// <summary>A debugging aid: GARDEN_CLIP=SpearStab (any <see cref="BramblekinClip"/>) plays that clip on every kin, over and over.</summary>
+    private static readonly BramblekinClip? ForcedClip = Enum.TryParse(Environment.GetEnvironmentVariable("GARDEN_CLIP"), out BramblekinClip forced) ? forced : null;
+
+    private BramblekinClip _actionClip;
+    private float _actionStart;
+    private bool _actionActive, _nextBlowIsAttack;
+
+    /// <summary>Seconds left of an action the kin must finish before it moves or does anything else (a blow, a pick-up): see <see cref="StartAction"/>.</summary>
+    private float _actionLock;
+
+    /// <summary>Starts <paramref name="clip"/> playing from its first frame; with <paramref name="lockMovement"/> the kin stands where it is until the clip is done.</summary>
+    private void StartAction(BramblekinClip clip, bool lockMovement)
+    {
+        _actionClip = clip;
+        _actionStart = _animTime;
+        _actionActive = true;
+        _actionLock = lockMovement ? BramblekinModel.ActionSeconds(clip) : 0f;
+    }
+
+    /// <summary>
+    /// A blow is struck: the clip for the kin's job plays through, and the kin stands still until it is done. A hunter (or anyone shooting) takes aim and
+    /// recoils; a guard whose clan has Spears stabs; soldiers and other fighters alternate the sword and shield slash and the sword and shield attack.
+    /// </summary>
+    private void BeginBlow(World world, bool ranged = false)
+    {
+        BramblekinClip clip;
+        if (ranged || Job == KinJob.Hunter)
+            clip = BramblekinClip.AimRecoil;
+        else if (Job == KinJob.Spearman || (Job == KinJob.Guard && world.GroupOf(this) is { } clan && World.Knows(clan, Craft.Spears)))
+            clip = BramblekinClip.SpearStab;
+        else
+        {
+            clip = _nextBlowIsAttack ? BramblekinClip.SwordAttack : BramblekinClip.Combat;
+            _nextBlowIsAttack = !_nextBlowIsAttack;
+        }
+        StartAction(clip, lockMovement: true);
+    }
+
+    /// <summary>The action clip the kin's state and job call for while it stands still, if any: blows, stabs, aiming and picking things up. Null: nothing but the usual clips.</summary>
+    private BramblekinClip? ActionWanted(World world)
+    {
+        switch (State)
+        {
+            // (Blows are started where they are struck: see BeginBlow.)
+            case BramblekinState.Collecting or BramblekinState.Foraging or BramblekinState.Stockpiling or BramblekinState.Eating or BramblekinState.Drinking:
+                return BramblekinClip.PickingUp; // bending to pick up, to eat, to drink
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>
+    /// The clip to pose the kin in, and how far through it (0 to 1) for an action clip, which always plays from its start to its end (sped up if it
+    /// is long: see <see cref="BramblekinModel.ActionSeconds"/>) before anything else; null for the clips that just loop on the clock. Walking takes over
+    /// from an action at once, since the kin is going somewhere.
+    /// </summary>
+    private (BramblekinClip Clip, float? Progress) ChooseClip(World world)
+    {
+        if (ForcedClip is { } forced)
+        {
+            float length = BramblekinModel.ActionSeconds(forced);
+            return (forced, length <= 0f ? 0f : _animTime % length / length);
+        }
+
+        if (ClimbT > 0f && ClimbT < 1f && _climb != ClimbStage.Pick)
+            return (BramblekinClip.Walking, null); // walking in to the eggs, or out with one
+
+        if (_actionActive)
+        {
+            float length = BramblekinModel.ActionSeconds(_actionClip);
+            float elapsed = _animTime - _actionStart;
+            if (elapsed < length && (_actionLock > 0f || !_mover.IsMoving))
+                return (_actionClip, elapsed / length);
+            _actionActive = false;
+        }
+
+        if (!_mover.IsMoving && ActionWanted(world) is { } wanted)
+        {
+            StartAction(wanted, lockMovement: false);
+            return (wanted, 0f);
+        }
+        return (BramblekinModel.ClipFor(State, _mover.IsMoving), null);
+    }
+
     private static Color LerpColor(Color a, Color b, float t)
     {
         t = Math.Clamp(t, 0f, 1f);
@@ -192,11 +278,12 @@ public sealed partial class Bramblekin
     /// <summary>The sword and shield of a soldier or raider, a hunter's bow and quiver: hung on the bones of the pose (see <see cref="KinGear"/>), so they walk and swing with it.</summary>
     private void DrawGear(in Model pose, Vector3 axis, float angleDegrees, float scale)
     {
-        bool hunter = Job == KinJob.Hunter;
-        if (IsYoung || !hunter)
-            return; // A guard's sword and shield are part of its own (guard) model.
+        bool hunter = Job == KinJob.Hunter, guard = Job == KinJob.Guard, spearman = Job == KinJob.Spearman;
+        if (IsYoung || !(hunter || guard || spearman))
+            return; // (Only a guard's wooden sword, a spearman's spear and a hunter's bow for the time being: no shields, no quiver.)
+        bool aiming = (_actionActive && _actionClip == BramblekinClip.AimRecoil) || ForcedClip == BramblekinClip.AimRecoil;
         Matrix4x4 body = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateFromAxisAngle(Vector3.Normalize(axis), angleDegrees * MathF.PI / 180f) * Matrix4x4.CreateTranslation(Position);
-        KinGear.Draw(pose, body, sword: false, shield: false, bow: hunter, quiver: hunter);
+        KinGear.Draw(pose, body, sword: guard, shield: false, bow: hunter, quiver: false, spear: spearman, bowRaised: aiming, stabbing: (_actionActive && _actionClip == BramblekinClip.SpearStab) || ForcedClip == BramblekinClip.SpearStab);
     }
 
     private static readonly Color ShieldColor = new(95, 55, 35, 255);

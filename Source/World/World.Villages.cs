@@ -19,6 +19,9 @@ public sealed partial class World
     /// <summary>A chief's claim to be headman grows by this for each clan member (support at home) and by this for each fellow chief who counts them a friend.</summary>
     private const float HeadmanSupportPerMember = 0.02f, HeadmanFriendVote = 0.15f;
 
+    /// <summary>A village whose homes fall short (one pulled down for an upgrade, a clan moving house) is kept this long (s) before it is abandoned.</summary>
+    private const float VillageGraceSeconds = 120f;
+
     private float _villageTimer;
 
     public List<Village> Villages { get; } = new();
@@ -122,6 +125,7 @@ public sealed partial class World
                 }
             }
             kept.Add(village);
+            village.LapsedAt = null;
             village.Centre = centre;
             village.Homes = cluster.Count;
             village.PatrolRadius = MathF.Max(6f, cluster.Max(h => GroundMover.HorizontalDistance(h.Position, centre) + h.PalisadeRadius) + 1.5f);
@@ -142,6 +146,9 @@ public sealed partial class World
         {
             if (kept.Contains(Villages[i]))
                 continue;
+            Villages[i].LapsedAt ??= ElapsedSeconds;
+            if (ElapsedSeconds - Villages[i].LapsedAt < VillageGraceSeconds && ClansOf(Villages[i]).Any())
+                continue; // Not yet: the homes may be back.
             Game.AddEventLog($"[VILLAGE] {Villages[i].Name} is abandoned");
             Chronicle($"The village of {Villages[i].Name} was abandoned", ClansOf(Villages[i]).ToArray());
             Villages.RemoveAt(i);

@@ -16,11 +16,23 @@ public static class DebugShot
     private static int _frame;
 
     /// <summary>Puts the camera where GARDEN_CAMERA says, if it does.</summary>
-    public static void Place(ref Camera3D camera)
+    public static void Place(ref Camera3D camera, World world)
     {
         string? text = Environment.GetEnvironmentVariable("GARDEN_CAMERA");
         if (text is null)
             return;
+        if (text == "hill" && world.Anthill is { } hill) // an aid: the camera looks at the ant hill from the garden side
+        {
+            camera.Position = hill.Position + hill.Facing * 11f + new Vector3(0f, 3.2f, 0f);
+            camera.Target = hill.Position + hill.Facing * 3f + new Vector3(0f, 0.5f, 0f);
+            return;
+        }
+        if (text == "oak") // an aid: the camera looks at the oak's foot
+        {
+            camera.Position = World.OakCenter + new Vector3(30f, 4f, 0f);
+            camera.Target = World.OakCenter + new Vector3(0f, 1.5f, 0f);
+            return;
+        }
         string[] parts = text.Split(',');
         if (parts.Length != 6)
             return;

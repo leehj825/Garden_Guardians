@@ -17,7 +17,7 @@ public sealed class Ant : ICombatant
 
     public const float BodyRadius = 0.28f;
     public const float EdgeMargin = 0.5f;
-    public const int MaxHealth = 5;
+    public const int MaxHealth = 4;
 
     private const float Speed = 1.5f;
 

@@ -33,9 +33,51 @@ public sealed partial class Bramblekin
     /// <summary>Whether a strike may hit Bramblekin of other clans too (it always hits wildlife).</summary>
     public bool PlayerMayHitKin { get; set; }
 
-    /// <summary>Takes the wheel, or gives it back to the kin's own mind.</summary>
-    public void SetPlayerControlled(bool on)
+    /// <summary>The job the player has chosen for the kin while it is under control: None ("normal"), Hunter, Guard, Spearman or Fisher.</summary>
+    public KinJob PlayerJob { get; private set; }
+
+    /// <summary>The clan (if any) the kin belongs to again when the player gives it back. While set, the kin has no clan, village or kingdom.</summary>
+    public Guid? AwayGroupId { get; private set; }
+
+    private KinJob _awayJob;
+    private float _awayLoyalty;
+
+    /// <summary>Steps the player's job choice round: normal, Hunter, Guard, Spearman, Fisher.</summary>
+    public void CyclePlayerJob()
     {
+        PlayerJob = PlayerJob switch { KinJob.None => KinJob.Hunter, KinJob.Hunter => KinJob.Guard, KinJob.Guard => KinJob.Spearman, KinJob.Spearman => KinJob.Fisher, _ => KinJob.None };
+        if (IsPlayerControlled)
+            AssignJob(PlayerJob);
+    }
+
+    /// <summary>
+    /// Takes the wheel, or gives it back to the kin's own mind. Under control the kin stands alone: it leaves its clan (and with it the village
+    /// and kingdom), holds no village job and takes the job the player picked. Given back, it rejoins its clan, if that still stands, and takes its old job again.
+    /// </summary>
+    public void SetPlayerControlled(bool on, World world)
+    {
+        if (on && !IsPlayerControlled)
+        {
+            AwayGroupId = GroupId;
+            _awayJob = Job;
+            _awayLoyalty = Loyalty;
+            LeaveGroup(); // (Also clears Job.)
+            VillageJob = KinJob.None;
+            IsPaid = false;
+            AssignJob(PlayerJob);
+        }
+        else if (!on && IsPlayerControlled)
+        {
+            AssignJob(KinJob.None);
+            IsPlayerControlled = false;
+            if (AwayGroupId is { } clan && world.GroupExists(clan))
+            {
+                JoinGroup(clan);
+                Loyalty = _awayLoyalty;
+                AssignJob(_awayJob);
+            }
+            AwayGroupId = null;
+        }
         IsPlayerControlled = on;
         PlayerMove = Vector2.Zero;
         PlayerWantsStrike = false;
@@ -81,6 +123,8 @@ public sealed partial class Bramblekin
 
         bool moving = PlayerMove.LengthSquared() > 0.01f;
         if (!moving && TryPlayerSustain(deltaTime, world))
+            return;
+        if (!moving && Job == KinJob.Fisher && TryPlayerFishing(deltaTime, world))
             return;
 
         if (moving)
@@ -133,10 +177,41 @@ public sealed partial class Bramblekin
         return false;
     }
 
+    /// <summary>A fisher standing still at the water's edge casts again and again, and eats what it lands. True while it fishes.</summary>
+    private bool TryPlayerFishing(float deltaTime, World world)
+    {
+        if (World.NearestShoreSpot(Position, PlayerWaterReach, creek: true) is not { } shore)
+        {
+            _fishingTimer = 0f;
+            _fishingSpot = null;
+            return false;
+        }
+        SetState(BramblekinState.Fishing);
+        _fishingSpot = Position; // (the rod is drawn where the kin stands)
+        _mover.Heading = TowardWater(shore);
+        _mover.Idle();
+        _fishingTimer += deltaTime;
+        if (_fishingTimer < FishingSeconds * 0.6f)
+            return true;
+        _fishingTimer = 0f;
+        Train(Skill.Fishing, world, 0.5f);
+        float skill = 1f + 0.5f * SkillAt(Skill.Fishing);
+        if (_rng.NextDouble() >= MathF.Min(0.95f, CatchChance(world.CurrentSeason) * skill) * (0.3f + 0.7f * WaterMap.Fullness))
+            return true;
+        if (world.CatchFish(this) is { } fish)
+        {
+            _carried = fish;
+            world.QueueFloatingText(Position, "Fish!", EggTextColor);
+            StartEating();
+        }
+        return true;
+    }
+
     /// <summary>A swing at whatever is nearest in front: wildlife, an ant, an enemy — and, if the player allows it, Bramblekin of other clans.</summary>
     private void PlayerStrike(World world)
     {
         _strikeCooldown = PlayerStrikeCooldown;
+        BeginBlow(world);
         _swing = PlayerSwingSeconds;
         SetState(BramblekinState.Fighting);
 
@@ -181,7 +256,7 @@ public sealed partial class Bramblekin
         {
             foreach (Bramblekin other in world.QueryColonyWithin(Position, PlayerReach + 2f))
             {
-                if (other != this && !other.IsDead && !other.IsSheltered && (GroupId is null || other.GroupId != GroupId))
+                if (other != this && !other.IsDead && !other.IsSheltered && ((AwayGroupId ?? GroupId) is not { } clan || other.GroupId != clan))
                     Consider(other);
             }
         }
@@ -199,6 +274,7 @@ public sealed partial class Bramblekin
     /// <summary>For the HUD: what a controlled kin can do about being hungry or thirsty.</summary>
     public string? PlayerHint =>
         IsThirsty ? "Thirsty: stand still at the water's edge to drink"
-        : IsHungry ? "Hungry: stand still by food or at your store to eat"
+        : Job == KinJob.Fisher && !IsHungry ? "Fisher: stand still at the water's edge to fish"
+        : IsHungry ? "Hungry: stand still by food or at your own home's store to eat"
         : null;
 }

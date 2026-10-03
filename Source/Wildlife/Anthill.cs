@@ -68,10 +68,10 @@ public sealed class Anthill
     /// <summary>How many thief ants it keeps out at once: 2, plus one per 15 food taken, up to 6.</summary>
     public int MaxThieves => Math.Min(6, 2 + Stock / 15);
 
-    /// <summary>The mound's height (m) at each distance (m) from its middle, from the model (10m wide, 5.5m high): the way up its garden side.</summary>
+    /// <summary>The way in (distance from the middle, height; m): from the foot of the mound on its garden side, through the cave entrance, to where the eggs lie just inside.</summary>
     private static readonly (float R, float Y)[] Profile =
     {
-        (Radius + 0.8f, 0f), (4.9f, 0.4f), (4.5f, 1.6f), (4f, 2.1f), (3.5f, 2.8f), (3f, 3.2f), (2.5f, 3.8f), (2.2f, 4.5f), (1.8f, 5.2f), (0.8f, 5.4f),
+        (Radius + 0.8f, 0f), (4.6f, 0.1f), (4.1f, 0.3f), (3.7f, 0.55f), (3.3f, 0.7f),
     };
 
     /// <summary>
@@ -95,11 +95,17 @@ public sealed class Anthill
         return -Facing * (Profile[0].R - r) + new Vector3(0f, y, 0f);
     }
 
-    /// <summary>The crater at the top, where the eggs lie.</summary>
-    public Vector3 Top => Position + new Vector3(0f, Profile[^1].Y, 0f);
+    /// <summary>Where the eggs lie: just inside the cave entrance, which faces <see cref="Facing"/>.</summary>
+    public Vector3 Top => Position + Facing * Profile[^1].R + new Vector3(0f, Profile[^1].Y, 0f);
+
+    /// <summary>The model's cave entrance lies this way from its middle (x and z, from the model), 3.9 m out.</summary>
+    private const float EntranceX = -3.8f, EntranceZ = 0.5f;
+
+    /// <summary>How far the model is turned (degrees about the vertical) so that its cave entrance faces <see cref="Facing"/>.</summary>
+    public float DrawYaw => (MathF.Atan2(EntranceZ, EntranceX) - MathF.Atan2(Facing.Z, Facing.X)) * 180f / MathF.PI;
 
     public bool IsInZone(Vector3 point, float margin = 0f) =>
         GroundMover.HorizontalDistanceSquared(point, Position) <= (ZoneRadius + margin) * (ZoneRadius + margin);
 
-    public void Draw() => PropModels.Draw(PropModels.Prop.AntHill, Position, 0f, DrawWidth, Color.White);
+    public void Draw() => PropModels.Draw(PropModels.Prop.AntHill, Position, DrawYaw, DrawWidth, Color.White);
 }

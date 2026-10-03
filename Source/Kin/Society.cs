@@ -50,6 +50,9 @@ public enum KinJob
 
     /// <summary>Fishes the shore all day for the clan's stores (once it knows <see cref="Craft.Fishing"/>), instead of only when nothing else is to hand.</summary>
     Fisher,
+
+    /// <summary>Carries a spear and fights with it (a player's choice for a kin under control).</summary>
+    Spearman,
 }
 
 /// <summary>Who may eat from a group's shared store — set by its Leader's personality.</summary>

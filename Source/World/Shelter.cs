@@ -97,7 +97,18 @@ public sealed class Shelter
         StoredFood = stored;
     }
 
-    public Vector3 Position { get; }
+    public Vector3 Position { get; private set; }
+
+    /// <summary>Sets the home down somewhere else (a castle rising beside it has taken its ground).</summary>
+    public void MoveTo(Vector3 groundPoint) => Position = World.Grounded(groundPoint);
+
+    /// <summary>The kingdom's capital house, raised into a castle (see World.Castles): twice as wide as an acorn house. Not saved; worked out afresh from the kingdoms.</summary>
+    public bool IsCastle { get; set; }
+
+    public const float CastleRadius = 2.6f;
+
+    /// <summary>A castle is drawn this much wider than its footing (m), the same way the acorn house is.</summary>
+    private const float CastleDrawWidthFactor = 2f * 1.04f;
 
     public ShelterTier Tier { get; private set; } = ShelterTier.Tent;
 
@@ -199,7 +210,9 @@ public sealed class Shelter
     /// <summary>Where the hearth sits: out front, off to the side away from the cistern.</summary>
     /// <summary>Where a lived-in House's window is (lit at night — see World.DrawNightLights); null for anything else.</summary>
     public Vector3? WindowPosition => IsBuilt && !IsBurrow && !IsAbandoned && Tier == ShelterTier.House
-        ? Position + new Vector3(0f, 0.02f, 0f) + new Vector3(0f, 0.36f * Radius * 2.6f * 0.8f / PropModels.HouseWidth, -(0.36f * Radius * 2.6f * 0.8f / PropModels.HouseWidth))
+        ? Position + new Vector3(0f, 0.02f, 0f) + (IsCastle
+            ? new Vector3(0f, 0.3f * Radius * CastleDrawWidthFactor / PropModels.CastleWidth, -(0.3f * Radius * CastleDrawWidthFactor / PropModels.CastleWidth))
+            : new Vector3(0f, 0.36f * Radius * 2.6f * 0.8f / PropModels.HouseWidth, -(0.36f * Radius * 2.6f * 0.8f / PropModels.HouseWidth)))
         : null;
 
     public Vector3 HearthPosition => Position + new Vector3(Radius * 0.2f, 0f, -(Radius + 0.5f));
@@ -258,7 +271,7 @@ public sealed class Shelter
 
     public bool StoreIsFull => StoredFood >= StoreCapacity;
 
-    public float Radius => Tier switch { ShelterTier.House => HouseRadius, ShelterTier.Burrow => BurrowRadius, _ => TentRadius };
+    public float Radius => Tier switch { ShelterTier.House => IsCastle ? CastleRadius : HouseRadius, ShelterTier.Burrow => BurrowRadius, _ => TentRadius };
 
     /// <summary>The one Bramblekin it belongs to, for a personal home.</summary>
     public Bramblekin? Owner { get; set; }
@@ -399,10 +412,20 @@ public sealed class Shelter
         }
         else
         {
-            // The acorn house model, its door turned to face out (+X).
-            float scale = radius * 2.6f * 0.8f / PropModels.HouseWidth;
-            PropModels.Draw(PropModels.Prop.House, basePosition, 180f, scale, Tint(Color.White));
-            roofTop = basePosition.Y + PropModels.HouseCapTop * scale;
+            if (IsCastle)
+            {
+                // The capital's castle.
+                float castleScale = radius * CastleDrawWidthFactor / PropModels.CastleWidth;
+                PropModels.Draw(PropModels.Prop.Castle, basePosition, 180f, castleScale, Tint(Color.White));
+                roofTop = basePosition.Y + castleScale; // The model is 1 unit tall.
+            }
+            else
+            {
+                // The acorn house model, its door turned to face out (+X).
+                float scale = radius * 2.6f * 0.8f / PropModels.HouseWidth;
+                PropModels.Draw(PropModels.Prop.House, basePosition, 180f, scale, Tint(Color.White));
+                roofTop = basePosition.Y + PropModels.HouseCapTop * scale;
+            }
         }
 
         if (groupColor is { } color)
@@ -427,44 +450,24 @@ public sealed class Shelter
 
         if (HasWorkshop)
         {
-            // A workbench beside the home: a plank on trestles with a stone anvil and a mallet.
+            // A workbench beside the home (the model: a bench with an anvil stone, tools and offcuts).
             Vector3 bench = basePosition + new Vector3(radius * 0.9f, 0f, -(radius + 0.7f));
-            Raylib.DrawCube(bench + new Vector3(0f, 0.42f, 0f), 0.9f, 0.08f, 0.45f, Tint(WorkbenchColor));
-            for (int side = -1; side <= 1; side += 2)
-                Raylib.DrawCylinderEx(bench + new Vector3(side * 0.35f, 0f, 0f), bench + new Vector3(side * 0.35f, 0.4f, 0f), 0.05f, 0.04f, 5, Tint(StickColor));
-            Detail.Sphere(bench + new Vector3(-0.2f, 0.56f, 0f), 0.11f, Tint(FootingColor));
-            Raylib.DrawCylinderEx(bench + new Vector3(0.15f, 0.47f, 0.05f), bench + new Vector3(0.35f, 0.5f, 0.12f), 0.025f, 0.025f, 4, Tint(StickColor));
-            Raylib.DrawCube(bench + new Vector3(0.38f, 0.52f, 0.13f), 0.12f, 0.08f, 0.08f, Tint(FootingColor));
+            ItemModels.Draw(ItemModels.Kind.Workbench, World.Grounded(bench), 90f, 1f, Tint(Color.White));
         }
 
         if (HasMarket)
         {
-            // A market stall by the home: four posts, a striped awning and a table of goods.
+            // A market stall by the home (one of four, by its number), with a basket of goods beside it.
             Vector3 stall = basePosition + new Vector3(-radius * 0.8f, 0f, radius + 1.5f);
-            for (int i = 0; i < 4; i++)
-            {
-                Vector3 post = stall + new Vector3((i % 2 == 0 ? -0.5f : 0.5f), 0f, (i < 2 ? -0.35f : 0.35f));
-                Raylib.DrawCylinderEx(post, post + new Vector3(0f, 0.9f, 0f), 0.03f, 0.025f, 5, Tint(StickColor));
-            }
-            Raylib.DrawCube(stall + new Vector3(0f, 0.95f, -0.12f), 1.2f, 0.04f, 0.5f, Tint(AwningColor));
-            Raylib.DrawCube(stall + new Vector3(0f, 0.93f, 0.2f), 1.2f, 0.04f, 0.3f, Tint(AwningStripeColor));
-            Raylib.DrawCube(stall + new Vector3(0f, 0.38f, 0f), 0.9f, 0.06f, 0.4f, Tint(WorkbenchColor));
-            Detail.Sphere(stall + new Vector3(-0.25f, 0.47f, 0f), 0.09f, Tint(AwningStripeColor));
-            Detail.Sphere(stall + new Vector3(0.2f, 0.46f, 0.05f), 0.08f, Tint(FootingColor));
+            ItemModels.Draw(ItemModels.StallFor(ID), World.Grounded(stall), 90f, 1f, Tint(Color.White));
+            ItemModels.Draw(ItemModels.Kind.Basket, World.Grounded(stall + new Vector3(1.1f, 0f, 0.3f)), 20f, 1f, Tint(Color.White));
         }
 
         if (HasRuneStone)
         {
-            // A standing stone by the door, cut with rows of runes.
+            // A standing stone by the door, cut with runes.
             Vector3 stone = basePosition + new Vector3(-(radius + 1.3f), 0f, -0.3f);
-            Raylib.DrawCube(stone + new Vector3(0f, 0.5f, 0f), 0.5f, 1f, 0.28f, Tint(FootingColor));
-            Raylib.DrawCube(stone + new Vector3(0f, 1.05f, 0f), 0.36f, 0.16f, 0.24f, Tint(FootingColor));
-            var rune = Tint(new Color(45, 40, 35, 255));
-            for (int row = 0; row < 3; row++)
-            {
-                Raylib.DrawCube(stone + new Vector3(-0.08f, 0.3f + row * 0.25f, 0.15f), 0.05f, 0.14f, 0.02f, rune);
-                Raylib.DrawCube(stone + new Vector3(0.08f, 0.3f + row * 0.25f, 0.15f), 0.14f, 0.05f, 0.02f, rune);
-            }
+            ItemModels.Draw(ItemModels.Kind.RuneStone, World.Grounded(stone), 90f, 1f, Tint(Color.White));
         }
 
         if (HasHerbGarden)

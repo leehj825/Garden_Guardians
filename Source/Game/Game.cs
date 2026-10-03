@@ -320,6 +320,7 @@ public static partial class Game
         Preferences.Load(Preferences.DefaultPath);
         _logView = Preferences.Get(LogViewSetting, LogView.Brief);
         _statsView = Preferences.Get(StatsViewSetting, StatsView.Shown);
+        _alertsOn = Preferences.Get(AlertsSetting, AlertsView.On) == AlertsView.On;
         World.Overlays = Preferences.Get(OverlaySetting, MapOverlays.All);
         _gardenSlot = (int)Preferences.Get(GardenSetting, GardenSlot.Garden1);
         TerrainData.GrowNewGardens = Preferences.Get(TerrainSetting, TerrainMode.Fixed) == TerrainMode.Random;
@@ -353,7 +354,7 @@ public static partial class Game
         var director = new Director();
         var play = new PlayControl();
         Camera3D overview = camera;
-        DebugShot.Place(ref camera);
+        DebugShot.Place(ref camera, world);
         float autosaveTimer = AutosaveInterval;
 
         // --- Main loop -------------------------------------------------------
@@ -366,13 +367,21 @@ public static partial class Game
             //    Target and pinch to zoom. Runs before the tap input below
             //    so the rest of the frame sees an already-settled camera.
             // (The History screen takes over touches and drags while it's open.)
-            if (!_playTestDone && Environment.GetEnvironmentVariable("GARDEN_PLAY_TEST") == "1" && world.Colony.FirstOrDefault(k => !k.IsDead && !k.IsYoung && (Environment.GetEnvironmentVariable("GARDEN_PLAY_FEMALE") != "1" || k.Sex == Sex.Female)) is { } testKin)
+            if (!_playTestDone && Environment.GetEnvironmentVariable("GARDEN_PLAY_TEST") == "1" && world.Colony.FirstOrDefault(k => !k.IsDead && !k.IsYoung && (Environment.GetEnvironmentVariable("GARDEN_PLAY_FEMALE") != "1" || k.Sex == Sex.Female) && (Environment.GetEnvironmentVariable("GARDEN_PLAY_MALE") != "1" || k.Sex == Sex.Male)) is { } testKin)
             {
                 _playTestDone = true; // A development aid: start out controlling a kin.
                 if (Environment.GetEnvironmentVariable("GARDEN_PLAY_GUARD") == "1")
-                    testKin.MakeTestSoldier();
+                {
+                    testKin.CyclePlayerJob();
+                    testKin.CyclePlayerJob(); // Hunter, then Guard.
+                }
+                if (Enum.TryParse(Environment.GetEnvironmentVariable("GARDEN_PLAY_JOB"), out KinJob wantedJob))
+                {
+                    for (int step = 0; step < 6 && testKin.PlayerJob != wantedJob; step++)
+                        testKin.CyclePlayerJob();
+                }
                 world.SelectKin(testKin);
-                play.Begin(testKin, camera);
+                play.Begin(testKin, camera, world);
             }
             bool playing = play.IsActive;
             if (!_showChronicle && !playing)
@@ -472,6 +481,10 @@ public static partial class Game
             {
                 // Showed or hid the stats bar.
             }
+            else if (mousePressed && TapAlertsButton(mousePosition))
+            {
+                // Showed or hid the alert banners.
+            }
             else if (mousePressed && overlayButtons is not null && overlayButtons.Any(o => o.Button.Contains(mousePosition)))
             {
                 World.Overlays ^= overlayButtons.First(o => o.Button.Contains(mousePosition)).Flag;
@@ -493,7 +506,7 @@ public static partial class Game
                     director.Stop();
                     followCamera.Release();
                     _timeScale = 1f;
-                    play.Begin(chosen, camera);
+                    play.Begin(chosen, camera, world);
                     playing = true;
                 }
             }
@@ -569,7 +582,8 @@ public static partial class Game
             followButton?.Draw(followCamera.IsFollowing ? "Following" : "Follow", highlighted: followCamera.IsFollowing);
             controlButton?.Draw("Control", highlighted: false);
             int hudTop = DrawHud(world);
-            DrawBanner(hudTop);
+            int captionHeight = director.Caption is null ? 0 : ScaledFontSize(0.55f) + 2 * ((int)(10 * UiScale) + 2) + 6;
+            DrawBanner((int)(speedButtonMargin * 2 + speedButtonHeight) + captionHeight);
             if (!_showChronicle)
                 DrawDirectorCaption(director, (int)(speedButtonMargin * 2 + speedButtonHeight));
             if (_showChronicle)
@@ -632,6 +646,9 @@ public static partial class Game
             Console.WriteLine($"Couldn't load {loadPath}");
             return;
         }
+        // A development aid: GARDEN_START_ERA=0..3 grants every clan that age at the start (as the start-age choice in the menu does).
+        if (int.TryParse(Environment.GetEnvironmentVariable("GARDEN_START_ERA"), out int startEra) && loadPath is null)
+            world.GrantEra((Era)Math.Clamp(startEra, 0, 3));
         Console.WriteLine($"Garden Guardians headless run: {simulatedSeconds:0}s simulated, seed {(seed?.ToString() ?? "random")}");
         PrintReport(world);
 
@@ -639,8 +656,58 @@ public static partial class Game
         float reportTimer = 0f;
         int steps = 0;
         bool assaultStarted = assaultLevel <= 0;
+        // A development aid: GARDEN_CONTROL_TEST=<seconds> takes the wheel of a clan member at 60 s for that long (as Guard), then gives it back.
+        float controlFor = float.TryParse(Environment.GetEnvironmentVariable("GARDEN_CONTROL_TEST"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float parsedControl) ? parsedControl : 0f;
+        bool stopAtCastle = Environment.GetEnvironmentVariable("GARDEN_STOP_AT_CASTLE") == "1";
+        float? castleSeen = null;
+        Bramblekin? controlled = null;
+        // A development aid: GARDEN_REALM_TEST=1 invades a vassal village of the first kingdom (once it has stood a minute) and reports how many
+        // pledged soldiers of its sister villages come to its defence.
+        bool realmTest = Environment.GetEnvironmentVariable("GARDEN_REALM_TEST") == "1";
+        Village? realmTarget = null;
+        float realmStart = 0f, realmLog = 0f;
+        int controlPhase = controlFor > 0f ? 0 : 3;
         while (world.ElapsedSeconds < endTime)
         {
+            if (realmTest)
+            {
+                if (realmTarget is null && world.Realms.FirstOrDefault(k => world.ElapsedSeconds - k.FoundedAt > 60f && world.VillagesOf(k).Any(v => v.Id != k.Capital)) is { } realm &&
+                    world.VillagesOf(realm).Where(v => v.Id != realm.Capital).OrderByDescending(v => world.VillagesOf(realm).Where(o => o != v).Sum(o => world.ClansOf(o).SelectMany(c => c.Members).Count(world.IsPledged))).First() is { } target)
+                {
+                    realmTarget = target;
+                    realmStart = world.ElapsedSeconds;
+                    world.StartVillageInvasion(target, 8);
+                    Console.WriteLine($"[REALM-TEST] t={realmStart:0}s: invading {target.Name} of {realm.Name}; pledged elsewhere: {world.VillagesOf(realm).Where(o => o != target).Sum(o => world.ClansOf(o).SelectMany(c => c.Members).Count(world.IsPledged))}");
+                }
+                else if (realmTarget is not null && world.ElapsedSeconds >= realmLog && world.ElapsedSeconds < realmStart + 120f)
+                {
+                    realmLog = world.ElapsedSeconds + 10f;
+                    Kingdom? kingdom = world.RealmOf(realmTarget);
+                    var sisters = kingdom is null ? new List<Village>() : world.VillagesOf(kingdom).Where(o => o != realmTarget).ToList();
+                    var pledged = sisters.SelectMany(o => world.ClansOf(o).SelectMany(c => c.Members)).Where(m => !m.IsDead && world.IsPledged(m)).ToList();
+                    int near = pledged.Count(m => GroundMover.HorizontalDistance(m.Position, realmTarget.Centre) < 25f);
+                    Console.WriteLine($"[REALM-TEST] +{world.ElapsedSeconds - realmStart:0}s: spiders {world.InvadersAt(realmTarget)}, pledged {pledged.Count}, within 25 m of the village {near}");
+                }
+            }
+            if (controlPhase == 0 && world.ElapsedSeconds >= 60f &&
+                world.Colony.FirstOrDefault(k => !k.IsDead && !k.IsYoung && world.GroupOf(k) is { } g && g.Members.Count >= 2) is { } pick)
+            {
+                controlPhase = 1;
+                controlled = pick;
+                Guid clan = pick.GroupId!.Value;
+                pick.CyclePlayerJob();
+                pick.CyclePlayerJob(); // Hunter, then Guard.
+                pick.SetPlayerControlled(true, world);
+                Console.WriteLine($"[CONTROL] {pick.Name} taken at {world.ElapsedSeconds:0}s: clan {pick.GroupId?.ToString() ?? "none"} (was {clan}), job {pick.Job}, village job {pick.VillageJob}");
+            }
+            else if (controlPhase == 1 && controlled is not null && world.ElapsedSeconds >= 60f + controlFor)
+            {
+                controlPhase = 2;
+                world.CommitPendingChanges();
+                Console.WriteLine($"[CONTROL] {controlled.Name} before release: dead {controlled.IsDead}, clan {controlled.GroupId?.ToString() ?? "none"}, clan still stands {controlled.AwayGroupId is { } a && world.GroupExists(a)}");
+                controlled.SetPlayerControlled(false, world);
+                Console.WriteLine($"[CONTROL] {controlled.Name} released: clan {controlled.GroupId?.ToString() ?? "none"}, job {controlled.Job}");
+            }
             if (!assaultStarted && world.ElapsedSeconds >= assaultAt)
             {
                 assaultStarted = true;
@@ -650,6 +717,13 @@ public static partial class Game
             world.Update(step);
             world.CommitPendingChanges();
             Prof.Mark("Commit");
+            // A development aid: GARDEN_STOP_AT_CASTLE=1 ends the run (and saves, with --save) a minute after the first castle is raised.
+            if (stopAtCastle && world.CastlesRaised > 0)
+            {
+                castleSeen ??= world.ElapsedSeconds;
+                if (world.ElapsedSeconds - castleSeen > 60f)
+                    break;
+            }
             steps++;
 
             reportTimer += step;
@@ -660,6 +734,8 @@ public static partial class Game
             }
         }
 
+        Console.WriteLine($"[REALMS] kingdoms now {world.Realms.Count}, founded {world.KingdomsFounded}, kings crowned {world.KingsCrowned}, villages named {world.VillagesNamed}, tribute {world.Realms.Sum(k => k.TributePaid)}, pledged {world.Realms.Sum(k => k.Pledged)}");
+        Console.WriteLine($"[CASTLE] raised {world.CastlesRaised}; {world.DescribeCastleGround()}");
         Prof.Report(steps);
         Console.WriteLine();
         Console.WriteLine("=== Summary ===");
@@ -979,6 +1055,28 @@ public static partial class Game
                 continue;
             Vector3 invaderAnchor = invader.Position + new Vector3(0, InvaderSpider.BodyRadius * 2f + 0.2f, 0);
             DrawBar(camera, invaderAnchor, 0f, BarWidth(camera, invaderAnchor, InvaderSpider.BodyRadius * 2f), (float)invader.Health / InvaderSpider.MaxHealth, Color.Green);
+        }
+
+        foreach (StagBeetle beetle in world.Beetles)
+        {
+            if (beetle.IsDead || beetle.Health >= StagBeetle.MaxHealth || !IsPointOnScreen(camera, beetle.Position))
+                continue;
+            Vector3 anchor = beetle.Position + new Vector3(0, StagBeetle.BodyRadius * 2f + 0.25f, 0);
+            DrawBar(camera, anchor, 0f, BarWidth(camera, anchor, StagBeetle.BodyRadius * 2f), (float)beetle.Health / StagBeetle.MaxHealth, Color.Green);
+        }
+        foreach (Ant ant in world.Ants)
+        {
+            if (ant.IsDead || ant.Health >= Ant.MaxHealth || !IsPointOnScreen(camera, ant.Position))
+                continue;
+            Vector3 anchor = ant.Position + new Vector3(0, Ant.BodyRadius * 2f + 0.2f, 0);
+            DrawBar(camera, anchor, 0f, BarWidth(camera, anchor, Ant.BodyRadius * 2f), (float)ant.Health / Ant.MaxHealth, Color.Green);
+        }
+        foreach (HillGuard guard in world.HillGuards)
+        {
+            if (guard.IsDead || guard.IsHidden || guard.Health >= HillGuard.MaxHealth || !IsPointOnScreen(camera, guard.Position))
+                continue;
+            Vector3 anchor = guard.Position + new Vector3(0, Ant.BodyRadius * 2f + 0.2f, 0);
+            DrawBar(camera, anchor, 0f, BarWidth(camera, anchor, Ant.BodyRadius * 2f), (float)guard.Health / HillGuard.MaxHealth, Color.Green);
         }
 
         if (world.Spider is { IsDead: false } spider && spider.Health < WolfSpider.MaxHealth)
@@ -1348,6 +1446,13 @@ public static partial class Game
             Raylib.DrawRectangleRec(_statsButtonBounds, new Color(0, 0, 0, statsHovered ? 190 : 150));
             Raylib.DrawRectangleLinesEx(_statsButtonBounds, 2f, new Color(255, 255, 255, 110));
             Raylib.DrawText(statsLabel, (int)_statsButtonBounds.X + statsPad, (int)_statsButtonBounds.Y + statsPad, statsFont, Color.RayWhite);
+
+            // The Alerts switch sits beside it.
+            _alertsButtonBounds = new Rectangle(_statsButtonBounds.X + statsWidth + 10, _statsButtonBounds.Y, Raylib.MeasureText("Alerts: off", statsFont) + statsPad * 2, statsHeight);
+            bool alertsHovered = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), _alertsButtonBounds);
+            Raylib.DrawRectangleRec(_alertsButtonBounds, new Color(0, 0, 0, alertsHovered ? 190 : 150));
+            Raylib.DrawRectangleLinesEx(_alertsButtonBounds, 2f, new Color(255, 255, 255, 110));
+            Raylib.DrawText(_alertsOn ? "Alerts: on" : "Alerts: off", (int)_alertsButtonBounds.X + statsPad, (int)_alertsButtonBounds.Y + statsPad, statsFont, Color.RayWhite);
             return (int)_statsButtonBounds.Y;
         }
 

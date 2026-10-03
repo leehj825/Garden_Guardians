@@ -77,6 +77,9 @@ def main():
     ap.add_argument("--lod-texture", type=int, default=512)
     ap.add_argument("--height", type=float, default=1.0, help="stand this tall (m); the default 1 suits the acorn house, which the game scales itself")
     ap.add_argument("--name", default="acorn_house")
+    ap.add_argument("--xz", type=float, default=1.0, help="stretch x and z by this much after sizing (to make a lower-detail twin as wide as the full one)")
+    ap.add_argument("--width", type=float, help="size by the model's width (its larger x or z extent) instead of --height; the base is still at y = 0")
+    ap.add_argument("--lod-tris", type=int, help="cut the --lod model to about this many triangles (meshoptimizer; picture seams kept)")
     args = ap.parse_args()
     global NAME
     NAME = args.name
@@ -92,7 +95,13 @@ def main():
     offset = view.get("byteOffset", 0)
     picture = Image.open(io.BytesIO(binary[offset:offset + view["byteLength"]])).convert("RGB")
 
-    pos = (pos - [0.0, pos[:, 1].min(), 0.0]) / (pos[:, 1].max() - pos[:, 1].min()) * args.height  # --height tall, base at y = 0
+    if args.width:
+        extent = max(np.ptp(pos[:, 0]), np.ptp(pos[:, 2]))
+        pos = (pos - [0.0, pos[:, 1].min(), 0.0]) / extent * args.width
+    else:
+        pos = (pos - [0.0, pos[:, 1].min(), 0.0]) / (pos[:, 1].max() - pos[:, 1].min()) * args.height  # --height tall, base at y = 0
+    pos[:, 0] *= args.xz
+    pos[:, 2] *= args.xz
     pos = pos.astype(np.float32)
 
     def png(size):
@@ -102,7 +111,16 @@ def main():
 
     write(args.dst, pos, nrm, uv, idx, png(args.texture))
     if args.lod:
-        write(args.lod, pos, nrm, uv, idx, png(args.lod_texture))
+        lp, ln, lu, li = pos, nrm, uv, idx
+        if args.lod_tris and args.lod_tris * 3 < len(idx):
+            import ctypes
+            import meshoptimizer
+            out = np.zeros(len(idx), np.uint32)
+            count = meshoptimizer.simplify(out, idx.astype(np.uint32), pos, target_index_count=args.lod_tris * 3, target_error=ctypes.c_float(1.0),
+                                           options=meshoptimizer.SIMPLIFY_LOCK_BORDER)
+            used, inverse = np.unique(out[:count].astype(np.int64), return_inverse=True)
+            lp, ln, lu, li = pos[used], nrm[used], uv[used], inverse.astype(np.uint32)
+        write(args.lod, lp, ln, lu, li, png(args.lod_texture))
 
 
 if __name__ == "__main__":

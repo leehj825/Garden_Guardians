@@ -11,7 +11,7 @@ namespace GardenGuardians;
 /// </summary>
 public static unsafe class KinGear
 {
-    public const float SwordLength = 0.5f, BowLength = 0.7f, QuiverLength = 0.5f, ShieldWidth = 0.36f;
+    public const float SwordLength = 0.5f, SpearLength = 1.1f, BowLength = 0.7f, QuiverLength = 0.5f, ShieldWidth = 0.36f;
 
     public static float SwordBindUp = 0.3f, BowBindUp = 0.6f;
 
@@ -98,7 +98,7 @@ public static unsafe class KinGear
     }
 
     /// <summary>Draws the gear a Bramblekin of this job carries; <paramref name="body"/> is where it stands and how big (mesh units to world).</summary>
-    public static void Draw(in Model pose, Matrix4x4 body, bool sword, bool shield, bool bow, bool quiver)
+    public static void Draw(in Model pose, Matrix4x4 body, bool sword, bool shield, bool bow, bool quiver, bool spear = false, bool bowRaised = false, bool stabbing = false)
     {
         var forward = Vector3.UnitZ; // the mesh faces +Z; its left hand is at +X
         if (sword && Hand(pose, "mixamorig:RightHand", "mixamorig:RightForeArm", out Vector3 right, out Vector3 rightFingers))
@@ -107,6 +107,27 @@ public static unsafe class KinGear
             Vector3 along = Turned(pose, "mixamorig:RightHand", new Vector3(-0.5f, -1f, SwordBindUp));
             Vector3 centre = right + along * (0.3f * SwordLength);
             GearModels.Draw(GearModels.Gear.Sword, Matrix4x4.CreateScale(SwordLength) * Frame(along, -Vector3.UnitX, centre) * body);
+        }
+        if (spear && Hand(pose, "mixamorig:RightHand", "mixamorig:RightForeArm", out Vector3 grip, out _))
+        {
+            // Carried pointing forward (a touch up), held low in the right hand; in a stab it is gripped in both hands and driven forward along them.
+            Vector3 along = Vector3.Normalize(new Vector3(0f, 0.12f, 1f));
+            Vector3 centre = grip + along * (0.3f * SpearLength);
+            if (stabbing && Hand(pose, "mixamorig:LeftHand", "mixamorig:LeftForeArm", out Vector3 front, out _) && Vector3.DistanceSquared(front, grip) > 1e-4f)
+            {
+                // The leading hand is the left one: the point goes that way — but as the hands come together at the end of the thrust the line between
+                // them is unreliable (it would flip from side to side), so the more they close up the more the spear settles on its carried direction.
+                Vector3 between = front - grip;
+                float apart = between.Length();
+                Vector3 carried = along;
+                between /= apart;
+                if (Vector3.Dot(between, forward) < 0f)
+                    between = -between;
+                float trust = Math.Clamp((apart - 0.1f) / 0.15f, 0f, 1f);
+                along = Vector3.Normalize(between * trust + carried * (1f - trust) + carried * 0.4f);
+                centre = (front + grip) * 0.5f + along * (0.25f * SpearLength);
+            }
+            GearModels.Draw(GearModels.Gear.Spear, Matrix4x4.CreateScale(SpearLength) * Frame(along, Vector3.UnitY, centre) * body);
         }
         if ((shield || bow) && Hand(pose, "mixamorig:LeftHand", "mixamorig:LeftForeArm", out Vector3 left, out Vector3 leftFingers))
         {
@@ -121,9 +142,20 @@ public static unsafe class KinGear
             {
                 // Held by its grip against the inside of the palm, standing along the hand with its belly forward.
                 // Hanging from the fist by its grip, tips down (and the whole bow swings with the hand).
-                Vector3 along = Vector3.Normalize(-Vector3.UnitY + BowBindUp * Turned(pose, "mixamorig:LeftHand", Vector3.UnitX));
-                Vector3 centre = left - Vector3.UnitX * 0.03f + forward * 0.02f;
-                GearModels.Draw(GearModels.Gear.Bow, Matrix4x4.CreateScale(BowLength) * Frame(along, forward, centre) * body);
+                // The bow's wood bulges towards its model +Y and the string runs across the other side. Carried at the side it lies along the way the kin
+                // faces, wood down and string on top; drawn, it stands upright across the stretched arm with the wood to the front and the string behind.
+                Vector3 along = Vector3.Normalize(forward - 0.1f * Vector3.UnitY);
+                Vector3 woodWay = -Vector3.UnitY;
+                Vector3 centre = left - Vector3.UnitX * 0.03f + forward * 0.05f;
+                if (bowRaised)
+                {
+                    woodWay = leftFingers;
+                    along = Vector3.UnitY - Vector3.Dot(Vector3.UnitY, woodWay) * woodWay;
+                    along = along.LengthSquared() < 1e-6f ? Vector3.UnitY : Vector3.Normalize(along);
+                    centre = left + woodWay * 0.02f;
+                }
+                Vector3 facing = Vector3.Cross(along, woodWay); // (the frame's third axis: model +Y then points the wood's way)
+                GearModels.Draw(GearModels.Gear.Bow, Matrix4x4.CreateScale(BowLength) * Frame(along, facing, centre) * body);
             }
         }
         if (quiver && Centroid(pose, "mixamorig:Head", out Vector3 head))

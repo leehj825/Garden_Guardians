@@ -3,6 +3,7 @@
     pip install bpy pygltflib
     python Tools/convert_fbx.py "Walking.fbx" Assets/Models/Bramblekin/Walking.glb
     python Tools/convert_fbx.py "Walking.fbx" out.glb --texture 256 --decimate 0.04
+    python Tools/convert_fbx.py "Bayonet_Stab.fbx" clip.glb --clip-only   (the skeleton and keys only; then Tools/retarget_clip.py)
 
 --texture N shrinks the texture to N x N (the source is 4096 x 4096, some
 64 MB of GPU memory). --decimate R keeps that fraction of the triangles
@@ -30,11 +31,14 @@ def all_fcurves(action):
                 yield from bag.fcurves
 
 
-def export_with_blender(src, dst, texture=None, decimate=None):
+def export_with_blender(src, dst, texture=None, decimate=None, clip_only=False):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.fbx(filepath=src, automatic_bone_orientation=False)
     armature = next(o for o in bpy.data.objects if o.type == "ARMATURE")
     scale = armature.scale[0]
+    if clip_only:  # a clip needs only the skeleton and its keys, not the character that came with the download
+        for o in [o for o in bpy.data.objects if o.type == "MESH"]:
+            bpy.data.objects.remove(o, do_unlink=True)
     if decimate:
         mesh = next(o for o in bpy.data.objects if o.type == "MESH")
         bpy.ops.object.select_all(action="DESELECT")
@@ -87,7 +91,7 @@ if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("src"); ap.add_argument("dst")
-    ap.add_argument("--texture", type=int); ap.add_argument("--decimate", type=float)
+    ap.add_argument("--texture", type=int); ap.add_argument("--decimate", type=float); ap.add_argument("--clip-only", action="store_true")
     a = ap.parse_args(sys.argv[sys.argv.index("--")+1:] if "--" in sys.argv else sys.argv[1:])
-    export_with_blender(a.src, a.dst, a.texture, a.decimate)
+    export_with_blender(a.src, a.dst, a.texture, a.decimate, a.clip_only)
     pin_root_motion(a.dst)

@@ -5,7 +5,7 @@ namespace GardenGuardians;
 public sealed partial class World
 {
     // --- Kingdoms: alliances of villages (Garden_Guardians_Society_Design.md, section 4.4) ------------------------------------
-    // Three or more allied villages near each other, one of them in the Kingdom Age, are offered a crown: the most populous such village
+    // Three or more villages near each other and at peace (alliances are too rare to bind three), one of them in the Kingdom Age, are offered a crown: the most populous such village
     // is the capital and its headman is king. Vassal villages keep their headmen, send the capital a little food from what they have in
     // store, and pledge a third of their soldiers to march to any sister village's defence. A village that goes to war with the capital
     // leaves; with fewer than three villages the kingdom dissolves. (The older clan-over-clan vassalage in World.Kingdoms stays for clans
@@ -21,8 +21,11 @@ public sealed partial class World
     private const int TributeEveryLooks = 6;
     private const float TributeStockFactor = 1.5f;
 
-    /// <summary>One soldier in this many of a kingdom's villages is pledged to the realm's defence.</summary>
-    private const int PledgeOneIn = 3;
+    /// <summary>One soldier in this many of each kingdom village's soldiers (the first, third… by ID; always at least one) is pledged to the realm's defence.</summary>
+    private const int PledgeOneIn = 2;
+
+    /// <summary>The pledged soldiers' IDs, worked out at each look of the kingdoms (not saved).</summary>
+    private readonly HashSet<int> _pledgedIds = new();
 
     public List<Kingdom> Realms { get; } = new();
 
@@ -66,6 +69,7 @@ public sealed partial class World
     /// <summary>Called with each look at the villages: kingdoms form, grow, lose members, crown kings, collect tribute and dissolve.</summary>
     private void UpdateRealms()
     {
+        _pledgedIds.Clear();
         // Existing kingdoms: drop villages that are gone or at war with the capital; dissolve below three.
         for (int i = Realms.Count - 1; i >= 0; i--)
         {
@@ -101,7 +105,7 @@ public sealed partial class World
             CrownKing(kingdom, capital);
         }
 
-        // Allied villages nearby swear fealty to an existing kingdom.
+        // Villages nearby and at peace swear fealty to an existing kingdom.
         foreach (Village village in Villages.Where(v => v.KingdomId is null).ToList())
         {
             foreach (Kingdom kingdom in Realms)
@@ -118,7 +122,7 @@ public sealed partial class World
             }
         }
 
-        // New kingdoms: groups of three or more allied villages near each other, one of them Kingdom Age.
+        // New kingdoms: groups of three or more villages near each other and at peace, one of them Kingdom Age.
         List<Village> free = Villages.Where(v => v.KingdomId is null && HeadmanOf(v) is not null).ToList();
         var seen = new HashSet<Village>();
         foreach (Village start in free)
@@ -163,20 +167,28 @@ public sealed partial class World
 
         foreach (Kingdom kingdom in Realms)
             RunRealm(kingdom);
+        UpdateCastles();
     }
 
-    /// <summary>The capital's headman is king; when the headman changes, so does the king.</summary>
+    /// <summary>
+    /// The capital's headman is the first king, and the crown is his for life: a new headman does not displace a sitting king who still
+    /// lives in the capital's clans. A new king is crowned (the capital's headman) when the king dies, leaves the capital, or the capital changes.
+    /// </summary>
     private void CrownKing(Kingdom kingdom, Village capital)
     {
         if (capital.HeadmanId is not { } headman || kingdom.KingId == headman)
+            return;
+        if (KingOf(kingdom) is { } sitting && (sitting.GroupId ?? sitting.AwayGroupId) is { } home && capital.ClanIds.Contains(home))
             return;
         Bramblekin? king = HeadmanOf(capital);
         if (king is null)
             return;
         bool first = kingdom.KingId is null;
+        Bramblekin? previous = first ? null : Colony.FirstOrDefault(k => k.ID == kingdom.KingId && !k.IsDead);
+        string why = first ? "" : previous is null ? " (the old king died)" : $" (after {previous.Name} left the capital's clans)";
         kingdom.KingId = headman;
         KingsCrowned++;
-        Game.AddEventLog($"[KINGDOM] {king.Name} {(first ? "is crowned" : "becomes king")} of {kingdom.Name}");
+        Game.AddEventLog($"[KINGDOM] {king.Name} {(first ? "is crowned" : "becomes king")} of {kingdom.Name}{why}");
         Chronicle($"{king.Name} {(first ? "was crowned" : "became king")} of the kingdom of {kingdom.Name}", ClansOf(capital).ToArray());
     }
 
@@ -190,6 +202,9 @@ public sealed partial class World
         int pledged = 0;
         foreach (Village village in VillagesOf(kingdom))
         {
+            List<Bramblekin> soldiers = ClansOf(village).SelectMany(c => c.Members).Where(m => !m.IsDead && !m.IsYoung && m.Job == KinJob.Guard).OrderBy(m => m.ID).ToList();
+            for (int i = 0; i < soldiers.Count; i += PledgeOneIn)
+                _pledgedIds.Add(soldiers[i].ID);
             pledged += ClansOf(village).SelectMany(c => c.Members).Count(m => !m.IsDead && IsPledged(m));
             if (village == capital || kingdom.Looks % TributeEveryLooks != 0)
                 continue;
@@ -211,7 +226,7 @@ public sealed partial class World
 
     /// <summary>A soldier of a kingdom's village, one in <see cref="PledgeOneIn"/>, is sworn to defend its sister villages too.</summary>
     public bool IsPledged(Bramblekin soldier) =>
-        soldier.Job == KinJob.Guard && soldier.ID % PledgeOneIn == 0 && GroupOf(soldier) is { } clan && VillageOf(clan)?.KingdomId is not null;
+        soldier.Job == KinJob.Guard && _pledgedIds.Contains(soldier.ID) && GroupOf(soldier) is { } clan && VillageOf(clan)?.KingdomId is not null;
 
     /// <summary>The threat a pledged soldier of <paramref name="village"/> should march to: an alarm at a sister village of its kingdom. Null if none.</summary>
     public ICombatant? RealmAlarmFor(Village village)
