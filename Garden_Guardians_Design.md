@@ -116,7 +116,7 @@ overhead camera:
     in its clan's defence, and no group can recruit or court it. A clan of
     two is not dissolved for want of it. It eats only from its own home's
     store (whatever the clan's sharing rule). The **Job** button (above
-    **Kin**) steps through **Normal, Hunter, Guard, Spearman, Fisher**. Guard gives the
+    **Kin**) steps through **Normal, Hunter, Swordsman, Spearman, Fisher**. Swordsman gives the
     soldier's blow and toughness and carries a wooden sword in the right hand; Spearman carries a spear
     (pointing forward, held in both hands for the stab, hits half as hard again, always plays the bayonet
     stab); Hunter carries a bow (at the side wood down and string on top, upright across the stretched arm with the wood to the front when
@@ -328,7 +328,7 @@ overhead camera:
         spider's bite is 10), and backs away on guard, safe from the
         spider's pounce, for 1–3s (longer the braver); a place of danger is shunned for 150s
         by the bravest, 450s by the most cautious; Leaders make the brave
-        their Hunters and Guards, and the brave (with the fierce) drive
+        their Hunters and Swordsmen, and the brave (with the fierce) drive
         off enemies near home in a war. Dangerous orders cost the brave
         less loyalty.
     *   **Diligence** (diligent ↔ idle) — at work (gathering, building,
@@ -576,15 +576,15 @@ overhead camera:
         Intelligence more to stock up for winter.
     *   In winter, Hunt gets +1: big game carries a group through the
         lean months.
-*   **Jobs:** the Leader hands out jobs to match — Guards from the
+*   **Jobs:** the Leader hands out jobs to match — Swordsmen from the
     Aggressive and healthy (Defend), Builders from the most Intelligent
     half (Settle), Hunters from the most Aggressive half (Hunt), and
-    Gatherers otherwise (with one Guard kept home in a group of 4+).
-    Members carry them out in the Duty need: Guards attack the threat or
+    Gatherers otherwise (with one Swordsman kept home in a group of 4+).
+    Members carry them out in the Duty need: Swordsmen attack the threat or
     keep within 3m of home; Hunters chase the chosen beetle (or a Grub);
     Builders fetch twigs; Gatherers bring food within 25m of home into the
     stores (their own home's, or the nearest village home with room).
-    Hunters and Guards stand down to rest at half Health. The young get
+    Hunters and Swordsmen stand down to rest at half Health. The young get
     no job.
 *   **The sharing rule:** an unsociable (< 0.4), Aggressive (≥ 0.5)
     Leader **eats first** — everyone else may only take from the store once
@@ -602,7 +602,7 @@ overhead camera:
     food in it, having been defended by a groupmate and friendship with
     the Leader; it falls with hunger (more when starving), being turned
     away from the store, a Leader who eats first, dangerous orders
-    (Hunter on a hunt, Guard on a defence, Raider on a raid — felt less by
+    (Hunter on a hunt, Swordsman on a defence, Raider on a raid — felt less by
     the Aggressive) and injury. Members of a badly run group share most of
     those grievances, so they tend to sour together. But in a **shared
     hardship** — winter, the stores empty and shared fairly — hunger is
@@ -887,7 +887,7 @@ overhead camera:
         its full blow; the pebble is seen flying. Close enough to strike,
         it strikes instead (surer, and quicker). Knowing it can hit back
         from a few paces off, it's 25% likelier to stand and fight a
-        chasing swarm rather than run. And a Guard with a sling doesn't give a
+        chasing swarm rather than run. And a Swordsman with a sling doesn't give a
         hornets' nest within 14m of home a wide berth: while it's fit (60%
         Health or more) it picks the swarm off from just outside its reach.
     *   **Hearth** (needs a House, and worked out in autumn or winter,
@@ -1029,7 +1029,7 @@ next hill tougher and the reward richer.
     there is no level-up and no reward; the fight has to be won again.
 *   **The Kingdom decides:** at each look at a kingdom (every 5s) the crown
     may order an assault (one look in four once it is ready). It needs a
-    king and enough fit soldiers (Guards and Hunters of any of its
+    king and enough fit soldiers (Swordsmen and Hunters of any of its
     villages, grown, not elderly or sick, at 80% Health or more and not
     hungry) — **half as many as there are guards, rounded up**: 3 for 5,
     5 for 10, 8 for 15, 10 for 20 — **and half as many again for each
@@ -1312,7 +1312,7 @@ village, kingdom) says who belongs together and who leads.
     it up for a bite or a drink. Sleepers out of doors show a drift of
     pale "z"s.
 *   **Who stays up:** a settled clan of three or more posts a **night
-    watch** by home — a Guard if it has one, else its bravest — who cries
+    watch** by home — a Swordsman if it has one, else its bravest — who cries
     the alarm at anything it sees coming; so does a sleeper that's
     attacked. An alarm wakes the whole clan for 8s. Raiding parties keep
     going (and a shrewd Leader waits for dark to send one), and errands

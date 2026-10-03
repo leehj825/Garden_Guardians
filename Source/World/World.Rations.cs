@@ -6,7 +6,7 @@ public sealed partial class World
 {
     // --- Rations: a village feeds its soldiers (Garden_Guardians_Society_Design.md, section 5) ---------------------------------
     // A kin whose job is fighting cannot also be out foraging. A village's soldiers are fed from its stores — every home of its clans —
-    // so a Guard eats there and goes back to its post. It only pays what it earns: how many soldiers it can feed comes from what its
+    // so a Swordsman eats there and goes back to its post. It only pays what it earns: how many soldiers it can feed comes from what its
     // people have lately been bringing in (and any stock above a reserve). If the stores fall to the reserve, rations stop and the
     // soldiers forage like everyone else.
 
@@ -53,7 +53,7 @@ public sealed partial class World
         return (stock, people, people * ReservePerPerson);
     }
 
-    /// <summary>Every look: the village's stock and income, how many soldiers that feeds, and which of its Guards are the ones fed.</summary>
+    /// <summary>Every look: the village's stock and income, how many soldiers that feeds, and which of its Swordsmen are the ones fed.</summary>
     private void UpdateRations(Village village)
     {
         (int stock, _, float reserve) = VillageFood(village);
@@ -71,7 +71,7 @@ public sealed partial class World
         UpdateVillageJobs(village);
 
         // The fed are the first few of those with a village job, soldiers first.
-        KinJob[] priority = { KinJob.Guard, KinJob.Healer, KinJob.Builder, KinJob.Scout };
+        KinJob[] priority = { KinJob.Swordsman, KinJob.Healer, KinJob.Builder, KinJob.Scout };
         var holders = ClansOf(village).SelectMany(c => c.Members)
             .Where(m => !m.IsDead && !m.IsYoung && m.VillageJob != KinJob.None)
             .OrderBy(m => Array.IndexOf(priority, m.VillageJob)).ThenBy(m => m.ID).ToList();
@@ -114,13 +114,13 @@ public sealed partial class World
 
         float Score(Bramblekin m, KinJob job) => job switch
         {
-            KinJob.Guard => m.Personality.Courage + 0.5f * m.Personality.Aggression + 0.5f * m.Personality.Strength,
+            KinJob.Swordsman => m.Personality.Courage + 0.5f * m.Personality.Aggression + 0.5f * m.Personality.Strength,
             KinJob.Healer => m.Personality.Intelligence + m.Personality.Sociability + m.SkillAt(Skill.Healing),
             KinJob.Builder => m.Personality.Intelligence + m.Personality.Diligence + m.SkillAt(Skill.Building),
             _ => m.Personality.Courage + m.Personality.Intelligence,
         };
 
-        foreach ((KinJob job, int want) in new[] { (KinJob.Guard, soldiers), (KinJob.Healer, healers), (KinJob.Builder, builders), (KinJob.Scout, scouts) })
+        foreach ((KinJob job, int want) in new[] { (KinJob.Swordsman, soldiers), (KinJob.Healer, healers), (KinJob.Builder, builders), (KinJob.Scout, scouts) })
         {
             List<Bramblekin> have = adults.Where(m => m.VillageJob == job).ToList();
             foreach (Bramblekin extra in have.OrderBy(m => Score(m, job)).Take(Math.Max(0, have.Count - want)))
@@ -136,7 +136,7 @@ public sealed partial class World
                 pick.VillageJob = job;
         }
 
-        village.Soldiers = adults.Count(m => m.VillageJob == KinJob.Guard);
+        village.Soldiers = adults.Count(m => m.VillageJob == KinJob.Swordsman);
         village.Builders = adults.Count(m => m.VillageJob == KinJob.Builder);
         village.Healers = adults.Count(m => m.VillageJob == KinJob.Healer);
         village.Scouts = adults.Count(m => m.VillageJob == KinJob.Scout);

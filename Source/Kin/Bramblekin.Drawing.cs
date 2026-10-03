@@ -19,12 +19,23 @@ public sealed partial class Bramblekin
     /// </summary>
     public void Draw(World world)
     {
+        if (IsPlayerControlled && Job == KinJob.Hunter && !IsYoung)
+            DrawAimMarker(world);
+
         // Climbing the ant hill's mound for the eggs: drawn up the slope, from where it stands at the foot.
         if (ClimbT > 0f && world.Anthill is { } hill)
         {
             Vector3 lift = hill.ClimbOffset(ClimbT);
             Rlgl.PushMatrix();
             Rlgl.Translatef(lift.X, lift.Y, lift.Z);
+            DrawBody(world);
+            Rlgl.PopMatrix();
+            return;
+        }
+        if (_jumpHeight > 0f)
+        {
+            Rlgl.PushMatrix();
+            Rlgl.Translatef(0f, _jumpHeight, 0f); // (the body is lifted; its shadow is put back on the ground in DrawBody)
             DrawBody(world);
             Rlgl.PopMatrix();
             return;
@@ -54,7 +65,7 @@ public sealed partial class Bramblekin
         int lod = onScreen >= FinePixels ? 0 : onScreen >= MidPixels ? 1 : 2;
         bool props = onScreen >= PropPixels;
 
-        var shadowCenter = new Vector3(Position.X, Position.Y + 0.02f, Position.Z);
+        var shadowCenter = new Vector3(Position.X, Position.Y + 0.02f - _jumpHeight, Position.Z);
         if (!speck)
             Raylib.DrawCircle3D(shadowCenter, BodyRadius * 1.3f, new Vector3(1, 0, 0), 90f, new Color(0, 0, 0, 90));
 
@@ -73,7 +84,7 @@ public sealed partial class Bramblekin
             if (progress is { } share)
                 BramblekinModel.PlayProgress(ref pose, clip, share);
             else
-                BramblekinModel.Play(ref pose, clip, clip is BramblekinClip.Idle or BramblekinClip.GuardIdle ? 0f : _animTime);
+                BramblekinModel.Play(ref pose, clip, clip is BramblekinClip.Idle or BramblekinClip.SwordsmanIdle ? 0f : _animTime);
         }
 
         // The cylinder this replaced was rotationally symmetric, so it never
@@ -83,6 +94,8 @@ public sealed partial class Bramblekin
         // axis/angle) rather than two separate draws-with-rotation.
         Vector2 facing = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;
         float yawRadians = MathF.Atan2(facing.X, facing.Y) + BramblekinModel.ForwardYawOffset;
+        if (IsAiming)
+            yawRadians -= AimBodyTurn; // (the whole body turns so that the bow arm, which the clip holds out to the kin's left, points the way it shoots)
         Quaternion yaw = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawRadians);
 
         Vector3 normal = World.GetNormalAt(Position.X, Position.Z);
@@ -132,7 +145,7 @@ public sealed partial class Bramblekin
         {
 
 
-            if (State is BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or BramblekinState.Dueling && Job is not (KinJob.Guard or KinJob.Raider or KinJob.Hunter))
+            if (State is BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or BramblekinState.Dueling && Job is not (KinJob.Swordsman or KinJob.Raider or KinJob.Hunter))
             {
                 Color thornColor = State == BramblekinState.Attacking ? BloodyThornColor : ThornColor;
                 var grip = Position + new Vector3(0, BodyHeight * 0.6f, 0);
@@ -205,9 +218,9 @@ public sealed partial class Bramblekin
     private void BeginBlow(World world, bool ranged = false)
     {
         BramblekinClip clip;
-        if (ranged || Job == KinJob.Hunter)
+        if (ranged || (Job == KinJob.Hunter && !IsPlayerControlled)) // (a controlled Hunter's blow is a plain one: its bow is the Shoot button's)
             clip = BramblekinClip.AimRecoil;
-        else if (Job == KinJob.Spearman || (Job == KinJob.Guard && world.GroupOf(this) is { } clan && World.Knows(clan, Craft.Spears)))
+        else if (Job == KinJob.Spearman || (Job == KinJob.Swordsman && world.GroupOf(this) is { } clan && World.Knows(clan, Craft.Spears)))
             clip = BramblekinClip.SpearStab;
         else
         {
@@ -246,6 +259,9 @@ public sealed partial class Bramblekin
         if (ClimbT > 0f && ClimbT < 1f && _climb != ClimbStage.Pick)
             return (BramblekinClip.Walking, null); // walking in to the eggs, or out with one
 
+        if (_jumpClipPlaying)
+            return (BramblekinClip.Jump, JumpProgress);
+
         if (_actionActive)
         {
             float length = BramblekinModel.ActionSeconds(_actionClip);
@@ -260,6 +276,8 @@ public sealed partial class Bramblekin
             StartAction(wanted, lockMovement: false);
             return (wanted, 0f);
         }
+        if (_mover.IsMoving && IsRunning)
+            return (BramblekinClip.Running, null);
         return (BramblekinModel.ClipFor(State, _mover.IsMoving), null);
     }
 
@@ -275,13 +293,19 @@ public sealed partial class Bramblekin
 
     // --- What it carries ------------------------------------------------------------------------
 
+    /// <summary>While the aim clip plays.</summary>
+    private bool IsAiming => (_actionActive && _actionClip == BramblekinClip.AimRecoil) || ForcedClip == BramblekinClip.AimRecoil;
+
+    /// <summary>In the aim clip the bow arm points this far (radians, about 34°) to the left of the way the body faces, measured from the clip's drawn pose.</summary>
+    private const float AimBodyTurn = 0.59f;
+
     /// <summary>The sword and shield of a soldier or raider, a hunter's bow and quiver: hung on the bones of the pose (see <see cref="KinGear"/>), so they walk and swing with it.</summary>
     private void DrawGear(in Model pose, Vector3 axis, float angleDegrees, float scale)
     {
-        bool hunter = Job == KinJob.Hunter, guard = Job == KinJob.Guard, spearman = Job == KinJob.Spearman;
+        bool hunter = Job == KinJob.Hunter, guard = Job == KinJob.Swordsman, spearman = Job == KinJob.Spearman;
         if (IsYoung || !(hunter || guard || spearman))
             return; // (Only a guard's wooden sword, a spearman's spear and a hunter's bow for the time being: no shields, no quiver.)
-        bool aiming = (_actionActive && _actionClip == BramblekinClip.AimRecoil) || ForcedClip == BramblekinClip.AimRecoil;
+        bool aiming = IsAiming;
         Matrix4x4 body = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateFromAxisAngle(Vector3.Normalize(axis), angleDegrees * MathF.PI / 180f) * Matrix4x4.CreateTranslation(Position);
         KinGear.Draw(pose, body, sword: guard, shield: false, bow: hunter, quiver: false, spear: spearman, bowRaised: aiming, stabbing: (_actionActive && _actionClip == BramblekinClip.SpearStab) || ForcedClip == BramblekinClip.SpearStab);
     }

@@ -2,7 +2,7 @@
 # every push to main, and uploads it as a workflow artifact.
 #
 # Required repository secrets:
-#   KEYSTORE_BASE64    - the .keystore file, base64-encoded (base64 -w0 release.keystore)
+#   KEYSTORE_BASE64    - the .keystore file, base64-encoded (base64 -w0 release.keystore); KEYSTORE_B64 works too
 #   KEYSTORE_PASSWORD  - keystore (store) password
 #   KEY_ALIAS          - alias of the signing key inside the keystore
 #   KEY_PASSWORD       - password of that key
@@ -51,10 +51,10 @@ jobs:
 
       - name: Decode keystore
         env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 || secrets.KEYSTORE_B64 }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::error::KEYSTORE_BASE64 secret is not set."
+            echo "::error::Neither the KEYSTORE_BASE64 nor the KEYSTORE_B64 secret is set."
             exit 1
           fi
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.keystore

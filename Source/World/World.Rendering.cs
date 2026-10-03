@@ -175,6 +175,7 @@ public sealed partial class World
         if (Spider is { IsDead: false } spider)
             spider.Draw();
         DrawPebbles();
+        DrawArrows();
 
         DrawWater();
         DrawRafts();

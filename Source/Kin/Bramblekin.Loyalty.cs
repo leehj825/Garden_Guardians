@@ -109,11 +109,11 @@ public sealed partial class Bramblekin
             delta -= 0.05f * hungerBlame;
         else if (IsHungry)
             delta -= 0.02f * hungerBlame;
-        if (Health < MaxHealth / 2)
+        if (Health < HealthCap / 2)
             delta -= 0.02f;
         if (group.Sharing == SharingRule.LeaderFirst)
             delta -= 0.04f * (1f - 0.5f * Personality.Aggression);
-        if ((Job == KinJob.Hunter && group.Goal == GroupGoal.Hunt) || (Job == KinJob.Guard && group.Goal == GroupGoal.Defend) ||
+        if ((Job == KinJob.Hunter && group.Goal == GroupGoal.Hunt) || (Job == KinJob.Swordsman && group.Goal == GroupGoal.Defend) ||
             (Job == KinJob.Raider && group.Goal == GroupGoal.Raid))
             delta -= 0.03f * (1f - Personality.Courage);
 
@@ -190,7 +190,7 @@ public sealed partial class Bramblekin
             return false;
         }
 
-        if (Health <= MaxHealth * DuelYieldFraction)
+        if (Health <= HealthCap * DuelYieldFraction)
         {
             world.ResolveDuel(winner: opponent, loser: this, timedOut: false);
             return false;

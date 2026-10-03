@@ -569,6 +569,8 @@ public sealed partial class World
         Prof.Mark("UpdateEncounterCleanup");
         UpdatePebbles(deltaTime);
         Prof.Mark("UpdatePebbles");
+        UpdateArrows(deltaTime);
+        Prof.Mark("UpdateArrows");
 
         for (int i = _splats.Count - 1; i >= 0; i--)
         {

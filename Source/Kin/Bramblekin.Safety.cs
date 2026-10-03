@@ -23,7 +23,7 @@ public sealed partial class Bramblekin
 
         // A raider on a war raid pushes through the defenders to the store
         // and back, until it's hurt badly enough to stand down.
-        if (threat is Bramblekin && IsOnWarRaid(world) && Health > MaxHealth * DutyStandDownHealthFraction)
+        if (threat is Bramblekin && IsOnWarRaid(world) && Health > HealthCap * DutyStandDownHealthFraction)
             return false;
 
         if (threat is not null)
@@ -94,7 +94,7 @@ public sealed partial class Bramblekin
 
         // Nobody picks a fight with a Hornet nest: an idle swarm is just
         // avoided; only a chasing one gets swatted back — unless it's a
-        // Guard with a sling, and the nest is near home.
+        // Swordsman with a sling, and the nest is near home.
         if (threat is Hornet { IsChasing: false } idle)
             return IsClearingNest(idle);
 

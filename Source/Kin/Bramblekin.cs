@@ -169,7 +169,7 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>Chasing speed (fights, robberies) as a multiple of <see cref="WalkSpeed"/>.</summary>
     private const float PursuitSpeedMultiplier = 1.3f;
 
-    /// <summary>At or below this fraction of <see cref="MaxHealth"/>, a fighter's nerve breaks and it flees instead — high enough that a fighter at the threshold can still survive one more Wolf Spider bite.</summary>
+    /// <summary>At or below this fraction of <see cref="HealthCap"/>, a fighter's nerve breaks and it flees instead — high enough that a fighter at the threshold can still survive one more Wolf Spider bite.</summary>
     private const float FightBreakHealthFraction = 0.4f;
 
     /// <summary>At work — gathering, building, stocking, farming, carrying for its group — the diligent go briskly and the idle slowly.</summary>
@@ -191,7 +191,7 @@ public sealed partial class Bramblekin : ICombatant
     /// fighter in longer, never into a blow it can't survive.
     /// </summary>
     private bool NerveBroken(ICombatant? foe) =>
-        Health <= MaxHealth * NerveBreaksAt || (foe is not null && Health <= HardestBlow(foe));
+        Health <= HealthCap * NerveBreaksAt || (foe is not null && Health <= HardestBlow(foe));
 
     /// <summary>The most one blow from <paramref name="foe"/> takes off.</summary>
     private static int HardestBlow(ICombatant foe) => foe switch
@@ -416,30 +416,26 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>A strong kin hits harder (±<see cref="StrikeDamagePerStrength"/>/2 around the average) and a trained soldier harder again.</summary>
     private const float StrikeDamagePerStrength = 4f;
 
-    /// <summary>A Guard (a soldier) strikes this much harder for its training — a Raider a little less.</summary>
-    private const float GuardStrikeFactor = 1.3f, RaiderStrikeFactor = 1.15f;
-
-    private int StrikeDamage => (int)MathF.Round(
-        (BaseStrikeDamage + StrikeDamagePerAggression * Personality.Aggression + StrikeDamagePerStrength * (Strength - 0.5f)) *
-        (IsElder ? ElderStrikeFactor : 1f) * (Job is KinJob.Guard or KinJob.Spearman ? GuardStrikeFactor : Job == KinJob.Raider ? RaiderStrikeFactor : 1f));
+    /// <summary>The damage of a blow against another Bramblekin (its job's share of the kin's own: see <see cref="ProfileOf"/>).</summary>
+    private int StrikeDamage => (int)MathF.Round(BaseStrike * Profile.VsKin);
 
     /// <summary>
-    /// Armed with a shield: a clan that knows <see cref="Craft.Shields"/> issues them to those whose job is fighting — Guards (soldiers),
+    /// Armed with a shield: a clan that knows <see cref="Craft.Shields"/> issues them to those whose job is fighting — Swordsmen (soldiers),
     /// Raiders and Hunters — not to everyone.
     /// </summary>
     /// <summary>Soldiers and raiders (grown) look the part: the guard model, its own sword-and-shield walk.</summary>
-    public bool WearsGuardKit => !IsYoung && Job is KinJob.Guard or KinJob.Raider;
+    public bool WearsSwordsmanKit => !IsYoung && Job is KinJob.Swordsman or KinJob.Raider;
 
-    public bool HasShield => Knows(Craft.Shields) && !IsYoung && Job is KinJob.Guard or KinJob.Raider;
+    public bool HasShield => Knows(Craft.Shields) && !IsYoung && Job is KinJob.Swordsman or KinJob.Raider;
 
-    /// <summary>A Guard holds its shield up and stands in the front: it takes this much less than another shield-bearer.</summary>
-    private const float GuardBlockFactor = 0.85f;
+    /// <summary>A Swordsman holds its shield up and stands in the front: it takes this much less than another shield-bearer.</summary>
+    private const float SwordsmanBlockFactor = 0.85f;
 
-    /// <summary>A strong kin shrugs off a little of every blow (±<see cref="ToughnessPerStrength"/>/2 around the average), and a Guard's training toughens it.</summary>
-    private const float ToughnessPerStrength = 0.2f, GuardToughness = 0.9f;
+    /// <summary>A strong kin shrugs off a little of every blow (±<see cref="ToughnessPerStrength"/>/2 around the average); its job adds its own measure (see <see cref="ProfileOf"/>).</summary>
+    private const float ToughnessPerStrength = 0.2f;
 
     /// <summary>A blow against a creature: half as hard again with <see cref="Craft.Spears"/>, and up to half as hard again for a master hunter.</summary>
-    private int HuntingDamage => (int)MathF.Round((Knows(Craft.Spears) || Job == KinJob.Spearman ? StrikeDamage * 1.5f : StrikeDamage) * (1f + 0.5f * SkillAt(Skill.Hunting)));
+    private int HuntingDamage => (int)MathF.Round(BaseStrike * Profile.VsCreature * (Knows(Craft.Spears) || Job == KinJob.Spearman ? 1.5f : 1f) * (1f + 0.5f * SkillAt(Skill.Hunting)));
 
     // --- Relationships & groups ----------------------------------------------------------
 
@@ -558,10 +554,9 @@ public sealed partial class Bramblekin : ICombatant
         if (cause is DeathCause.Kin or DeathCause.Predator)
         {
             float factor = 1f - ToughnessPerStrength * (Strength - 0.5f);
-            if (Job == KinJob.Guard)
-                factor *= GuardToughness;
+            factor *= Profile.Taken;
             if (HasShield)
-                factor *= ShieldFactor * (Job == KinJob.Guard ? GuardBlockFactor : 1f);
+                factor *= ShieldFactor * (Job == KinJob.Swordsman ? SwordsmanBlockFactor : 1f);
             amount = Math.Max(1, (int)MathF.Round(amount * factor));
         }
         Health = Math.Max(0, Health - amount);
@@ -683,6 +678,8 @@ public sealed partial class Bramblekin : ICombatant
         if (_actionLock > 0f)
         {
             _actionLock -= deltaTime; // A blow or a pick-up is being played out: it is finished before the kin moves or does anything else.
+            if (IsPlayerControlled)
+                UpdatePlayerBlow(deltaTime, world); // (the arrow still leaves the bow partway through the clip)
             return;
         }
         if (IsPlayerControlled)

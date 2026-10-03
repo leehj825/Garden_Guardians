@@ -343,7 +343,7 @@ Member or Independent, aggregated over 8 seeds × 30 simulated minutes.
     avoided rather than fought. *Result: members outlived loners overall.*
 *   ✅ **D — Leadership:** every 5s the Leader scores Defend / Settle /
     Hunt / Stockpile from the situation and its own personality, assigns
-    Guard / Builder / Hunter / Gatherer jobs by fit (carried out in the new
+    Swordsman / Builder / Hunter / Gatherer jobs by fit (carried out in the new
     Duty need), and sets the sharing rule — unsociable, aggressive Leaders
     eat first. *Result: Warlike-led groups hunted ~24% of the time and ate
     leader-first ~37% of the time, vs ~0–4% and ~10% for other Leaders.*
@@ -701,7 +701,7 @@ regulates. Checked with 8 seeds × 1 hour and 3 seeds × 4 hours headless.
     down once), 200 seed corn kept and 93 sown (60 eaten in famine), and
     12 stones and branches hauled between allies. The first sling build
     stood slingers off at point-blank range and never went for nests —
-    hornet deaths didn't move until slingers struck close up and Guards
+    hornet deaths didn't move until slingers struck close up and Swordsmen
     cleared nests near home; and until the Heron took a moment to get
     airborne, nobody could bring it down.
 
@@ -1119,7 +1119,7 @@ checked with headless A/B runs (numbers are in that file).
     village, hard ones a kingdom. Not saved.
 *   ✅ **Control is independent of society** (2026-10-02): a kin the player
     controls leaves its clan, village and kingdom, chooses Normal, Hunter or
-    Guard, and rejoins its clan on exit (`Bramblekin.Play.cs`;
+    Swordsman, and rejoins its clan on exit (`Bramblekin.Play.cs`;
     `GARDEN_CONTROL_TEST=<s>` checks it headless).
 *   ✅ **Sticky crown** (2026-10-02): a sitting king keeps the crown while he
     lives in the capital's clans; a new headman no longer displaces him.
@@ -1181,7 +1181,7 @@ checked with headless A/B runs (numbers are in that file).
 ## Phase 43: New Kin Models and Animations
 *   ✅ **New male and female Bramblekin models for everyone** (2026-10-02): 19,800 triangles up close, about 4,000 and 1,000
     further off (`Tools/convert_tripo_kin.py`, which now cuts the lower levels itself with meshoptimizer and can lower a T-posed
-    model's arms to the skeleton's angle). Guards and hunters use them too, with no sword, shield, helmet, bow or quiver for the time being.
+    model's arms to the skeleton's angle). Swordsmen and hunters use them too, with no sword, shield, helmet, bow or quiver for the time being.
 *   ✅ **Four new animation clips, each played from start to end:** the bayonet stab for guards whose clan has Spears (3.3 s played in 2 s), the sword
     and shield slash then attack as a pair for soldiers and other fighters, the standing aim and recoil for hunters, and picking up
     (9.6 s played in 3 s) for collecting, foraging and stockpiling (`Tools/convert_fbx.py --clip-only`, then `Tools/retarget_clip.py`).
@@ -1323,3 +1323,20 @@ matter most:
 *   ⬜ **Tuning.** Every rate and threshold is a constant at the top of its
     class (`World`, `Bramblekin`, `Shelter`, the wildlife); the headless
     survival trend is the tool for revisiting them.
+
+**Phase 43 follow-up – action timing:** blow clips are sped up to caps (slash 0.8 s, sword attack 0.7 s, spear stab 1.2 s, aim recoil 0.6 s) and the kin is frozen (no moving or other actions) until the clip finishes. The pick-up clip (1.6 s cap) plays for picking up food, eating, drinking, foraging and stockpiling. Kin meshes are re-posed from T-pose to the skeleton's A-pose bind (male arms 58°, female 45°) so arms hang naturally. Arm-part vertices follow only the arm bones; female re-posed at 58° too. The ant hill is the detailed model (9.8k triangles, 1.5k far model) and the egg reward is drawn as the larvae model. The walk clip's arm swing is kept at 45% (Tools/damp_arm_swing.py) so the hands hang evenly. Arms are re-posed hanging (male 74°, female 36° down, clear of her skirt) and shortened (85%, 88%); the skin weights are measured against bone segments moved to match (--arm-scale, fitted_arms). Hands are closed into fists in the mesh (--fist-start, make_fists: pulled in to 60% and thickened 35%). Vests and dresses never follow the arms (male too: cloth mask), male cloth resists the legs; the aim clip is turned 40° towards the camera so the body is not seen side-on and thin.
+
+**Phase 43 follow-up – jobs, gear, ant hill:** a controlled kin's Job button now steps Normal, Hunter, Swordsman, Spearman, Fisher. Swordsman carries the wooden sword (right hand), Spearman the spear (and always stabs, 1.5x damage), Hunter the bow (raised across the stretched arm when aiming); Fisher fishes when standing still at the water and eats what it lands. Beetles, ants and hill guards show health bars when hurt; hill guards and ants are weaker (guards 14 Health, bite 3, bystander blows 2, healing 0.5/s; ants 4 Health). The ant hill's cave entrance (turned to face the garden) is the way in: looters walk in, take an egg from the heap lying just inside (visible from outside, drawn with the larvae model) and walk out. The generated world's oak is drawn 1.1 m sunk so its roots are buried. Developer aids: `GARDEN_CAMERA=hill|oak`, `GARDEN_PLAY_JOB=<job>`.
+
+**Phase 43 follow-up – hunter arrows, running and jumping:** a controlled Hunter's Attack button (labelled Shoot) plays the aim clip and, 0.3 s in, looses a real arrow (`World.Arrows.cs`): it flies straight at 20 m/s for `ArrowRange` (12 m), hits the first target in its path (wildlife always; other clans' kin only with Kin: on), and past its range loses its push, drops and lies in the ground for 4 s. The aim is helped towards the nearest target within about 29° of where the camera looks, else goes the way the camera looks; bow cooldown 1 s. Every kin (male, female, any job) has two new clips from the supplied Mixamo files, retargeted with Tools/retarget_clip.py: `Running.glb` and `Jump.glb` (hips kept down, since the game lifts the body: a 0.7 s arc 0.5 m high with the clip stretched over 1.0 s so its last moments are the settling after the landing, the shadow staying on the ground). The Run toggle (R) swaps the jog (1.35x walk) for a run (2.3x walk) with the Running clip; the Jump button (J) jumps standing or moving, and a new jump waits until the kin is down (no striking, eating or second jump in the air). Developer aids: `GARDEN_PLAY_RUN=1`, `GARDEN_PLAY_JUMP=1`. While the aim clip plays the whole body is drawn turned 34° (`AimBodyTurn`, measured from the clip's forward kinematics) so the bow arm points the way the arrow goes. Not yet: AI kin running (fleeing, raiding) and jumping, arrows for AI hunters, stamina for running.
+
+**Spear glitch fix:** at the end of the male's stab the two hands sit side by side across the body, so the line between them (which sets the spear's direction) flipped sign from frame to frame and turned the spear end for end. `KinGear` now trusts that line only while it runs mostly forwards, fading to the carried direction otherwise.
+
+**Aim marker and blow timing:** a controlled Hunter shows its aim: a red ring on the ground (and a small arrow above it) round the target it has locked on to, else a yellow mark where the camera's line reaches 12 m, with a thin line for the arrow's path. A blow or shot now ticks down during its own clip (before, the clip's movement lock stopped the player's timers, so the arrow left only after the clip ended and a second blow waited another half second): the arrow leaves 0.3 s into the 0.6 s aim clip, and the next blow or shot (the sword pair's second motion too) starts the moment the clip ends.
+
+
+**Job balance, Swordsman rename, Shoot button:** `KinJob.Guard` is now `KinJob.Swordsman` everywhere (code, UI, docs; asset file names such as GuardIdle.glb are unchanged, saves not carried over). Every job has a combat profile in `Kin/Bramblekin.Jobs.cs` (Health, damage against kin and creatures, arrows, damage taken, blow pace, reach), applied to all kin: see "Job balance" in Garden_Guardians_Society_Design.md; the headless summary now prints a `Job trend` (deaths per kin-hour by job). A controlled Hunter has a separate Shoot button (F on the desktop); Attack is the same plain blow for every job.
+
+**Spear in the stab, second fix:** the first fix (trusting the line between the hands only while it ran forwards) made the spear fall back to its carried direction when the hands sat side by side, which put it through the middle of the body front to back. In a stab the spear now always runs through both hands, from the right hand to the left (never turned round), with only a small lean to the carried direction when the hands are within a few centimetres of each other. Checked frame by frame for the male and the female: the shaft stays in front of the body (its closest approach to the spine is about the shoulder's half-width) and both hands hold it.
+
+**Arrow model:** the arrow is now a real model, `Assets/Models/Props/Gear/Arrow.glb` (a wooden shaft, a stone head, three feathers one of them dark; made by `Tools/make_arrow.py`), drawn through `GearModels` along its flight with its point forward. An arrow that lands stands in the ground point down, leaning a little the way it flew, for 4 s.

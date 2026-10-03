@@ -11,9 +11,9 @@ public enum BramblekinClip
     Idle,
     Walking,
     /// <summary>The guard's own walk, sword and shield at the ready (Sword_And_Shield_Walk): played whenever a guard or soldier moves.</summary>
-    GuardWalking,
+    SwordsmanWalking,
     /// <summary>A guard standing still (and eating, resting): held on one frame, the sword arm down at its side with the blade pointing forward and up (Tools/make_guard_clips.py).</summary>
-    GuardIdle,
+    SwordsmanIdle,
     Fishing,
     Gathering,
     /// <summary>The sword and shield slash (the first blow of a soldier's or fighter's pair).</summary>
@@ -26,6 +26,10 @@ public enum BramblekinClip
     AimRecoil,
     /// <summary>Bending to pick something up (food, a twig).</summary>
     PickingUp,
+    /// <summary>Running (Running.fbx): a controlled kin with the run toggle on, while it moves.</summary>
+    Running,
+    /// <summary>Jumping (Unarmed_Jump.fbx, hips kept down: the game lifts the body itself): crouch, spring, hang, land. Played once over the jump's airtime.</summary>
+    Jump,
 }
 
 /// <summary>
@@ -107,14 +111,16 @@ internal static unsafe class BramblekinModel
 
         _clips[BramblekinClip.Walking] = LoadClip("Walking.glb");
         _clips[BramblekinClip.Fishing] = LoadClip("FishingCast.glb");
-        _clips[BramblekinClip.GuardWalking] = LoadClip("GuardWalk.glb"); // (the sword walk with the sword arm brought down: Tools/make_guard_clips.py)
-        _clips[BramblekinClip.GuardIdle] = LoadClip("GuardIdle.glb");
+        _clips[BramblekinClip.SwordsmanWalking] = LoadClip("GuardWalk.glb"); // (the sword walk with the sword arm brought down: Tools/make_guard_clips.py)
+        _clips[BramblekinClip.SwordsmanIdle] = LoadClip("GuardIdle.glb");
         _clips[BramblekinClip.Combat] = LoadClip("SwordAndShieldSlash.glb");
         _clips[BramblekinClip.Gathering] = LoadClip("GatheringObjects.glb");
         _clips[BramblekinClip.SwordAttack] = LoadClip("SwordAndShieldAttack.glb");
         _clips[BramblekinClip.SpearStab] = LoadClip("BayonetStab.glb");
         _clips[BramblekinClip.AimRecoil] = LoadClip("StandingAimRecoil.glb");
         _clips[BramblekinClip.PickingUp] = LoadClip("PickingUp.glb");
+        _clips[BramblekinClip.Running] = LoadClip("Running.glb");
+        _clips[BramblekinClip.Jump] = LoadClip("Jump.glb");
         // No separate idle clip was supplied: holding Walking's first frame stands in for one.
         _clips[BramblekinClip.Idle] = _clips[BramblekinClip.Walking];
 

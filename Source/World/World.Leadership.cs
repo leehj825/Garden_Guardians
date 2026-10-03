@@ -259,7 +259,7 @@ public sealed partial class World
 
 
     /// <summary>
-    /// Hands out jobs for the current goal, by fit: Guards from the
+    /// Hands out jobs for the current goal, by fit: Swordsmen from the
     /// Aggressive and healthy, Builders from the Intelligent (everyone, for
     /// a first home), Hunters from the Aggressive; everyone else gathers.
     /// The Leader takes a job too.
@@ -280,7 +280,7 @@ public sealed partial class World
                 foreach (Bramblekin member in members)
                 {
                     if ((member.Personality.Aggression + member.Personality.Courage) / 2f >= 0.3f && member.Health > Bramblekin.MaxHealth / 2)
-                        member.AssignJob(KinJob.Guard);
+                        member.AssignJob(KinJob.Swordsman);
                 }
                 break;
 
@@ -306,7 +306,7 @@ public sealed partial class World
 
             default:
                 if (members.Count >= 4 && group.Home is { IsBuilt: true })
-                    members.MaxBy(m => m.Personality.Courage + 0.5f * m.Personality.Aggression + 0.5f * m.Personality.Strength)!.AssignJob(KinJob.Guard);
+                    members.MaxBy(m => m.Personality.Courage + 0.5f * m.Personality.Aggression + 0.5f * m.Personality.Strength)!.AssignJob(KinJob.Swordsman);
                 break;
         }
 

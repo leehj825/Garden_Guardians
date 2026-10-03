@@ -36,7 +36,7 @@ public sealed partial class Bramblekin
     /// </summary>
     private bool DoScoutDuty(KinGroup group, float deltaTime, World world)
     {
-        if (Health <= MaxHealth * DutyStandDownHealthFraction || Home is not { IsBuilt: true } home)
+        if (Health <= HealthCap * DutyStandDownHealthFraction || Home is not { IsBuilt: true } home)
             return false;
 
         if (_scoutTarget is { } current && group.Known.IsKnown(current))

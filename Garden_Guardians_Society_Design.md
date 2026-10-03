@@ -17,8 +17,8 @@ Today the game has two ideas tangled together: *how advanced a clan is* (its "ag
 | Piece | Where | What it does now |
 |---|---|---|
 | Clan | `Kin/KinGroup.cs` | `Members`, one `Leader`, `Home` + `Annexes` (extra homes), `Era`, `LiegeId`. Founded from encounters; named after the leader's family. |
-| Jobs | `Kin/Society.cs` `KinJob` | **Eight existed at the start (Fisher is the ninth, added in step 3):** Gatherer, Builder, Hunter, Guard, Farmer, Raider, Healer, Scout. Handed out by the Leader (`World.AssignJobs`). |
-| Duty | `Kin/Bramblekin.Duty.cs` | A kin does its job **only when "fed and safe"** (the need order is hunger/thirst → safety → duty → settling → social). So today no job is ever *paid*; a Guard who is hungry stops guarding and forages. |
+| Jobs | `Kin/Society.cs` `KinJob` | **Eight existed at the start (Fisher is the ninth, added in step 3):** Gatherer, Builder, Hunter, Swordsman, Farmer, Raider, Healer, Scout. Handed out by the Leader (`World.AssignJobs`). |
+| Duty | `Kin/Bramblekin.Duty.cs` | A kin does its job **only when "fed and safe"** (the need order is hunger/thirst → safety → duty → settling → social). So today no job is ever *paid*; a Swordsman who is hungry stops guarding and forages. |
 | Store | `World/Shelter.cs` | Each home has `StoredFood`; clan's `SharingRule` (Equal / LeaderFirst) says who may eat from it. |
 | "Village" | `World/World.GroupHomes.cs` | **Only a counter** (`VillagesFounded`): a clan that builds a second home (annex) is "a village". It has no name, members, centre or leader of its own. |
 | Alliance | `World/World.Neighbours.cs` | Pairwise, `MaxAllies = 2` per clan. |
@@ -86,7 +86,7 @@ New: a kin with a **paid job** is **fed from the community store** (village or k
 
 ### 5.3 Who produces, who consumes
 * **Producers** (never rationed by default): Farmer, Fisher, Gatherer, Hunter. They fill the store.
-* **Consumers** (rationed): Soldier (Guard), Scout, Builder, Healer, and the Leader/council.
+* **Consumers** (rationed): Soldier (Swordsman), Scout, Builder, Healer, and the Leader/council.
 * Producers eat first from what they carry/grow (and may eat from the store like anyone), so the system cannot starve them for others' sake.
 
 ### 5.4 Balance cap (the thing that makes it not collapse)
@@ -110,7 +110,7 @@ and may assign **at most `allowedPaid`** consumer jobs (with a hard floor of 0).
 | **Fisher** | clan+ (needs Fishing craft) | produces | Walks to shore, fishes, carries catch → store. (Fishing exists as an action; becomes a job.) |
 | Gatherer | clan+ | produces | Collects loose food/acorns/honey within range → store. (exists) |
 | Hunter | clan+ | produces | Hunts the picked prey. (exists) |
-| **Soldier** (Guard, renamed/extended) | village+ | **consumes** | Patrols the village boundary, answers alarms, fights predators/raiders; **picks up food only within a few metres of its patrol route** (never leaves post), delivers it to the store. |
+| **Soldier** (Swordsman, renamed/extended) | village+ | **consumes** | Patrols the village boundary, answers alarms, fights predators/raiders; **picks up food only within a few metres of its patrol route** (never leaves post), delivers it to the store. |
 | Scout | village+ | consumes | Explores and warns. (exists; becomes paid) |
 | Builder | village+ | consumes | Walls, houses, wells. (exists; becomes paid) |
 | Healer | village+ | consumes | Tends the sick. (exists; becomes paid) |
@@ -122,8 +122,8 @@ Assignment: the **Leader of that level** assigns (clan chief in a clan; headman 
 ### 6.1 Soldiers are stronger (added 2026-10-01; built)
 
 * **Born strength:** every kin now has a `Strength` trait (0..1, inherited from its parents like the other traits, nudged up by a martial clan culture, saved). A strong kin hits harder (±2 damage around the average) and takes a little less from every blow (±10%).
-* **Soldier training:** the Guard job makes a kin strike **30% harder** (a Raider 15%) and take **10% less**. Guards are picked by courage, aggression **and born strength** (`Personality.Strength`; ant-hill eggs and the "shaken" penalty do not count when jobs are handed out).
-* **Shields go to fighters:** a clan that knows Shields issues them to Guards, Raiders and Hunters only (not to everyone, as before). A shield takes **a third** off every blow and bite; a Guard holds it up in front and takes **15% less again**. Shields are drawn on those who carry them.
+* **Soldier training:** (superseded by the *Job balance* table at the end of this file) the Swordsman job made a kin strike 30% harder (a Raider 15%) and take 10% less. Swordsmen are picked by courage, aggression **and born strength** (`Personality.Strength`; ant-hill eggs and the "shaken" penalty do not count when jobs are handed out).
+* **Shields go to fighters:** a clan that knows Shields issues them to Swordsmen, Raiders and Hunters only (not to everyone, as before). A shield takes **a third** off every blow and bite; a Swordsman holds it up in front and takes **15% less again**. Shields are drawn on those who carry them.
 * Later (steps 2-3): soldiers fed from the village store stay on post, so this strength is actually in the field when predators and raiders come.
 
 ## 7. Leaders and titles
@@ -151,7 +151,7 @@ Each has a banner/colour and a line in the Clans and History views.
 1. **Village object** — formation, name, centre, headman election, dissolve; shown in the Clans view and as a banner on the map. *Test:* headless run: villages form/dissolve sensibly; no kin lose their clan.
 
    *Step 1 done (2026-10-01):* `Village` objects (`Source/World/Village.cs`, `World.Villages.cs`): formed from homes within 14 m of each other (clans not at war), at least one clan in the Farming Age; a clan belongs to the village its main home stands in; a name, middle and headman chosen from the clans' chiefs (claim to lead + clan size + friends' votes); merge/abandon handling; saved; shown as a gold-edged tag over the village and in the clan card, stats and History. Headless runs: 3 seeds x 50 min of game time give 2-4 stable villages each, multi-clan ones included, no renaming churn.
-2. **Village store + rations** *(built 2026-10-01: see below)* — pooled store, paid kin eat from it, cap formula. Start with Guard only. *Test:* with rations on, guards guard longer, village food stays ≥ reserve, no new starvation deaths vs. baseline.
+2. **Village store + rations** *(built 2026-10-01: see below)* — pooled store, paid kin eat from it, cap formula. Start with Swordsman only. *Test:* with rations on, guards guard longer, village food stays ≥ reserve, no new starvation deaths vs. baseline.
 3. **Soldier + Gatherer + Fisher jobs** — patrol-route pickup rule, fishing as a job. *Test:* job counts vs. cap; food income vs. upkeep.
 4. **Remaining paid jobs** — Scout, Builder, Healer on rations; headman assigns.
 5. **Kingdom object** — alliance of ≥ 3 villages, king, capital store, tribute, pledged soldiers (army).
@@ -159,9 +159,9 @@ Each has a banner/colour and a line in the Clans and History views.
 
 Walls (already built) become a **village** project paid from the village store in step 4.
 
-*Step 2 done (2026-10-01):* `World.Rations.cs`. The village's pooled store is the stock of every home of its clans. Each look it works out `income` (food deposited by its clans, smoothed over ~1.5 min) and `AllowedPaid = floor(income x 0.5 / mealsPerKinSecond + (stock - reserve) / (mealsPerKinSecond x 900 s))`, reserve = 0.7 pieces per villager. That many Guards (lowest IDs first) are *paid*: when hungry they are brought a ration from the nearest village store (so they eat in place and do not leave the post), and never when stock is at the reserve. Headless result (6 seeds x 50 min, Village-Age start): paid guards spent 19.7% of their time food-seeking (incl. eating) vs 24.3% for unpaid guards, and were starving 1.2% of samples vs 3.8%. The effect is real but modest because few guards exist yet (Guard is a single job in peace time) — step 3 adds the Soldier role that makes it matter.
+*Step 2 done (2026-10-01):* `World.Rations.cs`. The village's pooled store is the stock of every home of its clans. Each look it works out `income` (food deposited by its clans, smoothed over ~1.5 min) and `AllowedPaid = floor(income x 0.5 / mealsPerKinSecond + (stock - reserve) / (mealsPerKinSecond x 900 s))`, reserve = 0.7 pieces per villager. That many Swordsmen (lowest IDs first) are *paid*: when hungry they are brought a ration from the nearest village store (so they eat in place and do not leave the post), and never when stock is at the reserve. Headless result (6 seeds x 50 min, Village-Age start): paid guards spent 19.7% of their time food-seeking (incl. eating) vs 24.3% for unpaid guards, and were starving 1.2% of samples vs 3.8%. The effect is real but modest because few guards exist yet (Swordsman is a single job in peace time) — step 3 adds the Soldier role that makes it matter.
 
-*Step 3 done (2026-10-01):* **Soldier** — in a village a Guard patrols a ring of 8 waypoints just outside the homes (looks about 3 s at each), answers any clan's alarm near any of the village's homes, and picks up food within 4 m of its route and carries it to the stores (it never leaves the route for more). The garrison is as large as the village can feed (the `AllowedPaid` of step 2, at most two in five adults, picked by courage + aggression + strength). **Fisher** — `KinJob.Fisher`: a clan that knows Fishing, with shore within 20 m of home, keeps one fisher per 6 people on the shore all day (before, fishing was only a fallback). Headless A/B (6 seeds x 40 min, Village-Age start, jobs off vs on): alive 206 -> 238, starved 122 -> 100, killed by predators 85 -> 65, soldiers on average 17 -> 29, fishers 0 -> 11, food in stores 227 -> 270, guards on patrol/post 33% -> 53% of the time. Gatherer, Farmer and Hunter are unchanged (they are the producers).
+*Step 3 done (2026-10-01):* **Soldier** — in a village a Swordsman patrols a ring of 8 waypoints just outside the homes (looks about 3 s at each), answers any clan's alarm near any of the village's homes, and picks up food within 4 m of its route and carries it to the stores (it never leaves the route for more). The garrison is as large as the village can feed (the `AllowedPaid` of step 2, at most two in five adults, picked by courage + aggression + strength). **Fisher** — `KinJob.Fisher`: a clan that knows Fishing, with shore within 20 m of home, keeps one fisher per 6 people on the shore all day (before, fishing was only a fallback). Headless A/B (6 seeds x 40 min, Village-Age start, jobs off vs on): alive 206 -> 238, starved 122 -> 100, killed by predators 85 -> 65, soldiers on average 17 -> 29, fishers 0 -> 11, food in stores 227 -> 270, guards on patrol/post 33% -> 53% of the time. Gatherer, Farmer and Hunter are unchanged (they are the producers).
 
 *Step 4 done (2026-10-01):* **The headman gives the jobs.** Each look, the village's headman (no headman, no orders) turns the village's `AllowedPaid` into jobs: 60% soldiers (at least one, at most two in five adults), then a healer while anyone needs care and a clan knows herb-lore, up to two builders while a wall or home is being built, a scout while a clan can map ground. He picks the best of any clan's people (soldier: courage + aggression + strength; healer: intelligence + sociability + healing; builder: intelligence + diligence + building; scout: courage + intelligence), never a farmer, fisher, sick or badly hurt kin, nor himself, keeps those doing well and lets the rest go. These `VillageJob`s override the clans' own job lists, and the fed are the first of them in that order. Fed builders speed their clan's wall (each adds a pair of hands; walls used to go up on a fixed clock). Headless A/B (6 seeds x 40 min, Kingdom-Age start, village jobs off vs on; off = no soldiers/healers/builders/scouts at all): alive 239 -> 244, starved 136 -> 120, wall pieces raised 360 -> 438 (+22%), cells mapped 2,832 -> 2,899, tendings 60 -> 67; killed by predators 70 -> 79 and sickness deaths 13 -> 14 (both within the noise of these runs). Builders and healers average under one per village: after the soldiers take their 60% there is rarely food to spare for more.
 
@@ -190,3 +190,21 @@ Walls (already built) become a **village** project paid from the village store i
 *Extra: spider invasions (2026-10-02).* `Wildlife/InvaderSpider.cs`, `World.Invasions.cs`. Swarms of small spiders (0.7 m across, 20 health, 5-damage bites each second) appear 30-39 m from a village and march on its middle, biting any kin outside its home or stakes. A light invasion (3-5) hits a village, a hard one (10-14) a kingdom: 40% at its capital, the rest split over its other villages. First after 7 min with a village standing, then every 5-9 min, one at a time; 40% hard once a kingdom stands. Soldiers (and a kingdom's pledged soldiers) fight them; unbeaten after 5 min they withdraw. Headless, Kingdom-Age start, 24 kin (46 by then): a light invasion (4) and a hard one (12) were both beaten in under 40 s with no kin lost, so as built they are easy for a village with soldiers; raise the counts or toughness, or scale them to the target's strength, to hurt. Not saved with the game.
 
 *Invasions, update:* size now scales with the target's defence (a grown soldier counts 1, other grown kin 0.25): light = 3 + defence/4 (3-12), hard = 10 + defence/2 (10-30), plus or minus one. Hard invasions come in 3 waves, a light one of 6+ in 2: the next wave sets out 45 s after the last, or 8 s after it is wiped out. Headless (46-kin kingdom, 16 spiders in waves of 5, 5 and 6): all slain in about 80 s, no kin lost. Still an easy win for a well-defended kingdom; the dials are the share per defence point, spider toughness and the wave count.
+
+
+## Job balance (2026-10-03)
+
+One table, `Kin/Bramblekin.Jobs.cs` (`ProfileOf`), sets how every job fights; everything is relative to a plain kin (None: 30 Health, damage from Personality and Strength, takes blows in full, a blow a second, 0.35 m reach past the bodies).
+
+| Job | Blow vs kin | Blow vs creature | Arrow | Takes | Health | Own blow pace | Reach |
+|---|---|---|---|---|---|---|---|
+| None | x1.0 | x1.0 | - | x1.0 | 30 | 1.0 s | +0 |
+| Fisher | x0.9 | x0.9 | - | x1.0 | 30 | 1.0 s | +0 |
+| Hunter | x0.8 | x1.3 | x1.2 | x1.05 | 28 | 1.0 s | +0 |
+| Swordsman (was Guard) | x1.2 | x1.3 | - | x0.85 | 40 | 0.8 s (fast) | +0 |
+| Spearman | x1.25 | x1.15 | - | x0.95 | 34 | 1.2 s (slow) | +0.6 m |
+| Raider | x1.15 | x1.15 | - | x1.0 | 30 | 1.0 s | +0 |
+
+Blows against creatures also get the old x1.5 for a clan that knows Spears (or any Spearman) and up to x1.5 for hunting skill; a shield (Swordsman, Raider) takes a third off again, and a Swordsman's x0.85 more on top. Health is the job's own: a kin that changes job keeps the same share of it. A controlled kin's blow pace comes from its clips (sword combo 0.7-0.8 s, stab 1.2 s, Hunter's aim 0.6 s). The idea: Hunter is the skirmisher (weak up close, fragile, hits hard at range), Swordsman the front-liner (most Health, best defence, fast), Spearman the heavy hitter (longest reach, slow, not as sturdy), Fisher a provider.
+
+**Balance check** (headless, 3600 s, 32 seeds each, same seeds before and after; `Job trend` lines in the summary give deaths per kin-hour by job): final population 33.5 vs 33.2 (before vs after), births 873/839 on the first 16 seeds, predator deaths 1265 vs 1187 across all 32, starvation 514 vs 605 on the 32 (equal on the second 16: 297 vs 305, the first 16 differed by noise). Swordsman deaths 2.0 to 1.5 a kin-hour, Hunter 1.8 to 2.3, everyone else within noise. A first try (Hunter 26 Health x1.1) doubled Hunter deaths to 2.8 and was eased to the numbers above.

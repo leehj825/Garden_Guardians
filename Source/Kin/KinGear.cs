@@ -115,16 +115,15 @@ public static unsafe class KinGear
             Vector3 centre = grip + along * (0.3f * SpearLength);
             if (stabbing && Hand(pose, "mixamorig:LeftHand", "mixamorig:LeftForeArm", out Vector3 front, out _) && Vector3.DistanceSquared(front, grip) > 1e-4f)
             {
-                // The leading hand is the left one: the point goes that way — but as the hands come together at the end of the thrust the line between
-                // them is unreliable (it would flip from side to side), so the more they close up the more the spear settles on its carried direction.
+                // Held in both hands: the shaft runs through them, the point on the left hand's side (the left hand leads the thrust). The direction
+                // is never turned round to face forwards: the hands cross and come together at the end of the stab, and that turned the spear end for end.
+                // Only when they are almost together does it lean towards the carried direction (a line between hands a few centimetres apart is noise).
                 Vector3 between = front - grip;
                 float apart = between.Length();
                 Vector3 carried = along;
                 between /= apart;
-                if (Vector3.Dot(between, forward) < 0f)
-                    between = -between;
                 float trust = Math.Clamp((apart - 0.1f) / 0.15f, 0f, 1f);
-                along = Vector3.Normalize(between * trust + carried * (1f - trust) + carried * 0.4f);
+                along = Vector3.Normalize(between * trust + carried * (1f - trust) * 1.4f);
                 centre = (front + grip) * 0.5f + along * (0.25f * SpearLength);
             }
             GearModels.Draw(GearModels.Gear.Spear, Matrix4x4.CreateScale(SpearLength) * Frame(along, Vector3.UnitY, centre) * body);

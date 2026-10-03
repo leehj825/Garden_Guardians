@@ -44,7 +44,7 @@ public sealed partial class Bramblekin
     private void Heal(int amount)
     {
         if (!IsSick)
-            Health = Math.Min(MaxHealth, Health + amount);
+            Health = Math.Min(HealthCap, Health + amount);
     }
 
     /// <summary>Falls ill, for <see cref="SicknessMinSeconds"/>–<see cref="SicknessMaxSeconds"/>.</summary>

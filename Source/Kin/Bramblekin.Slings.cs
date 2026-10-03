@@ -15,7 +15,7 @@ public sealed partial class Bramblekin
     /// <summary>Knowing it can hit back from a few paces off, it's this much likelier to stand up to a Hornet.</summary>
     private const float SlingNerve = 0.25f;
 
-    /// <summary>A Guard with a sling clears any hornets' nest it sees within this far (m) of home…</summary>
+    /// <summary>A Swordsman with a sling clears any hornets' nest it sees within this far (m) of home…</summary>
     private const float NestClearingRadius = 14f;
 
     /// <summary>…while it's at least this fit.</summary>
@@ -34,12 +34,12 @@ public sealed partial class Bramblekin
     };
 
     /// <summary>
-    /// A Guard with a sling doesn't give a hornets' nest near home a wide
+    /// A Swordsman with a sling doesn't give a hornets' nest near home a wide
     /// berth: it picks the swarm off a pebble at a time, from just outside
     /// the reach of the Hornet it's aiming at (see <see cref="SlingRange"/>).
     /// </summary>
     private bool IsClearingNest(Hornet hornet) =>
-        Job == KinJob.Guard && CanSling(hornet) && Health >= MaxHealth * NestClearingHealthFraction && Home is { IsBuilt: true } home &&
+        Job == KinJob.Swordsman && CanSling(hornet) && Health >= HealthCap * NestClearingHealthFraction && Home is { IsBuilt: true } home &&
         GroundMover.HorizontalDistanceSquared(hornet.Position, home.Position) <= NestClearingRadius * NestClearingRadius;
 
     /// <summary>

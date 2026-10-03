@@ -7,7 +7,7 @@ namespace GardenGuardians;
 /// Playing a Bramblekin: the player takes one kin's wheel (the "Control" button under the Kin Inspector) and walks it about from a third-person
 /// camera behind it, like an action game. A stick on the left of the screen moves it (relative to where the camera looks); a drag anywhere else
 /// turns the camera; the Attack button swings (see <see cref="Bramblekin.PlayerMayHitKin"/> for whether that may hit other clans' kin). Desktop:
-/// W A S D (or the arrows) to move, Space to strike, the mouse to look. The kin still gets hungry and thirsty and can be hurt; stood still
+/// W A S D (or the arrows) to move, Space to strike (a hunter's F shoots an arrow that flies <see cref="Bramblekin.ArrowRange"/> m, then drops), J to jump, R to toggle running, the mouse to look. The kin still gets hungry and thirsty and can be hurt; stood still
 /// by food, its store or the water it eats and drinks (see <c>Bramblekin.Play.cs</c>). Everything else in the garden goes on as usual.
 /// </summary>
 public sealed class PlayControl
@@ -33,6 +33,10 @@ public sealed class PlayControl
     /// <summary>A development aid: GARDEN_PLAY_FORWARD=1 holds the stick forward.</summary>
     private static readonly bool DebugForward = Environment.GetEnvironmentVariable("GARDEN_PLAY_FORWARD") == "1";
 
+    private static readonly bool DebugRun = Environment.GetEnvironmentVariable("GARDEN_PLAY_RUN") == "1", DebugJump = Environment.GetEnvironmentVariable("GARDEN_PLAY_JUMP") == "1";
+
+    private static readonly bool DebugShoot = Environment.GetEnvironmentVariable("GARDEN_PLAY_SHOOT") == "1";
+
     private static readonly bool DebugAttack = Environment.GetEnvironmentVariable("GARDEN_PLAY_ATTACK") == "1";
 
     private float _yaw;
@@ -40,7 +44,8 @@ public sealed class PlayControl
     private Vector3 _focus;
 
     // Touches by id: the one on the stick, the one turning the camera, the one on the attack button.
-    private int _stickTouch = -1, _lookTouch = -1, _attackTouch = -1;
+    private int _stickTouch = -1, _lookTouch = -1, _attackTouch = -1, _shootTouch = -1;
+    private bool _jumpPressed;
     private Vector2 _lookLast;
     private Vector2 _stick;
     private readonly HashSet<int> _spent = new();
@@ -61,13 +66,14 @@ public sealed class PlayControl
             _yaw += turnDegrees * MathF.PI / 180f; // A development aid: look at the kin from another side (180 for its front).
         _pitch = float.TryParse(Environment.GetEnvironmentVariable("GARDEN_PLAY_PITCH"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float testPitch) ? testPitch : 0.4f; // (GARDEN_PLAY_PITCH: a development aid)
         _focus = kin.Position + new Vector3(0f, LookHeight, 0f);
-        _stickTouch = _lookTouch = _attackTouch = -1;
+        _stickTouch = _lookTouch = _attackTouch = _shootTouch = -1;
         _stick = Vector2.Zero;
         _spent.Clear();
         for (int i = 0; i < Raylib.GetTouchPointCount(); i++)
             _spent.Add(Raylib.GetTouchPointId(i)); // The press that chose "Control" is not a first touch of the stick or the view.
         kin.PlayerMayHitKin = HitKin;
         kin.SetPlayerControlled(true, world);
+        kin.PlayerRunning = DebugRun; // (GARDEN_PLAY_RUN=1: a development aid, starts with the run toggle on)
     }
 
     /// <summary>Hands the kin back to its own mind and puts the camera high over it, ready for the Follow camera to take up.</summary>
@@ -91,9 +97,18 @@ public sealed class PlayControl
     private static UiButton ExitButton => new(new Rectangle(20 * Scale, 20 * Scale, 260 * Scale, 110 * Scale));
     private static UiButton KinToggle => new(new Rectangle(Raylib.GetScreenWidth() - 520 * Scale, Raylib.GetScreenHeight() * 0.72f - 55 * Scale, 230 * Scale, 110 * Scale));
 
+    private bool HasShootButton => Kin is { Job: KinJob.Hunter };
+
+    /// <summary>The Shoot button (a Hunter's) sits just above Attack, and Jump above it; for the other jobs Jump takes Shoot's place.</summary>
+    private static Vector2 ShootCenter => new(Raylib.GetScreenWidth() - 190f * Scale, Raylib.GetScreenHeight() * 0.72f - 270f * Scale);
+    private static float ShootRadius => 90f * Scale;
+    private Vector2 JumpCenter => new(Raylib.GetScreenWidth() - 190f * Scale, Raylib.GetScreenHeight() * 0.72f - (HasShootButton ? 470f : 270f) * Scale);
+    private static float JumpRadius => 85f * Scale;
+    private static UiButton RunToggle => new(new Rectangle(Raylib.GetScreenWidth() - 520 * Scale, Raylib.GetScreenHeight() * 0.72f + 75 * Scale, 230 * Scale, 110 * Scale));
+
     private static UiButton JobToggle => new(new Rectangle(Raylib.GetScreenWidth() - 520 * Scale, Raylib.GetScreenHeight() * 0.72f - 185 * Scale, 230 * Scale, 110 * Scale));
 
-    private static string JobLabel(KinJob job) => job switch { KinJob.Hunter => "Job: Hunter", KinJob.Guard => "Job: Guard", KinJob.Spearman => "Job: Spearman", KinJob.Fisher => "Job: Fisher", _ => "Job: Normal" };
+    private static string JobLabel(KinJob job) => job switch { KinJob.Hunter => "Job: Hunter", KinJob.Swordsman => "Job: Swordsman", KinJob.Spearman => "Job: Spearman", KinJob.Fisher => "Job: Fisher", _ => "Job: Normal" };
 
     /// <summary>The part of the screen where a touch takes the stick: the lower left.</summary>
     private static bool InStickZone(Vector2 point) => point.X < Raylib.GetScreenWidth() * 0.42f && point.Y > Raylib.GetScreenHeight() * 0.3f;
@@ -110,7 +125,8 @@ public sealed class PlayControl
         // --- Touches (a held mouse button counts as one touch on the desktop) ---
         int count = Raylib.GetTouchPointCount();
         var present = new HashSet<int>();
-        bool attackHeld = false;
+        bool attackHeld = false, shootHeld = false;
+        _jumpPressed = false;
         for (int i = 0; i < count; i++)
         {
             int id = Raylib.GetTouchPointId(i);
@@ -133,6 +149,8 @@ public sealed class PlayControl
             }
             else if (id == _attackTouch)
                 attackHeld = true;
+            else if (id == _shootTouch)
+                shootHeld = true;
             else if (_stickTouch < 0 && _lookTouch != id && InStickZone(at) && Vector2.Distance(at, AttackCenter) > AttackRadius)
             {
                 _stickTouch = id;
@@ -142,6 +160,11 @@ public sealed class PlayControl
             {
                 _attackTouch = id;
                 attackHeld = true;
+            }
+            else if (HasShootButton && Vector2.Distance(at, ShootCenter) <= ShootRadius * 1.15f)
+            {
+                _shootTouch = id;
+                shootHeld = true;
             }
             else if (ExitButton.Contains(at))
             {
@@ -157,6 +180,16 @@ public sealed class PlayControl
             else if (JobToggle.Contains(at))
             {
                 kin.CyclePlayerJob();
+                _spent.Add(id);
+            }
+            else if (RunToggle.Contains(at))
+            {
+                kin.PlayerRunning = !kin.PlayerRunning;
+                _spent.Add(id);
+            }
+            else if (Vector2.Distance(at, JumpCenter) <= JumpRadius * 1.15f)
+            {
+                _jumpPressed = true;
                 _spent.Add(id);
             }
             else if (_lookTouch == -1)
@@ -175,6 +208,8 @@ public sealed class PlayControl
             _lookTouch = -1;
         if (!present.Contains(_attackTouch))
             _attackTouch = -1;
+        if (!present.Contains(_shootTouch))
+            _shootTouch = -1;
 
         // --- Keys (desktop) ---
         Vector2 keys = Vector2.Zero;
@@ -190,12 +225,22 @@ public sealed class PlayControl
             keys.Y += 1f;
         if (DebugAttack)
             attackHeld = true;
+        if (DebugShoot)
+            shootHeld = true;
+        if (DebugJump)
+            _jumpPressed = true; // (GARDEN_PLAY_JUMP=1: jumps again the moment it lands)
         if (Raylib.IsKeyDown(KeyboardKey.Q))
             _yaw += 1.8f * deltaTime;
         if (Raylib.IsKeyDown(KeyboardKey.E))
             _yaw -= 1.8f * deltaTime;
         if (Raylib.IsKeyDown(KeyboardKey.Space))
             attackHeld = true;
+        if (Raylib.IsKeyDown(KeyboardKey.F))
+            shootHeld = true;
+        if (Raylib.IsKeyPressed(KeyboardKey.J))
+            _jumpPressed = true;
+        if (Raylib.IsKeyPressed(KeyboardKey.R))
+            kin.PlayerRunning = !kin.PlayerRunning;
         if (Raylib.IsKeyPressed(KeyboardKey.Escape))
         {
             End(ref camera, world);
@@ -211,6 +256,9 @@ public sealed class PlayControl
         Vector3 move = forward * push.Y + right * push.X;
         kin.PlayerMove = new Vector2(move.X, move.Z);
         kin.PlayerWantsStrike = attackHeld;
+        kin.PlayerWantsShoot = shootHeld;
+        kin.PlayerWantsJump = _jumpPressed;
+        kin.PlayerLook = new Vector2(forward.X, forward.Z);
 
         // --- Camera: behind the kin, looking over its shoulder ---
         Vector3 head = kin.Position + new Vector3(0f, LookHeight, 0f);
@@ -246,6 +294,20 @@ public sealed class PlayControl
         string attackLabel = "Attack";
         Raylib.DrawText(attackLabel, (int)(AttackCenter.X - Raylib.MeasureText(attackLabel, attackFont) / 2f), (int)(AttackCenter.Y - attackFont / 2f), attackFont, Color.White);
         KinToggle.Draw(HitKin ? "Kin: on" : "Kin: off", highlighted: HitKin);
+        if (HasShootButton)
+        {
+            bool shooting = _shootTouch >= 0 || Raylib.IsKeyDown(KeyboardKey.F);
+            Raylib.DrawCircleV(ShootCenter, ShootRadius, shooting ? new Color(235, 160, 50, 210) : new Color(220, 140, 40, 140));
+            Raylib.DrawCircleLinesV(ShootCenter, ShootRadius, new Color(255, 255, 255, 170));
+            int shootFont = (int)(40 * s);
+            Raylib.DrawText("Shoot", (int)(ShootCenter.X - Raylib.MeasureText("Shoot", shootFont) / 2f), (int)(ShootCenter.Y - shootFont / 2f), shootFont, Color.White);
+        }
+        RunToggle.Draw(kin.PlayerRunning ? "Run: on" : "Run: off", highlighted: kin.PlayerRunning);
+        bool airborne = kin.IsAirborne || Raylib.IsKeyDown(KeyboardKey.J);
+        Raylib.DrawCircleV(JumpCenter, JumpRadius, airborne ? new Color(90, 170, 230, 200) : new Color(70, 140, 210, 130));
+        Raylib.DrawCircleLinesV(JumpCenter, JumpRadius, new Color(255, 255, 255, 170));
+        int jumpFont = (int)(38 * s);
+        Raylib.DrawText("Jump", (int)(JumpCenter.X - Raylib.MeasureText("Jump", jumpFont) / 2f), (int)(JumpCenter.Y - jumpFont / 2f), jumpFont, Color.White);
         JobToggle.Draw(JobLabel(kin.PlayerJob), highlighted: kin.PlayerJob != KinJob.None);
         ExitButton.Draw("Exit", highlighted: false);
 
@@ -253,7 +315,7 @@ public sealed class PlayControl
         int font = (int)(40 * s);
         int x = (int)(310 * s);
         int y = (int)(24 * s);
-        Raylib.DrawText($"{kin.Name}   Health {kin.Health}/{Bramblekin.MaxHealth}", x, y, font, Color.White);
+        Raylib.DrawText($"{kin.Name}   Health {kin.Health}/{kin.HealthCap}", x, y, font, Color.White);
         Raylib.DrawText($"Hunger {(int)kin.Hunger}%   Thirst {(int)kin.Thirst}%", x, y + (int)(font * 1.15f), font, kin.IsHungry || kin.IsThirsty ? new Color(255, 190, 120, 255) : Color.White);
         if (kin.PlayerHint is { } hint)
             Raylib.DrawText(hint, x, y + (int)(font * 2.3f), (int)(font * 0.85f), new Color(255, 220, 140, 255));

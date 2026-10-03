@@ -93,8 +93,8 @@ public sealed partial class Bramblekin
     /// <summary>A testing aid (see <see cref="World.StartTestAssault"/>): made a fit, fed soldier.</summary>
     public void MakeTestSoldier()
     {
-        Job = KinJob.Guard;
-        Health = MaxHealth;
+        Job = KinJob.Swordsman;
+        Health = HealthCap;
         Hunger = 0f;
     }
 
@@ -152,9 +152,9 @@ public sealed partial class Bramblekin
                 return MarchTo(assault.Staging, 6f, deltaTime, world);
 
             case AssaultPhase.Fighting:
-                if (Health > MaxHealth * AssaultNerveRecovered)
+                if (Health > HealthCap * AssaultNerveRecovered)
                     _nerveRolled = false;
-                if (!_nerveRolled && Health <= MaxHealth * AssaultNerveHealth)
+                if (!_nerveRolled && Health <= HealthCap * AssaultNerveHealth)
                 {
                     _nerveRolled = true;
                     if (_rng.NextDouble() >= MathF.Min(1f, Personality.Courage * AssaultNerveCourageFactor))

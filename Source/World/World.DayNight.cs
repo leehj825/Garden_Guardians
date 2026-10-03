@@ -90,7 +90,7 @@ public sealed partial class World
 
     /// <summary>
     /// Nightfall and dawn: each settled clan of a few posts one member to
-    /// keep watch by home through the night — a Guard if it has one, else
+    /// keep watch by home through the night — a Swordsman if it has one, else
     /// its bravest — and stands it down at dawn.
     /// </summary>
     private void UpdateNight(float deltaTime)
@@ -126,7 +126,7 @@ public sealed partial class World
                 continue;
             group.NightWatch = group.Members
                 .Where(m => !m.IsDead && !m.IsYoung && m.Home is { IsBuilt: true } && m.Health > Bramblekin.MaxHealth / 2)
-                .OrderByDescending(m => m.Job == KinJob.Guard)
+                .OrderByDescending(m => m.Job == KinJob.Swordsman)
                 .ThenByDescending(m => m.Personality.Courage)
                 .FirstOrDefault();
             if (group.NightWatch is not null)

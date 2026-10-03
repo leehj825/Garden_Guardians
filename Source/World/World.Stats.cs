@@ -35,6 +35,13 @@ public sealed partial class World
     /// <summary>Deaths, by the status each Bramblekin held when it died.</summary>
     private readonly int[] _deathsByStatus = new int[SurvivalStatusCount];
 
+    private static readonly int JobCount = Enum.GetValues<KinJob>().Length;
+
+    /// <summary>The same, by job (grown kin only): seconds lived, deaths and deaths by cause, for balancing the fighting jobs against one another.</summary>
+    private readonly double[] _exposureByJob = new double[JobCount];
+
+    private readonly int[,] _deathCausesByJob = new int[JobCount, Enum.GetValues<DeathCause>().Length];
+
     private readonly int[,] _deathCausesByStatus = new int[SurvivalStatusCount, Enum.GetValues<DeathCause>().Length];
 
     /// <summary>
@@ -62,6 +69,8 @@ public sealed partial class World
             if (kin.IsDead)
                 continue;
             _exposureSeconds[(int)kin.Status] += deltaTime;
+            if (!kin.IsYoung)
+                _exposureByJob[(int)kin.Job] += deltaTime;
             kin.DecayInfamy(deltaTime);
         }
     }
@@ -70,6 +79,21 @@ public sealed partial class World
     {
         _deathsByStatus[(int)kin.Status]++;
         _deathCausesByStatus[(int)kin.Status, (int)cause]++;
+        if (!kin.IsYoung)
+            _deathCausesByJob[(int)kin.Job, (int)cause]++;
+    }
+
+    public double KinHoursAs(KinJob job) => _exposureByJob[(int)job] / 3600.0;
+
+    /// <summary>How many grown kin died of <paramref name="cause"/> (any cause when null) while holding <paramref name="job"/>.</summary>
+    public int DeathsAs(KinJob job, DeathCause? cause = null)
+    {
+        if (cause is { } only)
+            return _deathCausesByJob[(int)job, (int)only];
+        int total = 0;
+        for (int c = 0; c < _deathCausesByJob.GetLength(1); c++)
+            total += _deathCausesByJob[(int)job, c];
+        return total;
     }
 
     /// <summary>How many Bramblekin died of <paramref name="cause"/> while in <paramref name="status"/>.</summary>
