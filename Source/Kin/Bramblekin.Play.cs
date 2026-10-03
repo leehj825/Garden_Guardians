@@ -10,8 +10,8 @@ public sealed partial class Bramblekin
     /// <summary>A kin under control jogs a little faster than it walks; with the run toggle on it runs.</summary>
     private const float PlayerRunSpeed = WalkSpeed * 1.35f, PlayerSprintSpeed = WalkSpeed * 2.3f;
 
-    /// <summary>A jump lasts this long (s) from take-off to landing, and carries the body this high (m) at the top. Only one at a time: a new one waits until the kin is down.</summary>
-    private const float JumpSeconds = 0.9f, JumpPeak = 0.7f;
+    /// <summary>A jump lasts this long (s) from take-off to landing, and carries the body this high (m) at the top. Only one at a time: a new one waits until the kin is down. The jump clip is stretched over <c>JumpClipSeconds</c>, a little longer than the flight (the clip's natural 2.4 s is too slow for the motion, the flight's own 0.7 s too quick for the pose), so its last moments are the kin settling after the landing.</summary>
+    private const float JumpSeconds = 0.7f, JumpPeak = 0.5f, JumpClipSeconds = 1.0f;
 
     /// <summary>A hunter's arrow flies this far (m) before it drops, and its bow takes this long (s) to be ready again; the arrow leaves the bow this long (s) into the aim clip.</summary>
     public const float ArrowRange = 12f;
@@ -49,8 +49,11 @@ public sealed partial class Bramblekin
     /// <summary>True from take-off to landing: no second jump, and no striking, until it is over.</summary>
     public bool IsAirborne { get; private set; }
 
-    /// <summary>How far through the jump it is, 0 to 1.</summary>
-    private float JumpProgress => Math.Clamp(_jumpTime / JumpSeconds, 0f, 1f);
+    /// <summary>True while the jump clip plays: the flight and the settling after it.</summary>
+    private bool _jumpClipPlaying;
+
+    /// <summary>How far through the jump clip it is, 0 to 1.</summary>
+    private float JumpProgress => Math.Clamp(_jumpTime / JumpClipSeconds, 0f, 1f);
 
     /// <summary>Under control with the run toggle on.</summary>
     private bool IsRunning => IsPlayerControlled && PlayerRunning;
@@ -112,6 +115,7 @@ public sealed partial class Bramblekin
         PlayerWantsJump = false;
         PlayerRunning = false;
         IsAirborne = false;
+        _jumpClipPlaying = false;
         _jumpTime = _jumpHeight = _arrowDelay = 0f;
         _swing = 0f;
         CombatTarget = null;
@@ -133,12 +137,18 @@ public sealed partial class Bramblekin
         if (!IsAirborne && PlayerWantsJump && _swing <= 0f && State != BramblekinState.Eating && !(State == BramblekinState.Drinking && _drinkTimer > 0f))
         {
             IsAirborne = true;
+            _jumpClipPlaying = true;
             _jumpTime = 0f;
+        }
+        if (_jumpClipPlaying)
+        {
+            _jumpTime += deltaTime;
+            if (_jumpTime >= JumpClipSeconds)
+                _jumpClipPlaying = false;
         }
         if (IsAirborne)
         {
-            _jumpTime += deltaTime;
-            float t = JumpProgress;
+            float t = Math.Clamp(_jumpTime / JumpSeconds, 0f, 1f);
             _jumpHeight = 4f * JumpPeak * t * (1f - t);
             if (t >= 1f)
             {
@@ -220,6 +230,7 @@ public sealed partial class Bramblekin
     private void PlayerAim(World world)
     {
         _strikeCooldown = PlayerShotCooldown;
+        _jumpClipPlaying = false;
         BeginBlow(world, ranged: true);
         _swing = PlayerSwingSeconds;
         _arrowDelay = ArrowReleaseDelay;
@@ -334,6 +345,7 @@ public sealed partial class Bramblekin
     private void PlayerStrike(World world)
     {
         _strikeCooldown = PlayerStrikeCooldown;
+        _jumpClipPlaying = false;
         BeginBlow(world);
         _swing = PlayerSwingSeconds;
         SetState(BramblekinState.Fighting);

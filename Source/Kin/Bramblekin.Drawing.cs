@@ -256,7 +256,7 @@ public sealed partial class Bramblekin
         if (ClimbT > 0f && ClimbT < 1f && _climb != ClimbStage.Pick)
             return (BramblekinClip.Walking, null); // walking in to the eggs, or out with one
 
-        if (IsAirborne)
+        if (_jumpClipPlaying)
             return (BramblekinClip.Jump, JumpProgress);
 
         if (_actionActive)

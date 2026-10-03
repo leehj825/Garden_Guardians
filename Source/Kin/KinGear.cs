@@ -124,6 +124,9 @@ public static unsafe class KinGear
                 if (Vector3.Dot(between, forward) < 0f)
                     between = -between;
                 float trust = Math.Clamp((apart - 0.1f) / 0.15f, 0f, 1f);
+                // Held side by side across the body (the end of the male's stab) the line between the hands says nothing about where the spear points, and
+                // which hand is "ahead" flips from frame to frame, turning the spear end for end: trust it only while it runs mostly forwards.
+                trust *= Math.Clamp((Vector3.Dot(between, forward) - 0.2f) / 0.3f, 0f, 1f);
                 along = Vector3.Normalize(between * trust + carried * (1f - trust) + carried * 0.4f);
                 centre = (front + grip) * 0.5f + along * (0.25f * SpearLength);
             }
