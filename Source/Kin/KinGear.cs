@@ -115,9 +115,16 @@ public static unsafe class KinGear
             Vector3 centre = grip + along * (0.3f * SpearLength);
             if (stabbing && Hand(pose, "mixamorig:LeftHand", "mixamorig:LeftForeArm", out Vector3 front, out _) && Vector3.DistanceSquared(front, grip) > 1e-4f)
             {
-                along = Vector3.Normalize(front - grip); // the leading hand is the left one: the point goes that way
-                if (Vector3.Dot(along, forward) < 0f)
-                    along = -along;
+                // The leading hand is the left one: the point goes that way — but as the hands come together at the end of the thrust the line between
+                // them is unreliable (it would flip from side to side), so the more they close up the more the spear settles on its carried direction.
+                Vector3 between = front - grip;
+                float apart = between.Length();
+                Vector3 carried = along;
+                between /= apart;
+                if (Vector3.Dot(between, forward) < 0f)
+                    between = -between;
+                float trust = Math.Clamp((apart - 0.1f) / 0.15f, 0f, 1f);
+                along = Vector3.Normalize(between * trust + carried * (1f - trust) + carried * 0.4f);
                 centre = (front + grip) * 0.5f + along * (0.25f * SpearLength);
             }
             GearModels.Draw(GearModels.Gear.Spear, Matrix4x4.CreateScale(SpearLength) * Frame(along, Vector3.UnitY, centre) * body);
@@ -135,10 +142,10 @@ public static unsafe class KinGear
             {
                 // Held by its grip against the inside of the palm, standing along the hand with its belly forward.
                 // Hanging from the fist by its grip, tips down (and the whole bow swings with the hand).
-                // Carried upright in the hand, its belly forward and its string side up (the same way up as when it is drawn).
-                Vector3 along = Vector3.Normalize(Vector3.UnitY + 0.15f * forward);
-                Vector3 centre = left - Vector3.UnitX * 0.03f + forward * 0.02f;
-                Vector3 facing = forward;
+                // Carried at the side, lying along the way it faces, its wood part down and the string on top (its belly, which the string spans, faces down).
+                Vector3 along = Vector3.Normalize(forward - 0.1f * Vector3.UnitY);
+                Vector3 centre = left - Vector3.UnitX * 0.03f + forward * 0.05f;
+                Vector3 facing = -Vector3.UnitY;
                 if (bowRaised)
                 {
                     // Aiming: the arm is stretched out ahead, and the bow stands upright across it, at a right angle, its belly towards the target.

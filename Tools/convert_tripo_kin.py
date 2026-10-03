@@ -68,7 +68,7 @@ def repose_tpose_arms(points, normals, degrees=58.0, root=0.19, height=0.44, ram
         c, s = np.cos(a), np.sin(a)
         dx, dz = (x - root) * np.where(f > 0, scale, 1.0), z - height  # (an arm is shortened along its length, about the shoulder)
         arm = f > 0
-        held |= arm
+        held |= (f >= 1.0)  # (the ramp beside the body, where a vest or sleeve meets the shoulder, is skinned as usual)
         out[arm, 0] = side * (root + (dx * c + dz * s)[arm])
         out[arm, 2] = (height + (-dx * s + dz * c))[arm]
         nx, nz = normals[:, 0] * side, normals[:, 2]
@@ -255,7 +255,7 @@ def main():
     doc, binary = read_glb(args.skeleton)
     names, position, parent = bind_joints(doc, binary)
     segs = segments(names, position, parent, fitted_arms(position, args.arm_degrees, args.arm_scale) if args.tpose_arms else (FITTED_ARM if args.female else {}))
-    cloth = cloth_mask(uv, picture, CLOTH_GREEN if args.female else 1.0) if not args.guard else None  # (a guard's green is a tunic and a shield, which follow her arms)
+    cloth = cloth_mask(uv, picture, CLOTH_GREEN if args.female else 0.9) if not args.guard else None  # (a guard's green is a tunic and a shield, which follow her arms)
     if cloth is not None:
         print(int(cloth.sum()), "of", len(cloth), "vertices are cloth")
     joints_idx, w = skin(pos, names, segs, args.female, args.guard, idx.reshape(-1, 3), cloth, arm_part)
