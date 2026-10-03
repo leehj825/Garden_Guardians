@@ -26,6 +26,10 @@ public enum BramblekinClip
     AimRecoil,
     /// <summary>Bending to pick something up (food, a twig).</summary>
     PickingUp,
+    /// <summary>Running (Running.fbx): a controlled kin with the run toggle on, while it moves.</summary>
+    Running,
+    /// <summary>Jumping (Unarmed_Jump.fbx, hips kept down: the game lifts the body itself): crouch, spring, hang, land. Played once over the jump's airtime.</summary>
+    Jump,
 }
 
 /// <summary>
@@ -115,6 +119,8 @@ internal static unsafe class BramblekinModel
         _clips[BramblekinClip.SpearStab] = LoadClip("BayonetStab.glb");
         _clips[BramblekinClip.AimRecoil] = LoadClip("StandingAimRecoil.glb");
         _clips[BramblekinClip.PickingUp] = LoadClip("PickingUp.glb");
+        _clips[BramblekinClip.Running] = LoadClip("Running.glb");
+        _clips[BramblekinClip.Jump] = LoadClip("Jump.glb");
         // No separate idle clip was supplied: holding Walking's first frame stands in for one.
         _clips[BramblekinClip.Idle] = _clips[BramblekinClip.Walking];
 

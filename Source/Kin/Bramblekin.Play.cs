@@ -7,8 +7,18 @@ public sealed partial class Bramblekin
 {
     // --- Under the player's control (see PlayControl): the kin walks where the stick says and strikes when told ----------------------
 
-    /// <summary>A kin under control jogs a little faster than it walks.</summary>
-    private const float PlayerRunSpeed = WalkSpeed * 1.35f;
+    /// <summary>A kin under control jogs a little faster than it walks; with the run toggle on it runs.</summary>
+    private const float PlayerRunSpeed = WalkSpeed * 1.35f, PlayerSprintSpeed = WalkSpeed * 2.3f;
+
+    /// <summary>A jump lasts this long (s) from take-off to landing, and carries the body this high (m) at the top. Only one at a time: a new one waits until the kin is down.</summary>
+    private const float JumpSeconds = 0.9f, JumpPeak = 0.7f;
+
+    /// <summary>A hunter's arrow flies this far (m) before it drops, and its bow takes this long (s) to be ready again; the arrow leaves the bow this long (s) into the aim clip.</summary>
+    public const float ArrowRange = 12f;
+    private const float PlayerShotCooldown = 1.0f, ArrowReleaseDelay = 0.3f;
+
+    /// <summary>The aim is helped towards a target within this half-angle (radians) of where the player looks.</summary>
+    private const float AimAssistCone = 0.5f;
 
     /// <summary>A strike reaches this far (m) past the edges of the two bodies, and takes this long (s) to recover from; its swing lasts this long (s).</summary>
     private const float PlayerReach = 1.4f, PlayerStrikeCooldown = 0.7f, PlayerSwingSeconds = 0.5f;
@@ -16,7 +26,7 @@ public sealed partial class Bramblekin
     /// <summary>It stands still this near (m) to food, its store or the water, hungry or thirsty, and eats or drinks on its own.</summary>
     private const float PlayerFoodReach = 2f, PlayerStoreReach = 3.5f, PlayerWaterReach = 2.5f;
 
-    private float _swing;
+    private float _swing, _arrowDelay, _jumpTime, _jumpHeight;
 
     /// <summary>True while the player is steering it (see <see cref="PlayControl"/>).</summary>
     public bool IsPlayerControlled { get; private set; }
@@ -26,6 +36,24 @@ public sealed partial class Bramblekin
 
     /// <summary>Where the stick says to go, in world X/Z, length 0 to 1.</summary>
     public Vector2 PlayerMove { get; set; }
+
+    /// <summary>Where the player is looking, in world X/Z (the camera's way): a hunter's arrows go this way unless a target is near it.</summary>
+    public Vector2 PlayerLook { get; set; } = Vector2.UnitX;
+
+    /// <summary>The run toggle: while on (and moving) the kin runs.</summary>
+    public bool PlayerRunning { get; set; }
+
+    /// <summary>Set for the frame the jump button is pressed.</summary>
+    public bool PlayerWantsJump { get; set; }
+
+    /// <summary>True from take-off to landing: no second jump, and no striking, until it is over.</summary>
+    public bool IsAirborne { get; private set; }
+
+    /// <summary>How far through the jump it is, 0 to 1.</summary>
+    private float JumpProgress => Math.Clamp(_jumpTime / JumpSeconds, 0f, 1f);
+
+    /// <summary>Under control with the run toggle on.</summary>
+    private bool IsRunning => IsPlayerControlled && PlayerRunning;
 
     /// <summary>Set while the attack button is held.</summary>
     public bool PlayerWantsStrike { get; set; }
@@ -81,6 +109,10 @@ public sealed partial class Bramblekin
         IsPlayerControlled = on;
         PlayerMove = Vector2.Zero;
         PlayerWantsStrike = false;
+        PlayerWantsJump = false;
+        PlayerRunning = false;
+        IsAirborne = false;
+        _jumpTime = _jumpHeight = _arrowDelay = 0f;
         _swing = 0f;
         CombatTarget = null;
         _fleeTimer = 0f;
@@ -98,9 +130,38 @@ public sealed partial class Bramblekin
             Perceive(world); // (Only for the food it sees; nothing here reacts to a threat.)
         }
 
+        if (!IsAirborne && PlayerWantsJump && _swing <= 0f && State != BramblekinState.Eating && !(State == BramblekinState.Drinking && _drinkTimer > 0f))
+        {
+            IsAirborne = true;
+            _jumpTime = 0f;
+        }
+        if (IsAirborne)
+        {
+            _jumpTime += deltaTime;
+            float t = JumpProgress;
+            _jumpHeight = 4f * JumpPeak * t * (1f - t);
+            if (t >= 1f)
+            {
+                IsAirborne = false;
+                _jumpHeight = 0f;
+            }
+            SetState(BramblekinState.Idle);
+            if (PlayerMove.LengthSquared() > 0.01f)
+                MovePlayer(deltaTime, world); // (a jump carries on in the direction of the stick)
+            else
+                _mover.Idle();
+            return;
+        }
+
         if (_swing > 0f)
         {
             _swing -= deltaTime;
+            if (_arrowDelay > 0f)
+            {
+                _arrowDelay -= deltaTime;
+                if (_arrowDelay <= 0f)
+                    LoosePlayerArrow(world);
+            }
             SetState(BramblekinState.Fighting);
             return;
         }
@@ -117,7 +178,10 @@ public sealed partial class Bramblekin
 
         if (PlayerWantsStrike && _strikeCooldown <= 0f)
         {
-            PlayerStrike(world);
+            if (Job == KinJob.Hunter)
+                PlayerAim(world);
+            else
+                PlayerStrike(world);
             return;
         }
 
@@ -127,17 +191,76 @@ public sealed partial class Bramblekin
         if (!moving && Job == KinJob.Fisher && TryPlayerFishing(deltaTime, world))
             return;
 
+        SetState(BramblekinState.Idle);
         if (moving)
-        {
-            SetState(BramblekinState.Idle);
-            float speed = PlayerRunSpeed * AgeSpeedFactor * VigorSpeedFactor * (IsSick ? SickSpeedFactor : 1f) * world.PathSpeed(Position);
-            _mover.Step(PlayerMove, speed, deltaTime, world);
-        }
+            MovePlayer(deltaTime, world);
         else
-        {
-            SetState(BramblekinState.Idle);
             _mover.Idle();
+    }
+
+    /// <summary>One step along the stick: a jog, or a run with the run toggle on.</summary>
+    private void MovePlayer(float deltaTime, World world)
+    {
+        float speed = (PlayerRunning ? PlayerSprintSpeed : PlayerRunSpeed) * AgeSpeedFactor * VigorSpeedFactor * (IsSick ? SickSpeedFactor : 1f) * world.PathSpeed(Position);
+        _mover.Step(PlayerMove, speed, deltaTime, world);
+    }
+
+    /// <summary>True if <paramref name="other"/> is of the clan the kin came from (or belongs to).</summary>
+    public bool IsClanmate(Bramblekin other) => (AwayGroupId ?? GroupId) is { } clan && other.GroupId == clan;
+
+    /// <summary>The damage an arrow of this kin does to <paramref name="target"/> (and the hunting practice it earns): see <see cref="World.LooseArrow"/>.</summary>
+    public int ArrowHit(ICombatant target, World world)
+    {
+        if (target is not Bramblekin)
+            Train(Skill.Hunting, world, target is StagBeetle or WolfSpider ? 2f : 1f);
+        return target is Bramblekin ? StrikeDamage : HuntingDamage;
+    }
+
+    /// <summary>The bow is drawn: the kin turns to the way it will shoot, the aim clip plays, and the arrow follows partway through (see <see cref="LoosePlayerArrow"/>).</summary>
+    private void PlayerAim(World world)
+    {
+        _strikeCooldown = PlayerShotCooldown;
+        BeginBlow(world, ranged: true);
+        _swing = PlayerSwingSeconds;
+        _arrowDelay = ArrowReleaseDelay;
+        SetState(BramblekinState.Fighting);
+        Vector3 toward = AimDirection(world);
+        var flat = new Vector2(toward.X, toward.Z);
+        if (flat.LengthSquared() > 1e-6f)
+            _mover.Heading = Vector2.Normalize(flat);
+    }
+
+    /// <summary>Where an arrow loosed now would go: at the nearest target within reach and near the player's line of sight, else the way the player looks.</summary>
+    private Vector3 AimDirection(World world)
+    {
+        Vector2 look = PlayerLook.LengthSquared() > 1e-6f ? Vector2.Normalize(PlayerLook) : _mover.Heading;
+        Vector3 from = Position + new Vector3(0f, BodyHeight * 0.75f, 0f);
+        ICombatant? best = null;
+        float bestDistance = ArrowRange;
+        foreach (ICombatant candidate in world.ArrowTargets(this))
+        {
+            var flat = new Vector2(candidate.Position.X - Position.X, candidate.Position.Z - Position.Z);
+            float distance = flat.Length();
+            if (distance >= bestDistance || distance < 1e-3f || Vector2.Dot(look, flat / distance) < MathF.Cos(AimAssistCone))
+                continue;
+            best = candidate;
+            bestDistance = distance;
         }
+        if (best is null)
+            return new Vector3(look.X, 0.03f, look.Y);
+        Vector3 to = best.Position + new Vector3(0f, MathF.Max(0.15f, best.CollisionRadius), 0f) - from;
+        return Vector3.Normalize(to);
+    }
+
+    /// <summary>The arrow leaves the bow.</summary>
+    private void LoosePlayerArrow(World world)
+    {
+        Vector3 direction = AimDirection(world);
+        var flat = new Vector2(direction.X, direction.Z);
+        if (flat.LengthSquared() > 1e-6f)
+            _mover.Heading = Vector2.Normalize(flat);
+        Vector3 from = Position + new Vector3(0f, _jumpHeight + BodyHeight * 0.75f, 0f) + new Vector3(_mover.Heading.X, 0f, _mover.Heading.Y) * 0.4f;
+        world.LooseArrow(this, from, direction);
     }
 
     /// <summary>Standing still, hungry or thirsty, with food, its store or the water at hand: it eats or drinks. True while it does.</summary>

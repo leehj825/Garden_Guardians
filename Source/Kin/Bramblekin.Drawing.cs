@@ -29,6 +29,14 @@ public sealed partial class Bramblekin
             Rlgl.PopMatrix();
             return;
         }
+        if (_jumpHeight > 0f)
+        {
+            Rlgl.PushMatrix();
+            Rlgl.Translatef(0f, _jumpHeight, 0f); // (the body is lifted; its shadow is put back on the ground in DrawBody)
+            DrawBody(world);
+            Rlgl.PopMatrix();
+            return;
+        }
         DrawBody(world);
     }
 
@@ -54,7 +62,7 @@ public sealed partial class Bramblekin
         int lod = onScreen >= FinePixels ? 0 : onScreen >= MidPixels ? 1 : 2;
         bool props = onScreen >= PropPixels;
 
-        var shadowCenter = new Vector3(Position.X, Position.Y + 0.02f, Position.Z);
+        var shadowCenter = new Vector3(Position.X, Position.Y + 0.02f - _jumpHeight, Position.Z);
         if (!speck)
             Raylib.DrawCircle3D(shadowCenter, BodyRadius * 1.3f, new Vector3(1, 0, 0), 90f, new Color(0, 0, 0, 90));
 
@@ -246,6 +254,9 @@ public sealed partial class Bramblekin
         if (ClimbT > 0f && ClimbT < 1f && _climb != ClimbStage.Pick)
             return (BramblekinClip.Walking, null); // walking in to the eggs, or out with one
 
+        if (IsAirborne)
+            return (BramblekinClip.Jump, JumpProgress);
+
         if (_actionActive)
         {
             float length = BramblekinModel.ActionSeconds(_actionClip);
@@ -260,6 +271,8 @@ public sealed partial class Bramblekin
             StartAction(wanted, lockMovement: false);
             return (wanted, 0f);
         }
+        if (_mover.IsMoving && IsRunning)
+            return (BramblekinClip.Running, null);
         return (BramblekinModel.ClipFor(State, _mover.IsMoving), null);
     }
 
