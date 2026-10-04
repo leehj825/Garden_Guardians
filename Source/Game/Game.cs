@@ -302,6 +302,12 @@ public static partial class Game
             Raylib.UnloadImage(icon);
         }
         Raylib.SetTargetFPS(TargetFps);
+        if (Environment.GetEnvironmentVariable("GARDEN_STRETCH") is { } stretchClips)
+        {
+            BramblekinStretch.Run(stretchClips); // (a development aid: see BramblekinStretch)
+            Raylib.CloseWindow();
+            return;
+        }
 
         // --- Build the world -------------------------------------------------
         // The God-Camera: pulled back and up far enough to take in the

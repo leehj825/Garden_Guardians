@@ -426,7 +426,8 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>Soldiers and raiders (grown) look the part: the guard model, its own sword-and-shield walk.</summary>
     public bool WearsSwordsmanKit => !IsYoung && Job is KinJob.Swordsman or KinJob.Raider;
 
-    public bool HasShield => Knows(Craft.Shields) && !IsYoung && Job is KinJob.Swordsman or KinJob.Raider;
+    /// <summary>A Swordsman always carries a wooden shield on its left wrist; a Raider has one only once its clan knows <see cref="Craft.Shields"/> (beetle shell, which turns more of a blow).</summary>
+    public bool HasShield => !IsYoung && (Job == KinJob.Swordsman || (Job == KinJob.Raider && Knows(Craft.Shields)));
 
     /// <summary>A Swordsman holds its shield up and stands in the front: it takes this much less than another shield-bearer.</summary>
     private const float SwordsmanBlockFactor = 0.85f;
@@ -538,6 +539,9 @@ public sealed partial class Bramblekin : ICombatant
     /// <summary>With a shield (see <see cref="Craft.Shields"/>), a blow or bite does this fraction of its damage.</summary>
     private const float ShieldFactor = 0.67f;
 
+    /// <summary>A Swordsman's plain wooden shield (before its clan has the beetle-shell craft) takes this fraction of a blow.</summary>
+    private const float WoodShieldFactor = 0.8f;
+
     /// <summary>
     /// Reduces Health and, at 0, dies via <see cref="World.Kill"/>. Any hit
     /// with a <paramref name="source"/> makes that source its top threat for
@@ -556,7 +560,7 @@ public sealed partial class Bramblekin : ICombatant
             float factor = 1f - ToughnessPerStrength * (Strength - 0.5f);
             factor *= Profile.Taken;
             if (HasShield)
-                factor *= ShieldFactor * (Job == KinJob.Swordsman ? SwordsmanBlockFactor : 1f);
+                factor *= (Knows(Craft.Shields) ? ShieldFactor : WoodShieldFactor) * (Job == KinJob.Swordsman ? SwordsmanBlockFactor : 1f);
             amount = Math.Max(1, (int)MathF.Round(amount * factor));
         }
         Health = Math.Max(0, Health - amount);

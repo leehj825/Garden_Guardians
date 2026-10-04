@@ -94,8 +94,10 @@ public sealed partial class Bramblekin
         // axis/angle) rather than two separate draws-with-rotation.
         Vector2 facing = _mover.Heading.LengthSquared() > 1e-6f ? _mover.Heading : Vector2.UnitX;
         float yawRadians = MathF.Atan2(facing.X, facing.Y) + BramblekinModel.ForwardYawOffset;
-        if (IsAiming)
-            yawRadians -= AimBodyTurn; // (the whole body turns so that the bow arm, which the clip holds out to the kin's left, points the way it shoots)
+        // The whole body turns while the aim or stab clip plays, so that the bow arm (held out to the kin's left by the clip) or the spear point goes the
+        // way the kin faces: eased in over the start of the clip and out again over its end, so that it turns round and back rather than snapping.
+        if (clip is BramblekinClip.AimRecoil or BramblekinClip.SpearStab)
+            yawRadians -= (clip == BramblekinClip.AimRecoil ? AimBodyTurn : StabBodyTurn) * TurnBlend(progress ?? 0.5f);
         Quaternion yaw = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawRadians);
 
         Vector3 normal = World.GetNormalAt(Position.X, Position.Z);
@@ -299,15 +301,25 @@ public sealed partial class Bramblekin
     /// <summary>In the aim clip the bow arm points this far (radians, about 34°) to the left of the way the body faces, measured from the clip's drawn pose.</summary>
     private const float AimBodyTurn = 0.59f;
 
+    /// <summary>In the stab clip the spear's point, at the height of the thrust, is about 38° to the left of the way the body faces (measured from the hands in the clip).</summary>
+    private const float StabBodyTurn = 1.25f;
+
+    /// <summary>0 at the start and end of an action clip, 1 through the middle: the share of its body turn applied at that point (eased over a fifth of the clip at each end).</summary>
+    private static float TurnBlend(float progress)
+    {
+        static float Smooth(float t) => t * t * (3f - 2f * t);
+        return Smooth(Math.Clamp(progress / 0.2f, 0f, 1f)) * Smooth(Math.Clamp((1f - progress) / 0.2f, 0f, 1f));
+    }
+
     /// <summary>The sword and shield of a soldier or raider, a hunter's bow and quiver: hung on the bones of the pose (see <see cref="KinGear"/>), so they walk and swing with it.</summary>
     private void DrawGear(in Model pose, Vector3 axis, float angleDegrees, float scale)
     {
         bool hunter = Job == KinJob.Hunter, guard = Job == KinJob.Swordsman, spearman = Job == KinJob.Spearman;
         if (IsYoung || !(hunter || guard || spearman))
-            return; // (Only a guard's wooden sword, a spearman's spear and a hunter's bow for the time being: no shields, no quiver.)
+            return; // (A swordsman's wooden sword and shield, a spearman's spear and a hunter's bow for the time being: no quiver.)
         bool aiming = IsAiming;
         Matrix4x4 body = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateFromAxisAngle(Vector3.Normalize(axis), angleDegrees * MathF.PI / 180f) * Matrix4x4.CreateTranslation(Position);
-        KinGear.Draw(pose, body, sword: guard, shield: false, bow: hunter, quiver: false, spear: spearman, bowRaised: aiming, stabbing: (_actionActive && _actionClip == BramblekinClip.SpearStab) || ForcedClip == BramblekinClip.SpearStab);
+        KinGear.Draw(pose, body, sword: guard, shield: guard, bow: hunter, quiver: false, spear: spearman, bowRaised: aiming, stabbing: (_actionActive && _actionClip == BramblekinClip.SpearStab) || ForcedClip == BramblekinClip.SpearStab);
     }
 
     private static readonly Color ShieldColor = new(95, 55, 35, 255);

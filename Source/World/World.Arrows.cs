@@ -146,7 +146,7 @@ public sealed partial class World
     /// <summary>An arrow that has landed stands in the ground, point down and leaning this far (radians) from the vertical, the way it was flying.</summary>
     private const float ArrowStuckLean = 0.35f;
 
-    /// <summary>Each arrow: the arrow model (Assets/Models/Props/Gear/Arrow.glb, Tools/make_arrow.py) with its point forward, along the way it flies; a landed one is stuck point down in the ground.</summary>
+    /// <summary>Each arrow: the arrow model (Assets/Models/Props/Gear/Arrow.glb, Tools/extract_arrow.py) with its point forward, along the way it flies; a landed one is stuck point down in the ground.</summary>
     private void DrawArrows()
     {
         foreach (ArrowShot arrow in _arrows)
