@@ -11,7 +11,10 @@ namespace GardenGuardians;
 /// </summary>
 public static unsafe class KinGear
 {
-    public const float SwordLength = 0.5f, SpearLength = 1.1f, BowLength = 0.7f, QuiverLength = 0.5f, ShieldWidth = 0.36f;
+    public const float SwordLength = 0.5f, SpearLength = 1.1f, BowLength = 0.7f, QuiverLength = 0.5f, ShieldWidth = 0.3f;
+
+    /// <summary>How far (mesh units) the shield's middle sits back up the forearm from the hand's, and out from the wrist.</summary>
+    public static float ShieldAlong = 0.05f, ShieldOut = 0.09f;
 
     public static float SwordBindUp = 0.3f, BowBindUp = 0.6f;
 
@@ -132,10 +135,12 @@ public static unsafe class KinGear
         {
             if (shield)
             {
-                // Strapped to the wrist, face out to the left, along the forearm.
-                Vector3 outward = Vector3.UnitX;
-                Vector3 centre = left - leftFingers * 0.1f + outward * 0.02f;
-                GearModels.Draw(GearModels.Gear.Shield, Matrix4x4.CreateScale(ShieldWidth) * Frame(leftFingers, outward, centre) * body);
+                // Strapped to the outside of the wrist, its face out to the left: with the hand hanging it stands against the forearm's outer side, and it
+                // turns with the hand bone (the outward direction is carried along by the wrist's own skinning), so it follows the wrist in a walk, a run or a blow.
+                // The model's disc is in its X-Y plane with its thickness along Z, and stands on y = 0: it is centred first.
+                Vector3 outward = Turned(pose, "mixamorig:LeftHand", Vector3.UnitX);
+                Vector3 centre = left - leftFingers * ShieldAlong + outward * ShieldOut;
+                GearModels.Draw(GearModels.Gear.Shield, Matrix4x4.CreateTranslation(0f, -0.5f, 0f) * Matrix4x4.CreateScale(ShieldWidth) * Frame(leftFingers, outward, centre) * body);
             }
             if (bow)
             {
