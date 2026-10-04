@@ -27,10 +27,6 @@ public sealed class Material
     /// <summary>A branch left lying rots away after this long; a stone never does.</summary>
     public const float BranchLifespan = 900f;
 
-    private static readonly Color StoneColor = new(135, 135, 140, 255);
-    private static readonly Color BranchColor = new(96, 72, 48, 255);
-    private static readonly Color ThornColor = new(128, 58, 44, 255);
-
     public Vector3 Position { get; set; }
     public MaterialKind Kind { get; private set; }
     public bool IsCarried { get; set; }
@@ -62,17 +58,15 @@ public sealed class Material
         ClaimedBy = null;
     }
 
-    /// <summary>A grey rounded stone, or a long forked branch lying on the grass, studded with thorns.</summary>
+    /// <summary>A grey river stone, or a long thorny branch lying on the grass (Assets/Models/Props/Loose.glb).</summary>
     public void Draw()
     {
         if (Kind == MaterialKind.Stone)
         {
-            DrawStone(Position + new Vector3(0f, StoneRadius * 0.6f, 0f));
+            DrawStone(Position - new Vector3(0f, 0.02f, 0f));
             return;
         }
-        var along = new Vector3(MathF.Cos(_rotation), 0f, MathF.Sin(_rotation));
-        Vector3 center = Position + new Vector3(0f, 0.06f, 0f);
-        DrawBranch(center - along * (BranchLength / 2f), center + along * (BranchLength / 2f), along);
+        LooseModels.Draw(LooseModels.Kind.Branch, Position + new Vector3(0f, 0.01f, 0f), -_rotation * 180f / MathF.PI, 1f, Color.White);
     }
 
     /// <summary>Carried: a stone held up in front, or a branch dragged along behind.</summary>
@@ -81,34 +75,14 @@ public sealed class Material
         var forward = new Vector3(facing.X, 0f, facing.Y);
         if (Kind == MaterialKind.Stone)
         {
-            DrawStone(feet + new Vector3(0f, bodyHeight * 0.55f, 0f) + forward * 0.22f);
+            DrawStone(feet + new Vector3(0f, bodyHeight * 0.55f - LooseModels.StoneHeight / 2f, 0f) + forward * 0.22f);
             return;
         }
         Vector3 hands = feet + new Vector3(0f, bodyHeight * 0.5f, 0f);
         Vector3 end = World.Grounded(feet - forward * BranchLength, 0.05f);
-        DrawBranch(hands, end, -forward);
+        LooseModels.DrawBetween(LooseModels.Kind.Branch, hands, end, Color.White);
     }
 
-    private static void DrawStone(Vector3 center)
-    {
-        Rlgl.PushMatrix();
-        Rlgl.Translatef(center.X, center.Y, center.Z);
-        Rlgl.Scalef(1f, 0.7f, 1f);
-        Raylib.DrawSphereEx(Vector3.Zero, StoneRadius, 5, 7, StoneColor);
-        Rlgl.PopMatrix();
-    }
-
-    private static void DrawBranch(Vector3 from, Vector3 to, Vector3 along)
-    {
-        Raylib.DrawCylinderEx(from, to, 0.06f, 0.035f, 6, BranchColor);
-        var side = new Vector3(-along.Z, 0f, along.X);
-        Vector3 fork = Vector3.Lerp(from, to, 0.55f);
-        Raylib.DrawCylinderEx(fork, fork + (along + side) * 0.3f + new Vector3(0f, 0.05f, 0f), 0.03f, 0.015f, 4, BranchColor);
-        for (int i = 1; i < 5; i++)
-        {
-            Vector3 at = Vector3.Lerp(from, to, i / 5f);
-            Vector3 point = (i % 2 == 0 ? side : -side) * 0.1f + new Vector3(0f, 0.05f, 0f);
-            Raylib.DrawCylinderEx(at, at + point, 0.02f, 0f, 4, ThornColor);
-        }
-    }
+    /// <summary>The stone standing on <paramref name="ground"/> (its foot), turned its own way (no two alike).</summary>
+    private void DrawStone(Vector3 ground) => LooseModels.Draw(LooseModels.Kind.Stone, ground, _rotation * 180f / MathF.PI, 1f, Color.White);
 }

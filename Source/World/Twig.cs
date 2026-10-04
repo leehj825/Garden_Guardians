@@ -16,10 +16,6 @@ public sealed class Twig
     /// <summary>Length (m) of a twig lying on the ground.</summary>
     public const float Length = 0.45f;
 
-    private const float Thickness = 0.03f;
-
-    private static readonly Color BarkColor = new(115, 80, 45, 255);
-
     /// <summary>Resting spot on the ground. Ignored while carried.</summary>
     public Vector3 Position { get; set; }
 
@@ -67,18 +63,10 @@ public sealed class Twig
         ClaimedBy = null;
     }
 
-    /// <summary>Draws it lying on the ground at <see cref="Position"/>.</summary>
-    public void Draw()
-    {
-        var half = new Vector3(MathF.Cos(_rotation), 0f, MathF.Sin(_rotation)) * (Length / 2f);
-        Vector3 center = Position + new Vector3(0f, Thickness, 0f);
-        Raylib.DrawCylinderEx(center - half, center + half, Thickness, Thickness * 0.7f, 5, BarkColor);
-    }
+    /// <summary>Draws it lying on the ground at <see cref="Position"/> (the model in Assets/Models/Props/Loose.glb, <see cref="Length"/> long).</summary>
+    public void Draw() => LooseModels.Draw(LooseModels.Kind.Twig, Position, -_rotation * 180f / MathF.PI, 1f, Color.White);
 
     /// <summary>Draws it held across a Bramblekin's body at <paramref name="at"/>, pointing along <paramref name="facing"/>.</summary>
-    public static void DrawCarried(Vector3 at, Vector2 facing)
-    {
-        var across = new Vector3(-facing.Y, 0.15f, facing.X) * (Length / 2f);
-        Raylib.DrawCylinderEx(at - across, at + across, Thickness, Thickness * 0.7f, 5, BarkColor);
-    }
+    public static void DrawCarried(Vector3 at, Vector2 facing) =>
+        LooseModels.Draw(LooseModels.Kind.Twig, at - new Vector3(0f, 0.04f, 0f), LooseModels.YawAlong(new Vector2(-facing.Y, facing.X)), 1f, Color.White);
 }

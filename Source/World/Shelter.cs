@@ -472,48 +472,23 @@ public sealed class Shelter
 
         if (HasHerbGarden)
         {
-            // A fenced bed of herbs: a low frame of sticks round little leafy tufts in pale green, grey-green and purple.
+            // A raised bed of herbs (the model: a timber frame of green and grey-green tufts).
             Vector3 bed = basePosition + new Vector3(-(radius + 1.2f), 0f, radius * 0.5f + 0.6f);
-            Raylib.DrawCube(bed + new Vector3(0f, 0.04f, 0f), 1.1f, 0.06f, 0.7f, Tint(new Color(100, 75, 50, 255)));
-            for (int side = -1; side <= 1; side += 2)
-            {
-                Raylib.DrawCube(bed + new Vector3(0f, 0.14f, side * 0.35f), 1.1f, 0.06f, 0.05f, Tint(StickColor));
-                Raylib.DrawCube(bed + new Vector3(side * 0.55f, 0.14f, 0f), 0.05f, 0.06f, 0.7f, Tint(StickColor));
-            }
-            for (int i = 0; i < 6; i++)
-            {
-                Color leaf = i % 3 == 0 ? new Color(150, 200, 120, 255) : i % 3 == 1 ? new Color(110, 150, 110, 255) : new Color(150, 110, 180, 255);
-                Detail.Sphere(bed + new Vector3(-0.35f + (i % 3) * 0.35f, 0.15f, i < 3 ? -0.15f : 0.15f), 0.1f, Tint(leaf));
-            }
+            FittingModels.Draw(FittingModels.Kind.HerbBed, bed, 0f, 1f, Tint(Color.White));
         }
 
         if (HasSundial)
         {
-            // A round stone dial on a short pillar, with a slanted pointer and hour marks round the rim.
+            // A stone dial with a slanted pointer.
             Vector3 dial = basePosition + new Vector3(radius * 0.4f, 0f, radius + 1.6f);
-            Raylib.DrawCylinderEx(dial, dial + new Vector3(0f, 0.45f, 0f), 0.16f, 0.16f, 8, Tint(FootingColor));
-            Raylib.DrawCylinderEx(dial + new Vector3(0f, 0.45f, 0f), dial + new Vector3(0f, 0.5f, 0f), 0.34f, 0.34f, 10, Tint(FootingColor));
-            Raylib.DrawCylinderEx(dial + new Vector3(0f, 0.5f, 0f), dial + new Vector3(0.05f, 0.75f, -0.12f), 0.03f, 0.01f, 4, Tint(StickColor));
-            for (int mark = 0; mark < 6; mark++)
-            {
-                float a = mark * MathF.PI / 3f;
-                Raylib.DrawCube(dial + new Vector3(MathF.Cos(a) * 0.28f, 0.51f, MathF.Sin(a) * 0.28f), 0.03f, 0.02f, 0.03f, Tint(new Color(45, 40, 35, 255)));
-            }
+            FittingModels.Draw(FittingModels.Kind.Sundial, dial, 0f, 1f, Tint(Color.White));
         }
 
         if (HasWatchtower)
         {
-            // A lookout on four leaning posts: a platform, a rail, a little roof, and the alarm horn (a blast of rings when it sounds).
+            // A lookout on posts: a platform, a rail and a little roof (the model), and the alarm horn on the platform (a blast of rings when it sounds).
             Vector3 tower = basePosition + new Vector3(radius + 1.4f, 0f, radius * 0.4f + 0.6f);
-            for (int i = 0; i < 4; i++)
-            {
-                Vector3 foot = tower + new Vector3(i % 2 == 0 ? -0.4f : 0.4f, 0f, i < 2 ? -0.4f : 0.4f);
-                Raylib.DrawCylinderEx(foot, tower + new Vector3(foot.X > tower.X ? 0.28f : -0.28f, 2.2f, foot.Z > tower.Z ? 0.28f : -0.28f), 0.06f, 0.05f, 5, Tint(StickColor));
-            }
-            Raylib.DrawCube(tower + new Vector3(0f, 2.2f, 0f), 0.9f, 0.08f, 0.9f, Tint(WorkbenchColor));
-            Raylib.DrawCube(tower + new Vector3(0f, 2.5f, 0.42f), 0.9f, 0.05f, 0.04f, Tint(StickColor));
-            Raylib.DrawCube(tower + new Vector3(0f, 3.05f, 0f), 1.15f, 0.07f, 1.15f, Tint(AwningColor));
-            Raylib.DrawCube(tower + new Vector3(0f, 3.15f, 0f), 0.7f, 0.07f, 0.7f, Tint(AwningColor));
+            FittingModels.Draw(FittingModels.Kind.Watchtower, tower, 0f, 1f, Tint(Color.White));
             Raylib.DrawCylinderEx(tower + new Vector3(0.2f, 2.4f, 0.3f), tower + new Vector3(0.45f, 2.55f, 0.55f), 0.03f, 0.1f, 6, Tint(new Color(225, 215, 190, 255)));
             if (HornSeconds > 0f)
             {

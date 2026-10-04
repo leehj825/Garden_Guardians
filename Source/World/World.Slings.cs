@@ -10,7 +10,6 @@ public sealed partial class World
     /// <summary>A pebble is in the air this long (s) — just long enough to see it fly.</summary>
     private const float PebbleFlightSeconds = 0.22f;
 
-    private static readonly Color PebbleColor = new(120, 118, 112, 255);
 
     /// <summary>A pebble in flight (drawn only; its blow has already landed).</summary>
     private sealed class PebbleShot
@@ -75,7 +74,7 @@ public sealed partial class World
         {
             float t = pebble.Age / PebbleFlightSeconds;
             Vector3 at = Vector3.Lerp(pebble.From, pebble.To, t) + new Vector3(0f, 0.25f * 4f * t * (1f - t), 0f);
-            Raylib.DrawSphereEx(at, 0.05f, 4, 5, PebbleColor);
+            LooseModels.Draw(LooseModels.Kind.Pebble, at - new Vector3(0f, 0.052f, 0f), pebble.Age * 720f, 0.8f, Color.White);
         }
     }
 }
