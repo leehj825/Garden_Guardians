@@ -1,8 +1,8 @@
 """Cut the male's hands loose from his vest and shorts in his skinned model (no source art needed: it works on the glb itself).
 
     pip install numpy pygltflib
-    python3 Tools/fix_male_cloth.py Assets/Models/Bramblekin/Walking*.glb          # (not the female: Walking_female*.glb)
-    python3 Tools/fix_male_cloth.py Assets/Models/Bramblekin/Walking*.glb --high 0.5 --low 0.35   # a second, gentler pass for the edges the first leaves
+    python3 Tools/fix_male_cloth.py Assets/Models/Bramblekin/Male*.glb          # (not the female)
+    python3 Tools/fix_male_cloth.py Assets/Models/Bramblekin/Male*.glb --high 0.5 --low 0.35   # a second, gentler pass for the edges the first leaves
 
 The hands hang at the hips in the bind pose, and the mesh (made in one piece) has faces joining the fists and forearms to the shorts and the vest's hem: a
 triangle with a corner the arm drives (upper arm, forearm and hand weights, at least --high of the vertex) and another it hardly does (at most --low). When a hand

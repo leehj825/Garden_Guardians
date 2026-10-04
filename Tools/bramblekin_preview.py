@@ -96,7 +96,7 @@ def label(img,text):
 if __name__=='__main__':
     view=1.0; H=560; W=380
     rows=[]
-    for name,tag in (('Walking','Male'),('Walking_female','Female')):
+    for name,tag in (('Male','Male'),('Female','Female')):
         pos,uv,tris,tex=load(R+name+'.glb')
         full=textured(pos,uv,tris,tex,H=H,view=view)
         lpos,luv,ltris,ltex=load(R+name+'_lod2.glb')
