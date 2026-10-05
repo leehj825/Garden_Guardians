@@ -166,8 +166,6 @@ public sealed partial class Bramblekin
 
         if (props) // what it carries is too small to see from far off
         {
-            if (State == BramblekinState.Eating)
-                _carried?.Draw(Position + new Vector3(facing.X * 0.25f, BodyHeight * 0.55f, facing.Y * 0.25f)); // the bite being eaten (everything else is in the pack)
             if (_carriesEgg)
             {
                 PropModels.Draw(PropModels.Prop.Larvae, Position + new Vector3(0f, BodyHeight + 0.02f, 0f), 0f, 0.4f, Color.White);
@@ -313,11 +311,16 @@ public sealed partial class Bramblekin
     /// <summary>The sword and shield of a soldier or raider, a hunter's bow and quiver: hung on the bones of the pose (see <see cref="KinGear"/>), so they walk and swing with it.</summary>
     private void DrawGear(in Model pose, Vector3 axis, float angleDegrees, float scale)
     {
+        Matrix4x4 body = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateFromAxisAngle(Vector3.Normalize(axis), angleDegrees * MathF.PI / 180f) * Matrix4x4.CreateTranslation(Position);
+
+        // The bite being eaten is held in the right hand, wherever the clip puts it (everything else it carries is in the pack).
+        if (State == BramblekinState.Eating && _carried is { } bite && KinGear.Hand(pose, "mixamorig:RightHand", "mixamorig:RightForeArm", out Vector3 hand, out _))
+            bite.Draw(Vector3.Transform(hand, body) - new Vector3(0f, FoodShard.Radius * 0.5f, 0f));
+
         bool hunter = Job == KinJob.Hunter, guard = Job == KinJob.Swordsman, spearman = Job == KinJob.Spearman;
         if (IsYoung || !(hunter || guard || spearman))
             return; // (A swordsman's wooden sword and shield, a spearman's spear and a hunter's bow for the time being: no quiver.)
         bool aiming = IsAiming;
-        Matrix4x4 body = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateFromAxisAngle(Vector3.Normalize(axis), angleDegrees * MathF.PI / 180f) * Matrix4x4.CreateTranslation(Position);
         KinGear.Draw(pose, body, sword: guard, shield: guard, bow: hunter, quiver: false, spear: spearman, bowRaised: aiming, stabbing: (_actionActive && _actionClip == BramblekinClip.SpearStab) || ForcedClip == BramblekinClip.SpearStab);
     }
 

@@ -348,9 +348,9 @@ public sealed partial class Bramblekin
     }
 
     /// <summary>How far (m) the player's Pick up button reaches.</summary>
-    private const float PlayerPickUpReach = 2.5f;
+    private const float PlayerPickUpReach = 1.1f;
 
-    /// <summary>The player's Pick up button: the nearest loose food, twig, stone or branch within reach goes into the pack (hungry or not); with none, a bottle is filled if the water is at hand.</summary>
+    /// <summary>The player's Pick up button: the nearest loose food, twig, stone or branch within arm's reach (it turns to face it, then bends to pick it up) goes into the pack (hungry or not); with none, a bottle is filled if the water is at hand.</summary>
     public void PlayerPickUp(World world)
     {
         if (IsDead || State == BramblekinState.Eating || _actionLock > 0f)
@@ -363,6 +363,7 @@ public sealed partial class Bramblekin
 
         float best = float.MaxValue;
         int pick = -1;
+        Vector3 pickAt = Position;
         void Consider(int which, Vector3? at)
         {
             if (at is not { } point)
@@ -372,6 +373,7 @@ public sealed partial class Bramblekin
             {
                 best = distance;
                 pick = which;
+                pickAt = point;
             }
         }
         Consider(0, food?.Position);
@@ -403,16 +405,20 @@ public sealed partial class Bramblekin
                 got = ItemKind.Branch;
                 break;
             default:
-                if (Pack.CanAdd(ItemKind.Water) && World.NearestShoreSpot(Position, PlayerWaterReach, creek: true) is not null)
+                if (Pack.CanAdd(ItemKind.Water) && World.NearestShoreSpot(Position, PlayerWaterReach, creek: true) is { } shore)
                 {
                     Pack.Add(ItemKind.Water);
                     got = ItemKind.Water;
+                    pickAt = shore;
                 }
                 break;
         }
 
         if (got is { } item)
         {
+            var toward = new Vector2(pickAt.X - Position.X, pickAt.Z - Position.Z);
+            if (toward.LengthSquared() > 0.01f)
+                _mover.Heading = Vector2.Normalize(toward); // face what it reaches for
             StartAction(BramblekinClip.PickingUp, lockMovement: true);
             world.QueueFloatingText(Position, ItemInfo.Name(item), EggTextColor);
         }
