@@ -319,7 +319,7 @@ public sealed partial class Bramblekin
             CarryFoodHome(store, deltaTime, world);
             return true;
         }
-        return TryFishing(home, deltaTime, world) || (world.GroupOf(this) is { } clan && TryGatherMaterials(store, clan, deltaTime, world));
+        return TryFishing(home, deltaTime, world) || (world.GroupOf(this) is { } stockClan && TryGatherMaterials(store, stockClan, deltaTime, world));
     }
 
     private float _snareTimer;
