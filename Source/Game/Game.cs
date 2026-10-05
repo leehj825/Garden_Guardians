@@ -43,6 +43,9 @@ public static partial class Game
     /// <summary>…and at 20x and up (a time-lapse) most of the frame, drawing only a dozen frames a second: the picture matters little at that speed, and this hands nearly all of the phone's time to the simulation.</summary>
     private const double TimeLapseSimulationBudgetSeconds = 0.08;
 
+    /// <summary>The most the budget above grows to when drawing is slow: a longer frame would leave the buttons too sluggish to tap.</summary>
+    private const double MaxFastBudgetSeconds = 0.12, MaxTimeLapseBudgetSeconds = 0.3;
+
     /// <summary>Simulated time owed (the chosen speed × real time) but not yet stepped.</summary>
     private static float _simulationBacklog;
 
@@ -61,7 +64,11 @@ public static partial class Game
     /// (see <see cref="StepSimulation"/>), so a faster speed is more steps per
     /// frame, never bigger ones.
     /// </summary>
-    private static float _timeScale = 1f;
+    private static float _timeScale = float.TryParse(Environment.GetEnvironmentVariable("GARDEN_SPEED"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float startSpeed) ? startSpeed : 1f;
+
+    /// <summary>A development aid: GARDEN_PERF=1 prints the speed the simulation manages, the frame rate and the sim and draw times every two seconds (GARDEN_SPEED=50 starts at that speed).</summary>
+    private static readonly bool PerfLog = Environment.GetEnvironmentVariable("GARDEN_PERF") is not null;
+    private static float _perfClock;
     private static bool _lootTestDone;
     private static bool _playTestDone;
 
@@ -257,7 +264,12 @@ public static partial class Game
             world.StartTestLoot(lootLevel);
         }
         _simulationBacklog += realDeltaTime * _timeScale;
-        double budget = _timeScale >= 20f ? TimeLapseSimulationBudgetSeconds : _timeScale >= 10f ? FastSimulationBudgetSeconds : SimulationBudgetSeconds;
+        // A frame's drawing costs the same however fast the garden runs, so on a device where it is slow it would swallow most of the frame and leave the
+        // simulation a sliver (50x managing a few x): at 10x and up the simulation gets a share that grows with the draw time, up to a cap.
+        double drawSeconds = _drawMs / 1000.0;
+        double budget = _timeScale >= 20f ? Math.Clamp(2.0 * drawSeconds, TimeLapseSimulationBudgetSeconds, MaxTimeLapseBudgetSeconds)
+            : _timeScale >= 10f ? Math.Clamp(drawSeconds, FastSimulationBudgetSeconds, MaxFastBudgetSeconds)
+            : SimulationBudgetSeconds;
         long start = System.Diagnostics.Stopwatch.GetTimestamp();
         float simulated = 0f;
         while (_simulationBacklog >= SimulationStep)
@@ -600,6 +612,11 @@ public static partial class Game
 
             Raylib.EndDrawing();
             _drawMs += (System.Diagnostics.Stopwatch.GetElapsedTime(drawStart).TotalMilliseconds - _drawMs) * 0.05;
+            if (PerfLog && (_perfClock += rawDeltaTime) >= 2f)
+            {
+                _perfClock = 0f;
+                Console.WriteLine($"[PERF] speed {_timeScale}x (running {_achievedSpeed:0.0}x), {Raylib.GetFPS()} fps, sim {_simMs:0.0} ms, draw {_drawMs:0.0} ms");
+            }
             if (DebugShot.Finished())
                 break;
 
