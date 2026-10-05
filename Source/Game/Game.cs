@@ -435,8 +435,7 @@ public static partial class Game
                 UiButton? followButton = _showChronicle || playing ? null : FollowButton(world);
                 UiButton? controlButton = followButton is null ? null : ControlButton(world, followButton);
                 UiButton? newGardenButton = _showChronicle ? NewGardenButton(historyButton, speedButtonMargin) : null;
-                UiButton? gardenSlotButton = newGardenButton is null ? null : GardenSlotButton(newGardenButton, speedButtonMargin);
-                UiButton? terrainButton = gardenSlotButton is null ? null : TerrainModeButton(gardenSlotButton, speedButtonMargin);
+                UiButton? terrainButton = newGardenButton is null ? null : TerrainModeButton(newGardenButton, speedButtonMargin);
                 UiButton menuButton = MenuButton(terrainButton?.Bounds ?? autoButton?.Bounds ?? historyButton.Bounds, speedButtonMargin, speedButtonHeight, uiScale);
                 var overlayButtons = _showChronicle ? null : OverlayButtons(uiScale, speedButtonMargin * 2 + speedButtonHeight, speedButtonMargin);
                 _newGardenConfirm = MathF.Max(0f, _newGardenConfirm - Raylib.GetFrameTime());
@@ -500,17 +499,6 @@ public static partial class Game
                 }
                 else if (mousePressed && terrainButton is not null && terrainButton.Contains(mousePosition))
                     ToggleTerrainMode();
-                else if (mousePressed && gardenSlotButton is not null && gardenSlotButton.Contains(mousePosition))
-                {
-                    World leaving = world;
-                    world = MakeWorld(() => SwitchGarden(leaving));
-                    ClearBanners();
-                    overview = OverviewCamera(world.Terrain.Size);
-                    camera = overview;
-                    followCamera = new FollowCamera(overview);
-                    director.Stop();
-                    autosaveTimer = AutosaveInterval;
-                }
                 else if (_showChronicle)
                 {
                     // The History screen scrolls instead (see DrawChronicle).
@@ -620,7 +608,6 @@ public static partial class Game
                         button.Draw(label, highlighted: World.Overlays.HasFlag(flag));
                 autoButton?.Draw("Auto", highlighted: director.IsOn);
                 newGardenButton?.Draw(_newGardenConfirm > 0f ? "Sure?" : "New", highlighted: _newGardenConfirm > 0f);
-                gardenSlotButton?.Draw($"Garden {_gardenSlot}", highlighted: false);
                 terrainButton?.Draw(TerrainData.GrowNewGardens ? "Random" : "Fixed", highlighted: TerrainData.GrowNewGardens);
                 if (!_showChronicle)
                     DrawKinPanel(world); // The History screen covers it (its header names the selected clan).
