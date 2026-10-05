@@ -1,0 +1,51 @@
+# Builds the desktop game for Windows (self-contained, so .NET need not be installed) and uploads it as a
+# downloadable workflow artifact. Switched off for now: it runs only when started by hand from the Actions
+# tab ("Run workflow"). To turn it back on for every push, restore the push trigger below.
+# The Android debug APK is built by debug-build.yml on every push.
+name: Windows Build
+
+on:
+  # push:
+  #   branches-ignore:
+  #     - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      # DesktopOnly skips the Android target, so no Android workload is needed. Debug keeps the kin-control
+      # button and the other test aids (a Release build hides them: see Source/Game/Build.cs).
+      - name: Publish Windows build
+        run: >
+          dotnet publish GardenGuardians.csproj
+          -f net8.0
+          -r win-x64
+          -c Debug
+          --self-contained true
+          -p:DesktopOnly=true
+          -o publish
+
+      - name: Check the assets came along
+        shell: bash
+        run: ls publish/Assets/Audio publish/Assets/Models/Bramblekin | head -30
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v5
+        with:
+          name: garden-guardians-windows
+          path: publish
+          if-no-files-found: error

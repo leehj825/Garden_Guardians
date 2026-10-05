@@ -93,6 +93,10 @@ public sealed partial class Bramblekin
     /// </summary>
     public void SetPlayerControlled(bool on, World world)
     {
+        if (on)
+            Sfx.Listener = this;
+        else if (Sfx.Listener == this)
+            Sfx.Listener = null;
         if (on && !IsPlayerControlled)
         {
             AwayGroupId = GroupId;
@@ -343,6 +347,7 @@ public sealed partial class Bramblekin
         }
         if (!IsHungry)
             return false;
+        TakeMealFromPack(world);
         if (_carried is not null)
         {
             StartEating();
@@ -384,9 +389,12 @@ public sealed partial class Bramblekin
             return true;
         if (world.CatchFish(this) is { } fish)
         {
-            _carried = fish;
             world.QueueFloatingText(Position, "Fish!", EggTextColor);
-            StartEating();
+            if (!Stow(fish, world))
+            {
+                _carried = fish;
+                StartEating();
+            }
         }
         return true;
     }

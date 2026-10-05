@@ -126,13 +126,13 @@ public sealed partial class Bramblekin
 
     private bool DoPatrol(Village village, KinGroup group, float deltaTime, World world)
     {
-        if (_carried is not null && StoreToStock(world) is { } store)
+        if (HasLoadToStock && StoreToStock(world) is { } store)
         {
             CarryFoodHome(store, deltaTime, world);
             return true;
         }
 
-        if (ValidPerceivedFood(world) is { } food && GroundMover.HorizontalDistanceSquared(food.Position, Position) <= PatrolPickupRange * PatrolPickupRange &&
+        if (ValidPerceivedFood(world) is { } food && Pack.CanAdd(ItemInfo.Of(food.Kind)) && GroundMover.HorizontalDistanceSquared(food.Position, Position) <= PatrolPickupRange * PatrolPickupRange &&
             GroundMover.HorizontalDistanceSquared(food.Position, village.Centre) <= (village.PatrolRadius + PatrolPickupRange) * (village.PatrolRadius + PatrolPickupRange))
         {
             ApproachFood(food, WalkSpeed, deltaTime, world, eatOnArrival: false);
@@ -170,7 +170,7 @@ public sealed partial class Bramblekin
     {
         if (Home is not { IsBuilt: true } home || StoreToStock(world) is not { } store)
             return false;
-        if (_carried is not null)
+        if (HasLoadToStock)
         {
             CarryFoodHome(store, deltaTime, world);
             return true;
@@ -288,7 +288,7 @@ public sealed partial class Bramblekin
         if (Home is not { IsBuilt: true } home || StoreToStock(world) is not { } store)
             return false;
 
-        if (_carried is not null)
+        if (HasLoadToStock)
         {
             CarryFoodHome(store, deltaTime, world);
             return true;
@@ -312,7 +312,14 @@ public sealed partial class Bramblekin
             ResetSnare(snare, deltaTime, world);
             return true;
         }
-        return TryFishing(home, deltaTime, world);
+
+        // Nothing more to pick up: whatever it has gathered goes to the store.
+        if (Pack.FoodCount > 0)
+        {
+            CarryFoodHome(store, deltaTime, world);
+            return true;
+        }
+        return TryFishing(home, deltaTime, world) || (world.GroupOf(this) is { } stockClan && TryGatherMaterials(store, stockClan, deltaTime, world));
     }
 
     private float _snareTimer;

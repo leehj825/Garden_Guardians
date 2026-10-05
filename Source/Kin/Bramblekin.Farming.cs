@@ -44,7 +44,8 @@ public sealed partial class Bramblekin
         if (Home is not { IsBuilt: true } home)
             return false;
 
-        if (_carried is not null)
+        Crop? ripe = world.NearestRipeCrop(this, group, FarmRange);
+        if (HasLoadToStock || (ripe is null && Pack.FoodCount > 0))
         {
             if (StoreToStock(world) is not { } store)
                 return false;
@@ -52,7 +53,7 @@ public sealed partial class Bramblekin
             return true;
         }
 
-        if (world.NearestRipeCrop(this, group, FarmRange) is { } bush)
+        if (ripe is { } bush)
         {
             Harvest(bush, deltaTime, world, eat: false);
             return true;
@@ -107,7 +108,10 @@ public sealed partial class Bramblekin
 
         if (world.PickFruit(bush) is not { } fruit)
             return;
-        _carried = fruit;
+        if (!Stow(fruit, world))
+            _carried = fruit;
+        else if (eat)
+            TakeMealFromPack(world);
         if (eat)
         {
             StartEating();

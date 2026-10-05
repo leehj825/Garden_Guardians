@@ -98,7 +98,7 @@ public sealed partial class World
                 continue;
             int spilled = shelter.Collapse();
             if (spilled > 0)
-                ScatterFoodAround(OakCenter, spilled, OakRadius + 1.5f, FoodShardKind.Berry);
+                ScatterFoodAround(OakCenter, Math.Min(spilled, MaxDropped), OakRadius + 1.5f, FoodShardKind.Berry);
             Shelters.RemoveAt(i);
         }
     }

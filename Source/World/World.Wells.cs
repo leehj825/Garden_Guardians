@@ -109,15 +109,18 @@ public sealed partial class World
     }
 
     /// <summary>A Builder brings <paramref name="material"/> to <paramref name="target"/>.</summary>
-    public void DeliverMaterial(Bramblekin builder, BuildTarget target, Material material)
+    public void DeliverMaterial(Bramblekin builder, BuildTarget target, Material material) => DeliverMaterial(builder, target, material.Kind, material);
+
+    /// <summary>As above; <paramref name="material"/> is null when the stone or branch came out of a pack.</summary>
+    public void DeliverMaterial(Bramblekin builder, BuildTarget target, MaterialKind kind, Material? material)
     {
         if (target.Well is not { } well)
         {
-            DeliverMaterial(builder, target.Home!, material);
+            DeliverMaterial(builder, target.Home!, kind, material);
             return;
         }
 
-        material.Deactivate();
+        material?.Deactivate();
         well.StonesLaid++;
         StonesLaid++;
         if (!well.IsDug)

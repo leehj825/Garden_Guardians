@@ -33,9 +33,9 @@ public sealed partial class World
     }
 
     /// <summary>A twig carried to <paramref name="home"/>'s hearth goes on the fire.</summary>
-    public void FuelHearth(Shelter home, Twig twig)
+    public void FuelHearth(Shelter home, Twig? twig)
     {
-        twig.Deactivate();
+        twig?.Deactivate();
         if (!home.HasHearth)
             return;
         home.AddFuel();

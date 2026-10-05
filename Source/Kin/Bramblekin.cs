@@ -289,7 +289,6 @@ public sealed partial class Bramblekin : ICombatant
 
     private FoodShard? _carried;
     private FoodShard? _claimedFood;
-    private Twig? _carriedTwig;
     private Twig? _claimedTwig;
 
     /// <summary>Where it last saw a loose twig — where it looks first when it needs building material.</summary>
@@ -356,7 +355,7 @@ public sealed partial class Bramblekin : ICombatant
     public Vector3? FoodMemory => _foodMemory;
 
     /// <summary>True while it's holding a twig for building.</summary>
-    public bool HasTwig => _carriedTwig is not null;
+    public bool HasTwig => Pack.Count(ItemKind.Twig) > 0;
 
     /// <summary>Its group as World.GroupOf last found it — a lookup cache, not state (never saved).</summary>
     internal KinGroup? CachedGroup { get; set; }
@@ -381,7 +380,7 @@ public sealed partial class Bramblekin : ICombatant
     public float CollisionRadius => BodyRadius;
 
     /// <summary>True while it's holding a piece of Food (a reserve, or a meal about to be eaten) — food a thief could snatch. (An errand sack is slung tight: it's only lost if the runner is cut down.)</summary>
-    public bool HasFood => _carried is not null;
+    public bool HasFood => _carried is not null || Pack.FoodCount > 0;
 
     public bool IsHungry => Hunger >= HungryThreshold;
 
@@ -509,10 +508,16 @@ public sealed partial class Bramblekin : ICombatant
     public void BeginRobbery(Bramblekin victim) => _robTarget = victim;
 
     /// <summary>Hands over whatever food it's holding (to a thief or a hungry friend), interrupting a meal in progress.</summary>
-    public FoodShard? SurrenderFood()
+    public FoodShard? SurrenderFood(World world)
     {
         FoodShard? food = _carried;
         _carried = null;
+        if (food is null && Pack.FoodSlot() is { } slot && Pack.RemoveAt(slot) is { } item)
+        {
+            food = world.HoldFood(Position, ItemInfo.FoodOf(item));
+            if (food is null)
+                Pack.Add(item);
+        }
         if (State == BramblekinState.Eating)
             StartPause();
         return food;
@@ -606,11 +611,6 @@ public sealed partial class Bramblekin : ICombatant
             World.DropFood(_carried, Position);
             _carried = null;
         }
-        if (_carriedTwig is not null)
-        {
-            World.DropTwig(_carriedTwig, Position);
-            _carriedTwig = null;
-        }
         PutDownMaterial();
         ReleaseFoodClaim();
         ReleaseTwigClaim();
@@ -675,6 +675,7 @@ public sealed partial class Bramblekin : ICombatant
         }
         if (UpdateThirstMetabolism(deltaTime, world))
             return;
+        UpdateBottles(deltaTime, world);
         if (UpdateSickness(deltaTime, world))
             return;
         if (_onRaft && PoleAcross(deltaTime, world))

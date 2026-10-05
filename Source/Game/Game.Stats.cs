@@ -182,6 +182,7 @@ public static partial class Game
             $"Leader: {clan.Leader?.Name ?? "nobody"}",
             DescribeClanHomes(clan, homes, houses, tents),
             $"Food stored: {world.StoredFood(clan)}",
+            $"Stores hold: {homes.Sum(h => h.Stock.Count(ItemKind.Twig))} twigs, {homes.Sum(h => h.Stock.Count(ItemKind.Stone))} stones, {homes.Sum(h => h.Stock.Count(ItemKind.Branch))} branches",
             World.KnowsFarming(clan) ? $"Crops: {world.CropsOf(clan)} of {world.CropAllowance(clan)}" : "Doesn't farm yet",
             World.Knows(clan, Craft.Grain) ? $"Seed corn: {clan.SeedCorn} (keeps {world.SeedCornTarget(clan)})" : "",
             DescribeClanWater(world, clan),

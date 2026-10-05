@@ -111,7 +111,13 @@ public sealed class FoodShard
     {
         // Each piece lies its own way (no two berries in a row look copied), the same every frame.
         float yaw = (Position.X * 91.7f + Position.Z * 57.3f) % 360f;
-        switch (Kind)
+        DrawKind(Kind, groundPoint, yaw);
+    }
+
+    /// <summary>Draws a piece of <paramref name="kind"/> standing on <paramref name="groundPoint"/>, turned <paramref name="yaw"/> degrees (also used for the inventory icons).</summary>
+    public static void DrawKind(FoodShardKind kind, Vector3 groundPoint, float yaw)
+    {
+        switch (kind)
         {
             case FoodShardKind.Acorn:
                 LooseModels.Draw(LooseModels.Kind.Acorn, groundPoint, yaw, 1f, Color.White);

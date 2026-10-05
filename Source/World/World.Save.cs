@@ -31,7 +31,7 @@ public sealed partial class World
                 Stored = s.StoredFood, Owner = s.Owner is { IsDead: false } owner ? owner.ID : null, GroupId = s.GroupId,
                 AbandonedSeconds = s.AbandonedSeconds, StageStartedAt = s.StageStartedAt,
                 Granary = s.HasGranary, Stakes = s.StakesSet, Stones = s.StonesLaid, Cistern = s.HasCistern, Water = s.Water,
-                Hearth = s.HasHearth, HearthFuel = s.HearthFuel,
+                Hearth = s.HasHearth, HearthFuel = s.HearthFuel, Stock = s.Stock.ToArray(),
             }).ToList(),
             Kin = Colony.Where(k => !k.IsDead).Select(k => k.ToSave()).ToList(),
             Groups = _groups.Values.Select(g => new GroupSave
@@ -157,6 +157,7 @@ public sealed partial class World
                 HasCistern = s.Cistern, Water = s.Water, HasHearth = s.Hearth, HearthFuel = s.HearthFuel,
             };
             shelter.Restore(s.Id, s.Tier, s.Built, s.Upgrading, s.Twigs, s.Stored);
+            shelter.Stock.FromArray(s.Stock);
             Shelters.Add(shelter);
             shelters[s.Id] = shelter;
         }
@@ -200,6 +201,7 @@ public sealed partial class World
         {
             Bramblekin restored = kin[k.Id];
             restored.LinkSave(k, kin, shelters);
+            restored.RestorePack(k);
             if (k.CarryingFood && ActivateFood(restored.Position, FoodShardKind.Berry) is { } food)
             {
                 PickUpFood(food);

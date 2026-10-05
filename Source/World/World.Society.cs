@@ -308,7 +308,7 @@ public sealed partial class World
             return;
         if (!sameGroup && Rng.NextDouble() >= giver.Personality.Sociability)
             return;
-        if (giver.SurrenderFood() is not { } food)
+        if (giver.SurrenderFood(this) is not { } food)
             return;
 
         taker.ReceiveFood(food);

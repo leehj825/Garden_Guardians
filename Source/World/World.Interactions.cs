@@ -15,6 +15,55 @@ public sealed partial class World
         food.ClaimTimer = 0f;
     }
 
+    /// <summary>A Bramblekin put <paramref name="food"/> in its pack: the pool slot is freed (nothing has been eaten).</summary>
+    public void StowFood(FoodShard food) => food.Deactivate();
+
+    /// <summary>Takes a piece of <paramref name="kind"/> out of a pack and into a hand (to eat, or to hand over).</summary>
+    public FoodShard? HoldFood(Vector3 position, FoodShardKind kind)
+    {
+        FoodShard? food = ActivateFood(position, kind);
+        if (food is not null)
+            PickUpFood(food);
+        return food;
+    }
+
+    /// <summary>The most pieces dropped at once (a store's overflow, a collapsed home's food, a dead kin's pack); the rest is lost.</summary>
+    public const int MaxDropped = 10;
+
+    /// <summary>Puts up to <paramref name="count"/> (at most <see cref="MaxDropped"/>) of <paramref name="kind"/> on the ground around <paramref name="at"/>, loose for anyone to pick up (water just spills). Returns how many were dropped.</summary>
+    public int DropItems(ItemKind kind, Vector3 at, int count)
+    {
+        count = Math.Min(count, MaxDropped);
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 spot = at + new Vector3((float)(Rng.NextDouble() - 0.5) * 0.9f, 0f, (float)(Rng.NextDouble() - 0.5) * 0.9f);
+            if (ItemInfo.IsFood(kind))
+                ActivateFood(spot, ItemInfo.FoodOf(kind));
+            else if (kind == ItemKind.Twig)
+                ActivateTwig(spot);
+            else if (kind == ItemKind.Stone)
+                ActivateMaterial(spot, MaterialKind.Stone);
+            else if (kind == ItemKind.Branch)
+                ActivateMaterial(spot, MaterialKind.Branch);
+        }
+        return Math.Max(0, count);
+    }
+
+    /// <summary>A dying Bramblekin's pack spills on the ground — everything but the water.</summary>
+    private void SpillPack(Bramblekin kin)
+    {
+        int room = MaxDropped; // (a full pack is up to 90 pieces: only this many are dropped in all)
+        for (int slot = 0; slot < Inventory.Slots; slot++)
+        {
+            if (kin.Pack.KindAt(slot) is not { } kind)
+                continue;
+            int held = kin.Pack.CountAt(slot);
+            for (int i = 0; i < held; i++)
+                kin.Pack.RemoveAt(slot);
+            room -= DropItems(kind, kin.Position, Math.Min(held, room));
+        }
+    }
+
     /// <summary>A Bramblekin finished eating <paramref name="food"/>: its pool slot is freed.</summary>
     public void ConsumeFood(FoodShard food)
     {
@@ -51,7 +100,7 @@ public sealed partial class World
     public void StealFood(Bramblekin thief, Bramblekin victim)
     {
         // Food in hand first; else a grab from an errand sack.
-        FoodShard? food = victim.SurrenderFood();
+        FoodShard? food = victim.SurrenderFood(this);
         if (food is null && victim.TakeFromSack() && ActivateFood(victim.Position, FoodShardKind.Berry) is { } grabbed)
         {
             PickUpFood(grabbed);
@@ -115,6 +164,7 @@ public sealed partial class World
             mourners.Dangers.Remember(kin.Position, ElapsedSeconds); // Its group won't forget where it fell.
         if (kin.Errand is { } errand)
             AbandonErrand(kin, errand);
+        SpillPack(kin);
         kin.MarkDead();
         _pendingKinRemovals.Add(kin);
 

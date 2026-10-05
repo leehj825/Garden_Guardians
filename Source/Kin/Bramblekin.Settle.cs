@@ -47,7 +47,7 @@ public sealed partial class Bramblekin
     private float SettleDelay => MaxSettleDelay - (MaxSettleDelay - MinSettleDelay) * Personality.Intelligence;
 
     /// <summary>True while it's the one who should be fetching twigs for its home's current construction stage.</summary>
-    private bool NeedsTwig => _carriedTwig is null &&
+    private bool NeedsTwig => Pack.Count(ItemKind.Twig) == 0 &&
         ((BuildSite is not null && BuildsForHome) || _errand is { Kind: ErrandKind.Labour, Returning: false } || _hearthToFeed is not null);
 
     /// <summary>The group hearth it's fetching a twig for, as a Builder with nothing to build (see <see cref="Craft.Hearth"/>).</summary>
@@ -136,18 +136,22 @@ public sealed partial class Bramblekin
         }
 
         Shelter? store = StoreToStock(world);
-        if (_carried is not null && store is not null)
+        if (HasLoadToStock && store is not null)
         {
             CarryFoodHome(store, deltaTime, world);
             return true;
         }
 
-        if (_carried is null && store is not null && ValidPerceivedFood(world) is { } food &&
+        if (!HasLoadToStock && store is not null && ValidPerceivedFood(world) is { } food && Pack.CanAdd(ItemInfo.Of(food.Kind)) &&
             GroundMover.HorizontalDistanceSquared(food.Position, home.Position) <= StockpileRange * StockpileRange)
         {
             ApproachFood(food, WalkSpeed, deltaTime, world, eatOnArrival: false);
             return true;
         }
+
+        // Water for the house store, filled at the shore (and taken from it when thirsty).
+        if (store is not null && TryStockWater(store, deltaTime, world))
+            return true;
 
         // Low stores are worth a hunt: a Grub near home becomes meat to stock.
         float fill = world.GroupOf(this) is { } group ? world.StoreFill(group) : home.StoredFood / (float)home.StoreCapacity;
@@ -188,32 +192,14 @@ public sealed partial class Bramblekin
     /// <summary>Carries a twig to <paramref name="site"/>; else picks up the nearest visible one; else goes looking where twigs were last seen, or in ever-wider legs around the site.</summary>
     private void DoBuildWork(Shelter site, float deltaTime, World world)
     {
-        if (_carriedTwig is { } twig)
+        // Twigs in the pack (taken from a store, or picked up) go to the site first; else it takes some out of a store.
+        if (Pack.Count(ItemKind.Twig) > 0)
         {
-            SetState(BramblekinState.Building);
-            float reach = (site.IsUpgrading ? Shelter.HouseRadius : site.Radius) + 0.3f;
-            if (GroundMover.HorizontalDistanceSquared(Position, site.Position) <= reach * reach)
-            {
-                _carriedTwig = null;
-                Train(Skill.Building, world);
-                if (site == _hearthToFeed && !site.NeedsTwigs)
-                {
-                    world.FuelHearth(site, twig);
-                    _hearthToFeed = null;
-                    StartPause();
-                }
-                else
-                {
-                    world.DeliverTwig(this, site, twig);
-                    NoteTwigDelivered(site);
-                }
-            }
-            else
-            {
-                MoveTo(site.Position, WalkSpeed, deltaTime, world);
-            }
+            DeliverPackTwig(site, deltaTime, world);
             return;
         }
+        if (TakeFromStore(ItemKind.Twig, Inventory.MaxStack, deltaTime, world))
+            return;
 
         if (ValidPerceivedTwig() is { } seen)
         {
@@ -223,7 +209,8 @@ public sealed partial class Bramblekin
             {
                 ReleaseTwigClaim();
                 World.PickUpTwig(seen);
-                _carriedTwig = seen;
+                seen.Deactivate(); // into the pack, not in hand
+                Pack.Add(ItemKind.Twig);
                 _perceivedTwig = null;
                 _twigSearchLegs = 0;
                 return;
@@ -247,6 +234,32 @@ public sealed partial class Bramblekin
         }
     }
 
+    /// <summary>Takes a twig out of its pack to <paramref name="site"/>'s construction (or the hearth it is feeding).</summary>
+    private void DeliverPackTwig(Shelter site, float deltaTime, World world)
+    {
+        SetState(BramblekinState.Building);
+        float reach = (site.IsUpgrading ? Shelter.HouseRadius : site.Radius) + 0.3f;
+        if (GroundMover.HorizontalDistanceSquared(Position, site.Position) > reach * reach)
+        {
+            MoveTo(site.Position, WalkSpeed, deltaTime, world);
+            return;
+        }
+
+        Pack.Remove(ItemKind.Twig);
+        Train(Skill.Building, world);
+        if (site == _hearthToFeed && !site.NeedsTwigs)
+        {
+            world.FuelHearth(site, null);
+            _hearthToFeed = null;
+            StartPause();
+        }
+        else
+        {
+            world.DeliverTwig(this, site, null);
+            NoteTwigDelivered(site);
+        }
+    }
+
     /// <summary>Carries held Food into <paramref name="home"/>'s store.</summary>
     private void CarryFoodHome(Shelter home, float deltaTime, World world)
     {
@@ -259,6 +272,7 @@ public sealed partial class Bramblekin
 
         if (_carried is { } food && world.DepositFood(home, food))
             _carried = null;
+        DepositPack(home, world);
         StartPause();
     }
 

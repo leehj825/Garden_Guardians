@@ -137,7 +137,7 @@ public sealed partial class World
             a.HasFood && !a.IsHungry && !b.HasFood ? (a, b)
             : b.HasFood && !b.IsHungry && !a.HasFood ? (b, a)
             : (null, null);
-        if (giver is null || taker is null || giver.SurrenderFood() is not { } food)
+        if (giver is null || taker is null || giver.SurrenderFood(this) is not { } food)
             return false;
 
         taker.ReceiveFood(food);

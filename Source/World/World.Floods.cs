@@ -156,7 +156,9 @@ public sealed partial class World
             string whose = shelter.GroupId is { } id && _groups.TryGetValue(id, out KinGroup? clan) ? clan.Title : shelter.Owner?.Name ?? "an empty";
             if (shelter.Tier == ShelterTier.Tent && Rng.NextDouble() < TentSweptAwayChance)
             {
-                shelter.Collapse();
+                int left = shelter.Collapse();
+                if (left > 0)
+                    ScatterFoodAround(shelter.Position, Math.Min(left, MaxDropped), shelter.Radius + 0.3f, FoodShardKind.Berry);
                 Shelters.RemoveAt(i);
                 SheltersCollapsed++;
                 QueueFloatingText(shelter.Position, "Swept away!", HostileTextColor);

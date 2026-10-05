@@ -56,6 +56,8 @@ public sealed partial class Bramblekin
         Dangers = _dangers.Places.Select(p => new PlaceSave(p.Where, p.When)).ToList(),
         FoodMemory = _foodMemory is { } memory ? memory : null,
         CarryingFood = _carried is not null,
+        PackKinds = Pack.ToArrays().Kinds,
+        PackCounts = Pack.ToArrays().Counts,
         LeaderSeconds = LeaderSeconds,
         SpiderKills = SpiderKills,
         EggsEaten = EggsEaten,
