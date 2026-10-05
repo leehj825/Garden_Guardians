@@ -558,7 +558,8 @@ public static partial class Game
 
             // 2D overlay (UI) is drawn after EndMode3D so it sits on top.
             DrawClanLabels(camera, world);
-            DrawStatusBars(camera, world);
+            if (!Detail.FarView)
+                DrawStatusBars(camera, world);
             DrawNameTag(camera, world);
             DrawFloatingTexts(camera, world);
             if (playing)

@@ -436,6 +436,9 @@ public sealed class Shelter
             Raylib.DrawCube(poleTop + new Vector3(0.12f, -0.08f, 0f), 0.22f, 0.15f, 0.02f, color);
         }
 
+        if (Detail.FarView)
+            return; // (zoomed right out, the home alone: none of its fittings)
+
         if (HasGranary && Tier == ShelterTier.House)
         {
             // A hazelnut store on the far side from the door.
