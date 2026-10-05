@@ -21,8 +21,8 @@ internal static class MusicPlayer
     /// <summary>Seconds a fade takes, and the least a track stays once chosen (a fight's music may start at once, and ends only after this).</summary>
     private const float FadeSeconds = 1.8f, MinSeconds = 25f;
 
-    /// <summary>The loudness of the music (0 to 1): it sits under the game's own sounds.</summary>
-    private const float Master = 0.5f;
+    /// <summary>The loudness of the music (0 to 1), set on the Settings page and kept in the settings file.</summary>
+    public static float Volume { get; set; } = 0.5f;
 
     /// <summary>This many fighting kin at once is a major fight.</summary>
     private const int MajorFightKin = 4;
@@ -107,7 +107,7 @@ internal static class MusicPlayer
             // Fade out what is playing: for good if another track is wanted, else it is only paused (to carry on later).
             _gain = MathF.Max(0f, _gain - deltaTime / FadeSeconds);
             _music[_playing].Looping = true;
-            Raylib.SetMusicVolume(_music[_playing], _gain * Master);
+            Raylib.SetMusicVolume(_music[_playing], _gain * Volume);
             if (!_paused)
                 Raylib.UpdateMusicStream(_music[_playing]);
             if (_gain <= 0f)
@@ -145,7 +145,7 @@ internal static class MusicPlayer
             _paused = false;
         }
         _gain = MathF.Min(1f, _gain + deltaTime / FadeSeconds);
-        Raylib.SetMusicVolume(_music[_playing], _gain * Master);
+        Raylib.SetMusicVolume(_music[_playing], _gain * Volume);
         Raylib.UpdateMusicStream(_music[_playing]);
     }
 

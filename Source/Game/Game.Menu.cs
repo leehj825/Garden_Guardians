@@ -77,6 +77,7 @@ public static partial class Game
                 ageChips[k] = new UiButton(new Rectangle(left + k * (ageWidth + gap), y, ageWidth, chipHeight));
             y += chipHeight + gap * 2;
 
+            var settingsButton = new UiButton(new Rectangle(width - gap - (int)(300 * uiScale), gap, (int)(300 * uiScale), chipHeight));
             var resume = new UiButton(new Rectangle(left, y, wide, buttonHeight));
             y += buttonHeight + gap;
             var newFixed = new UiButton(new Rectangle(left, y, wide, buttonHeight));
@@ -90,6 +91,11 @@ public static partial class Game
 
             bool pressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
             Vector2 mouse = Raylib.GetMousePosition();
+            if (pressed && settingsButton.Contains(mouse))
+            {
+                ShowSettings();
+                continue;
+            }
             if (pressed)
             {
                 for (int slot = 1; slot <= SaveSystem.Slots; slot++)
@@ -137,6 +143,7 @@ public static partial class Game
             Raylib.BeginDrawing();
             Raylib.DrawRectangleGradientV(0, 0, width, height, new Color(150, 200, 235, 255), new Color(95, 150, 80, 255));
             DrawCentred("Garden Guardians", width / 2, titleY, titleSize, new Color(40, 55, 30, 255));
+            settingsButton.Draw("Settings", highlighted: false);
             for (int slot = 1; slot <= SaveSystem.Slots; slot++)
                 chips[slot].Draw($"Garden {slot}", highlighted: slot == chosen, disabled: summaries[slot] is null && slot != chosen);
             string first = kept is null ? $"Garden {chosen} is empty" : $"Garden {chosen}: year {kept.Year}, {kept.Kin} Bramblekin in {kept.Groups} {(kept.Groups == 1 ? "clan" : "clans")}";
