@@ -1,12 +1,13 @@
-# Builds the desktop game for Windows (self-contained, so .NET need not be installed) on every push to a
-# non-main branch and uploads it as a downloadable workflow artifact. The Android debug APK is built by
-# debug-build.yml on the same pushes.
+# Builds the desktop game for Windows (self-contained, so .NET need not be installed) and uploads it as a
+# downloadable workflow artifact. Switched off for now: it runs only when started by hand from the Actions
+# tab ("Run workflow"). To turn it back on for every push, restore the push trigger below.
+# The Android debug APK is built by debug-build.yml on every push.
 name: Windows Build
 
 on:
-  push:
-    branches-ignore:
-      - main
+  # push:
+  #   branches-ignore:
+  #     - main
   workflow_dispatch:
 
 permissions:
