@@ -149,6 +149,10 @@ public sealed partial class Bramblekin
             return true;
         }
 
+        // Water for the house store, filled at the shore (and taken from it when thirsty).
+        if (store is not null && TryStockWater(store, deltaTime, world))
+            return true;
+
         // Low stores are worth a hunt: a Grub near home becomes meat to stock.
         float fill = world.GroupOf(this) is { } group ? world.StoreFill(group) : home.StoredFood / (float)home.StoreCapacity;
         if (!IsYoung && fill < 0.5f && LivePrey is { } prey &&

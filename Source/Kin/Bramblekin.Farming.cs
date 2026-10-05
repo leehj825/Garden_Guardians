@@ -108,8 +108,10 @@ public sealed partial class Bramblekin
 
         if (world.PickFruit(bush) is not { } fruit)
             return;
-        if (eat || !Stow(fruit, world))
+        if (!Stow(fruit, world))
             _carried = fruit;
+        else if (eat)
+            TakeMealFromPack(world);
         if (eat)
         {
             StartEating();

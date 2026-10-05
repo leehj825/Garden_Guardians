@@ -121,7 +121,9 @@ public sealed partial class Bramblekin
     private void UpdateThirst(float deltaTime, World world)
     {
         // A bottle in the pack is a drink anywhere (unless it is already at the water: that one is free).
-        if (State != BramblekinState.Drinking && DrinkBottle())
+        if (State != BramblekinState.Drinking && Pack.Count(ItemKind.Water) == 0 && TakeFromStore(ItemKind.Water, 3, deltaTime, world, maxDistance: 25f))
+            return; // a few bottles from the home store, if it's near
+        if (State != BramblekinState.Drinking && DrinkBottle(world))
             return;
         if (State != BramblekinState.Drinking || (_waterSpot is null && _drinkFrom is null && _drinkWell is null) || _drinkGeneration != WaterMap.Generation)
             PlanDrink(world);
@@ -165,7 +167,7 @@ public sealed partial class Bramblekin
                 return;
             Thirst = 0f;
             world.NoteWellDrink();
-            FinishDrinkingFill();
+            FinishDrinkingFill(world);
             return;
         }
 
@@ -187,12 +189,14 @@ public sealed partial class Bramblekin
             return;
         Thirst = 0f;
         world.NoteDrinkAtPond(this);
-        FinishDrinkingFill();
+        FinishDrinkingFill(world);
     }
 
     /// <summary>Drunk its fill at the pond or a well: a cupful for home, if it knows cisterns and home's isn't full.</summary>
-    private void FinishDrinkingFill()
+    private void FinishDrinkingFill(World world)
     {
+        if (IsHeard(world))
+            Sfx.Play(Sfx.Effect.Drink);
         Pack.Add(ItemKind.Water, BottlesPerDrink); // it tops its bottles up while it's there
         _waterSpot = null;
         _drinkWell = null;

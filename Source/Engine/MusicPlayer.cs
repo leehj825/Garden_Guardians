@@ -37,7 +37,7 @@ internal static class MusicPlayer
     private static Track _picked = Track.Main;
     private static float _dwell = MinSeconds;
 
-    private static bool EnsureDevice()
+    internal static bool EnsureDevice()
     {
         if (_failed)
             return false;

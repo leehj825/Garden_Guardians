@@ -96,18 +96,22 @@ public sealed class PlayControl
     private static Vector2 AttackCenter => new(Raylib.GetScreenWidth() - 190f * Scale, Raylib.GetScreenHeight() * 0.72f);
     private static float AttackRadius => 115f * Scale;
     private static UiButton ExitButton => new(new Rectangle(20 * Scale, 20 * Scale, 260 * Scale, 110 * Scale));
-    private static UiButton KinToggle => new(new Rectangle(Raylib.GetScreenWidth() - 520 * Scale, Raylib.GetScreenHeight() * 0.72f - 55 * Scale, 230 * Scale, 110 * Scale));
+    private static UiButton KinToggle => new(new Rectangle(300 * Scale, 20 * Scale, 230 * Scale, 110 * Scale));
 
     private bool HasShootButton => Kin is { Job: KinJob.Hunter };
 
-    /// <summary>The Shoot button (a Hunter's) sits just above Attack, and Jump above it; for the other jobs Jump takes Shoot's place.</summary>
+    /// <summary>The Shoot button (a Hunter's) sits just above Attack.</summary>
     private static Vector2 ShootCenter => new(Raylib.GetScreenWidth() - 190f * Scale, Raylib.GetScreenHeight() * 0.72f - 270f * Scale);
     private static float ShootRadius => 90f * Scale;
-    private Vector2 JumpCenter => new(Raylib.GetScreenWidth() - 190f * Scale, Raylib.GetScreenHeight() * 0.72f - (HasShootButton ? 470f : 270f) * Scale);
-    private static float JumpRadius => 85f * Scale;
-    private static UiButton RunToggle => new(new Rectangle(Raylib.GetScreenWidth() - 520 * Scale, Raylib.GetScreenHeight() * 0.72f + 75 * Scale, 230 * Scale, 110 * Scale));
 
-    private static UiButton BagButton => new(new Rectangle(Raylib.GetScreenWidth() - 520 * Scale, Raylib.GetScreenHeight() * 0.72f - 315 * Scale, 230 * Scale, 110 * Scale));
+    /// <summary>A row of four buttons under the Attack button, right-aligned: Jump, Run, Items and Pick up (index 0 to 3).</summary>
+    private static UiButton RowButton(int index) => new(new Rectangle(
+        Raylib.GetScreenWidth() - (20 + (4 - index) * 215 + (3 - index) * 12) * Scale, Raylib.GetScreenHeight() * 0.72f + 135 * Scale, 215 * Scale, 110 * Scale));
+
+    private static UiButton JumpButton => RowButton(0);
+    private static UiButton RunToggle => RowButton(1);
+    private static UiButton BagButton => RowButton(2);
+    private static UiButton PickUpButton => RowButton(3);
 
     /// <summary>The Bag (the pack as a 3x3 grid of boxes) is open: tap a box to eat or drink what is in it.</summary>
     private bool _bagOpen;
@@ -120,9 +124,9 @@ public sealed class PlayControl
     /// <summary>The Bag's backing panel, grid and a caption line included.</summary>
     private static Rectangle BagPanel => new(BagX - 24 * Scale, BagY - 70 * Scale, InventoryUi.GridSize(BagBox, BagGap) + 48 * Scale, InventoryUi.GridSize(BagBox, BagGap) + 100 * Scale);
 
-    private static UiButton JobToggle => new(new Rectangle(Raylib.GetScreenWidth() - 520 * Scale, Raylib.GetScreenHeight() * 0.72f - 185 * Scale, 230 * Scale, 110 * Scale));
+    private static UiButton JobToggle => new(new Rectangle(Raylib.GetScreenWidth() - 620 * Scale, Raylib.GetScreenHeight() * 0.72f - 55 * Scale, 300 * Scale, 110 * Scale));
 
-    private static string JobLabel(KinJob job) => job switch { KinJob.Hunter => "Job: Hunter", KinJob.Swordsman => "Job: Swordsman", KinJob.Spearman => "Job: Spearman", KinJob.Fisher => "Job: Fisher", _ => "Job: Normal" };
+    private static string JobLabel(KinJob job) => job switch { KinJob.Hunter => "Hunter", KinJob.Swordsman => "Swordsman", KinJob.Spearman => "Spearman", KinJob.Fisher => "Fisher", _ => "Normal" };
 
     /// <summary>The part of the screen where a touch takes the stick: the lower left.</summary>
     private static bool InStickZone(Vector2 point) => point.X < Raylib.GetScreenWidth() * 0.42f && point.Y > Raylib.GetScreenHeight() * 0.3f;
@@ -213,9 +217,14 @@ public sealed class PlayControl
                 kin.PlayerRunning = !kin.PlayerRunning;
                 _spent.Add(id);
             }
-            else if (Vector2.Distance(at, JumpCenter) <= JumpRadius * 1.15f)
+            else if (JumpButton.Contains(at))
             {
                 _jumpPressed = true;
+                _spent.Add(id);
+            }
+            else if (PickUpButton.Contains(at))
+            {
+                kin.PlayerPickUp(world);
                 _spent.Add(id);
             }
             else if (_lookTouch == -1)
@@ -267,6 +276,8 @@ public sealed class PlayControl
             _jumpPressed = true;
         if (Raylib.IsKeyPressed(KeyboardKey.R))
             kin.PlayerRunning = !kin.PlayerRunning;
+        if (Raylib.IsKeyPressed(KeyboardKey.G))
+            kin.PlayerPickUp(world);
         if (Raylib.IsKeyPressed(KeyboardKey.I))
             _bagOpen = !_bagOpen;
         if (_bagOpen)
@@ -338,19 +349,17 @@ public sealed class PlayControl
         }
         RunToggle.Draw(kin.PlayerRunning ? "Run: on" : "Run: off", highlighted: kin.PlayerRunning);
         bool airborne = kin.IsAirborne || Raylib.IsKeyDown(KeyboardKey.J);
-        Raylib.DrawCircleV(JumpCenter, JumpRadius, airborne ? new Color(90, 170, 230, 200) : new Color(70, 140, 210, 130));
-        Raylib.DrawCircleLinesV(JumpCenter, JumpRadius, new Color(255, 255, 255, 170));
-        int jumpFont = (int)(38 * s);
-        Raylib.DrawText("Jump", (int)(JumpCenter.X - Raylib.MeasureText("Jump", jumpFont) / 2f), (int)(JumpCenter.Y - jumpFont / 2f), jumpFont, Color.White);
+        JumpButton.Draw("Jump", highlighted: airborne);
         JobToggle.Draw(JobLabel(kin.PlayerJob), highlighted: kin.PlayerJob != KinJob.None);
         ExitButton.Draw("Exit", highlighted: false);
         BagButton.Draw("Items", highlighted: _bagOpen);
+        PickUpButton.Draw("Pick up", highlighted: false);
         if (_bagOpen)
             DrawBag(kin);
 
         // Status.
         int font = (int)(40 * s);
-        int x = (int)(310 * s);
+        int x = (int)(550 * s);
         int y = (int)(24 * s);
         Raylib.DrawText($"{kin.Name}   Health {kin.Health}/{kin.HealthCap}", x, y, font, Color.White);
         Raylib.DrawText($"Hunger {(int)kin.Hunger}%   Thirst {(int)kin.Thirst}%", x, y + (int)(font * 1.15f), font, kin.IsHungry || kin.IsThirsty ? new Color(255, 190, 120, 255) : Color.White);

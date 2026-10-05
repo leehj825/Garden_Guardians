@@ -64,6 +64,8 @@ public sealed partial class World
     /// <summary>An arrow leaves <paramref name="from"/> along <paramref name="direction"/> (a unit vector). It flies straight for <see cref="Bramblekin.ArrowRange"/> metres, hitting the first target in its way, then drops.</summary>
     public void LooseArrow(Bramblekin shooter, Vector3 from, Vector3 direction)
     {
+        if (shooter.IsPlayerControlled || SelectedKin == shooter)
+            Sfx.Play(Sfx.Effect.ShootingArrow);
         ArrowsLoosed++;
         _arrows.Add(new ArrowShot { Shooter = shooter, At = from, Direction = Vector3.Normalize(direction) });
     }

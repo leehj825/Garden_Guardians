@@ -66,7 +66,7 @@ public sealed partial class Bramblekin
     }
 
     /// <summary>Drinks one bottle if it has one. True if it did.</summary>
-    private bool DrinkBottle()
+    private bool DrinkBottle(World world)
     {
         if (!Pack.Remove(ItemKind.Water))
             return false;
@@ -76,6 +76,8 @@ public sealed partial class Bramblekin
         _drinkFrom = null;
         _drinkTimer = 0f;
         StartAction(BramblekinClip.PickingUp, lockMovement: true);
+        if (IsHeard(world))
+            Sfx.Play(Sfx.Effect.Drink);
         StartPause();
         return true;
     }
@@ -92,6 +94,7 @@ public sealed partial class Bramblekin
         bool atWater =
             (State == BramblekinState.Drinking && _drinkTimer > 0f && _drinkFrom is null) ||
             (State == BramblekinState.Fishing && _fishingSpot is { } spot && GroundMover.HorizontalDistanceSquared(Position, spot) < 1f) ||
+            (State == BramblekinState.Collecting && _bottleSpot is { } bottleSpot && GroundMover.HorizontalDistanceSquared(Position, bottleSpot) < 1f) ||
             (IsPlayerControlled && PlayerMove.LengthSquared() < 0.01f && World.NearestShoreSpot(Position, PlayerWaterReach, creek: true) is not null);
         if (!atWater)
         {
@@ -119,7 +122,7 @@ public sealed partial class Bramblekin
                 world.QueueFloatingText(Position, "Not thirsty", EggTextColor);
                 return;
             }
-            DrinkBottle();
+            DrinkBottle(world);
             return;
         }
 
@@ -153,7 +156,7 @@ public sealed partial class Bramblekin
     private Twig? _gatherTwig;
 
     /// <summary>Walks to the nearest home of its clan whose store holds <paramref name="kind"/>, and takes up to <paramref name="amount"/> into its pack. False if no store has any, or the pack has no room.</summary>
-    private bool TakeFromStore(ItemKind kind, int amount, float deltaTime, World world)
+    private bool TakeFromStore(ItemKind kind, int amount, float deltaTime, World world, float maxDistance = 1000f)
     {
         if (!Pack.CanAdd(kind) || world.GroupOf(this) is not { } group)
             return false;
@@ -165,7 +168,7 @@ public sealed partial class Bramblekin
             if (home is not { IsBuilt: true, IsCollapsed: false } || home.Stock.Count(kind) == 0)
                 continue;
             float distance = GroundMover.HorizontalDistanceSquared(Position, home.Position);
-            if (distance < nearest)
+            if (distance < nearest && distance <= maxDistance * maxDistance)
             {
                 store = home;
                 nearest = distance;
@@ -295,16 +298,134 @@ public sealed partial class Bramblekin
         return false;
     }
 
+    /// <summary>Kin keep this many bottles in their home store, and fill bottles at the shore (up to <see cref="WaterStoreTarget"/> in store) when it holds fewer.</summary>
+    private const int WaterStoreTarget = 20;
+
+    /// <summary>The shore spot it is filling bottles at for its store.</summary>
+    private Vector3? _bottleSpot;
+
+    /// <summary>
+    /// Life around a home: a full load of bottles (<see cref="StockTrip"/>) goes into the store (keeping a couple to drink); else, while the store
+    /// holds fewer than <see cref="WaterStoreTarget"/>, it stands at the nearest shore filling bottles. False if there's nothing to do.
+    /// </summary>
+    private bool TryStockWater(Shelter store, float deltaTime, World world)
+    {
+        if (IsYoung)
+            return false;
+
+        if (Pack.Count(ItemKind.Water) >= StockTrip)
+        {
+            SetState(BramblekinState.Stockpiling);
+            if (!store.Contains(Position))
+            {
+                MoveTo(store.Position, WalkSpeed, deltaTime, world);
+                return true;
+            }
+            int pour = Pack.Count(ItemKind.Water) - BottleReserve;
+            Pack.Remove(ItemKind.Water, pour);
+            store.Stock.Add(ItemKind.Water, pour);
+            _bottleSpot = null;
+            StartPause();
+            return true;
+        }
+
+        if (store.Stock.Count(ItemKind.Water) >= WaterStoreTarget || !Pack.CanAdd(ItemKind.Water))
+        {
+            _bottleSpot = null;
+            return false;
+        }
+        _bottleSpot ??= World.NearestShoreSpot(store.Position, 40f, creek: true);
+        if (_bottleSpot is not { } spot)
+            return false;
+
+        SetState(BramblekinState.Collecting);
+        if (GroundMover.HorizontalDistance(Position, spot) > 0.5f)
+        {
+            MoveTo(spot, WalkSpeed, deltaTime, world);
+            return true;
+        }
+        _mover.Heading = TowardWater(spot);
+        _mover.Idle();
+        return true; // (UpdateBottles fills a bottle every few seconds while it stands here)
+    }
+
+    /// <summary>How far (m) the player's Pick up button reaches.</summary>
+    private const float PlayerPickUpReach = 2.5f;
+
+    /// <summary>The player's Pick up button: the nearest loose food, twig, stone or branch within reach goes into the pack (hungry or not); with none, a bottle is filled if the water is at hand.</summary>
+    public void PlayerPickUp(World world)
+    {
+        if (IsDead || State == BramblekinState.Eating || _actionLock > 0f)
+            return;
+
+        FoodShard? food = Pack.CanAdd(ItemKind.Berry) ? world.NearestAvailableFood(Position, PlayerPickUpReach, this) : null;
+        Twig? twig = Pack.CanAdd(ItemKind.Twig) ? world.NearestAvailableTwig(Position, PlayerPickUpReach, this) : null;
+        Material? stone = Pack.CanAdd(ItemKind.Stone) ? world.NearestMaterial(Position, MaterialKind.Stone, PlayerPickUpReach, this) : null;
+        Material? branch = Pack.CanAdd(ItemKind.Branch) ? world.NearestMaterial(Position, MaterialKind.Branch, PlayerPickUpReach, this) : null;
+
+        float best = float.MaxValue;
+        int pick = -1;
+        void Consider(int which, Vector3? at)
+        {
+            if (at is not { } point)
+                return;
+            float distance = GroundMover.HorizontalDistanceSquared(Position, point);
+            if (distance < best)
+            {
+                best = distance;
+                pick = which;
+            }
+        }
+        Consider(0, food?.Position);
+        Consider(1, twig?.Position);
+        Consider(2, stone?.Position);
+        Consider(3, branch?.Position);
+
+        ItemKind? got = null;
+        switch (pick)
+        {
+            case 0 when food is not null && Pack.CanAdd(ItemInfo.Of(food.Kind)):
+                got = ItemInfo.Of(food.Kind);
+                Pack.Add(got.Value);
+                world.StowFood(food);
+                break;
+            case 1:
+                twig!.Deactivate();
+                Pack.Add(ItemKind.Twig);
+                got = ItemKind.Twig;
+                break;
+            case 2:
+                stone!.Deactivate();
+                Pack.Add(ItemKind.Stone);
+                got = ItemKind.Stone;
+                break;
+            case 3:
+                branch!.Deactivate();
+                Pack.Add(ItemKind.Branch);
+                got = ItemKind.Branch;
+                break;
+            default:
+                if (Pack.CanAdd(ItemKind.Water) && World.NearestShoreSpot(Position, PlayerWaterReach, creek: true) is not null)
+                {
+                    Pack.Add(ItemKind.Water);
+                    got = ItemKind.Water;
+                }
+                break;
+        }
+
+        if (got is { } item)
+        {
+            StartAction(BramblekinClip.PickingUp, lockMovement: true);
+            world.QueueFloatingText(Position, ItemInfo.Name(item), EggTextColor);
+        }
+        else
+        {
+            world.QueueFloatingText(Position, Pack.MaterialCount + Pack.FoodCount >= Inventory.Slots * Inventory.MaxStack ? "Pack full" : "Nothing to pick up", EggTextColor);
+        }
+    }
+
     /// <summary>Gives back what it was saved carrying (see <see cref="KinSave.PackKinds"/>).</summary>
     public void RestorePack(KinSave save) => Pack.FromArrays(save.PackKinds, save.PackCounts);
-
-    /// <summary>A wooden water bottle on its hip, drawn plainly (a model will replace it).</summary>
-    private void DrawBottle(Vector2 facing)
-    {
-        // On the side away from the way it faces, so it doesn't hide the hands.
-        var side = new Vector2(-facing.Y, facing.X);
-        DrawBottleModel(Position + new Vector3(side.X * 0.22f, BodyHeight * 0.38f, side.Y * 0.22f));
-    }
 
     /// <summary>The wooden water bottle standing on <paramref name="hip"/> (its base), drawn from plain shapes until there's a model.</summary>
     public static void DrawBottleModel(Vector3 hip)

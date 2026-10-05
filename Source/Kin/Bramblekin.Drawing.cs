@@ -166,9 +166,8 @@ public sealed partial class Bramblekin
 
         if (props) // what it carries is too small to see from far off
         {
-            _carried?.Draw(Position + new Vector3(facing.X * 0.25f, BodyHeight * 0.55f, facing.Y * 0.25f)); // a bite in hand (the rest is in the pack)
-            if (Pack.Count(ItemKind.Water) > 0)
-                DrawBottle(facing);
+            if (State == BramblekinState.Eating)
+                _carried?.Draw(Position + new Vector3(facing.X * 0.25f, BodyHeight * 0.55f, facing.Y * 0.25f)); // the bite being eaten (everything else is in the pack)
             if (_carriesEgg)
             {
                 PropModels.Draw(PropModels.Prop.Larvae, Position + new Vector3(0f, BodyHeight + 0.02f, 0f), 0f, 0.4f, Color.White);
@@ -228,7 +227,12 @@ public sealed partial class Bramblekin
             _nextBlowIsAttack = !_nextBlowIsAttack;
         }
         StartAction(clip, lockMovement: true);
+        if (clip != BramblekinClip.AimRecoil && IsHeard(world))
+            Sfx.Play(Sfx.Effect.SwordSpear);
     }
+
+    /// <summary>Whether its sounds are played: the kin the player controls or is watching.</summary>
+    private bool IsHeard(World world) => IsPlayerControlled || world.SelectedKin == this;
 
     /// <summary>The action clip the kin's state and job call for while it stands still, if any: blows, stabs, aiming and picking things up. Null: nothing but the usual clips.</summary>
     private BramblekinClip? ActionWanted(World world)
