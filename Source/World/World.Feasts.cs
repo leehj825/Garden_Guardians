@@ -211,7 +211,7 @@ public sealed partial class World
     /// <summary>A couple met across clans at a feast.</summary>
     private void NoteFeastCourtship() => FeastCouples++;
 
-    /// <summary>Bunting on poles round the tables in the host's colours, and the spread in the middle.</summary>
+    /// <summary>Bunting hung between lanterns on sticks round the tables in the host's colours, and the spread in the middle.</summary>
     private void DrawFeasts(Camera3D camera)
     {
         foreach (Feast feast in _feasts)
@@ -228,8 +228,7 @@ public sealed partial class World
                 Vector3 top = foot + new Vector3(0f, 0.9f, 0f);
                 if (i < poles)
                 {
-                    Raylib.DrawCylinderEx(foot, top, 0.03f, 0.025f, 4, FeastPoleColor);
-                    Detail.Sphere(top, 0.07f, LanternColor);
+                    FittingModels.Draw(FittingModels.Kind.Lantern, foot, 0f, 1f, Color.White);
                 }
                 if (i > 0)
                 {
@@ -260,7 +259,7 @@ public sealed partial class World
             {
                 float angle = i * MathF.Tau / 8;
                 Vector3 top = Grounded(feast.Site + new Vector3(MathF.Cos(angle) * 3.2f, 0f, MathF.Sin(angle) * 3.2f)) + new Vector3(0f, 0.9f, 0f);
-                Detail.Sphere(top, 0.2f, LanternColor with { A = (byte)(150 * darkness) });
+                Detail.Sphere(top - new Vector3(0f, 0.35f, 0f), 0.22f, LanternColor with { A = (byte)(150 * darkness) });
             }
         }
     }

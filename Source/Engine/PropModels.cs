@@ -25,9 +25,9 @@ public static unsafe class PropModels
     public const float HouseCapTop = 0.72f;
 
     /// <summary>The props; each has a full model and a cheap one (a fifth or so of the triangles, a 512px texture) for when it is small on screen.</summary>
-    public enum Prop { House, Bush, Spider, Tent, BerryPlot, CressPlot, MushroomPlot, GrainPlot, Beetle, Ant, AntHill, Castle, Larvae }
+    public enum Prop { House, Bush, Spider, Tent, BerryPlot, CressPlot, MushroomPlot, GrainPlot, Beetle, Ant, AntHill, Castle, Larvae, Aphid }
 
-    private static readonly string[] Files = { "AcornHouse", "BerryFarm", "Spider", "Tent", "BerryPlot", "CressPlot", "MushroomPlot", "GrainPlot", "Beetle", "Ant", "AntHill", "Castle", "Larvae" };
+    private static readonly string[] Files = { "AcornHouse", "BerryFarm", "Spider", "Tent", "BerryPlot", "CressPlot", "MushroomPlot", "GrainPlot", "Beetle", "Ant", "AntHill", "Castle", "Larvae", "Aphid" };
 
     /// <summary>Below this many pixels across, the cheap model.</summary>
     private const float FullPixels = 110f;
@@ -41,8 +41,8 @@ public static unsafe class PropModels
         if (_ready[i])
             return;
         _full[i] = Raylib.LoadModel(AssetPath + Files[i] + ".glb");
-        _cheap[i] = prop is Prop.Spider or Prop.Beetle or Prop.Ant or Prop.Larvae ? _full[i] : Raylib.LoadModel(AssetPath + Files[i] + "_lod.glb"); // The spider, the beetle and the ants are light already: one model.
-        if (prop is Prop.House or Prop.Tent or Prop.BerryPlot or Prop.CressPlot or Prop.MushroomPlot or Prop.GrainPlot or Prop.AntHill or Prop.Ant or Prop.Castle or Prop.Larvae)
+        _cheap[i] = prop is Prop.Spider or Prop.Beetle or Prop.Ant or Prop.Larvae or Prop.Aphid ? _full[i] : Raylib.LoadModel(AssetPath + Files[i] + "_lod.glb"); // The spider, the beetle and the ants are light already: one model.
+        if (prop is Prop.House or Prop.Tent or Prop.BerryPlot or Prop.CressPlot or Prop.MushroomPlot or Prop.GrainPlot or Prop.AntHill or Prop.Ant or Prop.Castle or Prop.Larvae or Prop.Aphid)
         {
             // The house's pictures are big and painterly: smoothed and mipmapped, they don't shimmer or show as pixels.
             Smooth(_full[i]);
@@ -67,6 +67,8 @@ public static unsafe class PropModels
     {
         EnsureLoaded(prop);
         float pixels = Detail.Pixels(position, scale * (prop switch { Prop.House => HouseWidth, Prop.Bush => BushWidth, Prop.Tent => TentWidth, Prop.Castle => CastleWidth, Prop.Spider => SpiderWidth, _ => 1f }));
+        if (pixels < 2f && prop is Prop.Aphid)
+            return; // (a speck)
         Model model = pixels >= FullPixels ? _full[(int)prop] : _cheap[(int)prop];
         Raylib.DrawModelEx(model, position, Vector3.UnitY, yawDegrees, new Vector3(scale), tint);
     }
@@ -136,6 +138,15 @@ public static unsafe class PropModels
         }
         if (!_walks.ContainsKey(prop) || model.Skeleton.BoneCount == 0)
         {
+            Raylib.DrawModelEx(model, position, Vector3.UnitY, yawDegrees, new Vector3(scale), tint);
+            return;
+        }
+        float pixels = Detail.Pixels(position, scale * 0.6f);
+        if (pixels < 2f)
+            return; // (a speck)
+        if (pixels < 12f)
+        {
+            // Small on screen: no need to pose it (skinning is done on the CPU, vertex by vertex) — drawn as the shared model was last left.
             Raylib.DrawModelEx(model, position, Vector3.UnitY, yawDegrees, new Vector3(scale), tint);
             return;
         }

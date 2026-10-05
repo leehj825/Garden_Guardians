@@ -287,6 +287,8 @@ public sealed partial class World
     private void DrawAnts(Camera3D camera)
     {
         Anthill?.Draw();
+        if (Detail.FarView)
+            return; // (the hill alone: no eggs, ants or guards)
         if (Anthill is { } eggHill)
         {
             // The eggs lie in the cave just inside the entrance, where they can be seen from outside (a looter takes one off the heap).

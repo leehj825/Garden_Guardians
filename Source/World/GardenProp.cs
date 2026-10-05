@@ -139,20 +139,15 @@ public sealed class GardenProp
         Rlgl.PopMatrix();
     }
 
-    /// <summary>A long brown cylinder lying flat on the ground, randomly rotated — DrawCylinderEx avoids any manual rotation matrix.</summary>
+    /// <summary>A twig lying flat on the ground, randomly rotated: the twig model (Assets/Models/Props/Loose.glb, 0.45 long) stretched to its length and slimmed.</summary>
     private void DrawTwig()
     {
         float length = _twigLength * _scale;
         float radius = 0.05f * _scale;
-        var brown = new Color(101, 67, 33, 255);
+        float along = length / Twig.Length;
 
         PushGroundedTiltMatrix(radius);
-
-        var half = new Vector3(MathF.Cos(_rotation), 0, MathF.Sin(_rotation)) * (length / 2f);
-        Vector3 start = -half;
-        Vector3 end = half;
-        Raylib.DrawCylinderEx(start, end, radius, radius * 0.7f, 8, brown);
-
+        LooseModels.Draw(LooseModels.Kind.Twig, new Vector3(0f, -radius, 0f), -_rotation * 180f / MathF.PI, new Vector3(along, along * 0.5f, along * 0.5f), Color.White);
         Rlgl.PopMatrix();
     }
 }

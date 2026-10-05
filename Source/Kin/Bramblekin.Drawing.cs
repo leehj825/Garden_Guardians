@@ -84,7 +84,7 @@ public sealed partial class Bramblekin
             if (progress is { } share)
                 BramblekinModel.PlayProgress(ref pose, clip, share);
             else
-                BramblekinModel.Play(ref pose, clip, clip is BramblekinClip.Idle or BramblekinClip.SwordsmanIdle ? 0f : _animTime);
+                BramblekinModel.Play(ref pose, clip, clip is BramblekinClip.SwordsmanIdle ? 0f : _animTime);
         }
 
         // The cylinder this replaced was rotationally symmetric, so it never

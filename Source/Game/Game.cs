@@ -43,6 +43,9 @@ public static partial class Game
     /// <summary>…and at 20x and up (a time-lapse) most of the frame, drawing only a dozen frames a second: the picture matters little at that speed, and this hands nearly all of the phone's time to the simulation.</summary>
     private const double TimeLapseSimulationBudgetSeconds = 0.08;
 
+    /// <summary>The most the budget above grows to when drawing is slow: a longer frame would leave the buttons too sluggish to tap.</summary>
+    private const double MaxFastBudgetSeconds = 0.12, MaxTimeLapseBudgetSeconds = 0.3;
+
     /// <summary>Simulated time owed (the chosen speed × real time) but not yet stepped.</summary>
     private static float _simulationBacklog;
 
@@ -61,7 +64,11 @@ public static partial class Game
     /// (see <see cref="StepSimulation"/>), so a faster speed is more steps per
     /// frame, never bigger ones.
     /// </summary>
-    private static float _timeScale = 1f;
+    private static float _timeScale = Build.SpeedControls && float.TryParse(Environment.GetEnvironmentVariable("GARDEN_SPEED"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float startSpeed) ? startSpeed : 1f;
+
+    /// <summary>A development aid: GARDEN_PERF=1 prints the speed the simulation manages, the frame rate and the sim and draw times every two seconds (GARDEN_SPEED=50 starts at that speed).</summary>
+    private static readonly bool PerfLog = Environment.GetEnvironmentVariable("GARDEN_PERF") is not null;
+    private static float _perfClock;
     private static bool _lootTestDone;
     private static bool _playTestDone;
 
@@ -140,7 +147,7 @@ public static partial class Game
     /// <summary>A tap on the Stats button shows or hides the stats bar, and remembers the choice. Returns true if the tap was on it.</summary>
     private static bool TapStatsButton(Vector2 point)
     {
-        if (!Raylib.CheckCollisionPointRec(point, _statsButtonBounds))
+        if (!Build.Diagnostics || !Raylib.CheckCollisionPointRec(point, _statsButtonBounds))
             return false;
         _statsView = _statsView == StatsView.Shown ? StatsView.Hidden : StatsView.Shown;
         Preferences.Set(StatsViewSetting, _statsView);
@@ -217,6 +224,8 @@ public static partial class Game
             return;
         }
 
+        if (!Build.Diagnostics)
+            return; // (a Release build keeps no log: nothing shows it)
         _debugLogs.Add(message);
         while (_debugLogs.Count > DebugLogCapacity)
             _debugLogs.RemoveAt(0);
@@ -227,7 +236,7 @@ public static partial class Game
     /// <summary>A tap on the Log button steps it Brief → Hidden → Full → Brief, and remembers the choice. Returns true if the tap was on it.</summary>
     private static bool TapLogButton(Vector2 point)
     {
-        if (!Raylib.CheckCollisionPointRec(point, _logButtonBounds))
+        if (!Build.Diagnostics || !Raylib.CheckCollisionPointRec(point, _logButtonBounds))
             return false;
         _logView = _logView switch
         {
@@ -257,7 +266,12 @@ public static partial class Game
             world.StartTestLoot(lootLevel);
         }
         _simulationBacklog += realDeltaTime * _timeScale;
-        double budget = _timeScale >= 20f ? TimeLapseSimulationBudgetSeconds : _timeScale >= 10f ? FastSimulationBudgetSeconds : SimulationBudgetSeconds;
+        // A frame's drawing costs the same however fast the garden runs, so on a device where it is slow it would swallow most of the frame and leave the
+        // simulation a sliver (50x managing a few x): at 10x and up the simulation gets a share that grows with the draw time, up to a cap.
+        double drawSeconds = _drawMs / 1000.0;
+        double budget = _timeScale >= 20f ? Math.Clamp(2.0 * drawSeconds, TimeLapseSimulationBudgetSeconds, MaxTimeLapseBudgetSeconds)
+            : _timeScale >= 10f ? Math.Clamp(drawSeconds, FastSimulationBudgetSeconds, MaxFastBudgetSeconds)
+            : SimulationBudgetSeconds;
         long start = System.Diagnostics.Stopwatch.GetTimestamp();
         float simulated = 0f;
         while (_simulationBacklog >= SimulationStep)
@@ -328,296 +342,311 @@ public static partial class Game
         _statsView = Preferences.Get(StatsViewSetting, StatsView.Shown);
         _alertsOn = Preferences.Get(AlertsSetting, AlertsView.On) == AlertsView.On;
         World.Overlays = Preferences.Get(OverlaySetting, MapOverlays.All);
+        MusicPlayer.Volume = Math.Clamp(Preferences.GetNumber(MusicVolumeSetting, 0.5f), 0f, 1f);
         _gardenSlot = (int)Preferences.Get(GardenSetting, GardenSlot.Garden1);
         TerrainData.GrowNewGardens = Preferences.Get(TerrainSetting, TerrainMode.Fixed) == TerrainMode.Random;
         TerrainData.NewGardenSize = (int)Preferences.Get(MapSizeSetting, MapSize.Small);
-        World world;
-        if (SkipMenu)
-            world = LoadOrCreateWorld(GardenPath);
-        else
+        // Back to the start menu (the Menu button, once confirmed) goes round again: the garden is saved, and the menu offers it afresh.
+        bool leaveToMenu;
+        do
         {
-            MenuChoice? choice = ShowMenu();
-            if (choice is null)
+            leaveToMenu = false;
+            World world;
+            if (SkipMenu)
+                world = LoadOrCreateWorld(GardenPath);
+            else
             {
-                Raylib.CloseWindow();
-                return;
-            }
-            _gardenSlot = choice.Slot;
-            Preferences.Set(GardenSetting, (GardenSlot)_gardenSlot);
-            if (!choice.Resume)
-            {
-                TerrainData.GrowNewGardens = choice.GrowTerrain;
-                Preferences.Set(TerrainSetting, choice.GrowTerrain ? TerrainMode.Random : TerrainMode.Fixed);
-            }
-            TerrainData.NewGardenSize = choice.Size;
-            _startEra = choice.StartEra;
-            world = MakeWorld(() => choice.Resume ? LoadOrCreateWorld(GardenPath) : StartNewGarden(GardenPath));
-        }
-        camera = OverviewCamera(world.Terrain.Size);
-        var input = new WorldTapInput();
-        var touchCamera = new TouchCameraController();
-        var followCamera = new FollowCamera(camera);
-        var director = new Director();
-        var play = new PlayControl();
-        Camera3D overview = camera;
-        DebugShot.Place(ref camera, world);
-        float autosaveTimer = AutosaveInterval;
-
-        // --- Main loop -------------------------------------------------------
-        while (!Raylib.WindowShouldClose())
-        {
-            float rawDeltaTime = MathF.Min(Raylib.GetFrameTime(), MaxDeltaTime);
-
-            // 0) Spectator Camera: one finger (or a held mouse button) drags
-            //    to pan, two fingers twist to rotate around the current
-            //    Target and pinch to zoom. Runs before the tap input below
-            //    so the rest of the frame sees an already-settled camera.
-            // (The History screen takes over touches and drags while it's open.)
-            if (!_playTestDone && Environment.GetEnvironmentVariable("GARDEN_PLAY_TEST") == "1" && world.Colony.FirstOrDefault(k => !k.IsDead && !k.IsYoung && (Environment.GetEnvironmentVariable("GARDEN_PLAY_FEMALE") != "1" || k.Sex == Sex.Female) && (Environment.GetEnvironmentVariable("GARDEN_PLAY_MALE") != "1" || k.Sex == Sex.Male)) is { } testKin)
-            {
-                _playTestDone = true; // A development aid: start out controlling a kin.
-                if (Environment.GetEnvironmentVariable("GARDEN_PLAY_SWORDSMAN") == "1")
+                MenuChoice? choice = ShowMenu();
+                if (choice is null)
                 {
-                    testKin.CyclePlayerJob();
-                    testKin.CyclePlayerJob(); // Hunter, then Swordsman.
+                    Raylib.CloseWindow();
+                    return;
                 }
-                if (Enum.TryParse(Environment.GetEnvironmentVariable("GARDEN_PLAY_JOB"), out KinJob wantedJob))
+                _gardenSlot = choice.Slot;
+                Preferences.Set(GardenSetting, (GardenSlot)_gardenSlot);
+                if (!choice.Resume)
                 {
-                    for (int step = 0; step < 6 && testKin.PlayerJob != wantedJob; step++)
+                    TerrainData.GrowNewGardens = choice.GrowTerrain;
+                    Preferences.Set(TerrainSetting, choice.GrowTerrain ? TerrainMode.Random : TerrainMode.Fixed);
+                }
+                TerrainData.NewGardenSize = choice.Size;
+                _startEra = choice.StartEra;
+                world = MakeWorld(() => choice.Resume ? LoadOrCreateWorld(GardenPath) : StartNewGarden(GardenPath));
+            }
+            camera = OverviewCamera(world.Terrain.Size);
+            var input = new WorldTapInput();
+            var touchCamera = new TouchCameraController();
+            var followCamera = new FollowCamera(camera);
+            var director = new Director();
+            var play = new PlayControl();
+            Camera3D overview = camera;
+            DebugShot.Place(ref camera, world);
+            float autosaveTimer = AutosaveInterval;
+
+            // --- Main loop -------------------------------------------------------
+            while (!Raylib.WindowShouldClose())
+            {
+                float rawDeltaTime = MathF.Min(Raylib.GetFrameTime(), MaxDeltaTime);
+                MusicPlayer.Update(Raylib.GetFrameTime(), MusicPlayer.For(world), silent: _timeScale >= 10f); // (no music when sped up to 10x and over)
+
+                // 0) Spectator Camera: one finger (or a held mouse button) drags
+                //    to pan, two fingers twist to rotate around the current
+                //    Target and pinch to zoom. Runs before the tap input below
+                //    so the rest of the frame sees an already-settled camera.
+                // (The History screen takes over touches and drags while it's open.)
+                if (Build.KinControl && !_playTestDone && Environment.GetEnvironmentVariable("GARDEN_PLAY_TEST") == "1" && world.Colony.FirstOrDefault(k => !k.IsDead && !k.IsYoung && (Environment.GetEnvironmentVariable("GARDEN_PLAY_FEMALE") != "1" || k.Sex == Sex.Female) && (Environment.GetEnvironmentVariable("GARDEN_PLAY_MALE") != "1" || k.Sex == Sex.Male)) is { } testKin)
+                {
+                    _playTestDone = true; // A development aid: start out controlling a kin.
+                    if (Environment.GetEnvironmentVariable("GARDEN_PLAY_SWORDSMAN") == "1")
+                    {
                         testKin.CyclePlayerJob();
+                        testKin.CyclePlayerJob(); // Hunter, then Swordsman.
+                    }
+                    if (Enum.TryParse(Environment.GetEnvironmentVariable("GARDEN_PLAY_JOB"), out KinJob wantedJob))
+                    {
+                        for (int step = 0; step < 6 && testKin.PlayerJob != wantedJob; step++)
+                            testKin.CyclePlayerJob();
+                    }
+                    world.SelectKin(testKin);
+                    play.Begin(testKin, camera, world);
                 }
-                world.SelectKin(testKin);
-                play.Begin(testKin, camera, world);
-            }
-            bool playing = play.IsActive;
-            if (!_showChronicle && !playing)
-                touchCamera.Update(ref camera, world.Terrain.Size / 2f);
+                bool playing = play.IsActive;
+                if (!_showChronicle && !playing && !_confirmMenu)
+                    touchCamera.Update(ref camera, world.Terrain.Size / 2f);
 
-            // Responsive UI: the Debug Time Scale buttons' geometry (and the
-            // "Nx" label panel between them) is recomputed from the CURRENT
-            // screen size every frame, via the shared UiScale factor, rather
-            // than fixed once at startup. Both the click-detection below and
-            // the Draw calls further down use these SAME rectangles, so the
-            // visible buttons and their tappable areas can never drift apart.
-            float uiScale = UiScale;
-            int speedButtonWidth = (int)(150 * uiScale);
-            int speedButtonHeight = (int)(132 * uiScale);
-            int speedButtonGap = (int)(180 * uiScale);
-            int speedButtonMargin = (int)(20 * uiScale);
-            var speedDownButton = new UiButton(new Rectangle(speedButtonMargin, speedButtonMargin, speedButtonWidth, speedButtonHeight));
-            var speedUpButton = new UiButton(new Rectangle(speedButtonMargin + speedButtonWidth + speedButtonGap, speedButtonMargin, speedButtonWidth, speedButtonHeight));
-            var speedLabelBounds = new Rectangle(speedButtonMargin + speedButtonWidth, speedButtonMargin, speedButtonGap, speedButtonHeight);
-            var mapButton = new UiButton(new Rectangle(speedButtonMargin * 2 + speedButtonWidth * 2 + speedButtonGap, speedButtonMargin,
-                (int)(190 * uiScale), speedButtonHeight));
-            var historyButton = new UiButton(new Rectangle(mapButton.Bounds.X + mapButton.Bounds.Width + speedButtonMargin, speedButtonMargin,
-                (int)(290 * uiScale), speedButtonHeight));
-            UiButton? autoButton = _showChronicle ? null : new UiButton(new Rectangle(historyButton.Bounds.X + historyButton.Bounds.Width + speedButtonMargin, speedButtonMargin,
-                (int)(190 * uiScale), speedButtonHeight));
-            UiButton? followButton = _showChronicle || playing ? null : FollowButton(world);
-            UiButton? controlButton = followButton is null ? null : ControlButton(world, followButton);
-            UiButton? newGardenButton = _showChronicle ? NewGardenButton(historyButton, speedButtonMargin) : null;
-            UiButton? gardenSlotButton = newGardenButton is null ? null : GardenSlotButton(newGardenButton, speedButtonMargin);
-            UiButton? terrainButton = gardenSlotButton is null ? null : TerrainModeButton(gardenSlotButton, speedButtonMargin);
-            var overlayButtons = _showChronicle ? null : OverlayButtons(uiScale, speedButtonMargin * 2 + speedButtonHeight, speedButtonMargin);
-            _newGardenConfirm = MathF.Max(0f, _newGardenConfirm - Raylib.GetFrameTime());
+                // Responsive UI: the Debug Time Scale buttons' geometry (and the
+                // "Nx" label panel between them) is recomputed from the CURRENT
+                // screen size every frame, via the shared UiScale factor, rather
+                // than fixed once at startup. Both the click-detection below and
+                // the Draw calls further down use these SAME rectangles, so the
+                // visible buttons and their tappable areas can never drift apart.
+                float uiScale = UiScale;
+                int speedButtonWidth = (int)(150 * uiScale);
+                int speedButtonHeight = (int)(132 * uiScale);
+                int speedButtonGap = (int)(180 * uiScale);
+                int speedButtonMargin = (int)(20 * uiScale);
+                var speedDownButton = new UiButton(new Rectangle(speedButtonMargin, speedButtonMargin, speedButtonWidth, speedButtonHeight));
+                var speedUpButton = new UiButton(new Rectangle(speedButtonMargin + speedButtonWidth + speedButtonGap, speedButtonMargin, speedButtonWidth, speedButtonHeight));
+                var speedLabelBounds = new Rectangle(speedButtonMargin + speedButtonWidth, speedButtonMargin, speedButtonGap, speedButtonHeight);
+                var mapButton = new UiButton(new Rectangle(Build.SpeedControls ? speedButtonMargin * 2 + speedButtonWidth * 2 + speedButtonGap : speedButtonMargin, speedButtonMargin,
+                    (int)(190 * uiScale), speedButtonHeight));
+                var historyButton = new UiButton(new Rectangle(mapButton.Bounds.X + mapButton.Bounds.Width + speedButtonMargin, speedButtonMargin,
+                    (int)(290 * uiScale), speedButtonHeight));
+                UiButton? autoButton = _showChronicle ? null : new UiButton(new Rectangle(historyButton.Bounds.X + historyButton.Bounds.Width + speedButtonMargin, speedButtonMargin,
+                    (int)(190 * uiScale), speedButtonHeight));
+                UiButton? followButton = _showChronicle || playing ? null : FollowButton(world);
+                UiButton? controlButton = followButton is null || !Build.KinControl ? null : ControlButton(world, followButton);
+                UiButton menuButton = MenuButton(autoButton?.Bounds ?? historyButton.Bounds, speedButtonMargin, speedButtonHeight, uiScale);
+                var overlayButtons = _showChronicle ? null : OverlayButtons(uiScale, speedButtonMargin * 2 + speedButtonHeight, speedButtonMargin);
 
-            // 1) Input: the player has no lever on the world. The only tap
-            //    left is inspecting a single Bramblekin (see WorldTapInput,
-            //    which only fires on a clean release that never turned into
-            //    a pan). The Debug Time Scale +/- buttons are checked first
-            //    and, if hit, swallow the click so it never also lands as a
-            //    ground tap.
-            bool mousePressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
-            Vector2 mousePosition = Raylib.GetMousePosition();
-            if (playing)
-            {
-                // PlayControl reads the touches itself (below).
-            }
-            else if (mousePressed && TapBanner(mousePosition, followCamera))
-            {
-                director.Stop(); // Flew to the banner's big moment.
-            }
-            else if (mousePressed && autoButton is not null && autoButton.Contains(mousePosition))
-            {
-                director.Toggle();
-                if (director.IsOn)
-                    followCamera.Release();
-            }
-            else if (mousePressed && speedDownButton.Contains(mousePosition))
-                DecreaseTimeScale();
-            else if (mousePressed && speedUpButton.Contains(mousePosition))
-                IncreaseTimeScale();
-            else if (mousePressed && historyButton.Contains(mousePosition))
-                ToggleChronicle();
-            else if (mousePressed && newGardenButton is not null && newGardenButton.Contains(mousePosition))
-            {
-                if (ConfirmNewGarden())
+                // 1) Input: the player has no lever on the world. The only tap
+                //    left is inspecting a single Bramblekin (see WorldTapInput,
+                //    which only fires on a clean release that never turned into
+                //    a pan). The Debug Time Scale +/- buttons are checked first
+                //    and, if hit, swallow the click so it never also lands as a
+                //    ground tap.
+                bool mousePressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
+                Vector2 mousePosition = Raylib.GetMousePosition();
+                if (_confirmMenu)
                 {
-                    world = MakeWorld(() => StartNewGarden(GardenPath));
-                    ClearBanners();
-                    overview = OverviewCamera(world.Terrain.Size);
-                    camera = overview;
-                    followCamera = new FollowCamera(overview);
-                    director.Stop();
-                    autosaveTimer = AutosaveInterval;
+                    // The "back to the menu?" question is open: it takes every tap.
+                    if (mousePressed)
+                    {
+                        MenuConfirmButtons(uiScale, out UiButton yes, out UiButton no);
+                        if (yes.Contains(mousePosition))
+                            leaveToMenu = true;
+                        else if (no.Contains(mousePosition) || !Raylib.CheckCollisionPointRec(mousePosition, MenuConfirmBox(uiScale)))
+                            _confirmMenu = false;
+                    }
                 }
-            }
-            else if (mousePressed && terrainButton is not null && terrainButton.Contains(mousePosition))
-                ToggleTerrainMode();
-            else if (mousePressed && gardenSlotButton is not null && gardenSlotButton.Contains(mousePosition))
-            {
-                World leaving = world;
-                world = MakeWorld(() => SwitchGarden(leaving));
-                ClearBanners();
-                overview = OverviewCamera(world.Terrain.Size);
-                camera = overview;
-                followCamera = new FollowCamera(overview);
-                director.Stop();
-                autosaveTimer = AutosaveInterval;
-            }
-            else if (_showChronicle)
-            {
-                // The History screen scrolls instead (see DrawChronicle).
-            }
-            else if (mousePressed && TapLogButton(mousePosition))
-            {
-                // Showed more, less or none of the log.
-            }
-            else if (mousePressed && TapStatsButton(mousePosition))
-            {
-                // Showed or hid the stats bar.
-            }
-            else if (mousePressed && TapAlertsButton(mousePosition))
-            {
-                // Showed or hid the alert banners.
-            }
-            else if (mousePressed && overlayButtons is not null && overlayButtons.Any(o => o.Button.Contains(mousePosition)))
-            {
-                World.Overlays ^= overlayButtons.First(o => o.Button.Contains(mousePosition)).Flag;
-                Preferences.Set(OverlaySetting, World.Overlays);
-            }
-            else if (mousePressed && TapClanLabel(mousePosition, world))
-            {
-                // Opened the clan card from its name tag.
-            }
-            else if (mousePressed && mapButton.Contains(mousePosition))
-            {
-                director.Stop();
-                followCamera.ShowWholeMap();
-            }
-            else if (mousePressed && controlButton is not null && controlButton.Contains(mousePosition))
-            {
-                if (world.SelectedKin is { IsDead: false } chosen)
+                else if (playing)
+                {
+                    // PlayControl reads the touches itself (below).
+                }
+                else if (mousePressed && menuButton.Contains(mousePosition))
+                {
+                    _confirmMenu = true;
+                }
+                else if (mousePressed && TapBanner(mousePosition, followCamera))
+                {
+                    director.Stop(); // Flew to the banner's big moment.
+                }
+                else if (mousePressed && autoButton is not null && autoButton.Contains(mousePosition))
+                {
+                    director.Toggle();
+                    if (director.IsOn)
+                        followCamera.Release();
+                }
+                else if (Build.SpeedControls && mousePressed && speedDownButton.Contains(mousePosition))
+                    DecreaseTimeScale();
+                else if (Build.SpeedControls && mousePressed && speedUpButton.Contains(mousePosition))
+                    IncreaseTimeScale();
+                else if (mousePressed && historyButton.Contains(mousePosition))
+                    ToggleChronicle();
+                else if (_showChronicle)
+                {
+                    // The History screen scrolls instead (see DrawChronicle).
+                }
+                else if (mousePressed && TapLogButton(mousePosition))
+                {
+                    // Showed more, less or none of the log.
+                }
+                else if (mousePressed && TapStatsButton(mousePosition))
+                {
+                    // Showed or hid the stats bar.
+                }
+                else if (mousePressed && TapAlertsButton(mousePosition))
+                {
+                    // Showed or hid the alert banners.
+                }
+                else if (mousePressed && overlayButtons is not null && overlayButtons.Any(o => o.Button.Contains(mousePosition)))
+                {
+                    World.Overlays ^= overlayButtons.First(o => o.Button.Contains(mousePosition)).Flag;
+                    Preferences.Set(OverlaySetting, World.Overlays);
+                }
+                else if (mousePressed && TapClanLabel(mousePosition, world))
+                {
+                    // Opened the clan card from its name tag.
+                }
+                else if (mousePressed && mapButton.Contains(mousePosition))
                 {
                     director.Stop();
-                    followCamera.Release();
-                    _timeScale = 1f;
-                    play.Begin(chosen, camera, world);
-                    playing = true;
+                    followCamera.ShowWholeMap();
                 }
-            }
-            else if (mousePressed && followButton is not null && followButton.Contains(mousePosition))
-                followCamera.ToggleFollow(world);
-            else
-                input.Update(camera, world);
-            if (playing)
-            {
-                play.Update(ref camera, world, rawDeltaTime);
-                if (!play.IsActive)
+                else if (mousePressed && controlButton is not null && controlButton.Contains(mousePosition))
                 {
-                    playing = false;
-                    if (!followCamera.IsFollowing)
-                        followCamera.ToggleFollow(world); // Back to watching it from above.
+                    if (world.SelectedKin is { IsDead: false } chosen)
+                    {
+                        director.Stop();
+                        followCamera.Release();
+                        _timeScale = 1f;
+                        play.Begin(chosen, camera, world);
+                        playing = true;
+                    }
                 }
-            }
-            else
-            {
-                followCamera.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture);
-                director.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture || followCamera.IsBusy);
-            }
+                else if (mousePressed && followButton is not null && followButton.Contains(mousePosition))
+                    followCamera.ToggleFollow(world);
+                else
+                    input.Update(camera, world);
+                if (playing)
+                {
+                    play.Update(ref camera, world, rawDeltaTime);
+                    if (!play.IsActive)
+                    {
+                        playing = false;
+                        if (!followCamera.IsFollowing)
+                            followCamera.ToggleFollow(world); // Back to watching it from above.
+                    }
+                }
+                else
+                {
+                    followCamera.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture);
+                    director.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture || followCamera.IsBusy);
+                }
 
-            // 2) Simulation, in fixed steps (see StepSimulation).
-            long simStart = System.Diagnostics.Stopwatch.GetTimestamp();
-            StepSimulation(world, rawDeltaTime);
-            _simMs += (System.Diagnostics.Stopwatch.GetElapsedTime(simStart).TotalMilliseconds - _simMs) * 0.05;
-            long drawStart = System.Diagnostics.Stopwatch.GetTimestamp();
-            UpdateBanners(world, Raylib.GetFrameTime());
+                // 2) Simulation, in fixed steps (see StepSimulation).
+                long simStart = System.Diagnostics.Stopwatch.GetTimestamp();
+                if (!_confirmMenu)
+                    StepSimulation(world, rawDeltaTime); // (the garden waits while the question is open)
+                _simMs += (System.Diagnostics.Stopwatch.GetElapsedTime(simStart).TotalMilliseconds - _simMs) * 0.05;
+                long drawStart = System.Diagnostics.Stopwatch.GetTimestamp();
+                UpdateBanners(world, Raylib.GetFrameTime());
 
-            // 3) Rendering.
-            Raylib.BeginDrawing();
-            Raylib.ClearBackground(world.SkyColor);
+                // 3) Rendering.
+                Raylib.BeginDrawing();
+                Raylib.ClearBackground(world.SkyColor);
 
-            Raylib.BeginMode3D(camera);
-            ProceduralView.Eye = camera.Position;
-            ProceduralView.Focus = camera.Target;
-            ProceduralView.FovDegrees = camera.FovY;
-            ProceduralView.Aspect = Raylib.GetScreenWidth() / (float)Math.Max(1, Raylib.GetScreenHeight());
-            world.Draw(camera);
-            Raylib.EndMode3D();
-            DrawNight(camera, world);
+                Raylib.BeginMode3D(camera);
+                ProceduralView.Eye = camera.Position;
+                ProceduralView.Focus = camera.Target;
+                ProceduralView.FovDegrees = camera.FovY;
+                ProceduralView.Aspect = Raylib.GetScreenWidth() / (float)Math.Max(1, Raylib.GetScreenHeight());
+                world.Draw(camera);
+                Raylib.EndMode3D();
+                DrawNight(camera, world);
 
-            // 2D overlay (UI) is drawn after EndMode3D so it sits on top.
-            DrawClanLabels(camera, world);
-            DrawStatusBars(camera, world);
-            DrawNameTag(camera, world);
-            DrawFloatingTexts(camera, world);
-            if (playing)
-            {
-                play.DrawHud(world);
+                // 2D overlay (UI) is drawn after EndMode3D so it sits on top.
+                DrawClanLabels(camera, world);
+                if (!Detail.FarView)
+                    DrawStatusBars(camera, world);
+                DrawNameTag(camera, world);
+                DrawFloatingTexts(camera, world);
+                if (playing)
+                {
+                    play.DrawHud(world);
+                    Raylib.EndDrawing();
+                    _drawMs += (System.Diagnostics.Stopwatch.GetElapsedTime(drawStart).TotalMilliseconds - _drawMs) * 0.05;
+                    if (DebugShot.Finished())
+                        break;
+                    world.CommitPendingChanges();
+                    continue;
+                }
+                if (Build.SpeedControls)
+                {
+                    speedDownButton.Draw("-", highlighted: false, disabled: _timeScale <= TimeScaleSteps[0]);
+                    DrawSpeedLabel(speedLabelBounds, uiScale);
+                    speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
+                }
+                mapButton.Draw("Map", highlighted: false);
+                historyButton.Draw("History", highlighted: _showChronicle);
+                menuButton.Draw("Menu", highlighted: false);
+                if (overlayButtons is not null)
+                    foreach (var (button, label, flag) in overlayButtons)
+                        button.Draw(label, highlighted: World.Overlays.HasFlag(flag));
+                autoButton?.Draw("Auto", highlighted: director.IsOn);
+                if (!_showChronicle)
+                    DrawKinPanel(world); // The History screen covers it (its header names the selected clan).
+                followButton?.Draw(followCamera.IsFollowing ? "Following" : "Follow", highlighted: followCamera.IsFollowing);
+                controlButton?.Draw("Control", highlighted: false);
+                int hudTop = DrawHud(world);
+                int captionHeight = director.Caption is null ? 0 : ScaledFontSize(0.55f) + 2 * ((int)(10 * UiScale) + 2) + 6;
+                DrawBanner((int)(speedButtonMargin * 2 + speedButtonHeight) + captionHeight);
+                if (!_showChronicle)
+                    DrawDirectorCaption(director, (int)(speedButtonMargin * 2 + speedButtonHeight));
+                if (_showChronicle)
+                    DrawChronicle(world, top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
+                else if (Build.Diagnostics)
+                    DrawDebugConsole(top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
+                if (_confirmMenu)
+                    DrawMenuConfirm(uiScale);
+
                 Raylib.EndDrawing();
                 _drawMs += (System.Diagnostics.Stopwatch.GetElapsedTime(drawStart).TotalMilliseconds - _drawMs) * 0.05;
+                if (PerfLog && (_perfClock += rawDeltaTime) >= 2f)
+                {
+                    _perfClock = 0f;
+                    Console.WriteLine($"[PERF] speed {_timeScale}x (running {_achievedSpeed:0.0}x), {Raylib.GetFPS()} fps, sim {_simMs:0.0} ms, draw {_drawMs:0.0} ms");
+                }
                 if (DebugShot.Finished())
                     break;
+                if (leaveToMenu)
+                    break;
+
+                // 4) Deferred spawns/removals: applied once here, after this
+                //    frame's Update() and Draw() have both fully run, so no
+                //    entity list ever changes size while something is iterating
+                //    it (an arrival mid-Colony-update, a kill mid-pounce, etc).
                 world.CommitPendingChanges();
-                continue;
+
+                // 5) Autosave, between frames (see World.ToSave).
+                autosaveTimer -= Raylib.GetFrameTime();
+                if (autosaveTimer <= 0f)
+                {
+                    autosaveTimer = AutosaveInterval;
+                    SaveSystem.Save(world, GardenPath);
+                }
             }
-            speedDownButton.Draw("-", highlighted: false, disabled: _timeScale <= TimeScaleSteps[0]);
-            DrawSpeedLabel(speedLabelBounds, uiScale);
-            speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
-            mapButton.Draw("Map", highlighted: false);
-            historyButton.Draw("History", highlighted: _showChronicle);
-            if (overlayButtons is not null)
-                foreach (var (button, label, flag) in overlayButtons)
-                    button.Draw(label, highlighted: World.Overlays.HasFlag(flag));
-            autoButton?.Draw("Auto", highlighted: director.IsOn);
-            newGardenButton?.Draw(_newGardenConfirm > 0f ? "Sure?" : "New", highlighted: _newGardenConfirm > 0f);
-            gardenSlotButton?.Draw($"Garden {_gardenSlot}", highlighted: false);
-            terrainButton?.Draw(TerrainData.GrowNewGardens ? "Random" : "Fixed", highlighted: TerrainData.GrowNewGardens);
-            if (!_showChronicle)
-                DrawKinPanel(world); // The History screen covers it (its header names the selected clan).
-            followButton?.Draw(followCamera.IsFollowing ? "Following" : "Follow", highlighted: followCamera.IsFollowing);
-            controlButton?.Draw("Control", highlighted: false);
-            int hudTop = DrawHud(world);
-            int captionHeight = director.Caption is null ? 0 : ScaledFontSize(0.55f) + 2 * ((int)(10 * UiScale) + 2) + 6;
-            DrawBanner((int)(speedButtonMargin * 2 + speedButtonHeight) + captionHeight);
-            if (!_showChronicle)
-                DrawDirectorCaption(director, (int)(speedButtonMargin * 2 + speedButtonHeight));
-            if (_showChronicle)
-                DrawChronicle(world, top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
-            else
-                DrawDebugConsole(top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
 
-            Raylib.EndDrawing();
-            _drawMs += (System.Diagnostics.Stopwatch.GetElapsedTime(drawStart).TotalMilliseconds - _drawMs) * 0.05;
-            if (DebugShot.Finished())
-                break;
-
-            // 4) Deferred spawns/removals: applied once here, after this
-            //    frame's Update() and Draw() have both fully run, so no
-            //    entity list ever changes size while something is iterating
-            //    it (an arrival mid-Colony-update, a kill mid-pounce, etc).
-            world.CommitPendingChanges();
-
-            // 5) Autosave, between frames (see World.ToSave).
-            autosaveTimer -= Raylib.GetFrameTime();
-            if (autosaveTimer <= 0f)
+            SaveSystem.Save(world, GardenPath);
+            if (leaveToMenu)
             {
-                autosaveTimer = AutosaveInterval;
-                SaveSystem.Save(world, GardenPath);
+                ClearBanners();
+                _showChronicle = false;
+                _simulationBacklog = 0f;
+                _confirmMenu = false;
             }
-        }
-
-        SaveSystem.Save(world, GardenPath);
+        } while (leaveToMenu);
+        MusicPlayer.Shutdown();
         Raylib.CloseWindow();
     }
 
@@ -1464,13 +1493,16 @@ public static partial class Game
         int DrawStatsButton(int barTop)
         {
             _statsButtonBounds = new Rectangle(10, barTop - 10 - statsHeight, statsWidth, statsHeight);
-            bool statsHovered = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), _statsButtonBounds);
-            Raylib.DrawRectangleRec(_statsButtonBounds, new Color(0, 0, 0, statsHovered ? 190 : 150));
-            Raylib.DrawRectangleLinesEx(_statsButtonBounds, 2f, new Color(255, 255, 255, 110));
-            Raylib.DrawText(statsLabel, (int)_statsButtonBounds.X + statsPad, (int)_statsButtonBounds.Y + statsPad, statsFont, Color.RayWhite);
+            if (Build.Diagnostics)
+            {
+                bool statsHovered = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), _statsButtonBounds);
+                Raylib.DrawRectangleRec(_statsButtonBounds, new Color(0, 0, 0, statsHovered ? 190 : 150));
+                Raylib.DrawRectangleLinesEx(_statsButtonBounds, 2f, new Color(255, 255, 255, 110));
+                Raylib.DrawText(statsLabel, (int)_statsButtonBounds.X + statsPad, (int)_statsButtonBounds.Y + statsPad, statsFont, Color.RayWhite);
+            }
 
-            // The Alerts switch sits beside it.
-            _alertsButtonBounds = new Rectangle(_statsButtonBounds.X + statsWidth + 10, _statsButtonBounds.Y, Raylib.MeasureText("Alerts: off", statsFont) + statsPad * 2, statsHeight);
+            // The Alerts switch sits beside it (in a Release build, which has no Stats button, in its place).
+            _alertsButtonBounds = new Rectangle(Build.Diagnostics ? _statsButtonBounds.X + statsWidth + 10 : _statsButtonBounds.X, _statsButtonBounds.Y, Raylib.MeasureText("Alerts: off", statsFont) + statsPad * 2, statsHeight);
             bool alertsHovered = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), _alertsButtonBounds);
             Raylib.DrawRectangleRec(_alertsButtonBounds, new Color(0, 0, 0, alertsHovered ? 190 : 150));
             Raylib.DrawRectangleLinesEx(_alertsButtonBounds, 2f, new Color(255, 255, 255, 110));
@@ -1478,8 +1510,8 @@ public static partial class Game
             return (int)_statsButtonBounds.Y;
         }
 
-        if (_statsView == StatsView.Hidden)
-            return DrawStatsButton(Raylib.GetScreenHeight() - barHeight);
+        if (_statsView == StatsView.Hidden || !Build.Diagnostics)
+            return DrawStatsButton(Raylib.GetScreenHeight() - (Build.Diagnostics ? barHeight : 0));
 
         int living = world.Colony.Count(b => !b.IsDead);
         int solitary = world.Colony.Count(b => !b.IsDead && b.GroupId is null);

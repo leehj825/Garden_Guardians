@@ -48,7 +48,7 @@ public sealed class FoodShard
     /// <summary>True while a Bramblekin is holding it; carried Food is hidden from the map and from every search.</summary>
     public bool IsCarried { get; set; }
 
-    /// <summary>Where it came from. Only affects colour.</summary>
+    /// <summary>Where it came from. Only affects how it looks.</summary>
     public FoodShardKind Kind { get; private set; }
 
     /// <summary>
@@ -106,23 +106,18 @@ public sealed class FoodShard
         ClaimedBy = null;
     }
 
-    /// <summary>Draws the Food resting on the ground at (or carried above) <paramref name="groundPoint"/>.</summary>
+    /// <summary>Draws the Food resting on the ground at (or carried above) <paramref name="groundPoint"/>: a model from Assets/Models/Props/Loose.glb (the mushroom and the cress are still drawn plainly).</summary>
     public void Draw(Vector3 groundPoint)
     {
+        // Each piece lies its own way (no two berries in a row look copied), the same every frame.
+        float yaw = (Position.X * 91.7f + Position.Z * 57.3f) % 360f;
         switch (Kind)
         {
             case FoodShardKind.Acorn:
-                // A little acorn: a tan nut under a darker cap.
-                Detail.Sphere(groundPoint + new Vector3(0, Radius, 0), Radius, new Color(176, 116, 52, 255));
-                Raylib.DrawCylinder(groundPoint + new Vector3(0, Radius * 1.3f, 0), Radius * 0.6f, Radius * 1.05f, Radius * 0.6f, 8, new Color(112, 90, 60, 255));
+                LooseModels.Draw(LooseModels.Kind.Acorn, groundPoint, yaw, 1f, Color.White);
                 return;
             case FoodShardKind.Seed:
-                // Three golden grains.
-                for (int i = 0; i < 3; i++)
-                {
-                    float angle = i * MathF.Tau / 3f;
-                    Detail.Sphere(groundPoint + new Vector3(MathF.Cos(angle) * 0.08f, 0.07f, MathF.Sin(angle) * 0.08f), 0.075f, new Color(225, 190, 95, 255));
-                }
+                LooseModels.Draw(LooseModels.Kind.Seed, groundPoint, yaw, 1f, Color.White);
                 return;
             case FoodShardKind.Mushroom:
                 // A pale stem under a russet cap.
@@ -136,18 +131,15 @@ public sealed class FoodShard
                 Detail.Sphere(groundPoint + new Vector3(-0.08f, 0.08f, -0.05f), 0.08f, new Color(120, 205, 85, 255));
                 return;
             case FoodShardKind.Fish:
-                // A little silver fish: a body and a tail.
-                Detail.Sphere(groundPoint + new Vector3(0.05f, 0.08f, 0), 0.08f, new Color(180, 195, 205, 255));
-                Detail.Sphere(groundPoint + new Vector3(-0.06f, 0.07f, 0), 0.06f, new Color(160, 175, 190, 255));
-                Raylib.DrawCylinderEx(groundPoint + new Vector3(-0.1f, 0.07f, 0), groundPoint + new Vector3(-0.22f, 0.07f, 0), 0.02f, 0.07f, 4, new Color(140, 155, 170, 255));
+                LooseModels.Draw(LooseModels.Kind.Fish, groundPoint, yaw, 1f, Color.White);
                 return;
             case FoodShardKind.Honeydew:
-                // A glossy amber drop.
-                Detail.Sphere(groundPoint + new Vector3(0, 0.1f, 0), 0.12f, new Color(235, 180, 60, 255));
-                Detail.Sphere(groundPoint + new Vector3(0.03f, 0.15f, 0.03f), 0.04f, new Color(255, 235, 170, 255));
+                LooseModels.Draw(LooseModels.Kind.Honeydew, groundPoint, yaw, 1f, Color.White);
+                return;
+            case FoodShardKind.Berry:
+                LooseModels.Draw(LooseModels.Kind.Berry, groundPoint, yaw, 1f, Color.White);
                 return;
         }
-        Color color = Kind == FoodShardKind.Berry ? new Color(210, 40, 45, 255) : new Color(245, 150, 45, 255);
-        Detail.Sphere(groundPoint + new Vector3(0, Radius, 0), Radius, color);
+        LooseModels.Draw(LooseModels.Kind.Meat, groundPoint, yaw, 1f, Color.White);
     }
 }

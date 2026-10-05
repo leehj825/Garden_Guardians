@@ -51,12 +51,14 @@ public sealed partial class World
     {
         Detail.BeginFrame(camera);
         var (seasonTint, seasonAmount) = SeasonTint;
+        bool far = Detail.FarView; // zoomed right out: only the big, still things (see Detail.FarView)
         Terrain.Draw(seasonTint, seasonAmount);
-        DrawTrails(camera);
+        if (!far)
+            DrawTrails(camera);
         DrawGroundCover(camera, seasonTint, seasonAmount);
         if (Overlays.HasFlag(MapOverlays.ClanRange))
             DrawTerritories(camera);
-        for (int i = _splats.Count - 1; i >= 0; i--)
+        for (int i = _splats.Count - 1; i >= 0 && !far; i--)
         {
             var (position, timeLeft) = _splats[i];
             // A dark stain that fades out.
@@ -67,6 +69,8 @@ public sealed partial class World
         for (int i = GardenProps.Count - 1; i >= 0; i--)
         {
             GardenProp prop = GardenProps[i];
+            if (far && prop.Kind != GardenPropKind.Pebble)
+                continue; // (the big stones stay)
             if (IsVisible(prop.Position, camera))
                 prop.Draw();
         }
@@ -75,7 +79,10 @@ public sealed partial class World
         {
             if (!IsVisible(shelter.Position, camera))
                 continue;
-            Color? flag = shelter.GroupId is { } groupId && _groups.TryGetValue(groupId, out KinGroup? owner) ? owner.Color : null;
+            KinGroup? owner = null;
+            Color? flag = shelter.GroupId is { } groupId && _groups.TryGetValue(groupId, out owner) ? owner.Color : null;
+            if (far && owner?.Home != shelter)
+                continue; // (only a clan's main home or castle)
             shelter.Draw(flag);
         }
 
@@ -88,30 +95,36 @@ public sealed partial class World
         }
         DrawRain(camera);
         bool winter = CurrentSeason == Season.Winter;
-        foreach (Crop bush in Crops)
+        foreach (Crop bush in far ? Enumerable.Empty<Crop>() : Crops)
         {
             if (!IsVisible(bush.Position, camera))
                 continue;
             Color? stake = bush.GroupId is { } bushGroup && _groups.TryGetValue(bushGroup, out KinGroup? farmer) ? farmer.Color : null;
             bush.Draw(winter, stake);
         }
-        DrawSnares(camera);
-        DrawPens(camera);
-        DrawFeasts(camera);
-        DrawShrines(camera);
+        if (!far)
+        {
+            DrawSnares(camera);
+            DrawPens(camera);
+            DrawFeasts(camera);
+            DrawShrines(camera);
+        }
 
-        foreach (Twig twig in Twigs)
+        foreach (Twig twig in far ? Enumerable.Empty<Twig>() : Twigs)
         {
             if (twig.IsActive && !twig.IsCarried && IsVisible(twig.Position, camera))
                 twig.Draw();
         }
-        DrawMaterials(camera);
-        DrawWells(camera);
-        DrawWalls(camera);
+        if (!far)
+        {
+            DrawMaterials(camera);
+            DrawWells(camera);
+            DrawWalls(camera);
+        }
 
         // Object Pooling: most Food slots sit inactive at any given time, so
         // every loop over the pool must skip anything with IsActive false.
-        for (int i = FoodShards.Count - 1; i >= 0; i--)
+        for (int i = FoodShards.Count - 1; i >= 0 && !far; i--)
         {
             FoodShard food = FoodShards[i];
             if (food.IsActive && !food.IsCarried && IsVisible(food.Position, camera))
@@ -121,25 +134,25 @@ public sealed partial class World
         // Reverse for-loops, skipping anything marked dead this frame: its
         // removal is deferred, so without the check a creature killed a
         // moment ago would still be drawn standing there.
-        for (int i = Hornets.Count - 1; i >= 0; i--)
+        for (int i = Hornets.Count - 1; i >= 0 && !far; i--)
         {
             if (!Hornets[i].IsDead && IsVisible(Hornets[i].Position, camera))
                 Hornets[i].Draw();
         }
 
-        for (int i = Invaders.Count - 1; i >= 0; i--)
+        for (int i = Invaders.Count - 1; i >= 0 && !far; i--)
         {
             if (!Invaders[i].IsDead && IsVisible(Invaders[i].Position, camera))
                 Invaders[i].Draw();
         }
 
-        for (int i = Grubs.Count - 1; i >= 0; i--)
+        for (int i = Grubs.Count - 1; i >= 0 && !far; i--)
         {
             if (!Grubs[i].IsDead && IsVisible(Grubs[i].Position, camera))
                 Grubs[i].Draw();
         }
 
-        for (int i = Beetles.Count - 1; i >= 0; i--)
+        for (int i = Beetles.Count - 1; i >= 0 && !far; i--)
         {
             if (!Beetles[i].IsDead && IsVisible(Beetles[i].Position, camera))
                 Beetles[i].Draw();
@@ -165,20 +178,24 @@ public sealed partial class World
             }
         }
 
-        for (int i = Colony.Count - 1; i >= 0; i--)
+        for (int i = Colony.Count - 1; i >= 0 && !far; i--)
         {
             Bramblekin b = Colony[i];
             if (!b.IsDead && !b.IsOnRaft && IsKinVisible(b, camera))
                 b.Draw(this);
         }
 
-        if (Spider is { IsDead: false } spider)
-            spider.Draw();
-        DrawPebbles();
-        DrawArrows();
+        if (!far)
+        {
+            if (Spider is { IsDead: false } spider)
+                spider.Draw();
+            DrawPebbles();
+            DrawArrows();
+        }
 
         DrawWater();
-        DrawRafts();
+        if (!far)
+            DrawRafts();
         DrawCreek();
 
         // Kin Inspector: ring the selected Bramblekin, and trace its

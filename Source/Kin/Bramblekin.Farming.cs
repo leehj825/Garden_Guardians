@@ -12,6 +12,11 @@ public sealed partial class Bramblekin
     private const float FarmRange = 25f;
 
     private (Vector3 Spot, CropKind Kind)? _plantPlan;
+
+    /// <summary>Having found no spot to plant, a farmer gathers instead and looks again after this long (s).</summary>
+    private const float PlantRetrySeconds = 4f;
+
+    private float _plantRetryAt;
     private float _plantTimer;
 
     /// <summary>The crafts it knows — worked out by a clever group, then taught to every member, passed on to children, and carried along wherever it goes (see <see cref="Craft"/>).</summary>
@@ -53,13 +58,15 @@ public sealed partial class Bramblekin
             return true;
         }
 
-        if (world.WantsToPlant(group))
+        if (_animTime >= _plantRetryAt && world.WantsToPlant(group))
         {
             if (_plantPlan is null)
             {
                 CropKind kind = world.ChooseCrop(group, home);
                 if (world.FindPlantingSpot(home, kind) is { } found)
                     _plantPlan = (found, kind);
+                else
+                    _plantRetryAt = _animTime + PlantRetrySeconds; // No room: not another thirty tries (each a walk through every crop, home and well) on every step.
             }
             if (_plantPlan is var (spot, cropKind))
             {

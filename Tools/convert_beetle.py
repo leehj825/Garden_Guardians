@@ -2,6 +2,7 @@
 
     pip install numpy pillow meshoptimizer
     python3 Tools/convert_beetle.py Tools/kin_src/Beetle.glb Assets/Models/Props/Beetle.glb --preview Tools/previews/beetle_walk.png
+    python3 Tools/convert_beetle.py Ants.glb Assets/Models/Props/Ant.glb --face=-x --tris 700 --texture 512 --body-half-width 0.1 --leg-max-height 0.33   # the Tripo ant, rigged the same way
 
 Like the spider (Tools/convert_spider.py): the skeleton Tripo made does nothing, so it is thrown away and a new one built - a body bone,
 and for each of the six legs a hip and a knee - with the vertices weighted by where they lie along their leg. The clip "Walk" is
@@ -25,6 +26,7 @@ import convert_tripo_prop as tp  # noqa: E402
 from decimate_props import simplify, smooth_normals, weld  # noqa: E402
 
 BODY_HALF_WIDTH = 0.19   # beyond this to the side a vertex is leg
+LEG_MAX_HEIGHT = 9.0     # ...and below this high (the ant's feelers reach out to the side above its legs)
 SWING = math.radians(20.0)
 LIFT = math.radians(30.0)
 KNEE_LIFT = math.radians(22.0)
@@ -39,7 +41,7 @@ def build_rig(Q):
     t_along = np.zeros(n)
     best = np.full(n, 1e9)
     for side in (1, -1):
-        out = (Q[:, 2] * side > BODY_HALF_WIDTH)
+        out = (Q[:, 2] * side > BODY_HALF_WIDTH) & (Q[:, 1] < LEG_MAX_HEIGHT)
         ids = np.where(out)[0]
         xs = Q[ids, 0]
         centres = np.array([-0.4, -0.04, 0.3])
@@ -114,13 +116,19 @@ def gait(legs, time01):
 
 
 def main():
+    global BODY_HALF_WIDTH, LEG_MAX_HEIGHT
     ap = argparse.ArgumentParser()
     ap.add_argument("src")
     ap.add_argument("dst")
     ap.add_argument("--tris", type=int, default=1300)
     ap.add_argument("--texture", type=int, default=1024)
     ap.add_argument("--preview")
+    ap.add_argument("--face", choices=["+z", "-x"], default="+z", help="the way the model looks as exported (the beetle +z, the Tripo ant -x); it is turned to face +X")
+    ap.add_argument("--body-half-width", type=float, default=BODY_HALF_WIDTH, help="beyond this far to the side (the model 1 long) a vertex is leg")
+    ap.add_argument("--leg-max-height", type=float, default=LEG_MAX_HEIGHT, help="a vertex higher than this (the model 1 long, on y = 0) is not leg")
     args = ap.parse_args()
+    BODY_HALF_WIDTH = args.body_half_width
+    LEG_MAX_HEIGHT = args.leg_max_height
 
     doc, binary = tp.read_glb(args.src)
     prim = doc["meshes"][0]["primitives"][0]
@@ -141,12 +149,16 @@ def main():
     index = remap.reshape(-1).astype(np.uint32)
     nrm = smooth_normals(pos.astype(np.float32), index)
 
-    scale = 1.0 / (pos[:, 2].max() - pos[:, 2].min())          # 1 unit long
-    turn = lambda a: np.stack([a[:, 2], a[:, 1], -a[:, 0]], 1)    # the head (+Z) becomes +X
+    long_axis = 2 if args.face == "+z" else 0
+    scale = 1.0 / (pos[:, long_axis].max() - pos[:, long_axis].min())          # 1 unit long
+    if args.face == "+z":
+        turn = lambda a: np.stack([a[:, 2], a[:, 1], -a[:, 0]], 1)    # the head (+Z) becomes +X
+    else:
+        turn = lambda a: np.stack([-a[:, 0], a[:, 1], -a[:, 2]], 1)   # the head (-X) becomes +X
     Q = turn(pos) * scale
     Q[:, 1] -= Q[:, 1].min()
     nrm = turn(nrm.astype(np.float64))
-    nrm /= np.linalg.norm(nrm, axis=1, keepdims=True)
+    nrm /= np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-9)
 
     legs, joints, weights = build_rig(Q)
     for leg in legs:

@@ -18,11 +18,21 @@ public static class Detail
     /// <summary>Screen pixels covered by one meter, one meter from the camera.</summary>
     private static float _pixelsPerMeter = 1000f;
 
+    /// <summary>
+    /// True while the camera is zoomed right out (a metre at the middle of the view is under <see cref="FarMeterPixels"/> pixels): the whole-garden
+    /// view shows only what matters at that scale — the terrain, the water, the big stones and plants, the ant hill, each clan's main home and its
+    /// range — and nothing small or moving (see World.Draw).
+    /// </summary>
+    public static bool FarView { get; private set; }
+
+    private const float FarMeterPixels = 16f;
+
     /// <summary>Call once a frame, before drawing the world.</summary>
     public static void BeginFrame(Camera3D camera)
     {
         _eye = camera.Position;
         _pixelsPerMeter = Raylib.GetScreenHeight() / (2f * MathF.Tan(camera.FovY * MathF.PI / 360f));
+        FarView = Pixels(camera.Target, 1f) < FarMeterPixels;
     }
 
     /// <summary>Roughly how many pixels across something of <paramref name="radius"/> at <paramref name="at"/> looks.</summary>

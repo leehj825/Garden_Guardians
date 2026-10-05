@@ -173,10 +173,26 @@ public sealed partial class World
     /// True if something of <paramref name="radius"/> (its picture's reach) set down at <paramref name="spot"/> would overlap a crop, an aphid pen
     /// or a well already there, whatever size each has grown to.
     /// </summary>
-    private bool OverlapsLayout(Vector3 spot, float radius, float gap = 0.15f) =>
-        Crops.Any(c => GroundMover.HorizontalDistance(c.Position, spot) < c.Footprint + radius + gap) ||
-        Pens.Any(p => GroundMover.HorizontalDistance(p.Position, spot) < AphidPen.DrawRadius + radius + gap) ||
-        Wells.Any(w => GroundMover.HorizontalDistance(w.Position, spot) < Well.DrawRadius + radius + gap);
+    private bool OverlapsLayout(Vector3 spot, float radius, float gap = 0.15f)
+    {
+        // (Plain loops: this runs for every spot a farmer tries.)
+        foreach (Crop c in Crops)
+        {
+            if (GroundMover.HorizontalDistance(c.Position, spot) < c.Footprint + radius + gap)
+                return true;
+        }
+        foreach (AphidPen p in Pens)
+        {
+            if (GroundMover.HorizontalDistance(p.Position, spot) < AphidPen.DrawRadius + radius + gap)
+                return true;
+        }
+        foreach (Well w in Wells)
+        {
+            if (GroundMover.HorizontalDistance(w.Position, spot) < Well.DrawRadius + radius + gap)
+                return true;
+        }
+        return false;
+    }
 
     /// <summary>A free spot near <paramref name="home"/> for a <paramref name="kind"/> crop: open ground (or shore, for cress), clear of homes and other crops. Null if none turns up.</summary>
     public Vector3? FindPlantingSpot(Shelter home, CropKind kind)
@@ -201,7 +217,16 @@ public sealed partial class World
 
             if (!Terrain.Contains(spot, 3f) || IsBlockedOrAntZone(spot, Crop.Radius + 0.2f) || IsCramped(spot))
                 continue;
-            if (Shelters.Any(s => IsInHomeYard(s, spot, kind, home)))
+            bool inYard = false;
+            foreach (Shelter s in Shelters)
+            {
+                if (IsInHomeYard(s, spot, kind, home))
+                {
+                    inYard = true;
+                    break;
+                }
+            }
+            if (inYard)
                 continue;
             if (OverlapsLayout(spot, Crop.FootprintFor(kind, wild: false)))
                 continue;

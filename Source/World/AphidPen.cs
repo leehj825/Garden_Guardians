@@ -21,8 +21,6 @@ public sealed class AphidPen
     public const int MaxAphids = 5;
 
     private static readonly Color StemColor = new(120, 150, 60, 255);
-    private static readonly Color AphidColor = new(150, 210, 90, 255);
-    private static readonly Color AphidEyeColor = new(40, 40, 30, 255);
 
     public AphidPen(Vector3 position, Guid? groupId, int aphids)
     {
@@ -63,9 +61,10 @@ public sealed class AphidPen
             float a = phase + time * (0.12f + 0.03f * i);
             Vector3 at = World.Grounded(Position + new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r), 0.1f);
             var ahead = new Vector3(-MathF.Sin(a), 0f, MathF.Cos(a));
-            Detail.Sphere(at, 0.11f, AphidColor, Position);
-            Detail.Sphere(at + ahead * 0.1f + new Vector3(0f, 0.02f, 0f), 0.06f, AphidColor, Position);
-            Detail.Sphere(at + ahead * 0.15f + new Vector3(0f, 0.04f, 0f), 0.018f, AphidEyeColor, Position);
+            // The aphid model (Assets/Models/Props/Aphid.glb, 1 unit long, facing +Z), 0.34 m long, walking the way it ambles round. Its legs are thin: no culling.
+            Rlgl.DisableBackfaceCulling();
+            PropModels.Draw(PropModels.Prop.Aphid, at - new Vector3(0f, 0.1f, 0f), MathF.Atan2(ahead.X, ahead.Z) * 180f / MathF.PI, 0.34f, Color.White);
+            Rlgl.EnableBackfaceCulling();
         }
     }
 }

@@ -73,10 +73,21 @@ public static class Preferences
             ? parsed
             : fallback;
 
+    /// <summary>The setting <paramref name="key"/> as a number, or <paramref name="fallback"/> if it isn't set (or isn't one).</summary>
+    public static float GetNumber(string key, float fallback) =>
+        Values.TryGetValue(key, out string? value) && float.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float parsed)
+            ? parsed
+            : fallback;
+
+    /// <summary>Changes a numeric setting and saves them all (see <see cref="Set{T}"/>).</summary>
+    public static void SetNumber(string key, float value) => SetText(key, value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
+
     /// <summary>Changes a setting and saves them all straight away (quietly giving up if it can't).</summary>
-    public static void Set<T>(string key, T value) where T : struct, Enum
+    public static void Set<T>(string key, T value) where T : struct, Enum => SetText(key, value.ToString());
+
+    private static void SetText(string key, string text)
     {
-        Values[key] = value.ToString();
+        Values[key] = text;
         if (_path is null)
             return;
         try

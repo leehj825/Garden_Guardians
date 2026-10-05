@@ -16,8 +16,8 @@ public static unsafe class VillageModels
     /// <summary>Each item's height in units of its width.</summary>
     private static readonly Dictionary<VillageItem, float> OwnHeights = new()
     {
-        [VillageItem.AphidPen] = 0.366f, [VillageItem.Cistern] = 0.594f, [VillageItem.FoodSack] = 1.112f, [VillageItem.Palisade] = 0.348f,
-        [VillageItem.Poultice] = 0.814f, [VillageItem.Shield] = 1.018f, [VillageItem.Shrine] = 0.937f, [VillageItem.StoneFooting] = 0.089f,
+        [VillageItem.AphidPen] = 0.366f, [VillageItem.Cistern] = 0.594f, [VillageItem.FoodSack] = 0.964f, [VillageItem.Palisade] = 0.348f,
+        [VillageItem.Poultice] = 0.814f, [VillageItem.Shield] = 1.0f, [VillageItem.Shrine] = 0.937f, [VillageItem.StoneFooting] = 0.089f,
         [VillageItem.WaterCup] = 0.698f, [VillageItem.Well] = 0.874f, [VillageItem.ConstructionSite] = 0.559f, [VillageItem.Burrow] = 0.462f,
         [VillageItem.Hearth] = 0.353f, [VillageItem.Granary] = 1.081f,
     };

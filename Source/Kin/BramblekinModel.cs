@@ -7,7 +7,7 @@ namespace GardenGuardians;
 /// <summary>Which of the four motion-captured clips a Bramblekin is currently playing — see <see cref="BramblekinModel.ClipFor"/>.</summary>
 public enum BramblekinClip
 {
-    /// <summary>Held on the Walking clip's first frame: no need in particular, standing, eating, asleep.</summary>
+    /// <summary>The idle loop (Idle.glb): no need in particular, standing, eating, asleep.</summary>
     Idle,
     Walking,
     /// <summary>The guard's own walk, sword and shield at the ready (Sword_And_Shield_Walk): played whenever a guard or soldier moves.</summary>
@@ -34,7 +34,7 @@ public enum BramblekinClip
 
 /// <summary>
 /// The Bramblekin character rig: one shared skinned mesh (loaded once from
-/// Walking.glb, which — like the other three clips — was converted from the
+/// Male.glb / Female.glb (Tools/convert_rigged_kin.py), whose skeleton — like the clips — was converted from the
 /// Mixamo-rigged FBX to Y-up, metre-scaled glTF with Blender, since raylib
 /// has no FBX importer and assimp's mangles Mixamo pre-rotations) plus the four
 /// motion clips, each read from its own glb but replayed against the shared
@@ -98,14 +98,14 @@ internal static unsafe class BramblekinModel
         if (_ready)
             return;
 
-        _baseModel = Raylib.LoadModel(AssetPath + "Walking.glb");
-        _femaleModel = Raylib.LoadModel(AssetPath + "Walking_female.glb");
+        _baseModel = Raylib.LoadModel(AssetPath + "Male.glb");
+        _femaleModel = Raylib.LoadModel(AssetPath + "Female.glb");
         _lods[0, 0] = _baseModel;
         _lods[1, 0] = _femaleModel;
         for (int lod = 1; lod < Lods; lod++)
         {
-            _lods[0, lod] = Raylib.LoadModel(AssetPath + $"Walking_lod{lod}.glb");
-            _lods[1, lod] = Raylib.LoadModel(AssetPath + $"Walking_female_lod{lod}.glb");
+            _lods[0, lod] = Raylib.LoadModel(AssetPath + $"Male_lod{lod}.glb");
+            _lods[1, lod] = Raylib.LoadModel(AssetPath + $"Female_lod{lod}.glb");
         }
         // Same skeleton: about 4,000 triangles and a 1024 px picture, then 1,000 and 512 px, instead of 19,800 and 2048 px.
 
@@ -121,8 +121,7 @@ internal static unsafe class BramblekinModel
         _clips[BramblekinClip.PickingUp] = LoadClip("PickingUp.glb");
         _clips[BramblekinClip.Running] = LoadClip("Running.glb");
         _clips[BramblekinClip.Jump] = LoadClip("Jump.glb");
-        // No separate idle clip was supplied: holding Walking's first frame stands in for one.
-        _clips[BramblekinClip.Idle] = _clips[BramblekinClip.Walking];
+        _clips[BramblekinClip.Idle] = LoadClip("Idle.glb");
 
         _ready = true;
     }
