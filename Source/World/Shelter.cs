@@ -359,6 +359,7 @@ public sealed class Shelter
         IsCollapsed = true;
         int spilled = StoredFood;
         StoredFood = 0;
+        Stock.FromArray(null); // the materials are lost
         return spilled;
     }
 

@@ -27,9 +27,13 @@ public sealed partial class World
         return food;
     }
 
-    /// <summary>Puts <paramref name="count"/> of <paramref name="kind"/> on the ground around <paramref name="at"/>, loose for anyone to pick up (water just spills).</summary>
-    public void DropItems(ItemKind kind, Vector3 at, int count)
+    /// <summary>The most pieces dropped at once (a store's overflow, a collapsed home's food, a dead kin's pack); the rest is lost.</summary>
+    public const int MaxDropped = 10;
+
+    /// <summary>Puts up to <paramref name="count"/> (at most <see cref="MaxDropped"/>) of <paramref name="kind"/> on the ground around <paramref name="at"/>, loose for anyone to pick up (water just spills). Returns how many were dropped.</summary>
+    public int DropItems(ItemKind kind, Vector3 at, int count)
     {
+        count = Math.Min(count, MaxDropped);
         for (int i = 0; i < count; i++)
         {
             Vector3 spot = at + new Vector3((float)(Rng.NextDouble() - 0.5) * 0.9f, 0f, (float)(Rng.NextDouble() - 0.5) * 0.9f);
@@ -42,11 +46,13 @@ public sealed partial class World
             else if (kind == ItemKind.Branch)
                 ActivateMaterial(spot, MaterialKind.Branch);
         }
+        return Math.Max(0, count);
     }
 
     /// <summary>A dying Bramblekin's pack spills on the ground — everything but the water.</summary>
     private void SpillPack(Bramblekin kin)
     {
+        int room = MaxDropped; // (a full pack is up to 90 pieces: only this many are dropped in all)
         for (int slot = 0; slot < Inventory.Slots; slot++)
         {
             if (kin.Pack.KindAt(slot) is not { } kind)
@@ -54,7 +60,7 @@ public sealed partial class World
             int held = kin.Pack.CountAt(slot);
             for (int i = 0; i < held; i++)
                 kin.Pack.RemoveAt(slot);
-            DropItems(kind, kin.Position, held);
+            room -= DropItems(kind, kin.Position, Math.Min(held, room));
         }
     }
 

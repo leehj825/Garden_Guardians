@@ -356,7 +356,7 @@ public sealed partial class World
 
             int spilled = shelter.Collapse();
             if (spilled > 0)
-                ScatterFoodAround(shelter.Position, spilled, shelter.Radius + 0.3f, FoodShardKind.Berry);
+                ScatterFoodAround(shelter.Position, Math.Min(spilled, MaxDropped), shelter.Radius + 0.3f, FoodShardKind.Berry);
             Shelters.RemoveAt(i);
             if (shelter.IsBuilt)
                 SheltersCollapsed++;

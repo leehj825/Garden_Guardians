@@ -114,7 +114,7 @@ public sealed partial class World
             {
                 int spilled = other.Collapse();
                 if (spilled > 0)
-                    ScatterFoodAround(at, spilled, zone + 1f, FoodShardKind.Berry);
+                    ScatterFoodAround(at, Math.Min(spilled, MaxDropped), zone + 1f, FoodShardKind.Berry);
                 Shelters.Remove(other);
             }
         }
