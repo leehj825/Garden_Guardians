@@ -379,6 +379,7 @@ public static partial class Game
         while (!Raylib.WindowShouldClose())
         {
             float rawDeltaTime = MathF.Min(Raylib.GetFrameTime(), MaxDeltaTime);
+            MusicPlayer.Update(Raylib.GetFrameTime(), MusicPlayer.For(world), silent: _timeScale >= 10f); // (no music when sped up to 10x and over)
 
             // 0) Spectator Camera: one finger (or a held mouse button) drags
             //    to pan, two fingers twist to rotate around the current
@@ -636,6 +637,7 @@ public static partial class Game
         }
 
         SaveSystem.Save(world, GardenPath);
+        MusicPlayer.Shutdown();
         Raylib.CloseWindow();
     }
 

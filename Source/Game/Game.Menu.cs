@@ -41,6 +41,7 @@ public static partial class Game
         float armedFor = 0f;
         while (!Raylib.WindowShouldClose())
         {
+            MusicPlayer.Update(Raylib.GetFrameTime(), null, silent: false); // the main theme
             float uiScale = UiScale;
             int width = Raylib.GetScreenWidth(), height = Raylib.GetScreenHeight();
             int buttonHeight = (int)(96 * uiScale), gap = (int)(18 * uiScale), chipHeight = (int)(68 * uiScale);
