@@ -30,10 +30,12 @@ namespace GardenGuardians;
     MainLauncher = true,
     Exported = true,
     Theme = "@android:style/Theme.NoTitleBar.Fullscreen",
-    ScreenOrientation = ScreenOrientation.SensorLandscape,
+    // Upright or sideways, whichever way the phone is held (the game lays itself out again; see Game.Layout.cs).
+    ScreenOrientation = ScreenOrientation.FullSensor,
     // Handle these ourselves so rotating/resizing doesn't destroy the
     // activity (and with it the GL context and game thread).
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize |
+                           ConfigChanges.SmallestScreenSize | ConfigChanges.Density |
                            ConfigChanges.ScreenLayout | ConfigChanges.KeyboardHidden |
                            ConfigChanges.Keyboard)]
 [MetaData("android.app.lib_name", Value = "raylib")]
@@ -45,6 +47,26 @@ public class MainActivity : NativeActivity
         // thread, which immediately looks for the registered entry point.
         NativeBridge.RegisterGameMain();
         base.OnCreate(savedInstanceState);
+        WindowWatcher.Start(this);
+        AndroidAds.Start(this);
+    }
+
+    protected override void OnPause()
+    {
+        AndroidAds.Pause();
+        base.OnPause();
+    }
+
+    protected override void OnResume()
+    {
+        base.OnResume();
+        AndroidAds.Resume();
+    }
+
+    protected override void OnDestroy()
+    {
+        AndroidAds.Destroy();
+        base.OnDestroy();
     }
 }
 
@@ -59,6 +81,10 @@ internal static unsafe class NativeBridge
     // both sides share one copy of raylib's global state.
     [DllImport("raylib", EntryPoint = "gg_set_main")]
     private static extern void SetMain(delegate* unmanaged<void> entryPoint);
+
+    // Added to raylib by the native build (native/gg_resize_window.inc.c): raylib itself never learns that the phone was turned.
+    [DllImport("raylib", EntryPoint = "gg_resize_window")]
+    private static extern void ResizeWindow(int width, int height);
 
     public static void RegisterGameMain()
     {
@@ -90,6 +116,8 @@ internal static unsafe class NativeBridge
         try
         {
             Log.Info(LogTag, "Native game thread started; entering Game.Run.");
+            Game.PollNativeWindowSize = () => WindowWatcher.Current;
+            Game.ResizeNativeWindow = ResizeWindow;
             Game.Run(GamePlatform.Android);
             Log.Info(LogTag, "Game.Run returned; activity will finish.");
         }

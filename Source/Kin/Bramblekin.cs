@@ -262,8 +262,6 @@ public sealed partial class Bramblekin : ICombatant
 
     private static readonly Color AggressiveColor = new(150, 60, 45, 255);   // Thorny red-brown, blended in by Aggression.
     private static readonly Color PanicColor = new(225, 85, 60, 255);        // Alarm red.
-    private static readonly Color ThornColor = new(120, 55, 40, 255);
-    private static readonly Color BloodyThornColor = new(200, 30, 30, 255);
     private static readonly Color BannerPoleColor = new(120, 90, 50, 255);
 
     private readonly Random _rng;

@@ -89,11 +89,19 @@ public sealed class PlayControl
         Kin = null;
     }
 
-    private static float Scale => Raylib.GetScreenWidth() / 1920f;
+    private static float Scale => Game.UiScale;
 
-    private static Vector2 StickCenter => new(Raylib.GetScreenWidth() * 0.15f, Raylib.GetScreenHeight() * 0.74f);
+    /// <summary>
+    /// The Y the right-hand controls hang from (the Attack button's centre). Kept clear of the banner ad along the bottom edge; held
+    /// upright, the screen is tall, so the controls sit a fixed distance up from the bottom instead of a share of the height.
+    /// </summary>
+    private static float BaseY => MathF.Min(Raylib.GetScreenHeight() * 0.72f, Game.UiBottom - 265f * Scale);
+
+    private static Vector2 StickCenter => Game.IsPortrait
+        ? new(Raylib.GetScreenWidth() * 0.22f, BaseY - 130f * Scale)
+        : new(Raylib.GetScreenWidth() * 0.15f, MathF.Min(Raylib.GetScreenHeight() * 0.74f, Game.UiBottom - 165f * Scale));
     private static float StickRadius => 150f * Scale;
-    private static Vector2 AttackCenter => new(Raylib.GetScreenWidth() - 190f * Scale, Raylib.GetScreenHeight() * 0.72f);
+    private static Vector2 AttackCenter => new(Raylib.GetScreenWidth() - 190f * Scale, BaseY);
     private static float AttackRadius => 115f * Scale;
     private static UiButton ExitButton => new(new Rectangle(20 * Scale, 20 * Scale, 260 * Scale, 110 * Scale));
     private static UiButton KinToggle => new(new Rectangle(300 * Scale, 20 * Scale, 230 * Scale, 110 * Scale));
@@ -101,12 +109,12 @@ public sealed class PlayControl
     private bool HasShootButton => Kin is { Job: KinJob.Hunter };
 
     /// <summary>The Shoot button (a Hunter's) sits just above Attack.</summary>
-    private static Vector2 ShootCenter => new(Raylib.GetScreenWidth() - 190f * Scale, Raylib.GetScreenHeight() * 0.72f - 270f * Scale);
+    private static Vector2 ShootCenter => new(Raylib.GetScreenWidth() - 190f * Scale, BaseY - 270f * Scale);
     private static float ShootRadius => 90f * Scale;
 
     /// <summary>A row of four buttons under the Attack button, right-aligned: Jump, Run, Items and Pick up (index 0 to 3).</summary>
     private static UiButton RowButton(int index) => new(new Rectangle(
-        Raylib.GetScreenWidth() - (20 + (4 - index) * 215 + (3 - index) * 12) * Scale, Raylib.GetScreenHeight() * 0.72f + 135 * Scale, 215 * Scale, 110 * Scale));
+        Raylib.GetScreenWidth() - (20 + (4 - index) * 215 + (3 - index) * 12) * Scale, BaseY + 135 * Scale, 215 * Scale, 110 * Scale));
 
     private static UiButton JumpButton => RowButton(0);
     private static UiButton RunToggle => RowButton(1);
@@ -124,12 +132,12 @@ public sealed class PlayControl
     /// <summary>The Bag's backing panel, grid and a caption line included.</summary>
     private static Rectangle BagPanel => new(BagX - 24 * Scale, BagY - 70 * Scale, InventoryUi.GridSize(BagBox, BagGap) + 48 * Scale, InventoryUi.GridSize(BagBox, BagGap) + 100 * Scale);
 
-    private static UiButton JobToggle => new(new Rectangle(Raylib.GetScreenWidth() - 620 * Scale, Raylib.GetScreenHeight() * 0.72f - 55 * Scale, 300 * Scale, 110 * Scale));
+    private static UiButton JobToggle => new(new Rectangle(Raylib.GetScreenWidth() - 620 * Scale, BaseY - 55 * Scale, 300 * Scale, 110 * Scale));
 
     private static string JobLabel(KinJob job) => job switch { KinJob.Hunter => "Hunter", KinJob.Swordsman => "Swordsman", KinJob.Spearman => "Spearman", KinJob.Fisher => "Fisher", _ => "Normal" };
 
     /// <summary>The part of the screen where a touch takes the stick: the lower left.</summary>
-    private static bool InStickZone(Vector2 point) => point.X < Raylib.GetScreenWidth() * 0.42f && point.Y > Raylib.GetScreenHeight() * 0.3f;
+    private static bool InStickZone(Vector2 point) => point.X < Raylib.GetScreenWidth() * (Game.IsPortrait ? 0.5f : 0.42f) && point.Y > Raylib.GetScreenHeight() * (Game.IsPortrait ? 0.45f : 0.3f);
 
     /// <summary>Reads the touches and keys, steers the kin and places the camera. Call once a frame while <see cref="IsActive"/>.</summary>
     public void Update(ref Camera3D camera, World world, float deltaTime)
@@ -359,8 +367,9 @@ public sealed class PlayControl
 
         // Status.
         int font = (int)(40 * s);
-        int x = (int)(550 * s);
-        int y = (int)(24 * s);
+        // Upright there is no room beside the two buttons: the status goes on a line of its own under them.
+        int x = Game.IsPortrait ? (int)(24 * s) : (int)(550 * s);
+        int y = Game.IsPortrait ? (int)(150 * s) : (int)(24 * s);
         Raylib.DrawText($"{kin.Name}   Health {kin.Health}/{kin.HealthCap}", x, y, font, Color.White);
         Raylib.DrawText($"Hunger {(int)kin.Hunger}%   Thirst {(int)kin.Thirst}%", x, y + (int)(font * 1.15f), font, kin.IsHungry || kin.IsThirsty ? new Color(255, 190, 120, 255) : Color.White);
         if (kin.PlayerHint is { } hint)

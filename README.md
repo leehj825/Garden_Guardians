@@ -31,4 +31,6 @@ GitHub Actions builds the Android APKs automatically:
 - `debug-build.yml` runs on every push to a branch other than `main` and uploads a debug APK.
 - `release-build.yml` runs on every push to `main` and uploads a signed APK. It needs the `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` repository secrets.
 
+The game plays upright (portrait) or sideways (landscape) and lays itself out again when the screen changes; `GARDEN_SIZE=720x1280` opens the desktop window at another shape and `GARDEN_AD_TEST=1` draws a stand-in for the banner ad. On Android a Google AdMob banner (Google's test ids until the real ones go in `Platforms/Android/AdConfig.cs`) lies along the bottom while a garden is shown.
+
 On Android the same C# game loop runs inside a `NativeActivity`. See `Platforms/Android/MainActivity.cs` for how it starts up.

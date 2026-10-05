@@ -145,17 +145,6 @@ public sealed partial class Bramblekin
 
         if (props)
         {
-
-
-            if (State is BramblekinState.Fighting or BramblekinState.Attacking or BramblekinState.Hunting or BramblekinState.Dueling && Job is not (KinJob.Swordsman or KinJob.Raider or KinJob.Hunter))
-            {
-                Color thornColor = State == BramblekinState.Attacking ? BloodyThornColor : ThornColor;
-                var grip = Position + new Vector3(0, BodyHeight * 0.6f, 0);
-                var tip = grip + new Vector3(facing.X, 0.55f, facing.Y) * 0.6f;
-                Raylib.DrawLine3D(grip, tip, thornColor);
-                Detail.Sphere(tip, 0.025f, thornColor);
-            }
-
             if (State == BramblekinState.Fishing && _fishingSpot is { } spot && GroundMover.HorizontalDistanceSquared(Position, spot) < 1f)
                 DrawFishingRod(facing);
             if (State == BramblekinState.Healing)

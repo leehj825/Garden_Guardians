@@ -48,8 +48,8 @@ stick, attack). See `Garden_Guardians_Design.md` for the full current design.
     rather than a fixed 1280×720 virtual canvas letterboxed to fit —
     every UI/culling call reads `Raylib.GetScreenWidth()/GetScreenHeight()`
     dynamically, so it fills whatever size that turns out to be.
-    Landscape orientation is locked via `MainActivity`'s
-    `ScreenOrientation` attribute.
+    The activity follows the sensor (`ScreenOrientation.FullSensor`: upright
+    or sideways, see Phase 44).
 *   ✅ **CI:** GitHub Actions builds a debug APK on every push to a
     branch other than `main`; pushes to `main` build a keystore-signed
     release APK.
@@ -1353,3 +1353,23 @@ matter most:
 **Background music:** four tracks in `Assets/Audio/Music` (Ogg, converted from the supplied m4a files, about 7.6 MB), streamed by `Source/Engine/MusicPlayer.cs`: the main theme (the menu, and spring and summer days), `AutumnWinter` (autumn and winter days), `NightTime` (after dark) and `InvasionCombat` (spider invasion, an assault on the ant hill, or four or more kin fighting at once). The track changes by crossfade and is kept at least 25 s (a fight's music starts at once). At 10x, 20x and 50x there is no music: it fades out and carries on from where it was when the speed comes down. A device with no sound output just plays nothing.
 
 **Settings page and Menu button:** the start menu has a Settings button (top right) opening a page with the music volume (tap or drag the bar, or - and +; in steps of 5 %, kept in settings.txt as `musicvolume`), with the music playing so the change can be heard. The game page has a small Menu button after Auto: it asks "Back to the main menu?" (the garden waits while the question is open), and Yes saves the garden and returns to the start menu (`Source/Game/Game.Settings.cs`; the main loop is now inside a loop that goes round again on Yes).
+
+## Phase 44: Upright and Sideways, and a Banner Ad
+*   ✅ **The game plays in portrait as well as landscape** (2026-10-05) and follows the screen when it changes (a phone turned, a window
+    resized): the activity is `FullSensor`, and every panel and button is laid out from the current screen size each frame. One scale factor
+    (`UiScale`: 1920 units across when wide, 1200 when tall); in portrait the top buttons wrap onto a second row, the map-guide toggles run across
+    the screen, and the Kin Inspector takes the full width under them. Menus, loading, settings, the History screen, alert banners, the Director's
+    caption and the controls for taking a Bramblekin's wheel all fit either way. See "Upright and Sideways" in the Design doc.
+*   ✅ **raylib follows the rotation:** raylib 6.0's Android backend never learns of it, so `native/gg_resize_window.inc.c` (appended to
+    `rcore_android.c` by `build-raylib.sh`) adds `gg_resize_window`, and `WindowWatcher` + `Game.SyncWindowSize` call it when the window's size
+    changes. System bars and a camera notch are read as insets (`ScreenInsets`) and kept clear of.
+*   ✅ **Banner ad (Google AdMob)** along the bottom while a garden is shown (not on the menu, settings or loading screen), with the UI kept clear
+    of it (`Game.UiBottom`); ids are Google's test ids until the real ones are put in `Platforms/Android/AdConfig.cs`. The Android project now
+    references `Xamarin.GooglePlayServices.Ads` 123.6.0.1 and asks for the internet permission. The monetization plan (rewarded video, a one-time
+    "Remove ads", cosmetics) is in the Design doc.
+*   ✅ **The thorn is gone:** the old red-tipped stick held out in front of any kin that was fighting, attacking, hunting or dueling (unless a
+    Swordsman, Raider or Hunter), seen as a red dot and a line in front of the face (picking up while controlled showed it too). Every job now
+    has real gear and clips, so nothing is drawn but the gear itself.
+*   ⬜ **Not yet:** the consent form for the EEA and the UK, the privacy policy, and the real AdMob ids (see the Design doc); an adaptive banner
+    (it fills the width and pays a little more); rewarded video and "Remove ads". The Android parts (rotation, the ad) could only be built by CI,
+    not on the machine they were written on; they need trying on a phone.
