@@ -93,6 +93,10 @@ public sealed partial class Bramblekin
     /// </summary>
     public void SetPlayerControlled(bool on, World world)
     {
+        if (on)
+            Sfx.Listener = this;
+        else if (Sfx.Listener == this)
+            Sfx.Listener = null;
         if (on && !IsPlayerControlled)
         {
             AwayGroupId = GroupId;

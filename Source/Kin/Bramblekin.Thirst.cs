@@ -195,8 +195,6 @@ public sealed partial class Bramblekin
     /// <summary>Drunk its fill at the pond or a well: a cupful for home, if it knows cisterns and home's isn't full.</summary>
     private void FinishDrinkingFill(World world)
     {
-        if (IsHeard(world))
-            Sfx.Play(Sfx.Effect.Drink);
         Pack.Add(ItemKind.Water, BottlesPerDrink); // it tops its bottles up while it's there
         _waterSpot = null;
         _drinkWell = null;

@@ -76,8 +76,6 @@ public sealed partial class Bramblekin
         _drinkFrom = null;
         _drinkTimer = 0f;
         StartAction(BramblekinClip.PickingUp, lockMovement: true);
-        if (IsHeard(world))
-            Sfx.Play(Sfx.Effect.Drink);
         StartPause();
         return true;
     }

@@ -227,12 +227,9 @@ public sealed partial class Bramblekin
             _nextBlowIsAttack = !_nextBlowIsAttack;
         }
         StartAction(clip, lockMovement: true);
-        if (clip != BramblekinClip.AimRecoil && IsHeard(world))
-            Sfx.Play(Sfx.Effect.SwordSpear);
+        if (clip != BramblekinClip.AimRecoil)
+            Sfx.PlayNear(Sfx.Effect.SwordSpear, Position);
     }
-
-    /// <summary>Whether its sounds are played: the kin the player controls or is watching.</summary>
-    private bool IsHeard(World world) => IsPlayerControlled || world.SelectedKin == this;
 
     /// <summary>The action clip the kin's state and job call for while it stands still, if any: blows, stabs, aiming and picking things up. Null: nothing but the usual clips.</summary>
     private BramblekinClip? ActionWanted(World world)
