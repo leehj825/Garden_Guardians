@@ -5,10 +5,10 @@
 
 Run it once, on the clips as converted (it works on the rotations of the file in place; the files keep their size).
 
-PickingUp.glb: the Mixamo clip spreads both arms out to the sides. In every frame the two arms are set so they hang straight down in the
-  world, as they do in the standing Idle pose, however far the body bends - so while the kin folds over, the hands drop to the ground in front
-  of it. The forearms and hands keep Idle's slight bend (the shoulders, forearms and hands are Idle's own rotations).
-Jump.glb: the clip throws the legs back and out. In every frame the thighs are brought forward ~HIP degrees from Idle's standing legs and the
+PickingUp.glb: the Mixamo clip spreads both arms out to the sides and bends the legs oddly. In every frame the two arms are set so they hang
+  straight down in the world, as they do in the standing Idle pose, however far the body bends - so while the kin folds over, the hands drop to
+  the ground in front of it - and the legs stand straight under the hips as in Idle (the shoulders, forearms and hands are Idle's own rotations).
+Jump.glb: the arms are held as in Idle (hanging at the sides), the clip's own arm movements dropped. The clip throws the legs back and out. In every frame the thighs are brought forward ~HIP degrees from Idle's standing legs and the
   shins back ~KNEE degrees, in the kin's own forward direction, so the knees are bent a little and the feet tucked up under it; the feet are
   held flat as in Idle.
 """
@@ -157,18 +157,29 @@ def copy_idle(rig, idle, names):
             view[:] = first
 
 
+def hold_world(rig, idle, standing, names):
+    """In every frame, each of <names> (parents first) keeps the world orientation it has in Idle, whatever the body above it does."""
+    for frame in range(rig.frames):
+        for name in names:
+            parent = rig.world(frame)[rig.parent[rig.index[name]]][0]
+            set_rotation(rig, name, frame, mat_to_quat(parent.T @ standing[idle.index[name]][0]))
+
+
+def fix_arms(rig, idle, standing):
+    """Arms hanging straight down at the sides, as in Idle, in every frame."""
+    sides = ("Left", "Right")
+    copy_idle(rig, idle, [s + p for s in sides for p in ("Shoulder", "ForeArm", "Hand")])
+    hold_world(rig, idle, standing, [s + "Arm" for s in sides])
+
+
 def fix_pickup(folder):
     rig, idle = Rig(f"{folder}/PickingUp.glb"), Rig(f"{folder}/Idle.glb")
     sides = ("Left", "Right")
-    copy_idle(rig, idle, [s + p for s in sides for p in ("Shoulder", "ForeArm", "Hand")])
     standing = idle.world(0)
-    for frame in range(rig.frames):
-        w = rig.world(frame)
-        for side in sides:
-            arm = side + "Arm"
-            parent = w[rig.parent[rig.index[arm]]][0]
-            hanging = standing[idle.index[arm]][0]  # the arm as it stands in Idle: hanging straight down
-            set_rotation(rig, arm, frame, mat_to_quat(parent.T @ hanging))
+    fix_arms(rig, idle, standing)
+    # The legs stand straight under the hips as in Idle (the clip bends them oddly as the body folds over).
+    copy_idle(rig, idle, [s + p for s in sides for p in ("ToeBase", "Toe_End")])
+    hold_world(rig, idle, standing, [s + p for s in sides for p in ("UpLeg", "Leg", "Foot")])
     open(f"{folder}/PickingUp.glb", "wb").write(rig.raw)
 
 
@@ -203,6 +214,7 @@ def fix_jump(folder):
             set_rotation(rig, leg, frame, mat_to_quat(thigh.T @ shin))
             set_rotation(rig, foot, frame, mat_to_quat(shin.T @ flat))
     copy_idle(rig, idle, [s + "ToeBase" for s in sides] + [s + "Toe_End" for s in sides])
+    fix_arms(rig, idle, standing)  # (the arms are left as they are standing, not thrown about)
     open(f"{folder}/Jump.glb", "wb").write(rig.raw)
 
 
