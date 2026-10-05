@@ -158,7 +158,7 @@ def main():
     Q = turn(pos) * scale
     Q[:, 1] -= Q[:, 1].min()
     nrm = turn(nrm.astype(np.float64))
-    nrm /= np.linalg.norm(nrm, axis=1, keepdims=True)
+    nrm /= np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-9)
 
     legs, joints, weights = build_rig(Q)
     for leg in legs:
