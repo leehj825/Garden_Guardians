@@ -64,7 +64,7 @@ public static partial class Game
     /// (see <see cref="StepSimulation"/>), so a faster speed is more steps per
     /// frame, never bigger ones.
     /// </summary>
-    private static float _timeScale = float.TryParse(Environment.GetEnvironmentVariable("GARDEN_SPEED"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float startSpeed) ? startSpeed : 1f;
+    private static float _timeScale = Build.SpeedControls && float.TryParse(Environment.GetEnvironmentVariable("GARDEN_SPEED"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float startSpeed) ? startSpeed : 1f;
 
     /// <summary>A development aid: GARDEN_PERF=1 prints the speed the simulation manages, the frame rate and the sim and draw times every two seconds (GARDEN_SPEED=50 starts at that speed).</summary>
     private static readonly bool PerfLog = Environment.GetEnvironmentVariable("GARDEN_PERF") is not null;
@@ -392,7 +392,7 @@ public static partial class Game
                 //    Target and pinch to zoom. Runs before the tap input below
                 //    so the rest of the frame sees an already-settled camera.
                 // (The History screen takes over touches and drags while it's open.)
-                if (!_playTestDone && Environment.GetEnvironmentVariable("GARDEN_PLAY_TEST") == "1" && world.Colony.FirstOrDefault(k => !k.IsDead && !k.IsYoung && (Environment.GetEnvironmentVariable("GARDEN_PLAY_FEMALE") != "1" || k.Sex == Sex.Female) && (Environment.GetEnvironmentVariable("GARDEN_PLAY_MALE") != "1" || k.Sex == Sex.Male)) is { } testKin)
+                if (Build.KinControl && !_playTestDone && Environment.GetEnvironmentVariable("GARDEN_PLAY_TEST") == "1" && world.Colony.FirstOrDefault(k => !k.IsDead && !k.IsYoung && (Environment.GetEnvironmentVariable("GARDEN_PLAY_FEMALE") != "1" || k.Sex == Sex.Female) && (Environment.GetEnvironmentVariable("GARDEN_PLAY_MALE") != "1" || k.Sex == Sex.Male)) is { } testKin)
                 {
                     _playTestDone = true; // A development aid: start out controlling a kin.
                     if (Environment.GetEnvironmentVariable("GARDEN_PLAY_SWORDSMAN") == "1")
@@ -426,14 +426,14 @@ public static partial class Game
                 var speedDownButton = new UiButton(new Rectangle(speedButtonMargin, speedButtonMargin, speedButtonWidth, speedButtonHeight));
                 var speedUpButton = new UiButton(new Rectangle(speedButtonMargin + speedButtonWidth + speedButtonGap, speedButtonMargin, speedButtonWidth, speedButtonHeight));
                 var speedLabelBounds = new Rectangle(speedButtonMargin + speedButtonWidth, speedButtonMargin, speedButtonGap, speedButtonHeight);
-                var mapButton = new UiButton(new Rectangle(speedButtonMargin * 2 + speedButtonWidth * 2 + speedButtonGap, speedButtonMargin,
+                var mapButton = new UiButton(new Rectangle(Build.SpeedControls ? speedButtonMargin * 2 + speedButtonWidth * 2 + speedButtonGap : speedButtonMargin, speedButtonMargin,
                     (int)(190 * uiScale), speedButtonHeight));
                 var historyButton = new UiButton(new Rectangle(mapButton.Bounds.X + mapButton.Bounds.Width + speedButtonMargin, speedButtonMargin,
                     (int)(290 * uiScale), speedButtonHeight));
                 UiButton? autoButton = _showChronicle ? null : new UiButton(new Rectangle(historyButton.Bounds.X + historyButton.Bounds.Width + speedButtonMargin, speedButtonMargin,
                     (int)(190 * uiScale), speedButtonHeight));
                 UiButton? followButton = _showChronicle || playing ? null : FollowButton(world);
-                UiButton? controlButton = followButton is null ? null : ControlButton(world, followButton);
+                UiButton? controlButton = followButton is null || !Build.KinControl ? null : ControlButton(world, followButton);
                 UiButton menuButton = MenuButton(autoButton?.Bounds ?? historyButton.Bounds, speedButtonMargin, speedButtonHeight, uiScale);
                 var overlayButtons = _showChronicle ? null : OverlayButtons(uiScale, speedButtonMargin * 2 + speedButtonHeight, speedButtonMargin);
 
@@ -475,9 +475,9 @@ public static partial class Game
                     if (director.IsOn)
                         followCamera.Release();
                 }
-                else if (mousePressed && speedDownButton.Contains(mousePosition))
+                else if (Build.SpeedControls && mousePressed && speedDownButton.Contains(mousePosition))
                     DecreaseTimeScale();
-                else if (mousePressed && speedUpButton.Contains(mousePosition))
+                else if (Build.SpeedControls && mousePressed && speedUpButton.Contains(mousePosition))
                     IncreaseTimeScale();
                 else if (mousePressed && historyButton.Contains(mousePosition))
                     ToggleChronicle();
@@ -579,9 +579,12 @@ public static partial class Game
                     world.CommitPendingChanges();
                     continue;
                 }
-                speedDownButton.Draw("-", highlighted: false, disabled: _timeScale <= TimeScaleSteps[0]);
-                DrawSpeedLabel(speedLabelBounds, uiScale);
-                speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
+                if (Build.SpeedControls)
+                {
+                    speedDownButton.Draw("-", highlighted: false, disabled: _timeScale <= TimeScaleSteps[0]);
+                    DrawSpeedLabel(speedLabelBounds, uiScale);
+                    speedUpButton.Draw("+", highlighted: false, disabled: _timeScale >= TimeScaleSteps[^1]);
+                }
                 mapButton.Draw("Map", highlighted: false);
                 historyButton.Draw("History", highlighted: _showChronicle);
                 menuButton.Draw("Menu", highlighted: false);
