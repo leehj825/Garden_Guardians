@@ -289,7 +289,6 @@ public sealed partial class Bramblekin : ICombatant
 
     private FoodShard? _carried;
     private FoodShard? _claimedFood;
-    private Twig? _carriedTwig;
     private Twig? _claimedTwig;
 
     /// <summary>Where it last saw a loose twig — where it looks first when it needs building material.</summary>
@@ -356,7 +355,7 @@ public sealed partial class Bramblekin : ICombatant
     public Vector3? FoodMemory => _foodMemory;
 
     /// <summary>True while it's holding a twig for building.</summary>
-    public bool HasTwig => _carriedTwig is not null;
+    public bool HasTwig => Pack.Count(ItemKind.Twig) > 0;
 
     /// <summary>Its group as World.GroupOf last found it — a lookup cache, not state (never saved).</summary>
     internal KinGroup? CachedGroup { get; set; }
@@ -611,11 +610,6 @@ public sealed partial class Bramblekin : ICombatant
         {
             World.DropFood(_carried, Position);
             _carried = null;
-        }
-        if (_carriedTwig is not null)
-        {
-            World.DropTwig(_carriedTwig, Position);
-            _carriedTwig = null;
         }
         PutDownMaterial();
         ReleaseFoodClaim();

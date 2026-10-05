@@ -147,15 +147,31 @@ public sealed partial class Bramblekin
         }
     }
 
-    // --- The clan's stock: twigs, stones and branches ------------------------------------------
+    // --- A home's store: twigs, stones and branches ----------------------------------------------
 
     /// <summary>The loose twig a gatherer is walking to (a stone or branch is <see cref="_materialTarget"/>).</summary>
     private Twig? _gatherTwig;
 
-    /// <summary>Walks to its clan's home store and takes up to <paramref name="amount"/> of <paramref name="kind"/> out of the clan's stock into its pack. False if there's none, or no room.</summary>
-    private bool TakeFromClanStock(ItemKind kind, int amount, float deltaTime, World world)
+    /// <summary>Walks to the nearest home of its clan whose store holds <paramref name="kind"/>, and takes up to <paramref name="amount"/> into its pack. False if no store has any, or the pack has no room.</summary>
+    private bool TakeFromStore(ItemKind kind, int amount, float deltaTime, World world)
     {
-        if (world.GroupOf(this) is not { Home: { IsCollapsed: false } store } group || group.Stock.Count(kind) == 0 || !Pack.CanAdd(kind))
+        if (!Pack.CanAdd(kind) || world.GroupOf(this) is not { } group)
+            return false;
+
+        Shelter? store = null;
+        float nearest = float.MaxValue;
+        foreach (Shelter home in world.GroupHomes(group))
+        {
+            if (home is not { IsBuilt: true, IsCollapsed: false } || home.Stock.Count(kind) == 0)
+                continue;
+            float distance = GroundMover.HorizontalDistanceSquared(Position, home.Position);
+            if (distance < nearest)
+            {
+                store = home;
+                nearest = distance;
+            }
+        }
+        if (store is null)
             return false;
 
         SetState(BramblekinState.Stockpiling);
@@ -165,16 +181,16 @@ public sealed partial class Bramblekin
             return true;
         }
 
-        int taken = group.Stock.Take(kind, amount);
+        int taken = store.Stock.Take(kind, amount);
         int added = Pack.Add(kind, taken);
-        group.Stock.Add(kind, taken - added); // (whatever didn't fit goes back)
+        store.Stock.Add(kind, taken - added); // (whatever didn't fit goes back)
         StartPause();
         return true;
     }
 
-    /// <summary>Whether this gatherer should collect <paramref name="kind"/> for its clan: the clan can use it, and neither its stock nor its pack is full of it.</summary>
-    private bool WantsForStock(KinGroup group, ItemKind kind) =>
-        group.Stock.Count(kind) + Pack.Count(kind) < ClanStock.MaxPerItem && Pack.CanAdd(kind) &&
+    /// <summary>Whether this gatherer should collect <paramref name="kind"/> for <paramref name="store"/>: its clan can use it, and neither the store nor the pack is full of it.</summary>
+    private bool WantsForStock(Shelter store, KinGroup group, ItemKind kind) =>
+        store.Stock.Count(kind) + Pack.Count(kind) < StoreStock.MaxPerItem && Pack.CanAdd(kind) &&
         kind switch
         {
             ItemKind.Stone => World.Knows(group, Craft.Stonework),
@@ -183,12 +199,12 @@ public sealed partial class Bramblekin
         };
 
     /// <summary>
-    /// Gatherer with nothing else to do: picks up loose twigs, stones and branches near home (up to <see cref="StockTrip"/> at a time) and
-    /// carries them to the clan's stock. False when there's nothing wanted to collect or carry.
+    /// Gatherer with nothing else to do: picks up loose twigs, stones and branches near <paramref name="store"/> (up to <see cref="StockTrip"/>
+    /// at a time) and puts them in its stock. False when there's nothing wanted to collect or carry.
     /// </summary>
-    private bool TryGatherMaterials(Shelter home, KinGroup group, float deltaTime, World world)
+    private bool TryGatherMaterials(Shelter store, KinGroup group, float deltaTime, World world)
     {
-        if (Pack.MaterialCount < StockTrip && FindGatherTarget(home, group, world))
+        if (Pack.MaterialCount < StockTrip && FindGatherTarget(store, group, world))
         {
             SetState(BramblekinState.Collecting);
             if (_gatherTwig is { } twig)
@@ -224,9 +240,9 @@ public sealed partial class Bramblekin
             return false;
 
         SetState(BramblekinState.Stockpiling);
-        if (!home.Contains(Position))
+        if (!store.Contains(Position))
         {
-            MoveTo(home.Position, WalkSpeed, deltaTime, world);
+            MoveTo(store.Position, WalkSpeed, deltaTime, world);
             return true;
         }
         foreach (ItemKind kind in new[] { ItemKind.Twig, ItemKind.Stone, ItemKind.Branch })
@@ -234,22 +250,24 @@ public sealed partial class Bramblekin
             int held = Pack.Count(kind);
             if (held == 0)
                 continue;
-            group.Stock.Add(kind, held);
-            Pack.Remove(kind, held); // (anything over the clan's cap is left behind)
+            int added = store.Stock.Add(kind, held);
+            Pack.Remove(kind, held);
+            if (added < held)
+                world.DropItems(kind, store.Position, held - added); // (what the store can't hold is left lying about)
         }
         StartPause();
         return true;
     }
 
-    /// <summary>Keeps (or picks) the loose twig, stone or branch near <paramref name="home"/> it's going for. False if there's none worth getting.</summary>
-    private bool FindGatherTarget(Shelter home, KinGroup group, World world)
+    /// <summary>Keeps (or picks) the loose twig, stone or branch near <paramref name="store"/> it's going for. False if there's none worth getting.</summary>
+    private bool FindGatherTarget(Shelter store, KinGroup group, World world)
     {
-        if (_gatherTwig is { } twig && (!World.IsAvailable(twig, this) || !WantsForStock(group, ItemKind.Twig)))
+        if (_gatherTwig is { } twig && (!World.IsAvailable(twig, this) || !WantsForStock(store, group, ItemKind.Twig)))
         {
             ReleaseTwigClaim();
             _gatherTwig = null;
         }
-        if (_materialTarget is { } material && (!material.IsActive || material.IsCarried || !WantsForStock(group, material.Kind == MaterialKind.Stone ? ItemKind.Stone : ItemKind.Branch)))
+        if (_materialTarget is { } material && (!material.IsActive || material.IsCarried || !WantsForStock(store, group, material.Kind == MaterialKind.Stone ? ItemKind.Stone : ItemKind.Branch)))
         {
             if (material.ClaimedBy == this)
                 material.ClaimedBy = null;
@@ -258,16 +276,16 @@ public sealed partial class Bramblekin
         if (_gatherTwig is not null || _materialTarget is not null)
             return true;
 
-        if (WantsForStock(group, ItemKind.Twig) && world.NearestAvailableTwig(home.Position, GatherRange, this) is { } found)
+        if (WantsForStock(store, group, ItemKind.Twig) && world.NearestAvailableTwig(store.Position, GatherRange, this) is { } found)
         {
             _gatherTwig = found;
             return true;
         }
         foreach (MaterialKind kind in Enum.GetValues<MaterialKind>())
         {
-            if (!WantsForStock(group, kind == MaterialKind.Stone ? ItemKind.Stone : ItemKind.Branch))
+            if (!WantsForStock(store, group, kind == MaterialKind.Stone ? ItemKind.Stone : ItemKind.Branch))
                 continue;
-            if (world.NearestMaterial(home.Position, kind, GatherRange, this) is { } loose)
+            if (world.NearestMaterial(store.Position, kind, GatherRange, this) is { } loose)
             {
                 _materialTarget = loose;
                 loose.ClaimedBy = this;

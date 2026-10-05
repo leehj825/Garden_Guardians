@@ -27,16 +27,34 @@ public sealed partial class World
         return food;
     }
 
-    /// <summary>A dying Bramblekin's pack spills its food on the ground.</summary>
+    /// <summary>Puts <paramref name="count"/> of <paramref name="kind"/> on the ground around <paramref name="at"/>, loose for anyone to pick up (water just spills).</summary>
+    public void DropItems(ItemKind kind, Vector3 at, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 spot = at + new Vector3((float)(Rng.NextDouble() - 0.5) * 0.9f, 0f, (float)(Rng.NextDouble() - 0.5) * 0.9f);
+            if (ItemInfo.IsFood(kind))
+                ActivateFood(spot, ItemInfo.FoodOf(kind));
+            else if (kind == ItemKind.Twig)
+                ActivateTwig(spot);
+            else if (kind == ItemKind.Stone)
+                ActivateMaterial(spot, MaterialKind.Stone);
+            else if (kind == ItemKind.Branch)
+                ActivateMaterial(spot, MaterialKind.Branch);
+        }
+    }
+
+    /// <summary>A dying Bramblekin's pack spills on the ground — everything but the water.</summary>
     private void SpillPack(Bramblekin kin)
     {
         for (int slot = 0; slot < Inventory.Slots; slot++)
         {
-            while (kin.Pack.RemoveAt(slot) is { } item)
-            {
-                if (ItemInfo.IsFood(item))
-                    ActivateFood(kin.Position, ItemInfo.FoodOf(item));
-            }
+            if (kin.Pack.KindAt(slot) is not { } kind)
+                continue;
+            int held = kin.Pack.CountAt(slot);
+            for (int i = 0; i < held; i++)
+                kin.Pack.RemoveAt(slot);
+            DropItems(kind, kin.Position, held);
         }
     }
 

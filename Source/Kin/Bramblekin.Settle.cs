@@ -47,7 +47,7 @@ public sealed partial class Bramblekin
     private float SettleDelay => MaxSettleDelay - (MaxSettleDelay - MinSettleDelay) * Personality.Intelligence;
 
     /// <summary>True while it's the one who should be fetching twigs for its home's current construction stage.</summary>
-    private bool NeedsTwig => _carriedTwig is null &&
+    private bool NeedsTwig => Pack.Count(ItemKind.Twig) == 0 &&
         ((BuildSite is not null && BuildsForHome) || _errand is { Kind: ErrandKind.Labour, Returning: false } || _hearthToFeed is not null);
 
     /// <summary>The group hearth it's fetching a twig for, as a Builder with nothing to build (see <see cref="Craft.Hearth"/>).</summary>
@@ -188,44 +188,14 @@ public sealed partial class Bramblekin
     /// <summary>Carries a twig to <paramref name="site"/>; else picks up the nearest visible one; else goes looking where twigs were last seen, or in ever-wider legs around the site.</summary>
     private void DoBuildWork(Shelter site, float deltaTime, World world)
     {
-        // Twigs in the pack (taken from the clan's store, or gathered) go to the site first; else it takes some out of the store.
-        if (_carriedTwig is null)
+        // Twigs in the pack (taken from a store, or picked up) go to the site first; else it takes some out of a store.
+        if (Pack.Count(ItemKind.Twig) > 0)
         {
-            if (Pack.Count(ItemKind.Twig) > 0)
-            {
-                DeliverPackTwig(site, deltaTime, world);
-                return;
-            }
-            if (TakeFromClanStock(ItemKind.Twig, Inventory.MaxStack, deltaTime, world))
-                return;
-        }
-
-        if (_carriedTwig is { } twig)
-        {
-            SetState(BramblekinState.Building);
-            float reach = (site.IsUpgrading ? Shelter.HouseRadius : site.Radius) + 0.3f;
-            if (GroundMover.HorizontalDistanceSquared(Position, site.Position) <= reach * reach)
-            {
-                _carriedTwig = null;
-                Train(Skill.Building, world);
-                if (site == _hearthToFeed && !site.NeedsTwigs)
-                {
-                    world.FuelHearth(site, twig);
-                    _hearthToFeed = null;
-                    StartPause();
-                }
-                else
-                {
-                    world.DeliverTwig(this, site, twig);
-                    NoteTwigDelivered(site);
-                }
-            }
-            else
-            {
-                MoveTo(site.Position, WalkSpeed, deltaTime, world);
-            }
+            DeliverPackTwig(site, deltaTime, world);
             return;
         }
+        if (TakeFromStore(ItemKind.Twig, Inventory.MaxStack, deltaTime, world))
+            return;
 
         if (ValidPerceivedTwig() is { } seen)
         {
@@ -235,7 +205,8 @@ public sealed partial class Bramblekin
             {
                 ReleaseTwigClaim();
                 World.PickUpTwig(seen);
-                _carriedTwig = seen;
+                seen.Deactivate(); // into the pack, not in hand
+                Pack.Add(ItemKind.Twig);
                 _perceivedTwig = null;
                 _twigSearchLegs = 0;
                 return;

@@ -203,8 +203,8 @@ public sealed class Inventory
     }
 }
 
-/// <summary>A clan's shared stock: just a count per item kind, each up to <see cref="MaxPerItem"/>.</summary>
-public sealed class ClanStock
+/// <summary>What a home's store holds besides food: just a count per item kind, each up to <see cref="MaxPerItem"/>.</summary>
+public sealed class StoreStock
 {
     public const int MaxPerItem = 64;
 

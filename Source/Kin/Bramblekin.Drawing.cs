@@ -174,8 +174,6 @@ public sealed partial class Bramblekin
                 PropModels.Draw(PropModels.Prop.Larvae, Position + new Vector3(0f, BodyHeight + 0.02f, 0f), 0f, 0.4f, Color.White);
             }
             DrawSack(facing);
-            if (_carriedTwig is not null)
-                Twig.DrawCarried(Position + new Vector3(0, BodyHeight * 0.55f, 0), facing);
             _carriedMaterial?.DrawCarried(Position, BodyHeight, facing);
         }
     }

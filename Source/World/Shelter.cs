@@ -138,6 +138,9 @@ public sealed class Shelter
 
     public int StoredFood { get; private set; }
 
+    /// <summary>What the store holds besides food: twigs, stones and branches, as counts up to <see cref="StoreStock.MaxPerItem"/> each.</summary>
+    public StoreStock Stock { get; } = new();
+
     public int StoreCapacity => Tier == ShelterTier.House
         ? (HasGranary ? HouseStoreCapacity * 3 / 2 : HouseStoreCapacity) + (HasFooting ? FootingStoreBonus : 0)
         : TentStoreCapacity;

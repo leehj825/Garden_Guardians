@@ -97,6 +97,9 @@ public sealed class ShelterSave
     public int Water { get; set; }
     public bool Hearth { get; set; }
     public float HearthFuel { get; set; }
+
+    /// <summary>The store's twigs, stones and branches by item kind (see <see cref="StoreStock"/>). Null in older saves.</summary>
+    public int[]? Stock { get; set; }
 }
 
 public sealed class KinSave
@@ -194,9 +197,6 @@ public sealed class GroupSave
     public V3? SettleTarget { get; set; }
     public int Dowry { get; set; }
     public int? SeedCorn { get; set; }
-
-    /// <summary>The clan's stock by item kind (see <see cref="ClanStock"/>). Null in older saves.</summary>
-    public int[]? Stock { get; set; }
     public int Cloth { get; set; }
     public int CutStone { get; set; }
     public float NextRaidAt { get; set; }

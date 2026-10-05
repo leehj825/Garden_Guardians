@@ -47,7 +47,7 @@ public sealed partial class Bramblekin
                 MoveTo(dest.Position, WalkSpeed, deltaTime, world);
                 return true;
             }
-            if (TakeFromClanStock(item, Inventory.MaxStack, deltaTime, world))
+            if (TakeFromStore(item, Inventory.MaxStack, deltaTime, world))
                 return true;
         }
 
