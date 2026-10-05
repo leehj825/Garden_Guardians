@@ -147,7 +147,7 @@ public static partial class Game
     /// <summary>A tap on the Stats button shows or hides the stats bar, and remembers the choice. Returns true if the tap was on it.</summary>
     private static bool TapStatsButton(Vector2 point)
     {
-        if (!Raylib.CheckCollisionPointRec(point, _statsButtonBounds))
+        if (!Build.Diagnostics || !Raylib.CheckCollisionPointRec(point, _statsButtonBounds))
             return false;
         _statsView = _statsView == StatsView.Shown ? StatsView.Hidden : StatsView.Shown;
         Preferences.Set(StatsViewSetting, _statsView);
@@ -224,6 +224,8 @@ public static partial class Game
             return;
         }
 
+        if (!Build.Diagnostics)
+            return; // (a Release build keeps no log: nothing shows it)
         _debugLogs.Add(message);
         while (_debugLogs.Count > DebugLogCapacity)
             _debugLogs.RemoveAt(0);
@@ -234,7 +236,7 @@ public static partial class Game
     /// <summary>A tap on the Log button steps it Brief → Hidden → Full → Brief, and remembers the choice. Returns true if the tap was on it.</summary>
     private static bool TapLogButton(Vector2 point)
     {
-        if (!Raylib.CheckCollisionPointRec(point, _logButtonBounds))
+        if (!Build.Diagnostics || !Raylib.CheckCollisionPointRec(point, _logButtonBounds))
             return false;
         _logView = _logView switch
         {
@@ -603,7 +605,7 @@ public static partial class Game
                     DrawDirectorCaption(director, (int)(speedButtonMargin * 2 + speedButtonHeight));
                 if (_showChronicle)
                     DrawChronicle(world, top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
-                else
+                else if (Build.Diagnostics)
                     DrawDebugConsole(top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
                 if (_confirmMenu)
                     DrawMenuConfirm(uiScale);
@@ -1491,13 +1493,16 @@ public static partial class Game
         int DrawStatsButton(int barTop)
         {
             _statsButtonBounds = new Rectangle(10, barTop - 10 - statsHeight, statsWidth, statsHeight);
-            bool statsHovered = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), _statsButtonBounds);
-            Raylib.DrawRectangleRec(_statsButtonBounds, new Color(0, 0, 0, statsHovered ? 190 : 150));
-            Raylib.DrawRectangleLinesEx(_statsButtonBounds, 2f, new Color(255, 255, 255, 110));
-            Raylib.DrawText(statsLabel, (int)_statsButtonBounds.X + statsPad, (int)_statsButtonBounds.Y + statsPad, statsFont, Color.RayWhite);
+            if (Build.Diagnostics)
+            {
+                bool statsHovered = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), _statsButtonBounds);
+                Raylib.DrawRectangleRec(_statsButtonBounds, new Color(0, 0, 0, statsHovered ? 190 : 150));
+                Raylib.DrawRectangleLinesEx(_statsButtonBounds, 2f, new Color(255, 255, 255, 110));
+                Raylib.DrawText(statsLabel, (int)_statsButtonBounds.X + statsPad, (int)_statsButtonBounds.Y + statsPad, statsFont, Color.RayWhite);
+            }
 
-            // The Alerts switch sits beside it.
-            _alertsButtonBounds = new Rectangle(_statsButtonBounds.X + statsWidth + 10, _statsButtonBounds.Y, Raylib.MeasureText("Alerts: off", statsFont) + statsPad * 2, statsHeight);
+            // The Alerts switch sits beside it (in a Release build, which has no Stats button, in its place).
+            _alertsButtonBounds = new Rectangle(Build.Diagnostics ? _statsButtonBounds.X + statsWidth + 10 : _statsButtonBounds.X, _statsButtonBounds.Y, Raylib.MeasureText("Alerts: off", statsFont) + statsPad * 2, statsHeight);
             bool alertsHovered = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), _alertsButtonBounds);
             Raylib.DrawRectangleRec(_alertsButtonBounds, new Color(0, 0, 0, alertsHovered ? 190 : 150));
             Raylib.DrawRectangleLinesEx(_alertsButtonBounds, 2f, new Color(255, 255, 255, 110));
@@ -1505,8 +1510,8 @@ public static partial class Game
             return (int)_statsButtonBounds.Y;
         }
 
-        if (_statsView == StatsView.Hidden)
-            return DrawStatsButton(Raylib.GetScreenHeight() - barHeight);
+        if (_statsView == StatsView.Hidden || !Build.Diagnostics)
+            return DrawStatsButton(Raylib.GetScreenHeight() - (Build.Diagnostics ? barHeight : 0));
 
         int living = world.Colony.Count(b => !b.IsDead);
         int solitary = world.Colony.Count(b => !b.IsDead && b.GroupId is null);

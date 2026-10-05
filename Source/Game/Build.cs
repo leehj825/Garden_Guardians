@@ -18,6 +18,9 @@ internal static class Build
     /// <summary>Taking over a Bramblekin (the Control button and PlayControl).</summary>
     public static readonly bool KinControl = !Release;
 
+    /// <summary>The event log on the screen (and its Log button) and the stats bar along the bottom (and its Stats button): developer readouts, not part of the game.</summary>
+    public static readonly bool Diagnostics = !Release;
+
     /// <summary>Starting a new garden on the fixed original terrain, and choosing the age it starts in (a testing aid).</summary>
     public static readonly bool TestingChoices = !Release;
 }
