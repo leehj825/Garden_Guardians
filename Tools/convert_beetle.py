@@ -2,7 +2,7 @@
 
     pip install numpy pillow meshoptimizer
     python3 Tools/convert_beetle.py Tools/kin_src/Beetle.glb Assets/Models/Props/Beetle.glb --preview Tools/previews/beetle_walk.png
-    python3 Tools/convert_beetle.py Ants.glb Assets/Models/Props/Ant.glb --face=-x --tris 1500 --body-half-width 0.1 --leg-max-height 0.33   # the Tripo ant, rigged the same way
+    python3 Tools/convert_beetle.py Ants.glb Assets/Models/Props/Ant.glb --face=-x --tris 700 --texture 512 --body-half-width 0.1 --leg-max-height 0.33   # the Tripo ant, rigged the same way
 
 Like the spider (Tools/convert_spider.py): the skeleton Tripo made does nothing, so it is thrown away and a new one built - a body bone,
 and for each of the six legs a hip and a knee - with the vertices weighted by where they lie along their leg. The clip "Walk" is

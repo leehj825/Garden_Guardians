@@ -13,7 +13,13 @@ internal static class LooseModels
     /// <summary>The meshes, in the file's order. The honeycomb has no entity in the game yet; the sack is the village's food sack (see <see cref="VillageModels"/>), whose own file this one's is the source of.</summary>
     public enum Kind { Berry, Meat, Acorn, Seed, Fish, Honeydew, Twig, Stone, Branch, Pebble, Honeycomb, Sack }
 
-    private static readonly MeshSet Set = new("Loose.glb");
+    private static readonly MeshSet Set = new("Loose.glb",
+        new Color[]
+        {
+            new(80, 50, 140, 255), new(150, 70, 60, 255), new(176, 116, 52, 255), new(235, 175, 60, 255), new(190, 200, 210, 255), new(130, 230, 60, 255),
+            new(115, 80, 45, 255), new(150, 150, 155, 255), new(100, 75, 45, 255), new(140, 140, 145, 255), new(240, 190, 60, 255), new(140, 130, 60, 255),
+        },
+        new[] { true, false, false, false, false, false, false, false, true, false, true, true }); // (berry leaves, thorns, comb walls, sack walls)
 
     /// <summary>The height (m) of a stone, from the ground to its top: a stone's centre is half of it up.</summary>
     public const float StoneHeight = 0.257f;

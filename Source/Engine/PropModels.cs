@@ -67,6 +67,8 @@ public static unsafe class PropModels
     {
         EnsureLoaded(prop);
         float pixels = Detail.Pixels(position, scale * (prop switch { Prop.House => HouseWidth, Prop.Bush => BushWidth, Prop.Tent => TentWidth, Prop.Castle => CastleWidth, Prop.Spider => SpiderWidth, _ => 1f }));
+        if (pixels < 2f && prop is Prop.Aphid)
+            return; // (a speck)
         Model model = pixels >= FullPixels ? _full[(int)prop] : _cheap[(int)prop];
         Raylib.DrawModelEx(model, position, Vector3.UnitY, yawDegrees, new Vector3(scale), tint);
     }
@@ -136,6 +138,15 @@ public static unsafe class PropModels
         }
         if (!_walks.ContainsKey(prop) || model.Skeleton.BoneCount == 0)
         {
+            Raylib.DrawModelEx(model, position, Vector3.UnitY, yawDegrees, new Vector3(scale), tint);
+            return;
+        }
+        float pixels = Detail.Pixels(position, scale * 0.6f);
+        if (pixels < 2f)
+            return; // (a speck)
+        if (pixels < 12f)
+        {
+            // Small on screen: no need to pose it (skinning is done on the CPU, vertex by vertex) — drawn as the shared model was last left.
             Raylib.DrawModelEx(model, position, Vector3.UnitY, yawDegrees, new Vector3(scale), tint);
             return;
         }
