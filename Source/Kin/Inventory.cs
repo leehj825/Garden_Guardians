@@ -14,11 +14,18 @@ public enum ItemKind
 
     /// <summary>A wooden water bottle, full: one drink (or one cupful for a cistern).</summary>
     Water,
+
+    /// <summary>Building material (see <see cref="Twig"/>, <see cref="Material"/>).</summary>
+    Twig,
+    Stone,
+    Branch,
 }
 
 public static class ItemInfo
 {
-    public static bool IsFood(ItemKind kind) => kind != ItemKind.Water;
+    public static bool IsFood(ItemKind kind) => kind <= ItemKind.Honeydew;
+
+    public static bool IsMaterial(ItemKind kind) => kind >= ItemKind.Twig;
 
     public static ItemKind Of(FoodShardKind kind) => (ItemKind)(int)kind;
 
@@ -36,6 +43,9 @@ public static class ItemInfo
         ItemKind.Fish => "Fish",
         ItemKind.Honeydew => "Honeydew",
         ItemKind.Water => "Water bottle",
+        ItemKind.Twig => "Twig",
+        ItemKind.Stone => "Stone",
+        ItemKind.Branch => "Branch",
         _ => kind.ToString(),
     };
 }
@@ -77,6 +87,9 @@ public sealed class Inventory
             return total;
         }
     }
+
+    /// <summary>How many building materials (twigs, stones, branches) it holds.</summary>
+    public int MaterialCount => Count(ItemKind.Twig) + Count(ItemKind.Stone) + Count(ItemKind.Branch);
 
     /// <summary>True if <paramref name="amount"/> more of <paramref name="kind"/> fit.</summary>
     public bool CanAdd(ItemKind kind, int amount = 1)
@@ -187,5 +200,42 @@ public sealed class Inventory
             _kind[i] = (ItemKind)kinds[i];
             _count[i] = Math.Min(MaxStack, counts[i]);
         }
+    }
+}
+
+/// <summary>A clan's shared stock: just a count per item kind, each up to <see cref="MaxPerItem"/>.</summary>
+public sealed class ClanStock
+{
+    public const int MaxPerItem = 64;
+
+    private readonly int[] _count = new int[Enum.GetValues<ItemKind>().Length];
+
+    public int Count(ItemKind kind) => _count[(int)kind];
+
+    /// <summary>Adds up to <paramref name="amount"/> (what fits under the cap). Returns how many went in.</summary>
+    public int Add(ItemKind kind, int amount)
+    {
+        int added = Math.Max(0, Math.Min(amount, MaxPerItem - _count[(int)kind]));
+        _count[(int)kind] += added;
+        return added;
+    }
+
+    /// <summary>Takes up to <paramref name="amount"/>. Returns how many came out.</summary>
+    public int Take(ItemKind kind, int amount)
+    {
+        int taken = Math.Max(0, Math.Min(amount, _count[(int)kind]));
+        _count[(int)kind] -= taken;
+        return taken;
+    }
+
+    public int[] ToArray() => (int[])_count.Clone();
+
+    public void FromArray(int[]? counts)
+    {
+        Array.Clear(_count);
+        if (counts is null)
+            return;
+        for (int i = 0; i < _count.Length && i < counts.Length; i++)
+            _count[i] = Math.Clamp(counts[i], 0, MaxPerItem);
     }
 }

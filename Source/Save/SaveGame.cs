@@ -194,6 +194,9 @@ public sealed class GroupSave
     public V3? SettleTarget { get; set; }
     public int Dowry { get; set; }
     public int? SeedCorn { get; set; }
+
+    /// <summary>The clan's stock by item kind (see <see cref="ClanStock"/>). Null in older saves.</summary>
+    public int[]? Stock { get; set; }
     public int Cloth { get; set; }
     public int CutStone { get; set; }
     public float NextRaidAt { get; set; }

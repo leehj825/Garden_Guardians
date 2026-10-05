@@ -188,6 +188,18 @@ public sealed partial class Bramblekin
     /// <summary>Carries a twig to <paramref name="site"/>; else picks up the nearest visible one; else goes looking where twigs were last seen, or in ever-wider legs around the site.</summary>
     private void DoBuildWork(Shelter site, float deltaTime, World world)
     {
+        // Twigs in the pack (taken from the clan's store, or gathered) go to the site first; else it takes some out of the store.
+        if (_carriedTwig is null)
+        {
+            if (Pack.Count(ItemKind.Twig) > 0)
+            {
+                DeliverPackTwig(site, deltaTime, world);
+                return;
+            }
+            if (TakeFromClanStock(ItemKind.Twig, Inventory.MaxStack, deltaTime, world))
+                return;
+        }
+
         if (_carriedTwig is { } twig)
         {
             SetState(BramblekinState.Building);
@@ -244,6 +256,32 @@ public sealed partial class Bramblekin
             _twigMemory = null; // Nothing left there.
             _twigSearchLegs++;
             _wanderTarget = RandomWanderPointAround(site.Position, TwigSearchRadius, world);
+        }
+    }
+
+    /// <summary>Takes a twig out of its pack to <paramref name="site"/>'s construction (or the hearth it is feeding).</summary>
+    private void DeliverPackTwig(Shelter site, float deltaTime, World world)
+    {
+        SetState(BramblekinState.Building);
+        float reach = (site.IsUpgrading ? Shelter.HouseRadius : site.Radius) + 0.3f;
+        if (GroundMover.HorizontalDistanceSquared(Position, site.Position) > reach * reach)
+        {
+            MoveTo(site.Position, WalkSpeed, deltaTime, world);
+            return;
+        }
+
+        Pack.Remove(ItemKind.Twig);
+        Train(Skill.Building, world);
+        if (site == _hearthToFeed && !site.NeedsTwigs)
+        {
+            world.FuelHearth(site, null);
+            _hearthToFeed = null;
+            StartPause();
+        }
+        else
+        {
+            world.DeliverTwig(this, site, null);
+            NoteTwigDelivered(site);
         }
     }
 

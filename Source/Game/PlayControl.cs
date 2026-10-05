@@ -344,7 +344,7 @@ public sealed class PlayControl
         Raylib.DrawText("Jump", (int)(JumpCenter.X - Raylib.MeasureText("Jump", jumpFont) / 2f), (int)(JumpCenter.Y - jumpFont / 2f), jumpFont, Color.White);
         JobToggle.Draw(JobLabel(kin.PlayerJob), highlighted: kin.PlayerJob != KinJob.None);
         ExitButton.Draw("Exit", highlighted: false);
-        BagButton.Draw(_bagOpen ? "Bag: open" : "Bag", highlighted: _bagOpen);
+        BagButton.Draw("Items", highlighted: _bagOpen);
         if (_bagOpen)
             DrawBag(kin);
 

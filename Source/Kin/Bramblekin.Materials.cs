@@ -5,9 +5,9 @@ namespace GardenGuardians;
 public sealed partial class Bramblekin
 {
     /// <summary>Dragging a branch home goes at this fraction of its pace; a stone, a little less slowly.</summary>
-    private const float BranchDragPace = 0.75f;
+    private const float BranchDragPace = 1f;
 
-    private const float StoneCarryPace = 0.9f;
+    private const float StoneCarryPace = 1f;
 
     /// <summary>The stone or branch it's carrying home.</summary>
     private Material? _carriedMaterial;
@@ -27,6 +27,30 @@ public sealed partial class Bramblekin
     /// </summary>
     private bool TryFetchMaterial(KinGroup group, float deltaTime, World world)
     {
+        // Stones and branches in its pack (from the clan store, or gathered) go to where they are wanted first; else it takes some out of the store.
+        foreach (MaterialKind needed in Enum.GetValues<MaterialKind>())
+        {
+            ItemKind item = needed == MaterialKind.Stone ? ItemKind.Stone : ItemKind.Branch;
+            if (world.MaterialTarget(group, needed, Position) is not { } dest)
+                continue;
+            if (Pack.Count(item) > 0)
+            {
+                SetState(BramblekinState.Building);
+                if (GroundMover.HorizontalDistanceSquared(Position, dest.Position) <= dest.Reach * dest.Reach)
+                {
+                    Pack.Remove(item);
+                    world.DeliverMaterial(this, dest, needed, null);
+                    Train(Skill.Building, world, 1.5f);
+                    StartPause();
+                    return true;
+                }
+                MoveTo(dest.Position, WalkSpeed, deltaTime, world);
+                return true;
+            }
+            if (TakeFromClanStock(item, Inventory.MaxStack, deltaTime, world))
+                return true;
+        }
+
         if (_carriedMaterial is { } carried)
         {
             if (world.MaterialTarget(group, carried.Kind, Position) is not { } target)

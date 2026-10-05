@@ -42,7 +42,7 @@ public sealed partial class World
                 Annexes = g.Annexes.Where(a => !a.IsCollapsed).Select(a => a.ID).ToList(),
                 HomeSiteRetryTimer = g.HomeSiteRetryTimer, Goal = g.Goal == GroupGoal.Raid ? GroupGoal.Stockpile : g.Goal, Sharing = g.Sharing,
                 BirthCooldown = g.BirthCooldown, DecisionTimer = g.DecisionTimer, SettleTarget = g.SettleTarget is { } target ? target : null,
-                Dowry = g.Dowry, SeedCorn = g.SeedCorn, NextRaidAt = g.NextRaidAt, Cloth = g.Cloth, CutStone = g.CutStone,
+                Dowry = g.Dowry, SeedCorn = g.SeedCorn, Stock = g.Stock.ToArray(), NextRaidAt = g.NextRaidAt, Cloth = g.Cloth, CutStone = g.CutStone,
                 Martial = g.Culture.Martial, Hunting = g.Culture.Hunting, Farming = g.Culture.Farming, Leading = g.Culture.Leading,
                 SpidersSlain = g.SpidersSlain,
                 Belief = g.Belief, Shrine = g.Shrine is { } shrine ? shrine : null, ShrineRaised = g.ShrineRaised,
@@ -243,6 +243,7 @@ public sealed partial class World
             if (g.Leading == Tradition.None)
                 group.Culture.UpdateLeading(); // An older save, from before the name was kept.
             group.SpidersSlain = g.SpidersSlain;
+            group.Stock.FromArray(g.Stock);
             group.Belief = g.Belief;
             group.Shrine = g.Shrine is { } shrine ? shrine : null;
             group.ShrineRaised = g.ShrineRaised;

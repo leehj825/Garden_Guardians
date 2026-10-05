@@ -117,6 +117,9 @@ public sealed class KinGroup
     /// <summary>The group's shared home (and store), once it has one — see <see cref="World.UpdateGroupHomes"/>.</summary>
     public Shelter? Home { get; set; }
 
+    /// <summary>What the clan keeps in its stores besides food: twigs, stones and branches, as counts (see <see cref="ClanStock"/>).</summary>
+    public ClanStock Stock { get; } = new();
+
     /// <summary>A village's other homes, besides <see cref="Home"/> — see <see cref="World.PlanConstruction"/>.</summary>
     public List<Shelter> Annexes { get; } = new();
 

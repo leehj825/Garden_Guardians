@@ -194,9 +194,9 @@ public sealed partial class World
     }
 
     /// <summary>A builder adds its carried twig to <paramref name="shelter"/>'s current construction stage.</summary>
-    public void DeliverTwig(Bramblekin builder, Shelter shelter, Twig twig)
+    public void DeliverTwig(Bramblekin builder, Shelter shelter, Twig? twig)
     {
-        twig.Deactivate();
+        twig?.Deactivate(); // (null: the twig came out of a pack)
         if (!shelter.AddTwig())
             return;
 

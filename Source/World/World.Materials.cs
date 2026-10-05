@@ -179,11 +179,14 @@ public sealed partial class World
     }
 
     /// <summary>A Builder brings <paramref name="material"/> home: a stone laid into the footing, or a branch staked into the palisade — finishing it, maybe.</summary>
-    public void DeliverMaterial(Bramblekin builder, Shelter home, Material material)
+    public void DeliverMaterial(Bramblekin builder, Shelter home, Material material) => DeliverMaterial(builder, home, material.Kind, material);
+
+    /// <summary>As above; <paramref name="material"/> is null when the stone or branch came out of a pack.</summary>
+    public void DeliverMaterial(Bramblekin builder, Shelter home, MaterialKind kind, Material? material)
     {
-        material.Deactivate();
+        material?.Deactivate();
         string whose = home.GroupId is { } owner && _groups.TryGetValue(owner, out KinGroup? owners) ? owners.Title : GroupOf(builder)?.Title ?? builder.Name;
-        if (material.Kind == MaterialKind.Stone)
+        if (kind == MaterialKind.Stone)
         {
             if (!home.LayStone())
                 return;

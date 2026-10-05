@@ -34,7 +34,7 @@ public static class InventoryUi
             Raylib.DrawRectangleLinesEx(slot, 1f, ink with { A = 170 });
             if (pack.KindAt(i) is not { } kind)
                 continue;
-            DrawIcon(kind, slot);
+            DrawItem(kind, slot);
             string count = pack.CountAt(i).ToString();
             Raylib.DrawText(count, (int)(slot.X + slot.Width - Raylib.MeasureText(count, countFont) - 2), (int)(slot.Y + slot.Height - countFont - 1), countFont, Color.White);
         }
@@ -57,53 +57,72 @@ public static class InventoryUi
         Raylib.DrawText(text, tagX, tagY, fontSize, Color.White);
     }
 
-    private static void DrawIcon(ItemKind kind, Rectangle r)
+    private const int IconPixels = 96;
+
+    private static readonly Dictionary<ItemKind, RenderTexture2D> Icons = new();
+
+    /// <summary>The item's model, shrunk to fit its box (each is rendered once into a small texture).</summary>
+    private static void DrawItem(ItemKind kind, Rectangle box)
     {
-        float cx = r.X + r.Width / 2f, cy = r.Y + r.Height / 2f, u = r.Width / 10f;
-        int icx = (int)cx, icy = (int)cy;
+        if (!Icons.TryGetValue(kind, out RenderTexture2D icon))
+        {
+            icon = RenderIcon(kind);
+            Icons[kind] = icon;
+        }
+        var source = new Rectangle(0, 0, IconPixels, -IconPixels); // (a render texture is upside down)
+        float pad = box.Width * 0.06f;
+        Raylib.DrawTexturePro(icon.Texture, source, new Rectangle(box.X + pad, box.Y + pad, box.Width - pad * 2, box.Height - pad * 2), Vector2.Zero, 0f, Color.White);
+    }
+
+    /// <summary>How much room (m) each item's model takes up, so the camera can frame it.</summary>
+    private static float Span(ItemKind kind) => kind switch
+    {
+        ItemKind.Berry or ItemKind.Acorn or ItemKind.Seed or ItemKind.Honeydew => 0.32f,
+        ItemKind.Meat or ItemKind.Stone => 0.42f,
+        ItemKind.Mushroom or ItemKind.Cress or ItemKind.Fish => 0.46f,
+        ItemKind.Water => 0.5f,
+        ItemKind.Twig => 0.6f,
+        ItemKind.Branch => 1.5f,
+        _ => 0.5f,
+    };
+
+    private static RenderTexture2D RenderIcon(ItemKind kind)
+    {
+        RenderTexture2D target = Raylib.LoadRenderTexture(IconPixels, IconPixels);
+        float span = Span(kind);
+        Vector3 centre = new(0f, span * 0.25f, 0f);
+        var camera = new Camera3D
+        {
+            Target = centre,
+            Position = centre + Vector3.Normalize(new Vector3(1f, 0.9f, 1f)) * span * 1.9f,
+            Up = Vector3.UnitY,
+            FovY = 30f,
+            Projection = CameraProjection.Perspective,
+        };
+
+        Raylib.BeginTextureMode(target);
+        Raylib.ClearBackground(new Color(0, 0, 0, 0));
+        Raylib.BeginMode3D(camera);
         switch (kind)
         {
-            case ItemKind.Berry:
-                Raylib.DrawCircle(icx, icy + (int)u, u * 3f, new Color(200, 40, 55, 255));
-                Raylib.DrawRectangle((int)(cx - u * 0.4f), (int)(cy - u * 3.2f), Math.Max(2, (int)(u * 0.8f)), (int)(u * 2f), new Color(70, 130, 50, 255));
-                break;
-            case ItemKind.Meat:
-                Raylib.DrawEllipse(icx, icy, u * 3.4f, u * 2.4f, new Color(205, 105, 60, 255));
-                Raylib.DrawCircle(icx + (int)(u * 2.4f), icy, u * 1.2f, new Color(240, 225, 200, 255));
-                break;
-            case ItemKind.Acorn:
-                Raylib.DrawEllipse(icx, icy + (int)u, u * 2.2f, u * 2.8f, new Color(170, 115, 55, 255));
-                Raylib.DrawEllipse(icx, icy - (int)(u * 1.2f), u * 2.5f, u * 1.4f, new Color(110, 75, 40, 255));
-                break;
-            case ItemKind.Seed:
-                for (int i = 0; i < 5; i++)
-                    Raylib.DrawEllipse((int)(cx + (i - 2) * u * 1.3f), (int)(cy + (i % 2 == 0 ? -u : u)), u * 0.9f, u * 1.6f, new Color(225, 190, 70, 255));
-                break;
-            case ItemKind.Mushroom:
-                Raylib.DrawRectangle((int)(cx - u * 0.9f), icy, (int)(u * 1.8f), (int)(u * 3f), new Color(235, 225, 205, 255));
-                Raylib.DrawEllipse(icx, icy, u * 3.2f, u * 2f, new Color(170, 95, 60, 255));
-                break;
-            case ItemKind.Cress:
-                Raylib.DrawCircle(icx, icy, u * 2.2f, new Color(90, 185, 70, 255));
-                Raylib.DrawCircle(icx + (int)(u * 1.8f), icy - (int)u, u * 1.5f, new Color(120, 205, 85, 255));
-                Raylib.DrawCircle(icx - (int)(u * 1.8f), icy + (int)u, u * 1.5f, new Color(120, 205, 85, 255));
-                break;
-            case ItemKind.Fish:
-                Raylib.DrawEllipse(icx - (int)u, icy, u * 3.2f, u * 1.8f, new Color(185, 200, 215, 255));
-                Raylib.DrawTriangle(new Vector2(cx + u * 1.6f, cy), new Vector2(cx + u * 4f, cy + u * 1.8f), new Vector2(cx + u * 4f, cy - u * 1.8f), new Color(150, 170, 190, 255));
-                Raylib.DrawCircle(icx - (int)(u * 2.6f), icy - (int)(u * 0.4f), Math.Max(1f, u * 0.35f), Color.Black);
-                break;
-            case ItemKind.Honeydew:
-                Raylib.DrawCircle(icx, icy + (int)(u * 0.6f), u * 2.6f, new Color(235, 170, 40, 255));
-                Raylib.DrawTriangle(new Vector2(cx - u * 1.6f, cy - u * 0.4f), new Vector2(cx + u * 1.6f, cy - u * 0.4f), new Vector2(cx, cy - u * 3.6f), new Color(235, 170, 40, 255));
-                break;
             case ItemKind.Water:
-                // A wooden bottle: round body, narrow neck, cork.
-                Raylib.DrawRectangleRounded(new Rectangle(cx - u * 2.2f, cy - u * 0.8f, u * 4.4f, u * 4.6f), 0.4f, 6, new Color(150, 100, 55, 255));
-                Raylib.DrawRectangle((int)(cx - u * 0.9f), (int)(cy - u * 2.6f), (int)(u * 1.8f), (int)(u * 2f), new Color(150, 100, 55, 255));
-                Raylib.DrawRectangle((int)(cx - u * 1.1f), (int)(cy - u * 3.6f), (int)(u * 2.2f), (int)(u * 1.1f), new Color(205, 175, 120, 255));
-                Raylib.DrawRectangle((int)(cx - u * 2.2f), (int)(cy + u * 0.6f), (int)(u * 4.4f), (int)(u * 0.5f), new Color(90, 150, 220, 255));
+                Bramblekin.DrawBottleModel(new Vector3(0f, 0f, 0f));
+                break;
+            case ItemKind.Twig:
+                LooseModels.Draw(LooseModels.Kind.Twig, Vector3.Zero, 20f, 1f, Color.White);
+                break;
+            case ItemKind.Stone:
+                LooseModels.Draw(LooseModels.Kind.Stone, Vector3.Zero, 20f, 1f, Color.White);
+                break;
+            case ItemKind.Branch:
+                LooseModels.DrawBetween(LooseModels.Kind.Branch, new Vector3(-0.6f, 0.05f, 0.25f), new Vector3(0.6f, 0.05f, -0.25f), Color.White);
+                break;
+            default:
+                FoodShard.DrawKind(ItemInfo.FoodOf(kind), Vector3.Zero, 30f);
                 break;
         }
+        Raylib.EndMode3D();
+        Raylib.EndTextureMode();
+        return target;
     }
 }
