@@ -15,6 +15,31 @@ public sealed partial class World
         food.ClaimTimer = 0f;
     }
 
+    /// <summary>A Bramblekin put <paramref name="food"/> in its pack: the pool slot is freed (nothing has been eaten).</summary>
+    public void StowFood(FoodShard food) => food.Deactivate();
+
+    /// <summary>Takes a piece of <paramref name="kind"/> out of a pack and into a hand (to eat, or to hand over).</summary>
+    public FoodShard? HoldFood(Vector3 position, FoodShardKind kind)
+    {
+        FoodShard? food = ActivateFood(position, kind);
+        if (food is not null)
+            PickUpFood(food);
+        return food;
+    }
+
+    /// <summary>A dying Bramblekin's pack spills its food on the ground.</summary>
+    private void SpillPack(Bramblekin kin)
+    {
+        for (int slot = 0; slot < Inventory.Slots; slot++)
+        {
+            while (kin.Pack.RemoveAt(slot) is { } item)
+            {
+                if (ItemInfo.IsFood(item))
+                    ActivateFood(kin.Position, ItemInfo.FoodOf(item));
+            }
+        }
+    }
+
     /// <summary>A Bramblekin finished eating <paramref name="food"/>: its pool slot is freed.</summary>
     public void ConsumeFood(FoodShard food)
     {
@@ -51,7 +76,7 @@ public sealed partial class World
     public void StealFood(Bramblekin thief, Bramblekin victim)
     {
         // Food in hand first; else a grab from an errand sack.
-        FoodShard? food = victim.SurrenderFood();
+        FoodShard? food = victim.SurrenderFood(this);
         if (food is null && victim.TakeFromSack() && ActivateFood(victim.Position, FoodShardKind.Berry) is { } grabbed)
         {
             PickUpFood(grabbed);
@@ -115,6 +140,7 @@ public sealed partial class World
             mourners.Dangers.Remember(kin.Position, ElapsedSeconds); // Its group won't forget where it fell.
         if (kin.Errand is { } errand)
             AbandonErrand(kin, errand);
+        SpillPack(kin);
         kin.MarkDead();
         _pendingKinRemovals.Add(kin);
 

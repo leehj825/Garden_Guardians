@@ -15,7 +15,7 @@ public sealed partial class Bramblekin
     private void UpdateSocial(float deltaTime, World world)
     {
         // Without a finished home to stock, it just pockets one spare bite.
-        if (_carried is null && Home is not { IsBuilt: true } && ValidPerceivedFood(world) is { } food &&
+        if (_carried is null && Pack.FoodCount == 0 && Home is not { IsBuilt: true } && ValidPerceivedFood(world) is { } food &&
             GroundMover.HorizontalDistance(Position, food.Position) <= DetectionRadius * ReserveGrabRadiusFraction)
         {
             ApproachFood(food, WalkSpeed, deltaTime, world, eatOnArrival: false);

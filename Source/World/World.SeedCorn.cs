@@ -46,15 +46,14 @@ public sealed partial class World
     }
 
     /// <summary>A piece of seed brought home goes into the seed corn instead of the store, while the clan (sowing grain) is short of it. True if it did.</summary>
-    private bool TryKeepSeedCorn(Shelter shelter, FoodShard food)
+    private bool TryKeepSeedCorn(Shelter shelter, FoodShardKind kind)
     {
-        if (food.Kind != FoodShardKind.Seed || shelter.GroupId is not { } id || !_groups.TryGetValue(id, out KinGroup? group) ||
+        if (kind != FoodShardKind.Seed || shelter.GroupId is not { } id || !_groups.TryGetValue(id, out KinGroup? group) ||
             group.SeedCorn >= SeedCornTarget(group))
             return false;
         group.SeedCorn++;
         SeedCornKept++;
-        _foodByKind[(int)food.Kind]++;
-        food.Deactivate();
+        _foodByKind[(int)kind]++;
         return true;
     }
 

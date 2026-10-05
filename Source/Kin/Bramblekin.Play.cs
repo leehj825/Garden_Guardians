@@ -343,6 +343,7 @@ public sealed partial class Bramblekin
         }
         if (!IsHungry)
             return false;
+        TakeMealFromPack(world);
         if (_carried is not null)
         {
             StartEating();
@@ -384,9 +385,12 @@ public sealed partial class Bramblekin
             return true;
         if (world.CatchFish(this) is { } fish)
         {
-            _carried = fish;
             world.QueueFloatingText(Position, "Fish!", EggTextColor);
-            StartEating();
+            if (!Stow(fish, world))
+            {
+                _carried = fish;
+                StartEating();
+            }
         }
         return true;
     }

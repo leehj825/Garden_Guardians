@@ -200,6 +200,7 @@ public sealed partial class World
         {
             Bramblekin restored = kin[k.Id];
             restored.LinkSave(k, kin, shelters);
+            restored.RestorePack(k);
             if (k.CarryingFood && ActivateFood(restored.Position, FoodShardKind.Berry) is { } food)
             {
                 PickUpFood(food);

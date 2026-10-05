@@ -136,13 +136,13 @@ public sealed partial class Bramblekin
         }
 
         Shelter? store = StoreToStock(world);
-        if (_carried is not null && store is not null)
+        if (HasLoadToStock && store is not null)
         {
             CarryFoodHome(store, deltaTime, world);
             return true;
         }
 
-        if (_carried is null && store is not null && ValidPerceivedFood(world) is { } food &&
+        if (!HasLoadToStock && store is not null && ValidPerceivedFood(world) is { } food && Pack.CanAdd(ItemInfo.Of(food.Kind)) &&
             GroundMover.HorizontalDistanceSquared(food.Position, home.Position) <= StockpileRange * StockpileRange)
         {
             ApproachFood(food, WalkSpeed, deltaTime, world, eatOnArrival: false);
@@ -259,6 +259,7 @@ public sealed partial class Bramblekin
 
         if (_carried is { } food && world.DepositFood(home, food))
             _carried = null;
+        DepositPack(home, world);
         StartPause();
     }
 

@@ -1250,13 +1250,28 @@ public static partial class Game
         List<(string Text, Color Color)> lines = KinPanelLines(world, kin, ink);
 
         // Sized to its widest line — but never over the buttons along the top (a longer line is cut short).
-        int width = Math.Min(lines.Max(line => Raylib.MeasureText(line.Text, fontSize)), KinPanelMaxWidth(margin, inset));
-        int height = KinPanelHeight(lines.Count);
+        var (box, gap, gridExtra) = KinPanelGrid();
+        int gridWidth = (int)InventoryUi.GridSize(box, gap);
+        int width = Math.Max(gridWidth, Math.Min(lines.Max(line => Raylib.MeasureText(line.Text, fontSize)), KinPanelMaxWidth(margin, inset)));
+        int height = KinPanelHeight(lines.Count) + gridExtra;
         int x = Raylib.GetScreenWidth() - width - margin;
         Raylib.DrawRectangle(x - inset, topPadding, width + inset * 2, height, fill);
         Raylib.DrawRectangleLines(x - inset, topPadding, width + inset * 2, height, ink);
         for (int i = 0; i < lines.Count; i++)
             Raylib.DrawText(Fit(lines[i].Text, fontSize, width), x, topPadding + inset + lineHeight * i, fontSize, lines[i].Color);
+
+        // What it carries: a 3x3 grid of boxes under the stats; the name of whatever is touched shows above its box.
+        float gridY = topPadding + inset + lineHeight * lines.Count;
+        int hovered = InventoryUi.DrawGrid(kin.Pack, x, gridY, box, gap, ink);
+        InventoryUi.DrawTooltip(kin.Pack, x, gridY, box, gap, hovered, fontSize);
+    }
+
+    /// <summary>The Kin Inspector's item boxes: box size, gap, and the extra height they add to the panel.</summary>
+    private static (float Box, float Gap, int Extra) KinPanelGrid()
+    {
+        var (fontSize, lineHeight, _, _, _) = KinPanelMetrics();
+        float box = fontSize * 1.5f, gap = 4f;
+        return (box, gap, (int)InventoryUi.GridSize(box, gap) + (lineHeight - fontSize));
     }
 
     /// <summary>The clan card, in the Kin Inspector's place, for a clan picked by tapping one of its homes.</summary>
@@ -1364,7 +1379,7 @@ public static partial class Game
         float height = 90 * UiScale;
         float width = 330 * UiScale;
         float x = Raylib.GetScreenWidth() - margin + inset - width;
-        float y = topPadding + KinPanelHeight(lineCount) + 10 * UiScale;
+        float y = topPadding + KinPanelHeight(lineCount) + KinPanelGrid().Extra + 10 * UiScale;
         return new UiButton(new Rectangle(x, y, width, height));
     }
 

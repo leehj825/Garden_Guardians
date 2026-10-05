@@ -381,7 +381,7 @@ public sealed partial class Bramblekin : ICombatant
     public float CollisionRadius => BodyRadius;
 
     /// <summary>True while it's holding a piece of Food (a reserve, or a meal about to be eaten) — food a thief could snatch. (An errand sack is slung tight: it's only lost if the runner is cut down.)</summary>
-    public bool HasFood => _carried is not null;
+    public bool HasFood => _carried is not null || Pack.FoodCount > 0;
 
     public bool IsHungry => Hunger >= HungryThreshold;
 
@@ -509,10 +509,16 @@ public sealed partial class Bramblekin : ICombatant
     public void BeginRobbery(Bramblekin victim) => _robTarget = victim;
 
     /// <summary>Hands over whatever food it's holding (to a thief or a hungry friend), interrupting a meal in progress.</summary>
-    public FoodShard? SurrenderFood()
+    public FoodShard? SurrenderFood(World world)
     {
         FoodShard? food = _carried;
         _carried = null;
+        if (food is null && Pack.FoodSlot() is { } slot && Pack.RemoveAt(slot) is { } item)
+        {
+            food = world.HoldFood(Position, ItemInfo.FoodOf(item));
+            if (food is null)
+                Pack.Add(item);
+        }
         if (State == BramblekinState.Eating)
             StartPause();
         return food;
@@ -675,6 +681,7 @@ public sealed partial class Bramblekin : ICombatant
         }
         if (UpdateThirstMetabolism(deltaTime, world))
             return;
+        UpdateBottles(deltaTime, world);
         if (UpdateSickness(deltaTime, world))
             return;
         if (_onRaft && PoleAcross(deltaTime, world))

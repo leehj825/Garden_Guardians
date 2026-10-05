@@ -68,6 +68,7 @@ public sealed class PlayControl
         _focus = kin.Position + new Vector3(0f, LookHeight, 0f);
         _stickTouch = _lookTouch = _attackTouch = _shootTouch = -1;
         _stick = Vector2.Zero;
+        _bagOpen = false;
         _spent.Clear();
         for (int i = 0; i < Raylib.GetTouchPointCount(); i++)
             _spent.Add(Raylib.GetTouchPointId(i)); // The press that chose "Control" is not a first touch of the stick or the view.
@@ -105,6 +106,19 @@ public sealed class PlayControl
     private Vector2 JumpCenter => new(Raylib.GetScreenWidth() - 190f * Scale, Raylib.GetScreenHeight() * 0.72f - (HasShootButton ? 470f : 270f) * Scale);
     private static float JumpRadius => 85f * Scale;
     private static UiButton RunToggle => new(new Rectangle(Raylib.GetScreenWidth() - 520 * Scale, Raylib.GetScreenHeight() * 0.72f + 75 * Scale, 230 * Scale, 110 * Scale));
+
+    private static UiButton BagButton => new(new Rectangle(Raylib.GetScreenWidth() - 520 * Scale, Raylib.GetScreenHeight() * 0.72f - 315 * Scale, 230 * Scale, 110 * Scale));
+
+    /// <summary>The Bag (the pack as a 3x3 grid of boxes) is open: tap a box to eat or drink what is in it.</summary>
+    private bool _bagOpen;
+
+    private static float BagBox => 150f * Scale;
+    private static float BagGap => 10f * Scale;
+    private static float BagX => (Raylib.GetScreenWidth() - InventoryUi.GridSize(BagBox, BagGap)) / 2f;
+    private static float BagY => Raylib.GetScreenHeight() * 0.2f;
+
+    /// <summary>The Bag's backing panel, grid and a caption line included.</summary>
+    private static Rectangle BagPanel => new(BagX - 24 * Scale, BagY - 70 * Scale, InventoryUi.GridSize(BagBox, BagGap) + 48 * Scale, InventoryUi.GridSize(BagBox, BagGap) + 100 * Scale);
 
     private static UiButton JobToggle => new(new Rectangle(Raylib.GetScreenWidth() - 520 * Scale, Raylib.GetScreenHeight() * 0.72f - 185 * Scale, 230 * Scale, 110 * Scale));
 
@@ -151,6 +165,18 @@ public sealed class PlayControl
                 attackHeld = true;
             else if (id == _shootTouch)
                 shootHeld = true;
+            else if (BagButton.Contains(at))
+            {
+                _bagOpen = !_bagOpen;
+                _spent.Add(id);
+            }
+            else if (_bagOpen && Raylib.CheckCollisionPointRec(at, BagPanel))
+            {
+                int slot = InventoryUi.SlotAt(at, BagX, BagY, BagBox, BagGap);
+                if (slot >= 0)
+                    kin.PlayerUseSlot(slot, world);
+                _spent.Add(id); // (a tap on the Bag never steers or turns the view)
+            }
             else if (_stickTouch < 0 && _lookTouch != id && InStickZone(at) && Vector2.Distance(at, AttackCenter) > AttackRadius)
             {
                 _stickTouch = id;
@@ -241,6 +267,14 @@ public sealed class PlayControl
             _jumpPressed = true;
         if (Raylib.IsKeyPressed(KeyboardKey.R))
             kin.PlayerRunning = !kin.PlayerRunning;
+        if (Raylib.IsKeyPressed(KeyboardKey.I))
+            _bagOpen = !_bagOpen;
+        if (_bagOpen)
+        {
+            for (int n = 0; n < Inventory.Slots; n++)
+                if (Raylib.IsKeyPressed(KeyboardKey.One + n))
+                    kin.PlayerUseSlot(n, world); // (keys 1-9 pick the boxes, left to right, top to bottom)
+        }
         if (Raylib.IsKeyPressed(KeyboardKey.Escape))
         {
             End(ref camera, world);
@@ -310,6 +344,9 @@ public sealed class PlayControl
         Raylib.DrawText("Jump", (int)(JumpCenter.X - Raylib.MeasureText("Jump", jumpFont) / 2f), (int)(JumpCenter.Y - jumpFont / 2f), jumpFont, Color.White);
         JobToggle.Draw(JobLabel(kin.PlayerJob), highlighted: kin.PlayerJob != KinJob.None);
         ExitButton.Draw("Exit", highlighted: false);
+        BagButton.Draw(_bagOpen ? "Bag: open" : "Bag", highlighted: _bagOpen);
+        if (_bagOpen)
+            DrawBag(kin);
 
         // Status.
         int font = (int)(40 * s);
@@ -319,5 +356,18 @@ public sealed class PlayControl
         Raylib.DrawText($"Hunger {(int)kin.Hunger}%   Thirst {(int)kin.Thirst}%", x, y + (int)(font * 1.15f), font, kin.IsHungry || kin.IsThirsty ? new Color(255, 190, 120, 255) : Color.White);
         if (kin.PlayerHint is { } hint)
             Raylib.DrawText(hint, x, y + (int)(font * 2.3f), (int)(font * 0.85f), new Color(255, 220, 140, 255));
+    }
+
+    /// <summary>The pack as big boxes over the view, to eat or drink from.</summary>
+    private static void DrawBag(Bramblekin kin)
+    {
+        Rectangle panel = BagPanel;
+        var ink = new Color(250, 240, 220, 255);
+        Raylib.DrawRectangleRec(panel, new Color(40, 32, 24, 225));
+        Raylib.DrawRectangleLinesEx(panel, 3f, ink);
+        int font = (int)(36 * Scale);
+        Raylib.DrawText("Tap an item to eat or drink", (int)(panel.X + 24 * Scale), (int)(panel.Y + 16 * Scale), font, ink);
+        int hovered = InventoryUi.DrawGrid(kin.Pack, BagX, BagY, BagBox, BagGap, ink);
+        InventoryUi.DrawTooltip(kin.Pack, BagX, BagY, BagBox, BagGap, hovered, font);
     }
 }

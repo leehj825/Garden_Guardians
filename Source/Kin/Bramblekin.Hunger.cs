@@ -27,6 +27,7 @@ public sealed partial class Bramblekin
             return;
         }
 
+        TakeMealFromPack(world); // hungry: eats from its pack first
         if (_carried is not null)
         {
             StartEating();

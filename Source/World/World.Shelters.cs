@@ -368,13 +368,21 @@ public sealed partial class World
     /// <summary>Puts a Bramblekin's carried food into <paramref name="shelter"/>'s store, where it never rots — or, seed, into the clan's seed corn while it's short (see <see cref="TryKeepSeedCorn"/>). Returns false if the store is full.</summary>
     public bool DepositFood(Shelter shelter, FoodShard food)
     {
-        if (TryKeepSeedCorn(shelter, food))
+        if (!DepositFood(shelter, food.Kind))
+            return false;
+        food.Deactivate();
+        return true;
+    }
+
+    /// <summary>As above, for a piece of <paramref name="kind"/> that was never a loose shard (it came out of a pack).</summary>
+    public bool DepositFood(Shelter shelter, FoodShardKind kind)
+    {
+        if (TryKeepSeedCorn(shelter, kind))
             return true;
         if (!shelter.TryDeposit())
             return false;
-        _foodByKind[(int)food.Kind]++;
+        _foodByKind[(int)kind]++;
         NoteDeposited(shelter);
-        food.Deactivate();
         return true;
     }
 

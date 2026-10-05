@@ -166,7 +166,9 @@ public sealed partial class Bramblekin
 
         if (props) // what it carries is too small to see from far off
         {
-            _carried?.Draw(Position + new Vector3(0, BodyHeight, 0));
+            _carried?.Draw(Position + new Vector3(facing.X * 0.25f, BodyHeight * 0.55f, facing.Y * 0.25f)); // a bite in hand (the rest is in the pack)
+            if (Pack.Count(ItemKind.Water) > 0)
+                DrawBottle(facing);
             if (_carriesEgg)
             {
                 PropModels.Draw(PropModels.Prop.Larvae, Position + new Vector3(0f, BodyHeight + 0.02f, 0f), 0f, 0.4f, Color.White);
@@ -175,8 +177,6 @@ public sealed partial class Bramblekin
             if (_carriedTwig is not null)
                 Twig.DrawCarried(Position + new Vector3(0, BodyHeight * 0.55f, 0), facing);
             _carriedMaterial?.DrawCarried(Position, BodyHeight, facing);
-            if (_carryingWater)
-                DrawWaterCup(facing);
         }
     }
 

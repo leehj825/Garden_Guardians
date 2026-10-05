@@ -59,9 +59,6 @@ public sealed partial class Bramblekin
     /// <summary>The water level (see <see cref="WaterMap.Generation"/>) its drink was planned at — the shore moves when the pond shrinks or fills.</summary>
     private int _drinkGeneration;
 
-    /// <summary>Carrying a cupful of pond water home to its cistern.</summary>
-    private bool _carryingWater;
-
     /// <summary>Crouched at the water's edge, drinking — busy enough for the Wolf Spider to feel it (see <see cref="IsVibrating"/>).</summary>
     private bool IsDrinkingAtPond => State == BramblekinState.Drinking && _drinkTimer > 0f && _drinkFrom is null && _drinkWell is null;
 
@@ -123,6 +120,9 @@ public sealed partial class Bramblekin
     /// </summary>
     private void UpdateThirst(float deltaTime, World world)
     {
+        // A bottle in the pack is a drink anywhere (unless it is already at the water: that one is free).
+        if (State != BramblekinState.Drinking && DrinkBottle())
+            return;
         if (State != BramblekinState.Drinking || (_waterSpot is null && _drinkFrom is null && _drinkWell is null) || _drinkGeneration != WaterMap.Generation)
             PlanDrink(world);
         SetState(BramblekinState.Drinking);
@@ -193,8 +193,7 @@ public sealed partial class Bramblekin
     /// <summary>Drunk its fill at the pond or a well: a cupful for home, if it knows cisterns and home's isn't full.</summary>
     private void FinishDrinkingFill()
     {
-        if (Knows(Craft.Cisterns) && Home is { HasCistern: true, IsCollapsed: false } home && home.Water < home.CisternCapacity)
-            _carryingWater = true;
+        Pack.Add(ItemKind.Water, BottlesPerDrink); // it tops its bottles up while it's there
         _waterSpot = null;
         _drinkWell = null;
         _drinkTimer = 0f;
@@ -220,32 +219,22 @@ public sealed partial class Bramblekin
             _drinkWell = null;
     }
 
-    /// <summary>Carrying a cupful of pond water home: pours it into the cistern. False when it isn't carrying any.</summary>
+    /// <summary>With spare bottles in the pack, it pours them into its home's cistern (keeping a couple to drink). False when it has none to pour or no cistern to pour into.</summary>
     private bool UpdateWaterCarry(float deltaTime, World world)
     {
-        if (!_carryingWater)
+        if (Pack.Count(ItemKind.Water) < BottleReserve + PourTrip || !Knows(Craft.Cisterns) ||
+            Home is not { HasCistern: true, IsCollapsed: false } home || home.Water >= home.CisternCapacity)
             return false;
-        if (Home is not { HasCistern: true, IsCollapsed: false } home)
-        {
-            _carryingWater = false;
-            return false;
-        }
         SetState(BramblekinState.Stockpiling);
         if (!home.Contains(Position))
         {
             MoveTo(home.Position, WalkSpeed, deltaTime, world);
             return true;
         }
-        world.PourWater(home, CupfulSips);
-        _carryingWater = false;
+        int pour = Pack.Count(ItemKind.Water) - BottleReserve;
+        Pack.Remove(ItemKind.Water, pour);
+        world.PourWater(home, CupfulSips * pour);
         StartPause();
         return true;
-    }
-
-    /// <summary>An acorn cup of water held out in front.</summary>
-    private void DrawWaterCup(Vector2 facing)
-    {
-        Vector3 cup = Position + new Vector3(facing.X * 0.25f, BodyHeight * 0.55f, facing.Y * 0.25f);
-        VillageModels.Draw(VillageItem.WaterCup, cup - new Vector3(0f, 0.04f, 0f), 0f, 0.24f, Color.White);
     }
 }

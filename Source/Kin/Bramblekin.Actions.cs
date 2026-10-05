@@ -32,7 +32,8 @@ public sealed partial class Bramblekin
             ReleaseFoodClaim();
             StartAction(BramblekinClip.PickingUp, lockMovement: true); // bends to pick it up, and finishes that first
             World.PickUpFood(food);
-            _carried = food;
+            if (eatOnArrival || !Stow(food, world))
+                _carried = food; // eaten now (or, with a full pack, held as before)
             _perceivedFood = null;
             if (eatOnArrival)
                 StartEating();

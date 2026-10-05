@@ -69,7 +69,8 @@ public sealed partial class Bramblekin
         if (world.CatchFish(this) is { } fish)
         {
             Train(Skill.Fishing, world);
-            _carried = fish;
+            if (!Stow(fish, world))
+                _carried = fish; // pack full: carried in hand, to the store
             _fishingSpot = null; // Next time, maybe another spot.
         }
         return true;

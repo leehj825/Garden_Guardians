@@ -149,6 +149,10 @@ public sealed class KinSave
     public List<PlaceSave> Dangers { get; set; } = new();
     public V3? FoodMemory { get; set; }
     public bool CarryingFood { get; set; }
+
+    /// <summary>The pack, slot by slot: item kind (-1 for an empty slot) and count. Null in older saves.</summary>
+    public int[]? PackKinds { get; set; }
+    public int[]? PackCounts { get; set; }
     public ErrandSave? Errand { get; set; }
     public float LeaderSeconds { get; set; }
     public int SpiderKills { get; set; }
