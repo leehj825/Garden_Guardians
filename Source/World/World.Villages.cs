@@ -32,7 +32,17 @@ public sealed partial class World
     public int HeadmenChosen { get; private set; }
 
     /// <summary>The village <paramref name="group"/> belongs to, if any.</summary>
-    public Village? VillageOf(KinGroup group) => group.VillageId is { } id ? Villages.FirstOrDefault(v => v.Id == id) : null;
+    public Village? VillageOf(KinGroup group)
+    {
+        if (group.VillageId is not { } id)
+            return null;
+        foreach (Village v in Villages) // (a plain loop: soldiers ask every step)
+        {
+            if (v.Id == id)
+                return v;
+        }
+        return null;
+    }
 
     /// <summary>The Bramblekin leading <paramref name="village"/>, if it has one alive.</summary>
     public Bramblekin? HeadmanOf(Village village) =>
@@ -224,12 +234,15 @@ public sealed partial class World
             return own;
         if (village is null)
             return null;
-        foreach (KinGroup clan in ClansOf(village))
+        foreach (Guid clanId in village.ClanIds)
         {
-            if (clan.DefendTarget is not { IsDead: false } shared)
+            if (!_groups.TryGetValue(clanId, out KinGroup? clan) || clan.DefendTarget is not { IsDead: false } shared)
                 continue;
-            if (GroupHomes(clan).Any(h => GroundMover.HorizontalDistanceSquared(shared.Position, h.Position) <= HomeDefenseRadius * HomeDefenseRadius * 1.5f))
-                return shared;
+            foreach (Shelter h in GroupHomes(clan))
+            {
+                if (GroundMover.HorizontalDistanceSquared(shared.Position, h.Position) <= HomeDefenseRadius * HomeDefenseRadius * 1.5f)
+                    return shared;
+            }
         }
         return null;
     }

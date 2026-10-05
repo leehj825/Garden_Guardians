@@ -120,6 +120,10 @@ public sealed partial class Bramblekin
     }
 
     /// <summary>A soldier's round: food it is carrying goes to the stores first; food within reach of the route is picked up; otherwise on to the next waypoint round the village's edge.</summary>
+    private Vector3 _patrolWaypoint;
+    private int _patrolWaypointIndex = -1;
+    private float _patrolWaypointUntil;
+
     private bool DoPatrol(Village village, KinGroup group, float deltaTime, World world)
     {
         if (_carried is not null && StoreToStock(world) is { } store)
@@ -137,7 +141,14 @@ public sealed partial class Bramblekin
 
         if (_patrolIndex < 0)
             _patrolIndex = ID % World.PatrolPoints; // Soldiers start spread round the ring.
-        Vector3 waypoint = world.PatrolWaypoint(village, _patrolIndex);
+        if (_patrolIndex != _patrolWaypointIndex || _animTime >= _patrolWaypointUntil)
+        {
+            // (Worked out by testing points down the ring for obstacles: not on every step.)
+            _patrolWaypoint = world.PatrolWaypoint(village, _patrolIndex);
+            _patrolWaypointIndex = _patrolIndex;
+            _patrolWaypointUntil = _animTime + 3f;
+        }
+        Vector3 waypoint = _patrolWaypoint;
         SetState(BramblekinState.Guarding);
         if (GroundMover.HorizontalDistanceSquared(Position, waypoint) > 1.2f * 1.2f)
         {
