@@ -44,6 +44,16 @@
     <!-- Google AdMob banner ads (Platforms/Android/AndroidAds.cs). 124.6.0 (the SDK of September 2025) is the newest binding built for
          net8.0-android; 123.6 (January 2025) was answered with HTTP 403 even for test ads, which an out-of-date SDK may be. Newer ones need .NET 9. -->
     <PackageReference Include="Xamarin.GooglePlayServices.Ads" Version="124.6.0" />
+    <!-- The ads package wants AndroidX Lifecycle 2.9.3 while one of its dependencies wants 2.9.2.1 (NuGet NU1107): pin them all to 2.9.3. -->
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Common" Version="2.9.3" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Common.Jvm" Version="2.9.3" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.ViewModel" Version="2.9.3" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.ViewModel.Android" Version="2.9.3" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.ViewModelSavedState" Version="2.9.3" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.ViewModelSavedState.Android" Version="2.9.3" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core" Version="2.9.3" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Runtime" Version="2.9.3" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Runtime.Android" Version="2.9.3" />
   </ItemGroup>
 
   <!-- ===================================================================
