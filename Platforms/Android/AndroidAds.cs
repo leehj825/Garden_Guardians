@@ -60,7 +60,13 @@ internal static class AndroidAds
                 // A popup can only be shown once the activity's window is attached.
                 _anchor = activity.Window?.DecorView;
                 _anchor?.Post(Apply);
-                AdBanner.Status = "requested, waiting for an ad";
+                AdBanner.Status = $"requested {Label(AdConfig.BannerUnitId)}, waiting for an ad";
+#if DEBUG
+                // With no log to read, ask both ad units in hidden views and say what each answered: a test unit that is
+                // refused too points at the phone's network (a VPN, private DNS or ad blocker), not at the AdMob account.
+                Probe(activity, AdConfig.TestBannerUnitId);
+                Probe(activity, AdConfig.LiveBannerUnitId);
+#endif
               }
               catch (Exception ex)
               {
@@ -75,6 +81,45 @@ internal static class AndroidAds
             Log.Error(LogTag, $"Could not start the banner ad: {ex}");
             AdBanner.SetPlatformVisible = null;
             AdBanner.Status = $"START FAILED {ex.GetType().Name}: {ex.Message}";
+        }
+    }
+
+    private static string Short(string? message) => (message ?? "").Replace("Received error HTTP response code: ", "HTTP ");
+
+    private static string Label(string unitId) => unitId == AdConfig.TestBannerUnitId ? "test unit" : "live unit";
+
+    private static readonly Dictionary<string, string> ProbeResults = new();
+
+    /// <summary>Loads one ad in a view that is never shown, and reports the answer in <see cref="AdBanner.Probes"/>. UI thread only.</summary>
+    private static void Probe(Activity activity, string unitId)
+    {
+        var view = new AdView(activity) { AdUnitId = unitId };
+        view.AdSize = AdSize.Banner;
+        view.AdListener = new ProbeListener(unitId);
+        ProbeResults[unitId] = "asking";
+        UpdateProbes();
+        view.LoadAd(new AdRequest.Builder().Build());
+    }
+
+    private static void UpdateProbes() =>
+        AdBanner.Probes = string.Join("; ", ProbeResults.Select(p => $"{Label(p.Key)}: {p.Value}"));
+
+    private sealed class ProbeListener : AdListener
+    {
+        private readonly string _unitId;
+
+        public ProbeListener(string unitId) => _unitId = unitId;
+
+        public override void OnAdLoaded()
+        {
+            ProbeResults[_unitId] = "FILLED";
+            UpdateProbes();
+        }
+
+        public override void OnAdFailedToLoad(LoadAdError error)
+        {
+            ProbeResults[_unitId] = $"failed {error.Code} ({Short(error.Message)})";
+            UpdateProbes();
         }
     }
 
@@ -135,7 +180,7 @@ internal static class AndroidAds
         {
             Log.Warn(LogTag, $"Banner ad failed to load: {error.Message}");
             AdBanner.LoadedHeightPx = 0;
-            AdBanner.Status = $"FAILED to load, code {error.Code}: {error.Message}";
+            AdBanner.Status = $"FAILED to load, code {error.Code}: {Short(error.Message)}";
         }
 
         public override void OnAdImpression() => AdBanner.Status += " - shown";

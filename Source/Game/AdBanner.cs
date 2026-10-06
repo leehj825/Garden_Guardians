@@ -20,6 +20,9 @@ internal static class AdBanner
     /// <summary>What the platform's ad is doing, for the stats bar of a Debug build (nothing else shows why an ad is missing when there is no log to read).</summary>
     public static volatile string Status = "no ads on this platform";
 
+    /// <summary>Debug builds on Android: what the test ad unit and the game's own unit each answered when asked in turn.</summary>
+    public static volatile string Probes = "";
+
     private static bool _wanted;
 
     /// <summary>Whether the game wants the banner showing right now.</summary>

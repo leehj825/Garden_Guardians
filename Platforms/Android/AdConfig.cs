@@ -10,6 +10,12 @@ namespace GardenGuardians;
 
 internal static class AdConfig
 {
+    /// <summary>Google's test banner: always fills, from any app.</summary>
+    public const string TestBannerUnitId = "ca-app-pub-3940256099942544/6300978111";
+
+    /// <summary>The game's own banner unit.</summary>
+    public const string LiveBannerUnitId = "ca-app-pub-4400173019354346/4753521775";
+
 #if DEBUG
     /// <summary>The AdMob app id (also written into the manifest by the attribute above): Google's test app.</summary>
     public const string AppId = "ca-app-pub-3940256099942544~3347511713";
