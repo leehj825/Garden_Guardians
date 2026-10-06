@@ -1507,7 +1507,8 @@ public static partial class Game
 
         // The Stats button sits at the bottom-left, just above where the stats bar is, whether it shows or not,
         // with the Log button and the log above it.
-        const int statLines = 11;
+        string[] sdkLog = AdBanner.SdkLog; // (a Debug build on Android: what the ad SDK wrote to the log)
+        int statLines = 12 + sdkLog.Length;
         // (Upright, the lines are cut short at the screen's edge: a developer readout, so a smaller font is all it gets.)
         int fontSize = IsPortrait ? Math.Max(10, (int)(Raylib.GetScreenWidth() / 62f)) : ScaledFontSize(0.8f);
         int lineHeight = fontSize + fontSize / 6;
@@ -1564,7 +1565,10 @@ public static partial class Game
             $"Ad probes: {AdBanner.Probes}",
             $"Ad setup: {AdBanner.Setup}",
             $"Ad net: {AdBanner.Net}",
+            $"Ad SDK log: {(sdkLog.Length == 0 ? "(none yet)" : "")}",
         };
+        if (sdkLog.Length > 0)
+            lines = lines.Concat(sdkLog.Select(entry => "  " + entry)).ToArray();
 
         // UI Text Scaling: a background bar goes underneath, sized off
         // fontSize/lineHeight, so the text stays legible over a busy map.

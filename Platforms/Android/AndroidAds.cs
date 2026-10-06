@@ -121,6 +121,33 @@ internal static class AndroidAds
         }
     }
 
+    /// <summary>Reads what the ad SDK wrote to the app's own log (an app may read its own lines of logcat) and keeps the last few, for the stats bar.</summary>
+    private static async Task ReadSdkLog()
+    {
+        try
+        {
+            await Task.Delay(500); // (the SDK writes its reasons just after the failure is reported)
+            Java.Lang.Process? process = Java.Lang.Runtime.GetRuntime()?.Exec(new[] { "logcat", "-d", "-t", "400", "-s", "Ads:V", "AdRequest:V", "chromium:E" });
+            if (process?.InputStream is null)
+                return;
+            using var reader = new Java.IO.BufferedReader(new Java.IO.InputStreamReader(process.InputStream));
+            var lines = new List<string>();
+            string? line;
+            while ((line = reader.ReadLine()) is not null)
+            {
+                int tag = line.IndexOf(": ", StringComparison.Ordinal);
+                string text = tag >= 0 ? line[(tag + 2)..] : line;
+                if (text.Length > 0 && !text.StartsWith("---"))
+                    lines.Add(text.Length > 180 ? text[..180] : text);
+            }
+            AdBanner.SdkLog = lines.TakeLast(7).ToArray();
+        }
+        catch (Exception ex)
+        {
+            AdBanner.SdkLog = new[] { $"could not read the log: {ex.GetType().Name}: {ex.Message}" };
+        }
+    }
+
     private static string Short(string? message) => (message ?? "").Replace("Received error HTTP response code: ", "HTTP ");
 
     private static string Label(string unitId) => unitId == AdConfig.TestBannerUnitId ? "test unit" : "live unit";
@@ -217,6 +244,7 @@ internal static class AndroidAds
         {
             Log.Warn(LogTag, $"Banner ad failed to load: {error.Message}");
             AdBanner.LoadedHeightPx = 0;
+            _ = Task.Run(ReadSdkLog);
             AdBanner.Status = $"FAILED to load, code {error.Code}: {Short(error.Message)} [{error.Domain}{(error.Cause is { } cause ? $", cause {Short(cause.Message)}" : "")}]";
         }
 
