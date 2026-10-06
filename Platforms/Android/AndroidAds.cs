@@ -1,8 +1,10 @@
 // =============================================================================
 //  The banner ad (Google AdMob), laid over the bottom of the game's window
 // -----------------------------------------------------------------------------
-//  The game draws with raylib into the NativeActivity's surface; the banner is an
-//  ordinary Android view added on top of it (Activity.AddContentView). Everything
+//  The game draws with raylib straight into the NativeActivity's window surface, and
+//  Android draws no views into a window whose surface an app has taken for itself, so
+//  a view added to the activity (AddContentView) never shows. The banner is therefore
+//  put in a PopupWindow, a window of its own along the bottom edge. Everything
 //  here runs on, or is posted to, the Android UI thread. The game thread only
 //  talks to it through AdBanner (Source/Game/AdBanner.cs): it asks for the banner
 //  to be shown or hidden, and reads back how tall it is so the UI stays clear of it.
@@ -21,12 +23,15 @@ internal static class AndroidAds
     private const string LogTag = "GardenGuardians";
 
     private static AdView? _view;
+    private static PopupWindow? _popup;
+    private static View? _anchor;
     private static bool _visible;
     private static int _bottomMargin;
 
     /// <summary>Starts AdMob and puts a hidden banner at the bottom of <paramref name="activity"/>; it is shown once the game asks (<see cref="AdBanner.Show"/>).</summary>
     public static void Start(Activity activity)
     {
+        _visible = AdBanner.Wanted; // (the game may have asked before this was hooked up)
         AdBanner.SetPlatformVisible = visible =>
         {
             _visible = visible;
@@ -40,12 +45,18 @@ internal static class AndroidAds
                 var view = new AdView(activity) { AdUnitId = AdConfig.BannerUnitId };
                 view.AdSize = AdSize.Banner; // (320 x 50 dp, centred along the bottom edge)
                 view.AdListener = new Listener(AdSize.Banner.GetHeightInPixels(activity));
-                var layout = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent,
-                    GravityFlags.Bottom | GravityFlags.CenterHorizontal);
-                activity.AddContentView(view, layout);
+                var popup = new PopupWindow(view, ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent)
+                {
+                    Focusable = false, // (touches outside the banner still reach the game)
+                    OutsideTouchable = false,
+                };
+                popup.SetBackgroundDrawable(null);
                 _view = view;
-                Apply();
+                _popup = popup;
                 view.LoadAd(new AdRequest.Builder().Build());
+                // A popup can only be shown once the activity's window is attached.
+                _anchor = activity.Window?.DecorView;
+                _anchor?.Post(Apply);
             });
         }
         catch (Exception ex)
@@ -69,21 +80,27 @@ internal static class AndroidAds
 
     public static void Destroy()
     {
+        _popup?.Dismiss();
+        _popup = null;
+        _anchor = null;
         _view?.Destroy();
         _view = null;
     }
 
-    /// <summary>Brings the banner view in line with whether it is wanted and where the navigation bar is. UI thread only.</summary>
+    /// <summary>Brings the banner in line with whether it is wanted and where the navigation bar is: shown or taken down, above the bar. UI thread only.</summary>
     private static void Apply()
     {
-        if (_view is not { } view)
+        if (_popup is not { } popup || _anchor is not { WindowToken: not null } anchor)
             return;
-        view.Visibility = _visible ? ViewStates.Visible : ViewStates.Gone;
-        if (view.LayoutParameters is FrameLayout.LayoutParams layout && layout.BottomMargin != _bottomMargin)
+        if (!_visible)
         {
-            layout.BottomMargin = _bottomMargin;
-            view.LayoutParameters = layout;
+            if (popup.IsShowing)
+                popup.Dismiss();
         }
+        else if (!popup.IsShowing)
+            popup.ShowAtLocation(anchor, GravityFlags.Bottom | GravityFlags.CenterHorizontal, 0, _bottomMargin);
+        else
+            popup.Update(0, _bottomMargin, -1, -1); // (keeps it above the navigation bar; the size stays as it is)
     }
 
     /// <summary>Reserves the banner's height in the UI once an ad has loaded (and gives it back if the next one fails).</summary>

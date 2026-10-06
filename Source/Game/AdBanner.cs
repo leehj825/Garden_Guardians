@@ -19,6 +19,9 @@ internal static class AdBanner
 
     private static bool _wanted;
 
+    /// <summary>Whether the game wants the banner showing right now.</summary>
+    public static bool Wanted => _wanted;
+
     /// <summary>The stand-in's height on the desktop, in pixels, when GARDEN_AD_TEST=1.</summary>
     private static readonly int TestHeightPx = Environment.GetEnvironmentVariable("GARDEN_AD_TEST") == "1" ? 100 : 0;
 

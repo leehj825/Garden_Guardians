@@ -1581,12 +1581,12 @@ navigation bar), and the stats bar, the bottom buttons and the controls of a Bra
 an ad has loaded, and given back if the next one fails; with no network or no Google Play services the game simply runs without it.
 
 *   `Source/Game/AdBanner.cs`: the platform-independent side (wanted or not, how tall).
-*   `Platforms/Android/AndroidAds.cs`: the AdMob `AdView`, added over the game's window (`Activity.AddContentView`), paused and resumed with
-    the activity. `Platforms/Android/AdConfig.cs` holds the ids.
-*   **`AdConfig.AppId` and `AdConfig.BannerUnitId` are the game's real AdMob ids** (app `ca-app-pub-4400173019354346~3719730997`, banner unit
-    `ca-app-pub-4400173019354346/4753521775`). A new ad unit can take a while to start filling. Never tap live ads on your own account while
-    testing (AdMob suspends accounts for it): register the test phone under Test devices in the AdMob console, or put Google's test ids
-    (listed in `AdConfig.cs`) back for a while.
+*   `Platforms/Android/AndroidAds.cs`: the AdMob `AdView`, shown in a `PopupWindow` along the bottom edge (a view added to the activity itself
+    is never drawn: a NativeActivity gives its window surface to the game), paused and resumed with the activity. `Platforms/Android/AdConfig.cs` holds the ids.
+*   **Debug builds (the branch APKs from CI) use Google's TEST ids**, which always show a marked test ad and are safe to tap; **Release builds use
+    the game's real AdMob ids** (app `ca-app-pub-4400173019354346~3719730997`, banner unit `ca-app-pub-4400173019354346/4753521775`), set in
+    `Platforms/Android/AdConfig.cs`. A new live ad unit can take hours to start filling. Never tap live ads on your own account while testing
+    (AdMob suspends accounts for it): register the test phone under Test devices in the AdMob console.
 *   Package: `Xamarin.GooglePlayServices.Ads` 123.6.0.1, the newest binding built for `net8.0-android` (later ones need .NET 9).
 *   **Before release, not yet done:** a privacy policy; the consent form for users in the EEA and the UK (Google's User Messaging Platform,
     required for personalised ads there); the child-directed setting if children may play (it limits ad personalisation, and revenue); the

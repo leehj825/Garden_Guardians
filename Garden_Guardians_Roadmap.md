@@ -1377,3 +1377,4 @@ matter most:
     ("Water bottle", "Nothing to pick up", "Pack full", "Not hungry"...) are twice the size of the other pop-ups (`ItemTextSize`; floating texts
     carry a size); eating no longer plays the pick-up clip (it started over again and again while the meal lasted), picking up and drinking still do.
 *   ✅ **Bottles and the pick-up clip:** filling a bottle at the water's edge plays the pick-up clip (walking on cuts it short); drinking a bottle from the pack does not.
+*   ✅ **Banner fix:** the banner now lives in a `PopupWindow` (a view added to a NativeActivity is never drawn, which is why no ad showed); Debug builds use Google's test ad ids so a test ad shows at once, Release builds the real ones; a show request made before the platform side was hooked up is no longer lost.
