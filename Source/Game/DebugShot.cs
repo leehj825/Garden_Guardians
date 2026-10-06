@@ -27,6 +27,19 @@ public static class DebugShot
             camera.Target = hill.Position + hill.Facing * 3f + new Vector3(0f, 0.5f, 0f);
             return;
         }
+        if (text.StartsWith("village")) // an aid: "village" or "village:2" (the nth, biggest first): the camera looks at a village from the south, close
+        {
+            int nth = text.Contains(':') && int.TryParse(text.Split(':')[1], out int n) ? n : 0;
+            var villages = world.Villages.OrderByDescending(v => v.ClanIds.Count).ToList();
+            if (villages.Count > 0)
+            {
+                Vector3 centre = villages[Math.Min(nth, villages.Count - 1)].Centre;
+                float ground = World.GetHeightAt(centre.X, centre.Z);
+                camera.Target = new Vector3(centre.X, ground + 0.8f, centre.Z);
+                camera.Position = new Vector3(centre.X + 4f, ground + 7f, centre.Z + 13f);
+                return;
+            }
+        }
         if (text == "oak") // an aid: the camera looks at the oak's foot
         {
             camera.Position = World.OakCenter + new Vector3(30f, 4f, 0f);
