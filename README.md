@@ -14,6 +14,7 @@ An emergent survival simulation set in a hilly backyard modelled in 3D, at the f
 * [Game Design Document](Garden_Guardians_Design.md): how the game works today.
 * [Society & Jobs Design](Garden_Guardians_Society_Design.md): rationale and balance numbers for villages, rations and kingdoms.
 * [Development Roadmap](Garden_Guardians_Roadmap.md): what was built, phase by phase, and what is left.
+* [To-do list](Garden_Guardians_TODO.md): what is waiting on others, and the ideas for the release, Explore and the simulation.
 * [Archive](docs/archive/Garden_Guardians_Superseded_Design.md): the superseded macro-RTS and original designs.
 
 ## Building
