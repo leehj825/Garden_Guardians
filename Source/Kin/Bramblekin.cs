@@ -554,8 +554,8 @@ public sealed partial class Bramblekin : ICombatant
     /// </summary>
     public void TakeDamage(int amount, World world, DeathCause cause, ICombatant? source)
     {
-        if (IsDead)
-            return;
+        if (IsDead || (PlayerExplorer && IsPlayerControlled))
+            return; // (an explorer cannot be hurt: see Build.Explore)
 
         // A beetle-shell shield takes the edge off every blow and bite.
         if (cause is DeathCause.Kin or DeathCause.Predator)

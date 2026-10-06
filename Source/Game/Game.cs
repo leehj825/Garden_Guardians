@@ -394,7 +394,7 @@ public static partial class Game
                 //    Target and pinch to zoom. Runs before the tap input below
                 //    so the rest of the frame sees an already-settled camera.
                 // (The History screen takes over touches and drags while it's open.)
-                if (Build.KinControl && !_playTestDone && Environment.GetEnvironmentVariable("GARDEN_PLAY_TEST") == "1" && world.Colony.FirstOrDefault(k => !k.IsDead && !k.IsYoung && (Environment.GetEnvironmentVariable("GARDEN_PLAY_FEMALE") != "1" || k.Sex == Sex.Female) && (Environment.GetEnvironmentVariable("GARDEN_PLAY_MALE") != "1" || k.Sex == Sex.Male)) is { } testKin)
+                if ((Build.KinControl || Build.Explore) && !_playTestDone && Environment.GetEnvironmentVariable("GARDEN_PLAY_TEST") == "1" && world.Colony.FirstOrDefault(k => !k.IsDead && !k.IsYoung && (Environment.GetEnvironmentVariable("GARDEN_PLAY_FEMALE") != "1" || k.Sex == Sex.Female) && (Environment.GetEnvironmentVariable("GARDEN_PLAY_MALE") != "1" || k.Sex == Sex.Male)) is { } testKin)
                 {
                     _playTestDone = true; // A development aid: start out controlling a kin.
                     if (Environment.GetEnvironmentVariable("GARDEN_PLAY_SWORDSMAN") == "1")
@@ -442,7 +442,7 @@ public static partial class Game
                 _topBarBottom = navRowY + speedButtonHeight + speedButtonMargin;
                 _contentTop = _topBarBottom + OverlayRowHeight(uiScale);
                 UiButton? followButton = _showChronicle || playing ? null : FollowButton(world);
-                UiButton? controlButton = followButton is null || !Build.KinControl ? null : ControlButton(world, followButton);
+                UiButton? controlButton = followButton is null || !(Build.KinControl || Build.Explore) ? null : ControlButton(world, followButton);
                 UiButton menuButton = MenuButton(autoButton?.Bounds ?? historyButton.Bounds, navRowY, speedButtonMargin, speedButtonHeight, uiScale);
                 var overlayButtons = _showChronicle ? null : OverlayButtons(uiScale, _topBarBottom, speedButtonMargin);
 
@@ -605,7 +605,7 @@ public static partial class Game
                 if (!_showChronicle)
                     DrawKinPanel(world); // The History screen covers it (its header names the selected clan).
                 followButton?.Draw(followCamera.IsFollowing ? "Following" : "Follow", highlighted: followCamera.IsFollowing);
-                controlButton?.Draw("Control", highlighted: false);
+                controlButton?.Draw(Build.KinControl ? "Control" : "Explore", highlighted: false);
                 int hudTop = DrawHud(world);
                 int captionHeight = director.Caption is null ? 0 : ScaledFontSize(0.55f) + 2 * ((int)(10 * UiScale) + 2) + 6;
                 DrawBanner(_contentTop + captionHeight);

@@ -39,6 +39,15 @@ public sealed class PlayControl
 
     private static readonly bool DebugAttack = Environment.GetEnvironmentVariable("GARDEN_PLAY_ATTACK") == "1";
 
+    /// <summary>
+    /// A Release build plays the gentler Explore mode (see <see cref="Build.Explore"/>): the stick, the camera, Jump, Items, Pick up and Exit; no Attack,
+    /// Shoot, Kin or Job buttons, and no run toggle (running is pushing the stick to its edge, in this mode and in the Debug build's too).
+    /// </summary>
+    private static bool Explore => !Build.KinControl;
+
+    /// <summary>The stick runs the kin once pushed this far (share of its radius).</summary>
+    private const float RunStickShare = 0.92f;
+
     private float _yaw;
     private float _pitch = 0.4f;
     private Vector3 _focus;
@@ -74,6 +83,7 @@ public sealed class PlayControl
             _spent.Add(Raylib.GetTouchPointId(i)); // The press that chose "Control" is not a first touch of the stick or the view.
         kin.PlayerMayHitKin = HitKin;
         kin.SetPlayerControlled(true, world);
+        kin.PlayerExplorer = Explore;
         kin.PlayerRunning = DebugRun; // (GARDEN_PLAY_RUN=1: a development aid, starts with the run toggle on)
     }
 
@@ -106,7 +116,7 @@ public sealed class PlayControl
     private static UiButton ExitButton => new(new Rectangle(20 * Scale, 20 * Scale, 260 * Scale, 110 * Scale));
     private static UiButton KinToggle => new(new Rectangle(300 * Scale, 20 * Scale, 230 * Scale, 110 * Scale));
 
-    private bool HasShootButton => Kin is { Job: KinJob.Hunter };
+    private bool HasShootButton => !Explore && Kin is { Job: KinJob.Hunter };
 
     /// <summary>The Shoot button (a Hunter's) sits just above Attack.</summary>
     private static Vector2 ShootCenter => new(Raylib.GetScreenWidth() - 190f * Scale, BaseY - 270f * Scale);
@@ -116,7 +126,7 @@ public sealed class PlayControl
     private static UiButton RowButton(int index) => new(new Rectangle(
         Raylib.GetScreenWidth() - (20 + (4 - index) * 215 + (3 - index) * 12) * Scale, BaseY + 135 * Scale, 215 * Scale, 110 * Scale));
 
-    private static UiButton JumpButton => RowButton(0);
+    private static UiButton JumpButton => RowButton(Explore ? 1 : 0); // (Explore has no run toggle: its three buttons sit to the right)
     private static UiButton RunToggle => RowButton(1);
     private static UiButton BagButton => RowButton(2);
     private static UiButton PickUpButton => RowButton(3);
@@ -189,12 +199,12 @@ public sealed class PlayControl
                     kin.PlayerUseSlot(slot, world);
                 _spent.Add(id); // (a tap on the Bag never steers or turns the view)
             }
-            else if (_stickTouch < 0 && _lookTouch != id && InStickZone(at) && Vector2.Distance(at, AttackCenter) > AttackRadius)
+            else if (_stickTouch < 0 && _lookTouch != id && InStickZone(at) && (Explore || Vector2.Distance(at, AttackCenter) > AttackRadius))
             {
                 _stickTouch = id;
                 _stick = Vector2.Clamp((at - StickCenter) / StickRadius, new Vector2(-1f), new Vector2(1f));
             }
-            else if (Vector2.Distance(at, AttackCenter) <= AttackRadius * 1.15f)
+            else if (!Explore && Vector2.Distance(at, AttackCenter) <= AttackRadius * 1.15f)
             {
                 _attackTouch = id;
                 attackHeld = true;
@@ -209,18 +219,18 @@ public sealed class PlayControl
                 End(ref camera, world);
                 return;
             }
-            else if (KinToggle.Contains(at))
+            else if (!Explore && KinToggle.Contains(at))
             {
                 HitKin = !HitKin;
                 kin.PlayerMayHitKin = HitKin;
                 _spent.Add(id); // This touch has done its one thing.
             }
-            else if (JobToggle.Contains(at))
+            else if (!Explore && JobToggle.Contains(at))
             {
                 kin.CyclePlayerJob();
                 _spent.Add(id);
             }
-            else if (RunToggle.Contains(at))
+            else if (!Explore && RunToggle.Contains(at))
             {
                 kin.PlayerRunning = !kin.PlayerRunning;
                 _spent.Add(id);
@@ -266,9 +276,9 @@ public sealed class PlayControl
             keys.X -= 1f;
         if (DebugForward)
             keys.Y += 1f;
-        if (DebugAttack)
+        if (DebugAttack && !Explore)
             attackHeld = true;
-        if (DebugShoot)
+        if (DebugShoot && !Explore)
             shootHeld = true;
         if (DebugJump)
             _jumpPressed = true; // (GARDEN_PLAY_JUMP=1: jumps again the moment it lands)
@@ -276,13 +286,13 @@ public sealed class PlayControl
             _yaw += 1.8f * deltaTime;
         if (Raylib.IsKeyDown(KeyboardKey.E))
             _yaw -= 1.8f * deltaTime;
-        if (Raylib.IsKeyDown(KeyboardKey.Space))
+        if (!Explore && Raylib.IsKeyDown(KeyboardKey.Space))
             attackHeld = true;
-        if (Raylib.IsKeyDown(KeyboardKey.F))
+        if (!Explore && Raylib.IsKeyDown(KeyboardKey.F))
             shootHeld = true;
         if (Raylib.IsKeyPressed(KeyboardKey.J))
             _jumpPressed = true;
-        if (Raylib.IsKeyPressed(KeyboardKey.R))
+        if (!Explore && Raylib.IsKeyPressed(KeyboardKey.R))
             kin.PlayerRunning = !kin.PlayerRunning;
         if (Raylib.IsKeyPressed(KeyboardKey.G))
             kin.PlayerPickUp(world);
@@ -307,6 +317,7 @@ public sealed class PlayControl
         Vector3 forward = new(MathF.Sin(_yaw), 0f, MathF.Cos(_yaw));
         Vector3 right = Vector3.Cross(forward, Vector3.UnitY);
         Vector3 move = forward * push.Y + right * push.X;
+        kin.PlayerStickRun = push != Vector2.Zero && (_stick.Length() >= RunStickShare || (keys != Vector2.Zero && (Raylib.IsKeyDown(KeyboardKey.LeftShift) || Raylib.IsKeyDown(KeyboardKey.RightShift))));
         kin.PlayerMove = new Vector2(move.X, move.Z);
         kin.PlayerWantsStrike = attackHeld;
         kin.PlayerWantsShoot = shootHeld;
@@ -337,16 +348,24 @@ public sealed class PlayControl
         Vector2 center = StickCenter;
         Raylib.DrawCircleV(center, StickRadius, new Color(255, 255, 255, 50));
         Raylib.DrawCircleLinesV(center, StickRadius, new Color(255, 255, 255, 150));
-        Raylib.DrawCircleV(center + _stick * StickRadius * 0.7f, 62f * s, new Color(255, 255, 255, 140));
+        // A faint ring shows how far the stick goes to run; the knob turns gold while it does.
+        Raylib.DrawCircleLinesV(center, StickRadius * 0.7f * RunStickShare, new Color(255, 255, 255, 70));
+        Raylib.DrawCircleV(center + _stick * StickRadius * 0.7f, 62f * s, kin.PlayerStickRun ? new Color(240, 200, 70, 190) : new Color(255, 255, 255, 140));
+        string runHint = Explore ? "Push to the edge to run" : "Edge of the stick runs";
+        int runHintFont = Math.Max(12, (int)(28 * s));
+        Raylib.DrawText(runHint, (int)(center.X - Raylib.MeasureText(runHint, runHintFont) / 2f), (int)(center.Y + StickRadius + 12 * s), runHintFont, new Color(255, 255, 255, 170));
 
-        // Attack, and whether it may hit other clans.
-        bool striking = _attackTouch >= 0 || Raylib.IsKeyDown(KeyboardKey.Space);
-        Raylib.DrawCircleV(AttackCenter, AttackRadius, striking ? new Color(230, 90, 60, 200) : new Color(210, 70, 50, 130));
-        Raylib.DrawCircleLinesV(AttackCenter, AttackRadius, new Color(255, 255, 255, 170));
-        int attackFont = (int)(46 * s);
-        string attackLabel = "Attack";
-        Raylib.DrawText(attackLabel, (int)(AttackCenter.X - Raylib.MeasureText(attackLabel, attackFont) / 2f), (int)(AttackCenter.Y - attackFont / 2f), attackFont, Color.White);
-        KinToggle.Draw(HitKin ? "Kin: on" : "Kin: off", highlighted: HitKin);
+        if (!Explore)
+        {
+            // Attack, and whether it may hit other clans.
+            bool striking = _attackTouch >= 0 || Raylib.IsKeyDown(KeyboardKey.Space);
+            Raylib.DrawCircleV(AttackCenter, AttackRadius, striking ? new Color(230, 90, 60, 200) : new Color(210, 70, 50, 130));
+            Raylib.DrawCircleLinesV(AttackCenter, AttackRadius, new Color(255, 255, 255, 170));
+            int attackFont = (int)(46 * s);
+            string attackLabel = "Attack";
+            Raylib.DrawText(attackLabel, (int)(AttackCenter.X - Raylib.MeasureText(attackLabel, attackFont) / 2f), (int)(AttackCenter.Y - attackFont / 2f), attackFont, Color.White);
+            KinToggle.Draw(HitKin ? "Kin: on" : "Kin: off", highlighted: HitKin);
+        }
         if (HasShootButton)
         {
             bool shooting = _shootTouch >= 0 || Raylib.IsKeyDown(KeyboardKey.F);
@@ -355,10 +374,12 @@ public sealed class PlayControl
             int shootFont = (int)(40 * s);
             Raylib.DrawText("Shoot", (int)(ShootCenter.X - Raylib.MeasureText("Shoot", shootFont) / 2f), (int)(ShootCenter.Y - shootFont / 2f), shootFont, Color.White);
         }
-        RunToggle.Draw(kin.PlayerRunning ? "Run: on" : "Run: off", highlighted: kin.PlayerRunning);
+        if (!Explore)
+            RunToggle.Draw(kin.PlayerRunning ? "Run: on" : "Run: off", highlighted: kin.PlayerRunning);
         bool airborne = kin.IsAirborne || Raylib.IsKeyDown(KeyboardKey.J);
         JumpButton.Draw("Jump", highlighted: airborne);
-        JobToggle.Draw(JobLabel(kin.PlayerJob), highlighted: kin.PlayerJob != KinJob.None);
+        if (!Explore)
+            JobToggle.Draw(JobLabel(kin.PlayerJob), highlighted: kin.PlayerJob != KinJob.None);
         ExitButton.Draw("Exit", highlighted: false);
         BagButton.Draw("Items", highlighted: _bagOpen);
         PickUpButton.Draw("Pick up", highlighted: false);

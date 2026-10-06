@@ -354,15 +354,16 @@ public sealed partial class Bramblekin
     private const float PlayerPickUpReach = 1.1f;
 
     /// <summary>The player's Pick up button: the nearest loose food, twig, stone or branch within arm's reach (it turns to face it, then bends to pick it up) goes into the pack (hungry or not); with none, a bottle is filled if the water is at hand.</summary>
-    public void PlayerPickUp(World world)
+    public bool PlayerPickUp(World world, bool auto = false)
     {
         if (IsDead || State == BramblekinState.Eating || _actionLock > 0f)
-            return;
+            return false;
+        float reach = auto ? PlayerAutoPickReach : PlayerPickUpReach; // (an explorer's own pick-up: smaller reach, no messages, no bottle)
 
-        FoodShard? food = Pack.CanAdd(ItemKind.Berry) ? world.NearestAvailableFood(Position, PlayerPickUpReach, this) : null;
-        Twig? twig = Pack.CanAdd(ItemKind.Twig) ? world.NearestAvailableTwig(Position, PlayerPickUpReach, this) : null;
-        Material? stone = Pack.CanAdd(ItemKind.Stone) ? world.NearestMaterial(Position, MaterialKind.Stone, PlayerPickUpReach, this) : null;
-        Material? branch = Pack.CanAdd(ItemKind.Branch) ? world.NearestMaterial(Position, MaterialKind.Branch, PlayerPickUpReach, this) : null;
+        FoodShard? food = Pack.CanAdd(ItemKind.Berry) ? world.NearestAvailableFood(Position, reach, this) : null;
+        Twig? twig = Pack.CanAdd(ItemKind.Twig) ? world.NearestAvailableTwig(Position, reach, this) : null;
+        Material? stone = Pack.CanAdd(ItemKind.Stone) ? world.NearestMaterial(Position, MaterialKind.Stone, reach, this) : null;
+        Material? branch = Pack.CanAdd(ItemKind.Branch) ? world.NearestMaterial(Position, MaterialKind.Branch, reach, this) : null;
 
         float best = float.MaxValue;
         int pick = -1;
@@ -408,7 +409,7 @@ public sealed partial class Bramblekin
                 got = ItemKind.Branch;
                 break;
             default:
-                if (Pack.CanAdd(ItemKind.Water) && World.NearestShoreSpot(Position, PlayerWaterReach, creek: true) is { } shore)
+                if (!auto && Pack.CanAdd(ItemKind.Water) && World.NearestShoreSpot(Position, PlayerWaterReach, creek: true) is { } shore)
                 {
                     Pack.Add(ItemKind.Water);
                     got = ItemKind.Water;
@@ -424,11 +425,11 @@ public sealed partial class Bramblekin
                 _mover.Heading = Vector2.Normalize(toward); // face what it reaches for
             StartAction(BramblekinClip.PickingUp, lockMovement: true);
             world.QueueFloatingText(Position, ItemInfo.Name(item), EggTextColor, ItemTextSize);
+            return true;
         }
-        else
-        {
+        if (!auto)
             world.QueueFloatingText(Position, Pack.MaterialCount + Pack.FoodCount >= Inventory.Slots * Inventory.MaxStack ? "Pack full" : "Nothing to pick up", EggTextColor, ItemTextSize);
-        }
+        return false;
     }
 
     /// <summary>Gives back what it was saved carrying (see <see cref="KinSave.PackKinds"/>).</summary>

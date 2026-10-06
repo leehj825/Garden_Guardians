@@ -18,6 +18,13 @@ internal static class Build
     /// <summary>Taking over a Bramblekin (the Control button and PlayControl).</summary>
     public static readonly bool KinControl = !Release;
 
+    /// <summary>
+    /// Explore: a Release build lets the player take a Bramblekin's wheel in a gentler form (the Explore button, where a Debug build has Control): walk
+    /// and run (push the stick to its edge), jump, pick things up, open the bag; no attacking, no job, no taking sides. It picks up what it walks near
+    /// and eats and drinks on its own, and cannot be hurt. See <see cref="PlayControl"/>.
+    /// </summary>
+    public static readonly bool Explore = Release;
+
     /// <summary>The event log on the screen (and its Log button) and the stats bar along the bottom (and its Stats button): developer readouts, not part of the game.</summary>
     public static readonly bool Diagnostics = !Release;
 

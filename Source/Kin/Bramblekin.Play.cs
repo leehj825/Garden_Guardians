@@ -61,8 +61,22 @@ public sealed partial class Bramblekin
     /// <summary>How far through the jump clip it is, 0 to 1.</summary>
     private float JumpProgress => Math.Clamp(_jumpTime / JumpClipSeconds, 0f, 1f);
 
-    /// <summary>Under control with the run toggle on.</summary>
-    private bool IsRunning => IsPlayerControlled && PlayerRunning;
+    /// <summary>Under control with the run toggle on, or the stick pushed right to its edge.</summary>
+    private bool IsRunning => IsPlayerControlled && (PlayerRunning || PlayerStickRun);
+
+    /// <summary>Set each frame by <see cref="PlayControl"/>: the stick is at its very edge (or Shift is held), which runs.</summary>
+    public bool PlayerStickRun { get; set; }
+
+    /// <summary>
+    /// Explorer: the player's gentler form of control (see <see cref="Build.Explore"/>): it picks up what it walks near, eats and drinks on its own even
+    /// while walking, and cannot be hurt.
+    /// </summary>
+    public bool PlayerExplorer { get; set; }
+
+    /// <summary>An explorer picks up what lies this near (m), and looks again this often (s).</summary>
+    private const float PlayerAutoPickReach = 0.9f, PlayerAutoPickEvery = 0.35f;
+
+    private float _autoPickCooldown;
 
     /// <summary>Set while the attack button is held.</summary>
     public bool PlayerWantsStrike { get; set; }
@@ -111,6 +125,8 @@ public sealed partial class Bramblekin
         {
             AssignJob(KinJob.None);
             IsPlayerControlled = false;
+            PlayerExplorer = false;
+            PlayerStickRun = false;
             if (AwayGroupId is { } clan && world.GroupExists(clan))
             {
                 JoinGroup(clan);
@@ -202,7 +218,17 @@ public sealed partial class Bramblekin
         }
 
         bool moving = PlayerMove.LengthSquared() > 0.01f;
-        if (!moving && TryPlayerSustain(deltaTime, world))
+        if (PlayerExplorer)
+        {
+            _autoPickCooldown -= deltaTime;
+            if (moving && _autoPickCooldown <= 0f)
+            {
+                _autoPickCooldown = PlayerAutoPickEvery;
+                if (PlayerPickUp(world, auto: true))
+                    return; // (it bends to pick it up)
+            }
+        }
+        if ((!moving || PlayerExplorer) && TryPlayerSustain(deltaTime, world))
             return;
         if (!moving && Job == KinJob.Fisher && TryPlayerFishing(deltaTime, world))
             return;
@@ -230,7 +256,7 @@ public sealed partial class Bramblekin
     /// <summary>One step along the stick: a jog, or a run with the run toggle on.</summary>
     private void MovePlayer(float deltaTime, World world)
     {
-        float speed = (PlayerRunning ? PlayerSprintSpeed : PlayerRunSpeed) * AgeSpeedFactor * VigorSpeedFactor * (IsSick ? SickSpeedFactor : 1f) * world.PathSpeed(Position);
+        float speed = (IsRunning ? PlayerSprintSpeed : PlayerRunSpeed) * AgeSpeedFactor * VigorSpeedFactor * (IsSick ? SickSpeedFactor : 1f) * world.PathSpeed(Position);
         _mover.Step(PlayerMove, speed, deltaTime, world);
     }
 
@@ -467,7 +493,10 @@ public sealed partial class Bramblekin
 
     /// <summary>For the HUD: what a controlled kin can do about being hungry or thirsty.</summary>
     public string? PlayerHint =>
-        IsThirsty ? "Thirsty: stand still at the water's edge to drink"
+        PlayerExplorer && IsThirsty ? "Thirsty: walk to the water's edge to drink"
+        : PlayerExplorer && IsHungry ? "Hungry: eat from the bag, or walk to food or your clan's store"
+        : PlayerExplorer ? null
+        : IsThirsty ? "Thirsty: stand still at the water's edge to drink"
         : Job == KinJob.Fisher && !IsHungry ? "Fisher: stand still at the water's edge to fish"
         : IsHungry ? "Hungry: stand still by food or at your own home's store to eat"
         : null;
