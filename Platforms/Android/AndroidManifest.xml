@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <!-- Package name, version and min SDK come from GardenGuardians.csproj. The AdMob app id is added by the MetaData attribute in AdConfig.cs. -->
+  <!-- Google Play requires new uploads to target API level 36. The project compiles against API 35 (the newest that .NET 9 has), but the target
+       SDK is only a promise about behaviour that Android reads from this line, so it can be 36. Minimum SDK comes from GardenGuardians.csproj. -->
+  <uses-sdk android:targetSdkVersion="36" />
   <!-- The banner ad is fetched over the network. -->
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
