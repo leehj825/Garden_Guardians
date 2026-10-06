@@ -75,8 +75,7 @@ public sealed partial class Bramblekin
         _drinkWell = null;
         _drinkFrom = null;
         _drinkTimer = 0f;
-        StartAction(BramblekinClip.PickingUp, lockMovement: true);
-        StartPause();
+        StartPause(); // (no pick-up clip: drinking a bottle from the pack is not a pick-up)
         return true;
     }
 
@@ -105,6 +104,7 @@ public sealed partial class Bramblekin
             return;
         _bottleTimer = 0f;
         Pack.Add(ItemKind.Water);
+        StartAction(BramblekinClip.PickingUp, lockMovement: false); // bends to fill the bottle (walking on cuts it short)
     }
 
     /// <summary>How much bigger than the usual pop-ups the messages about the player's items are drawn (picking up, eating, drinking).</summary>

@@ -1376,3 +1376,4 @@ matter most:
 *   ✅ **Follow-up (2026-10-06):** upright buttons and text 25% smaller (`PortraitReferenceWidth` 1600); the messages about the player's items
     ("Water bottle", "Nothing to pick up", "Pack full", "Not hungry"...) are twice the size of the other pop-ups (`ItemTextSize`; floating texts
     carry a size); eating no longer plays the pick-up clip (it started over again and again while the meal lasted), picking up and drinking still do.
+*   ✅ **Bottles and the pick-up clip:** filling a bottle at the water's edge plays the pick-up clip (walking on cuts it short); drinking a bottle from the pack does not.
