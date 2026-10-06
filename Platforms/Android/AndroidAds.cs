@@ -72,6 +72,7 @@ internal static class AndroidAds
                 {
                     manifestId = ex.GetType().Name;
                 }
+                _ = Task.Run(CheckNetwork);
                 AdBanner.Setup = $"SDK {MobileAds.Version?.ToString() ?? "?"}, {manifestId}, {activity.PackageName}";
                 // With no log to read, ask both ad units in hidden views and say what each answered: a test unit that is
                 // refused too points at the phone's network (a VPN, private DNS or ad blocker), not at the AdMob account.
@@ -92,6 +93,31 @@ internal static class AndroidAds
             Log.Error(LogTag, $"Could not start the banner ad: {ex}");
             AdBanner.SetPlatformVisible = null;
             AdBanner.Status = $"START FAILED {ex.GetType().Name}: {ex.Message}";
+        }
+    }
+
+    /// <summary>Plain HTTPS requests to Google's servers from managed code: shows whether the app can reach them at all, whatever the ad SDK says.</summary>
+    private static async Task CheckNetwork()
+    {
+        var results = new List<string>();
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        foreach (var (label, url) in new[]
+        {
+            ("google", "https://www.google.com/generate_204"),
+            ("doubleclick", "https://googleads.g.doubleclick.net/"),
+            ("pagead2", "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"),
+        })
+        {
+            try
+            {
+                using var response = await http.GetAsync(url);
+                results.Add($"{label} {(int)response.StatusCode}");
+            }
+            catch (Exception ex)
+            {
+                results.Add($"{label} {ex.GetType().Name}");
+            }
+            AdBanner.Net = string.Join(", ", results);
         }
     }
 
@@ -191,7 +217,7 @@ internal static class AndroidAds
         {
             Log.Warn(LogTag, $"Banner ad failed to load: {error.Message}");
             AdBanner.LoadedHeightPx = 0;
-            AdBanner.Status = $"FAILED to load, code {error.Code}: {Short(error.Message)}";
+            AdBanner.Status = $"FAILED to load, code {error.Code}: {Short(error.Message)} [{error.Domain}{(error.Cause is { } cause ? $", cause {Short(cause.Message)}" : "")}]";
         }
 
         public override void OnAdImpression() => AdBanner.Status += " - shown";

@@ -26,6 +26,9 @@ internal static class AdBanner
     /// <summary>Debug builds on Android: the SDK's version and the app id found in the installed manifest.</summary>
     public static volatile string Setup = "";
 
+    /// <summary>Debug builds on Android: what plain HTTPS requests to Google's servers answered, and the load error's domain and cause.</summary>
+    public static volatile string Net = "";
+
     private static bool _wanted;
 
     /// <summary>Whether the game wants the banner showing right now.</summary>

@@ -1507,7 +1507,7 @@ public static partial class Game
 
         // The Stats button sits at the bottom-left, just above where the stats bar is, whether it shows or not,
         // with the Log button and the log above it.
-        const int statLines = 10;
+        const int statLines = 11;
         // (Upright, the lines are cut short at the screen's edge: a developer readout, so a smaller font is all it gets.)
         int fontSize = IsPortrait ? Math.Max(10, (int)(Raylib.GetScreenWidth() / 62f)) : ScaledFontSize(0.8f);
         int lineHeight = fontSize + fontSize / 6;
@@ -1563,6 +1563,7 @@ public static partial class Game
             $"Banner ad: {AdBanner.Status}{(AdBanner.Wanted ? "" : " (not wanted here)")}   reserved {AdBanner.HeightPx} px",
             $"Ad probes: {AdBanner.Probes}",
             $"Ad setup: {AdBanner.Setup}",
+            $"Ad net: {AdBanner.Net}",
         };
 
         // UI Text Scaling: a background bar goes underneath, sized off
