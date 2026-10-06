@@ -116,7 +116,7 @@ public static partial class Game
         int titleSize = ScaledFontSize(0.8f);
         int textSize = ScaledFontSize(0.55f);
         int pad = (int)(16 * UiScale) + 4;
-        int maxWidth = (int)(Raylib.GetScreenWidth() * 0.62f);
+        int maxWidth = CaptionMaxWidth(0.62f) - pad * 2;
         string hint = banner.Where is null ? "" : "Tap to see";
         string text = Fit(banner.Text, textSize, maxWidth);
         int width = Math.Max(Raylib.MeasureText(banner.Title, titleSize),

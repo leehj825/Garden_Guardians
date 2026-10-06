@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  <!-- Package name, version and min SDK come from GardenGuardians.csproj. -->
+  <!-- Package name, version and min SDK come from GardenGuardians.csproj. The AdMob app id is added by the MetaData attribute in AdConfig.cs. -->
+  <!-- The banner ad is fetched over the network. -->
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <application android:label="Garden Guardians" android:allowBackup="true" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" />
   <!-- Raylib renders through OpenGL ES; declare it so stores filter correctly. -->
   <uses-feature android:glEsVersion="0x00020000" android:required="true" />

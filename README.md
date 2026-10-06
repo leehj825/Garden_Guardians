@@ -18,17 +18,19 @@ An emergent survival simulation set in a hilly backyard modelled in 3D, at the f
 
 ## Building
 
-Requires the .NET 8 SDK.
+Requires the .NET 8 SDK for the desktop build (the Android build uses .NET 9: see below).
 
 - **Desktop prototype:** `dotnet run -f net8.0 -p:DesktopOnly=true`. The `DesktopOnly` flag skips the Android target, so you don't need the Android workload.
 - **Headless simulation:** `dotnet run -f net8.0 -p:DesktopOnly=true -- --headless 600 --seed 1` runs 600 simulated seconds with no window and prints population reports, notable events, and a summary of the survival trend (deaths per kin-hour by social status and cause), leadership styles, rebellions, villages and lineage, and the chronicle — handy for tuning, or on a machine without a GPU. Add `--save garden.json` to save the world at the end, and `--load garden.json` to carry on a saved one.
 
 Code lives under `Source/` (engine, world, kin, wildlife, game), one type per file; `Program.cs` is just the entry point.
-- **Android APK:** install the Android workload (`dotnet workload install android`) and the Android NDK. Then run `Platforms/Android/build-raylib.sh` to compile raylib for Android, and `dotnet publish -f net8.0-android -c Debug -p:EmbedAssembliesIntoApk=true`.
+- **Android APK:** install the Android workload (`dotnet workload install android`) and the Android NDK. Then run `Platforms/Android/build-raylib.sh` to compile raylib for Android, and `dotnet publish -f net9.0-android -c Debug -p:EmbedAssembliesIntoApk=true`.
 
 GitHub Actions builds the Android APKs automatically:
 
 - `debug-build.yml` runs on every push to a branch other than `main` and uploads a debug APK.
-- `release-build.yml` runs on every push to `main` and uploads a signed APK. It needs the `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` repository secrets.
+- `release-build.yml` runs on every push to `main` and uploads a signed APK (`garden-guardians-release-apk`, to sideload) and a signed Android App Bundle (`garden-guardians-release-aab`, the file Google Play takes). Each build's version code is the workflow's run number, so every upload to Google Play is higher than the last. It needs the `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` repository secrets.
+
+The game plays upright (portrait) or sideways (landscape) and lays itself out again when the screen changes; `GARDEN_SIZE=720x1280` opens the desktop window at another shape and `GARDEN_AD_TEST=1` draws a stand-in for the banner ad. On Android a Google AdMob banner (the real app id always; Google's test banner unit in Debug builds, the live one in Release: `Platforms/Android/AdConfig.cs`) lies along the bottom while a garden is shown.
 
 On Android the same C# game loop runs inside a `NativeActivity`. See `Platforms/Android/MainActivity.cs` for how it starts up.

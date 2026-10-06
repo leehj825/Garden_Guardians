@@ -41,13 +41,14 @@ public static partial class Game
         float armedFor = 0f;
         while (!Raylib.WindowShouldClose())
         {
+            SyncWindowSize();
             MusicPlayer.Update(Raylib.GetFrameTime(), null, silent: false); // the main theme
             float uiScale = UiScale;
             int width = Raylib.GetScreenWidth(), height = Raylib.GetScreenHeight();
             int buttonHeight = (int)(96 * uiScale), gap = (int)(18 * uiScale), chipHeight = (int)(68 * uiScale);
             int wide = Math.Min((int)(width * 0.8f), (int)(1000 * uiScale));
             int left = (width - wide) / 2;
-            int titleSize = ScaledFontSize(2.6f), subtitleSize = ScaledFontSize(0.8f);
+            int titleSize = FitFontSize("Garden Guardians", ScaledFontSize(2.6f), (int)(width * 0.94f)), subtitleSize = ScaledFontSize(0.8f);
 
             int y = (int)(height * 0.08f);
             int titleY = y;
@@ -205,9 +206,10 @@ public static partial class Game
 
     private static void DrawLoadingFrame()
     {
+        SyncWindowSize();
         float uiScale = UiScale;
         int width = Raylib.GetScreenWidth(), height = Raylib.GetScreenHeight();
-        int titleSize = ScaledFontSize(2.6f), textSize = ScaledFontSize(0.9f);
+        int titleSize = FitFontSize("Garden Guardians", ScaledFontSize(2.6f), (int)(width * 0.94f)), textSize = ScaledFontSize(0.9f);
         Color ink = new(40, 55, 30, 255);
         Raylib.BeginDrawing();
         Raylib.DrawRectangleGradientV(0, 0, width, height, new Color(150, 200, 235, 255), new Color(95, 150, 80, 255));

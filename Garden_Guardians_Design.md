@@ -1,6 +1,6 @@
 # Garden_Guardians_Design.md
 
-*Last updated: 2026-10-02 — society levels (villages, paid jobs, kingdoms, invasions) and playing a Bramblekin added; the **Emergent Survival** pivot, now with
+*Last updated: 2026-10-05 — a banner ad, and the game playing upright as well as sideways; society levels (villages, paid jobs, kingdoms, invasions) and playing a Bramblekin added; the **Emergent Survival** pivot, now with
 **settling and society**, and a living population: **seasons**, **births**
 and **villages** that bud off daughter groups, **named** Bramblekin who
 pair up as **couples** and die of **old age**, a **follow camera**,
@@ -1539,6 +1539,71 @@ village, kingdom) says who belongs together and who leads.
     alive, a new solitary one with a freshly rolled Personality wanders
     in from a random edge of the map — so a hard winter never ends the
     world, but growth beyond that has to come from births.
+
+
+## Upright and Sideways: the Responsive Layout
+
+The game plays held upright (portrait) or sideways (landscape), and follows the screen when it changes: the phone turned, or a desktop window
+dragged to another shape. On Android the activity is `FullSensor` (it follows the sensor, either way up) and handles the rotation itself, so the
+garden keeps running and nothing is reloaded.
+
+*   **Nothing is remembered from startup.** Every panel and button reads the current screen size every frame (`Source/Game/Game.Layout.cs`),
+    and the rectangle a button is drawn in is the one a tap is tested against, so they cannot drift apart.
+*   **One scale factor (`UiScale`).** A wide screen scales off 1920 units across, as before; a tall one off 1600, so a column of buttons fits a
+    phone held upright and the buttons stay about as big as a finger.
+*   **Landscape is unchanged:** one row of buttons along the top (Map, History, Auto, Menu), the map-guide toggles (Clans, Links, Range, Fog)
+    stacked down the left, the Kin Inspector top right.
+*   **Portrait reflows it:** the speed buttons (a development aid) get a row of their own; Map, History, Auto and Menu make the next row; the four
+    map-guide toggles run across the screen under them; the Kin Inspector (and the Follow and Control buttons under it) starts below that and
+    takes the width of the screen. Alert banners and the Director's caption are centred, up to nine tenths of the width. The start menu, settings,
+    loading screen and the "back to the menu?" question are single columns that fit either way (the title shrinks to fit).
+*   **Taking the wheel of a Bramblekin:** the stick, Attack, Shoot and the row of four buttons keep a fixed distance up from the bottom edge
+    (clear of the ad and the navigation bar); upright, the stick sits above the button row rather than beside it, and the status line moves under
+    the Exit button.
+*   **Insets:** `ScreenInsets` holds the strips a camera notch or the navigation bar cover (filled in on Android); the top row starts below the
+    top one, and everything anchored to the bottom (`UiBottom`) stays above the bottom one and above the ad.
+*   **Android and raylib:** raylib 6.0's Android backend never learns that the phone was turned: it keeps the screen size, viewport and touch
+    mapping of the window's first shape, and pins the window's buffers to it. `Platforms/Android/native/gg_resize_window.inc.c` is appended to
+    raylib's `rcore_android.c` by `build-raylib.sh` and adds `gg_resize_window(w, h)`; `WindowWatcher` (a global-layout listener on the
+    activity's top view) reports the window's size, and `Game.SyncWindowSize` calls it at the top of every frame of every screen when the
+    size changes.
+*   **Developer aids:** `GARDEN_SIZE=720x1280` opens the desktop window at another shape (with `GARDEN_SCREENSHOT`, to look at the upright
+    layout on a virtual display); `GARDEN_AD_TEST=1` draws a grey stand-in for the banner ad.
+
+## Monetization
+
+The game is a calm simulation to watch, so the money has to stay out of the way: nothing that interrupts the garden, and nothing that
+changes how it plays out.
+
+**Now: a banner ad.** A Google AdMob banner (320 x 50 dp) lies along the bottom edge while a garden is on the screen. It is not shown on the
+start menu, the settings page or the loading screen. The UI keeps clear of it: `Game.UiBottom` is the bottom edge less the banner (and the
+navigation bar), and the stats bar, the bottom buttons and the controls of a Bramblekin under control hang from it. Space is reserved only once
+an ad has loaded, and given back if the next one fails; with no network or no Google Play services the game simply runs without it.
+
+*   `Source/Game/AdBanner.cs`: the platform-independent side (wanted or not, how tall).
+*   `Platforms/Android/AndroidAds.cs`: the AdMob `AdView`, shown in a `PopupWindow` along the bottom edge (a view added to the activity itself
+    is never drawn: a NativeActivity gives its window surface to the game), paused and resumed with the activity. `Platforms/Android/AdConfig.cs` holds the ids.
+*   **The manifest always carries the game's real AdMob app id** (`ca-app-pub-4400173019354346~3719730997`): the SDK looks the app's settings
+    up by it, and Google refused the sample app id from this app (HTTP 403, "Not retrying to fetch app settings" in the SDK log). **Debug builds
+    (the branch APKs from CI) ask for Google's TEST banner unit**, which always shows a marked test ad and is safe to tap; **Release builds ask
+    for the game's own unit** (`ca-app-pub-4400173019354346/4753521775`). All in `Platforms/Android/AdConfig.cs`. A new live ad unit can take
+    hours to start filling. Never tap live ads on your own account while testing (AdMob suspends accounts for it).
+*   Package: `Xamarin.GooglePlayServices.Ads` 125.5.0, which needs .NET 9: the Android target is `net9.0-android` (the desktop stays `net8.0`). The net8 bindings (123.6 and 124.6) were answered with HTTP 403, see the roadmap.
+*   **Before release, not yet done:** a privacy policy; the consent form for users in the EEA and the UK (Google's User Messaging Platform,
+    required for personalised ads there); the child-directed setting if children may play (it limits ad personalisation, and revenue); the
+    store's data-safety and ads declarations.
+
+**Ideas, in the order they are worth doing** (none built yet):
+1.  **Rewarded video, always optional.** Pays ten to thirty times what a banner does, and players accept what they choose. Fits: *Bless the
+    garden* (a day of good rain, a bountiful harvest or no sickness), *Seed a Bramblekin* (choose a newborn's traits), an extra save slot, or
+    skipping a season in fast-forward. Never rewards that rescue a dying village: that would spoil the drama the game is for.
+2.  **A one-time "Remove ads" purchase** (about 2.99 to 4.99 USD) through Google Play Billing, which also unlocks the rewarded boosts for free.
+3.  **Cosmetic packs:** Bramblekin skins and hats, garden themes (autumn, desert, snow), decorations for the pond and the oak. Nothing that
+    touches balance.
+4.  **Later:** a paid version for Steam or itch.io (the desktop build exists); a tip jar or Patreon for the simulation audience. Full-screen
+    ads between screens are not worth it: one over a Bramblekin's big moment loses more players than it earns.
+
+Realistically a small audience earns tens of dollars a month; how long people keep a garden going matters more than where the banner sits.
 
 ---
 

@@ -195,6 +195,6 @@ public sealed partial class World
         }
     }
 
-    public void QueueFloatingText(Vector3 position, string text, Color color) =>
-        _floatingTexts.Add((position, text, color, FloatingTextDuration));
+    public void QueueFloatingText(Vector3 position, string text, Color color, float size = 1f) =>
+        _floatingTexts.Add((position, text, color, FloatingTextDuration, size));
 }

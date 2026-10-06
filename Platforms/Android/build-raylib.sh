@@ -7,6 +7,8 @@
 #    * raylib itself (PLATFORM_ANDROID, OpenGL ES 2.0)
 #    * android_native_app_glue  (provides ANativeActivity_onCreate)
 #    * native/gg_android_main.c (provides main() -> managed C# game loop)
+#    * native/gg_resize_window.inc.c, appended to raylib's rcore_android.c so the
+#      window follows a rotation (gg_resize_window)
 #
 #  Output: Platforms/Android/libs/<abi>/libraylib.so, which
 #  GardenGuardians.csproj packs into the APK.
@@ -61,6 +63,14 @@ if [[ ! -f "$SRC_DIR/src/raylib.h" ]]; then
     mkdir -p "$BUILD_DIR"
     git clone --quiet --depth 1 --branch "$RAYLIB_VERSION" \
         https://github.com/raysan5/raylib.git "$SRC_DIR"
+fi
+
+# --- Patch raylib: follow the window when the phone is turned -----------------
+# raylib's Android backend never learns of a rotation (see native/gg_resize_window.inc.c).
+# The patch is appended once (the marker keeps a cached source from being patched twice).
+ANDROID_CORE="$SRC_DIR/src/platforms/rcore_android.c"
+if ! grep -q "gg_resize_window" "$ANDROID_CORE"; then
+    cat "$SCRIPT_DIR/native/gg_resize_window.inc.c" >> "$ANDROID_CORE"
 fi
 
 RAYLIB_SOURCES=(rcore.c rshapes.c rtextures.c rtext.c rmodels.c raudio.c)

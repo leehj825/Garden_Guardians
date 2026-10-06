@@ -13,8 +13,8 @@ public static partial class Game
     // --- The Menu button and its question ------------------------------------------------------
 
     /// <summary>The Menu button of the game page, after the last button of the top row.</summary>
-    private static UiButton MenuButton(Rectangle last, int margin, float height, float uiScale) =>
-        new(new Rectangle(last.X + last.Width + margin, margin, (int)(150 * uiScale), height * 0.62f)); // (smaller than the others: it is not for everyday use, and the hint box is next to it)
+    private static UiButton MenuButton(Rectangle last, float y, int margin, float height, float uiScale) =>
+        new(new Rectangle(last.X + last.Width + margin, y, (int)(150 * uiScale), height * 0.62f)); // (smaller than the others: it is not for everyday use, and the hint box is next to it)
 
     /// <summary>The box the question is drawn in, centred.</summary>
     private static Rectangle MenuConfirmBox(float uiScale)
@@ -53,6 +53,7 @@ public static partial class Game
     {
         while (!Raylib.WindowShouldClose())
         {
+            SyncWindowSize();
             MusicPlayer.Update(Raylib.GetFrameTime(), null, silent: false);
             float uiScale = UiScale;
             int width = Raylib.GetScreenWidth(), height = Raylib.GetScreenHeight();

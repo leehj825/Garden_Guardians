@@ -11,8 +11,9 @@ public static partial class Game
 {
     // Window settings for Desktop. Android instead opens at its native
     // screen size (see Run's InitWindow call) so the game fills the whole
-    // display with no letterboxing; landscape is locked independently, via
-    // MainActivity's ScreenOrientation attribute, not by these numbers.
+    // display with no letterboxing; the screen's shape (upright or sideways)
+    // follows the device, via MainActivity's ScreenOrientation attribute, and the
+    // UI lays itself out again for it (see Game.Layout.cs), not by these numbers.
     private const int ScreenWidth = 1280;
     private const int ScreenHeight = 720;
     private const int TargetFps = 60;
@@ -71,20 +72,6 @@ public static partial class Game
     private static float _perfClock;
     private static bool _lootTestDone;
     private static bool _playTestDone;
-
-    /// <summary>
-    /// Responsive UI: the screen width every hardcoded UI pixel constant
-    /// (the Debug Time Scale buttons' geometry, in particular) was
-    /// originally designed/tuned against. <see cref="UiScale"/> divides the
-    /// CURRENT screen width by this to get a single scale factor those
-    /// constants are multiplied by, so the UI stays proportionally sized —
-    /// and, crucially, stays tappable in exactly the place it's drawn — on
-    /// any screen instead of only the one it was designed for.
-    /// </summary>
-    private const float ReferenceScreenWidth = 1920f;
-
-    /// <summary>Current screen width divided by <see cref="ReferenceScreenWidth"/> — see its doc comment.</summary>
-    private static float UiScale => Raylib.GetScreenWidth() / ReferenceScreenWidth;
 
     /// <summary>
     /// The large font size, at the <see cref="ReferenceScreenWidth"/>, that
@@ -165,16 +152,24 @@ public static partial class Game
     /// <summary>Where each clan's name tag was drawn last frame, for tapping it to open the clan card.</summary>
     private static readonly List<(Rectangle Bounds, KinGroup Clan)> _clanLabelBounds = new();
 
-    /// <summary>The three map-guide toggles (clan range, kin links, kin range), stacked under the top buttons.</summary>
+    /// <summary>The map-guide toggles (clan range, kin links, kin range, fog): stacked down the left side under the top buttons, or in a row across the screen when it is upright.</summary>
     private static (UiButton Button, string Label, MapOverlays Flag)[] OverlayButtons(float uiScale, int top, int margin)
     {
-        int width = (int)(250 * uiScale), height = (int)(96 * uiScale), gap = (int)(10 * uiScale);
+        int height = (int)(96 * uiScale), gap = (int)(10 * uiScale);
         (string, MapOverlays)[] rows = { ("Clans", MapOverlays.ClanRange), ("Links", MapOverlays.KinLinks), ("Range", MapOverlays.KinRange), ("Fog", MapOverlays.Fog) };
         var buttons = new (UiButton, string, MapOverlays)[rows.Length];
+        bool across = IsPortrait;
+        int width = across ? (Raylib.GetScreenWidth() - margin * 2 - gap * (rows.Length - 1)) / rows.Length : (int)(250 * uiScale);
         for (int i = 0; i < rows.Length; i++)
-            buttons[i] = (new UiButton(new Rectangle(margin, top + i * (height + gap), width, height)), rows[i].Item1, rows[i].Item2);
+        {
+            var bounds = across ? new Rectangle(margin + i * (width + gap), top, width, height) : new Rectangle(margin, top + i * (height + gap), width, height);
+            buttons[i] = (new UiButton(bounds), rows[i].Item1, rows[i].Item2);
+        }
         return buttons;
     }
+
+    /// <summary>How much height the map-guide toggles take out of the column under the top buttons: none when they stack down the left, a row when they run across.</summary>
+    private static int OverlayRowHeight(float uiScale) => IsPortrait ? (int)(96 * uiScale) + (int)(10 * uiScale) : 0;
 
     /// <summary>A tap on a clan's name tag opens its card. Returns true if it landed on one.</summary>
     private static bool TapClanLabel(Vector2 point, World world)
@@ -309,7 +304,10 @@ public static partial class Game
             Raylib.InitWindow(0, 0, "Garden Guardians");
         else
         {
-            Raylib.InitWindow(ScreenWidth, ScreenHeight, "Garden Guardians");
+            // (GARDEN_SIZE=720x1280: a development aid, opens the window at another shape, to look at the upright layout.)
+            int[] size = (Environment.GetEnvironmentVariable("GARDEN_SIZE") ?? "").Split('x').Select(part => int.TryParse(part, out int n) ? n : 0).ToArray();
+            bool sized = size.Length == 2 && size[0] > 0 && size[1] > 0;
+            Raylib.InitWindow(sized ? size[0] : ScreenWidth, sized ? size[1] : ScreenHeight, "Garden Guardians");
             Image icon = Raylib.LoadImage("Assets/icon.png");
             if (icon.Width > 0)
                 Raylib.SetWindowIcon(icon);
@@ -386,6 +384,8 @@ public static partial class Game
             // --- Main loop -------------------------------------------------------
             while (!Raylib.WindowShouldClose())
             {
+                SyncWindowSize();
+                AdBanner.Show(true);
                 float rawDeltaTime = MathF.Min(Raylib.GetFrameTime(), MaxDeltaTime);
                 MusicPlayer.Update(Raylib.GetFrameTime(), MusicPlayer.For(world), silent: _timeScale >= 10f); // (no music when sped up to 10x and over)
 
@@ -425,19 +425,26 @@ public static partial class Game
                 int speedButtonHeight = (int)(132 * uiScale);
                 int speedButtonGap = (int)(180 * uiScale);
                 int speedButtonMargin = (int)(20 * uiScale);
-                var speedDownButton = new UiButton(new Rectangle(speedButtonMargin, speedButtonMargin, speedButtonWidth, speedButtonHeight));
-                var speedUpButton = new UiButton(new Rectangle(speedButtonMargin + speedButtonWidth + speedButtonGap, speedButtonMargin, speedButtonWidth, speedButtonHeight));
-                var speedLabelBounds = new Rectangle(speedButtonMargin + speedButtonWidth, speedButtonMargin, speedButtonGap, speedButtonHeight);
-                var mapButton = new UiButton(new Rectangle(Build.SpeedControls ? speedButtonMargin * 2 + speedButtonWidth * 2 + speedButtonGap : speedButtonMargin, speedButtonMargin,
-                    (int)(190 * uiScale), speedButtonHeight));
-                var historyButton = new UiButton(new Rectangle(mapButton.Bounds.X + mapButton.Bounds.Width + speedButtonMargin, speedButtonMargin,
+                int topY = ScreenInsets.Top + speedButtonMargin; // (the top row starts below a camera notch)
+                // Held upright there is no room for the speed buttons and the rest in one row: the speed buttons (a development aid) get a row of their own above.
+                bool stackedRows = IsPortrait && Build.SpeedControls;
+                int navRowY = stackedRows ? topY + speedButtonMargin + speedButtonHeight : topY;
+                int navRowX = Build.SpeedControls && !stackedRows ? speedButtonMargin * 2 + speedButtonWidth * 2 + speedButtonGap : speedButtonMargin;
+                var speedDownButton = new UiButton(new Rectangle(speedButtonMargin, topY, speedButtonWidth, speedButtonHeight));
+                var speedUpButton = new UiButton(new Rectangle(speedButtonMargin + speedButtonWidth + speedButtonGap, topY, speedButtonWidth, speedButtonHeight));
+                var speedLabelBounds = new Rectangle(speedButtonMargin + speedButtonWidth, topY, speedButtonGap, speedButtonHeight);
+                var mapButton = new UiButton(new Rectangle(navRowX, navRowY, (int)(190 * uiScale), speedButtonHeight));
+                var historyButton = new UiButton(new Rectangle(mapButton.Bounds.X + mapButton.Bounds.Width + speedButtonMargin, navRowY,
                     (int)(290 * uiScale), speedButtonHeight));
-                UiButton? autoButton = _showChronicle ? null : new UiButton(new Rectangle(historyButton.Bounds.X + historyButton.Bounds.Width + speedButtonMargin, speedButtonMargin,
+                UiButton? autoButton = _showChronicle ? null : new UiButton(new Rectangle(historyButton.Bounds.X + historyButton.Bounds.Width + speedButtonMargin, navRowY,
                     (int)(190 * uiScale), speedButtonHeight));
+                // Everything below the buttons starts from these (see Game.Layout.cs), so a second row of buttons pushes it all down.
+                _topBarBottom = navRowY + speedButtonHeight + speedButtonMargin;
+                _contentTop = _topBarBottom + OverlayRowHeight(uiScale);
                 UiButton? followButton = _showChronicle || playing ? null : FollowButton(world);
                 UiButton? controlButton = followButton is null || !Build.KinControl ? null : ControlButton(world, followButton);
-                UiButton menuButton = MenuButton(autoButton?.Bounds ?? historyButton.Bounds, speedButtonMargin, speedButtonHeight, uiScale);
-                var overlayButtons = _showChronicle ? null : OverlayButtons(uiScale, speedButtonMargin * 2 + speedButtonHeight, speedButtonMargin);
+                UiButton menuButton = MenuButton(autoButton?.Bounds ?? historyButton.Bounds, navRowY, speedButtonMargin, speedButtonHeight, uiScale);
+                var overlayButtons = _showChronicle ? null : OverlayButtons(uiScale, _topBarBottom, speedButtonMargin);
 
                 // 1) Input: the player has no lever on the world. The only tap
                 //    left is inspecting a single Bramblekin (see WorldTapInput,
@@ -574,6 +581,7 @@ public static partial class Game
                 if (playing)
                 {
                     play.DrawHud(world);
+                    AdBanner.DrawTestBar();
                     Raylib.EndDrawing();
                     _drawMs += (System.Diagnostics.Stopwatch.GetElapsedTime(drawStart).TotalMilliseconds - _drawMs) * 0.05;
                     if (DebugShot.Finished())
@@ -600,16 +608,17 @@ public static partial class Game
                 controlButton?.Draw("Control", highlighted: false);
                 int hudTop = DrawHud(world);
                 int captionHeight = director.Caption is null ? 0 : ScaledFontSize(0.55f) + 2 * ((int)(10 * UiScale) + 2) + 6;
-                DrawBanner((int)(speedButtonMargin * 2 + speedButtonHeight) + captionHeight);
+                DrawBanner(_contentTop + captionHeight);
                 if (!_showChronicle)
-                    DrawDirectorCaption(director, (int)(speedButtonMargin * 2 + speedButtonHeight));
+                    DrawDirectorCaption(director, _contentTop);
                 if (_showChronicle)
-                    DrawChronicle(world, top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
+                    DrawChronicle(world, top: _topBarBottom, bottom: hudTop);
                 else if (Build.Diagnostics)
-                    DrawDebugConsole(top: speedButtonMargin * 2 + speedButtonHeight, bottom: hudTop);
+                    DrawDebugConsole(top: _contentTop, bottom: hudTop);
                 if (_confirmMenu)
                     DrawMenuConfirm(uiScale);
 
+                AdBanner.DrawTestBar();
                 Raylib.EndDrawing();
                 _drawMs += (System.Diagnostics.Stopwatch.GetElapsedTime(drawStart).TotalMilliseconds - _drawMs) * 0.05;
                 if (PerfLog && (_perfClock += rawDeltaTime) >= 2f)
@@ -638,6 +647,7 @@ public static partial class Game
             }
 
             SaveSystem.Save(world, GardenPath);
+            AdBanner.Show(false);
             if (leaveToMenu)
             {
                 ClearBanners();
@@ -1021,7 +1031,7 @@ public static partial class Game
             return;
         int size = ScaledFontSize(0.55f);
         int pad = (int)(10 * UiScale) + 2;
-        string text = Fit(caption, size, (int)(Raylib.GetScreenWidth() * 0.7f));
+        string text = Fit(caption, size, CaptionMaxWidth(0.7f));
         int width = Raylib.MeasureText(text, size) + pad * 2;
         int x = (Raylib.GetScreenWidth() - width) / 2;
         Raylib.DrawRectangle(x, top, width, size + pad * 2, BannerFill);
@@ -1202,9 +1212,9 @@ public static partial class Game
     /// </summary>
     private static void DrawFloatingTexts(Camera3D camera, World world)
     {
-        const int fontSize = 20;
         foreach (var text in world.FloatingTexts)
         {
+            int fontSize = (int)(20 * text.Size); // (a player's item messages are drawn twice as big: see Bramblekin.PlayerPickUp)
             float age = World.FloatingTextDuration - text.TimeLeft;
             Vector3 worldPosition = text.Position + new Vector3(0, Bramblekin.BodyHeight + 0.4f + age * 0.6f, 0);
             if (!IsPointOnScreen(camera, worldPosition))
@@ -1348,14 +1358,17 @@ public static partial class Game
     private const float TopButtonsRight = 1020f;
 
     /// <summary>The widest the Kin Inspector (or clan card) may be without covering the buttons along the top.</summary>
-    private static int KinPanelMaxWidth(int margin, int inset) =>
-        Math.Max(200, Raylib.GetScreenWidth() - margin - inset * 2 - (int)(TopButtonsRight * UiScale) - 12);
+    private static int KinPanelMaxWidth(int margin, int inset) => IsPortrait
+        ? Math.Max(200, Raylib.GetScreenWidth() - margin * 2 - inset * 2 + 12)
+        : Math.Max(200, Raylib.GetScreenWidth() - margin - inset * 2 - (int)(TopButtonsRight * UiScale) - 12);
 
     /// <summary>The Kin Inspector's font size, line spacing and placement (top-right corner).</summary>
     private static (int FontSize, int LineHeight, int TopPadding, int Margin, int Inset) KinPanelMetrics()
     {
         int fontSize = ScaledFontSize(0.7f);
-        return (fontSize, fontSize + fontSize / 5, 20, 30, 12);
+        // Wide screen: top right, beside the top buttons. Upright: under the buttons and the map-guide toggles, across the screen.
+        return IsPortrait ? (fontSize, fontSize + fontSize / 5, _contentTop + (int)(10 * UiScale), (int)(20 * UiScale) + 12, 12)
+            : (fontSize, fontSize + fontSize / 5, 20 + ScreenInsets.Top, 30, 12);
     }
 
     /// <summary>The Kin Inspector's full height (padding included) for <paramref name="lineCount"/> lines.</summary>
@@ -1494,8 +1507,10 @@ public static partial class Game
 
         // The Stats button sits at the bottom-left, just above where the stats bar is, whether it shows or not,
         // with the Log button and the log above it.
-        const int statLines = 7;
-        int fontSize = ScaledFontSize(0.8f);
+        string[] sdkLog = AdBanner.SdkLog; // (a Debug build on Android: what the ad SDK wrote to the log)
+        int statLines = 12 + sdkLog.Length;
+        // (Upright, the lines are cut short at the screen's edge: a developer readout, so a smaller font is all it gets.)
+        int fontSize = IsPortrait ? Math.Max(10, (int)(Raylib.GetScreenWidth() / 62f)) : ScaledFontSize(0.8f);
         int lineHeight = fontSize + fontSize / 6;
         int barHeight = lineHeight * statLines + 20;
         string statsLabel = _statsView == StatsView.Shown ? "Stats: on" : "Stats: off";
@@ -1526,7 +1541,7 @@ public static partial class Game
         }
 
         if (_statsView == StatsView.Hidden || !Build.Diagnostics)
-            return DrawStatsButton(Raylib.GetScreenHeight() - (Build.Diagnostics ? barHeight : 0));
+            return DrawStatsButton(UiBottom - (Build.Diagnostics ? barHeight : 0));
 
         int living = world.Colony.Count(b => !b.IsDead);
         int solitary = world.Colony.Count(b => !b.IsDead && b.GroupId is null);
@@ -1546,14 +1561,21 @@ public static partial class Game
             $"Fleeing {Count(BramblekinState.Fleeing)}   Fighting {Count(BramblekinState.Fighting)}   Robbing {Count(BramblekinState.Attacking)}   Asleep {Count(BramblekinState.Sleeping)}{(world.Feasts.Count > 0 ? $"   Feasting {Count(BramblekinState.Feasting)}" : "")}",
             $"Arrived {world.Arrivals}   Died: starved {world.DeathsByStarvation}, thirst {world.DeathsByThirst}, old age {world.DeathsByOldAge}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}, sickness {world.DeathsBySickness}   Sick {world.SickCount}",
             $"Born {world.Births} (gen {world.MaxGeneration})   Couples {world.LivingCouples}   Politics: {world.Departures} left, {world.Splinters} splits, {world.Coups} coups, {world.Exiles} exiles   Raids {world.StoreRaids}",
+            $"Banner ad: {AdBanner.Status}{(AdBanner.Wanted ? "" : " (not wanted here)")}   reserved {AdBanner.HeightPx} px",
+            $"Ad probes: {AdBanner.Probes}",
+            $"Ad setup: {AdBanner.Setup}",
+            $"Ad net: {AdBanner.Net}",
+            $"Ad SDK log: {(sdkLog.Length == 0 ? "(none yet)" : "")}",
         };
+        if (sdkLog.Length > 0)
+            lines = lines.Concat(sdkLog.Select(entry => "  " + entry)).ToArray();
 
         // UI Text Scaling: a background bar goes underneath, sized off
         // fontSize/lineHeight, so the text stays legible over a busy map.
-        int y = Raylib.GetScreenHeight() - barHeight + 10;
+        int y = UiBottom - barHeight + 10;
         Raylib.DrawRectangle(0, y - 10, Raylib.GetScreenWidth(), barHeight, new Color(0, 0, 0, 90));
         for (int i = 0; i < lines.Length; i++)
-            Raylib.DrawText(lines[i], 20, y + lineHeight * i, fontSize, Color.RayWhite);
+            Raylib.DrawText(Fit(lines[i], fontSize, Raylib.GetScreenWidth() - 40), 20, y + lineHeight * i, fontSize, Color.RayWhite);
         return DrawStatsButton(y - 10);
     }
 

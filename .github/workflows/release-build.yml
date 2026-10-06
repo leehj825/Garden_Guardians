@@ -1,5 +1,10 @@
-# Builds a release Android APK signed with the project's upload keystore on
-# every push to main, and uploads it as a workflow artifact.
+# Builds a release Android APK (to sideload) and an Android App Bundle (.aab, the
+# file Google Play takes), both signed with the project's upload keystore, on every
+# push to main, and uploads them as workflow artifacts.
+#
+# Google Play wants every upload to have a higher version code than the last, so the
+# build passes the workflow's run number as ApplicationVersion (the display version,
+# 0.1.0, is still set in GardenGuardians.csproj).
 #
 # Required repository secrets:
 #   KEYSTORE_BASE64    - the .keystore file, base64-encoded (base64 -w0 release.keystore); KEYSTORE_B64 works too
@@ -18,7 +23,7 @@ permissions:
   contents: read
 
 jobs:
-  build-release-apk:
+  build-release:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
 
@@ -26,14 +31,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Setup .NET 8
+      - name: Setup .NET 9
         uses: actions/setup-dotnet@v5
         env:
           # Install into a user-writable folder so 'dotnet workload install'
           # doesn't need sudo to write into the runner's system .NET.
           DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 9.0.x
 
       - name: Install Android workload
         run: dotnet workload install android
@@ -69,8 +74,10 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: >
           dotnet publish GardenGuardians.csproj
-          -f net8.0-android
+          -f net9.0-android
           -c Release
+          -p:AndroidPackageFormat=apk
+          -p:ApplicationVersion=${{ github.run_number }}
           -p:AndroidKeyStore=true
           -p:AndroidSigningKeyStore=release.keystore
           -p:AndroidSigningKeyAlias="$KEY_ALIAS"
@@ -81,7 +88,33 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: garden-guardians-release-apk
-          path: bin/Release/net8.0-android/publish/*-Signed.apk
+          path: bin/Release/net9.0-android/publish/*-Signed.apk
+          if-no-files-found: error
+
+      # The same build as an Android App Bundle, the format Google Play requires for new apps
+      # (it makes the per-device APKs itself). Signed with the same upload key.
+      - name: Publish signed release AAB
+        env:
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: >
+          dotnet publish GardenGuardians.csproj
+          -f net9.0-android
+          -c Release
+          -p:AndroidPackageFormat=aab
+          -p:ApplicationVersion=${{ github.run_number }}
+          -p:AndroidKeyStore=true
+          -p:AndroidSigningKeyStore=release.keystore
+          -p:AndroidSigningKeyAlias="$KEY_ALIAS"
+          -p:AndroidSigningKeyPass=env:KEY_PASSWORD
+          -p:AndroidSigningStorePass=env:KEYSTORE_PASSWORD
+
+      - name: Upload signed release AAB
+        uses: actions/upload-artifact@v5
+        with:
+          name: garden-guardians-release-aab
+          path: bin/Release/net9.0-android/publish/*-Signed.aab
           if-no-files-found: error
 
       - name: Remove keystore

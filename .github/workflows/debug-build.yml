@@ -20,14 +20,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Setup .NET 8
+      - name: Setup .NET 9
         uses: actions/setup-dotnet@v5
         env:
           # Install into a user-writable folder so 'dotnet workload install'
           # doesn't need sudo to write into the runner's system .NET.
           DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 9.0.x
 
       - name: Install Android workload
         run: dotnet workload install android
@@ -49,7 +49,7 @@ jobs:
       - name: Publish debug APK
         run: >
           dotnet publish GardenGuardians.csproj
-          -f net8.0-android
+          -f net9.0-android
           -c Debug
           -p:EmbedAssembliesIntoApk=true
 
@@ -60,5 +60,5 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: garden-guardians-debug-apk
-          path: bin/Debug/net8.0-android/publish/*-Signed.apk
+          path: bin/Debug/net9.0-android/publish/*-Signed.apk
           if-no-files-found: error
