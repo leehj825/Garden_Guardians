@@ -1507,7 +1507,7 @@ public static partial class Game
 
         // The Stats button sits at the bottom-left, just above where the stats bar is, whether it shows or not,
         // with the Log button and the log above it.
-        const int statLines = 7;
+        const int statLines = 8;
         // (Upright, the lines are cut short at the screen's edge: a developer readout, so a smaller font is all it gets.)
         int fontSize = IsPortrait ? Math.Max(10, (int)(Raylib.GetScreenWidth() / 62f)) : ScaledFontSize(0.8f);
         int lineHeight = fontSize + fontSize / 6;
@@ -1560,6 +1560,7 @@ public static partial class Game
             $"Fleeing {Count(BramblekinState.Fleeing)}   Fighting {Count(BramblekinState.Fighting)}   Robbing {Count(BramblekinState.Attacking)}   Asleep {Count(BramblekinState.Sleeping)}{(world.Feasts.Count > 0 ? $"   Feasting {Count(BramblekinState.Feasting)}" : "")}",
             $"Arrived {world.Arrivals}   Died: starved {world.DeathsByStarvation}, thirst {world.DeathsByThirst}, old age {world.DeathsByOldAge}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}, sickness {world.DeathsBySickness}   Sick {world.SickCount}",
             $"Born {world.Births} (gen {world.MaxGeneration})   Couples {world.LivingCouples}   Politics: {world.Departures} left, {world.Splinters} splits, {world.Coups} coups, {world.Exiles} exiles   Raids {world.StoreRaids}",
+            $"Banner ad: {AdBanner.Status}{(AdBanner.Wanted ? "" : " (not wanted here)")}   reserved {AdBanner.HeightPx} px   bottom inset {ScreenInsets.Bottom} px",
         };
 
         // UI Text Scaling: a background bar goes underneath, sized off

@@ -31,6 +31,7 @@ internal static class AndroidAds
     /// <summary>Starts AdMob and puts a hidden banner at the bottom of <paramref name="activity"/>; it is shown once the game asks (<see cref="AdBanner.Show"/>).</summary>
     public static void Start(Activity activity)
     {
+        AdBanner.Status = "starting";
         _visible = AdBanner.Wanted; // (the game may have asked before this was hooked up)
         AdBanner.SetPlatformVisible = visible =>
         {
@@ -42,6 +43,8 @@ internal static class AndroidAds
             MobileAds.Initialize(activity);
             activity.RunOnUiThread(() =>
             {
+              try
+              {
                 var view = new AdView(activity) { AdUnitId = AdConfig.BannerUnitId };
                 view.AdSize = AdSize.Banner; // (320 x 50 dp, centred along the bottom edge)
                 view.AdListener = new Listener(AdSize.Banner.GetHeightInPixels(activity));
@@ -57,6 +60,13 @@ internal static class AndroidAds
                 // A popup can only be shown once the activity's window is attached.
                 _anchor = activity.Window?.DecorView;
                 _anchor?.Post(Apply);
+                AdBanner.Status = "requested, waiting for an ad";
+              }
+              catch (Exception ex)
+              {
+                Log.Error(LogTag, $"Banner ad setup failed: {ex}");
+                AdBanner.Status = $"SETUP FAILED {ex.GetType().Name}: {ex.Message}";
+              }
             });
         }
         catch (Exception ex)
@@ -64,6 +74,7 @@ internal static class AndroidAds
             // No ads is better than no game: carry on without the banner.
             Log.Error(LogTag, $"Could not start the banner ad: {ex}");
             AdBanner.SetPlatformVisible = null;
+            AdBanner.Status = $"START FAILED {ex.GetType().Name}: {ex.Message}";
         }
     }
 
@@ -98,7 +109,11 @@ internal static class AndroidAds
                 popup.Dismiss();
         }
         else if (!popup.IsShowing)
+        {
             popup.ShowAtLocation(anchor, GravityFlags.Bottom | GravityFlags.CenterHorizontal, 0, _bottomMargin);
+            if (!AdBanner.Status.Contains("loaded") && !AdBanner.Status.Contains("FAILED"))
+                AdBanner.Status = "popup shown, waiting for an ad";
+        }
         else
             popup.Update(0, _bottomMargin, -1, -1); // (keeps it above the navigation bar; the size stays as it is)
     }
@@ -110,12 +125,19 @@ internal static class AndroidAds
 
         public Listener(int heightPixels) => _heightPixels = heightPixels;
 
-        public override void OnAdLoaded() => AdBanner.LoadedHeightPx = _heightPixels;
+        public override void OnAdLoaded()
+        {
+            AdBanner.LoadedHeightPx = _heightPixels;
+            AdBanner.Status = $"loaded ({_heightPixels} px tall)";
+        }
 
         public override void OnAdFailedToLoad(LoadAdError error)
         {
             Log.Warn(LogTag, $"Banner ad failed to load: {error.Message}");
             AdBanner.LoadedHeightPx = 0;
+            AdBanner.Status = $"FAILED to load, code {error.Code}: {error.Message}";
         }
+
+        public override void OnAdImpression() => AdBanner.Status += " - shown";
     }
 }

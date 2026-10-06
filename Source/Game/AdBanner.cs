@@ -17,6 +17,9 @@ internal static class AdBanner
     /// <summary>Set by the platform: the banner view's height in pixels (0 until an ad has loaded; the space is not reserved before then).</summary>
     public static volatile int LoadedHeightPx;
 
+    /// <summary>What the platform's ad is doing, for the stats bar of a Debug build (nothing else shows why an ad is missing when there is no log to read).</summary>
+    public static volatile string Status = "no ads on this platform";
+
     private static bool _wanted;
 
     /// <summary>Whether the game wants the banner showing right now.</summary>

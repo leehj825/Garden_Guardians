@@ -1378,3 +1378,4 @@ matter most:
     carry a size); eating no longer plays the pick-up clip (it started over again and again while the meal lasted), picking up and drinking still do.
 *   ✅ **Bottles and the pick-up clip:** filling a bottle at the water's edge plays the pick-up clip (walking on cuts it short); drinking a bottle from the pack does not.
 *   ✅ **Banner fix:** the banner now lives in a `PopupWindow` (a view added to a NativeActivity is never drawn, which is why no ad showed); Debug builds use Google's test ad ids so a test ad shows at once, Release builds the real ones; a show request made before the platform side was hooked up is no longer lost.
+*   ✅ **Ad status on screen:** the Debug build's stats bar has a last line, `Banner ad: ...`, giving what the ad is doing (starting, requested, popup shown, loaded, or FAILED with AdMob's error code and message, or a setup exception), since a phone gives no log to read.
