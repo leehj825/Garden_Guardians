@@ -107,6 +107,9 @@ public sealed partial class Bramblekin
         Pack.Add(ItemKind.Water);
     }
 
+    /// <summary>How much bigger than the usual pop-ups the messages about the player's items are drawn (picking up, eating, drinking).</summary>
+    private const float ItemTextSize = 2f;
+
     /// <summary>The player picks a pack slot: eats the food or drinks the bottle in it.</summary>
     public void PlayerUseSlot(int slot, World world)
     {
@@ -117,7 +120,7 @@ public sealed partial class Bramblekin
         {
             if (Thirst < 10f)
             {
-                world.QueueFloatingText(Position, "Not thirsty", EggTextColor);
+                world.QueueFloatingText(Position, "Not thirsty", EggTextColor, ItemTextSize);
                 return;
             }
             DrinkBottle(world);
@@ -420,11 +423,11 @@ public sealed partial class Bramblekin
             if (toward.LengthSquared() > 0.01f)
                 _mover.Heading = Vector2.Normalize(toward); // face what it reaches for
             StartAction(BramblekinClip.PickingUp, lockMovement: true);
-            world.QueueFloatingText(Position, ItemInfo.Name(item), EggTextColor);
+            world.QueueFloatingText(Position, ItemInfo.Name(item), EggTextColor, ItemTextSize);
         }
         else
         {
-            world.QueueFloatingText(Position, Pack.MaterialCount + Pack.FoodCount >= Inventory.Slots * Inventory.MaxStack ? "Pack full" : "Nothing to pick up", EggTextColor);
+            world.QueueFloatingText(Position, Pack.MaterialCount + Pack.FoodCount >= Inventory.Slots * Inventory.MaxStack ? "Pack full" : "Nothing to pick up", EggTextColor, ItemTextSize);
         }
     }
 

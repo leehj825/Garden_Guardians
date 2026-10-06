@@ -13,7 +13,7 @@ public static partial class Game
     private const float ReferenceScreenWidth = 1920f;
 
     /// <summary>The screen width the UI constants are scaled against when the screen is taller than wide: the buttons and text are the same shapes, but a column of them must fit across a phone held upright.</summary>
-    private const float PortraitReferenceWidth = 1200f;
+    private const float PortraitReferenceWidth = 1600f;
 
     /// <summary>True while the screen is taller than it is wide.</summary>
     internal static bool IsPortrait => Raylib.GetScreenHeight() > Raylib.GetScreenWidth();
@@ -21,7 +21,7 @@ public static partial class Game
     /// <summary>
     /// One scale factor that every hardcoded UI pixel constant (button geometry, font sizes) is multiplied by, so the UI keeps
     /// its proportions — and stays tappable exactly where it is drawn — on any screen. Wide screens scale off 1920 units across,
-    /// tall ones off 1200, so turning the phone keeps the buttons about as big as a finger.
+    /// tall ones off 1600, so turning the phone keeps the buttons about as big as a finger.
     /// </summary>
     internal static float UiScale => Raylib.GetScreenWidth() / (IsPortrait ? PortraitReferenceWidth : ReferenceScreenWidth);
 

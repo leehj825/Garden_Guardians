@@ -196,7 +196,7 @@ public sealed partial class World
 
     private readonly List<Obstacle> _obstacles = new();
     private readonly List<(Vector3 Position, float TimeLeft)> _splats = new();
-    private readonly List<(Vector3 Position, string Text, Color Color, float TimeLeft)> _floatingTexts = new();
+    private readonly List<(Vector3 Position, string Text, Color Color, float TimeLeft, float Size)> _floatingTexts = new();
     private readonly List<Vector3> _berryPatches = new();
 
     // Deferred spawns/removals, applied once per frame in CommitPendingChanges.
@@ -276,7 +276,7 @@ public sealed partial class World
         int z = Math.Clamp((int)((point.Z + TerrainData.Half) / ObstacleCellSize), 0, _obstacleSide - 1);
         return _obstacleCells[x * _obstacleSide + z];
     }
-    public IReadOnlyList<(Vector3 Position, string Text, Color Color, float TimeLeft)> FloatingTexts => _floatingTexts;
+    public IReadOnlyList<(Vector3 Position, string Text, Color Color, float TimeLeft, float Size)> FloatingTexts => _floatingTexts;
 
     /// <summary>Loose (active, uncarried) Food on the map, as of the start of this frame.</summary>
     public int LooseFoodCount { get; private set; }

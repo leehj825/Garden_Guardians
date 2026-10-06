@@ -1212,9 +1212,9 @@ public static partial class Game
     /// </summary>
     private static void DrawFloatingTexts(Camera3D camera, World world)
     {
-        const int fontSize = 20;
         foreach (var text in world.FloatingTexts)
         {
+            int fontSize = (int)(20 * text.Size); // (a player's item messages are drawn twice as big: see Bramblekin.PlayerPickUp)
             float age = World.FloatingTextDuration - text.TimeLeft;
             Vector3 worldPosition = text.Position + new Vector3(0, Bramblekin.BodyHeight + 0.4f + age * 0.6f, 0);
             if (!IsPointOnScreen(camera, worldPosition))

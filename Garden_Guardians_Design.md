@@ -1549,7 +1549,7 @@ garden keeps running and nothing is reloaded.
 
 *   **Nothing is remembered from startup.** Every panel and button reads the current screen size every frame (`Source/Game/Game.Layout.cs`),
     and the rectangle a button is drawn in is the one a tap is tested against, so they cannot drift apart.
-*   **One scale factor (`UiScale`).** A wide screen scales off 1920 units across, as before; a tall one off 1200, so a column of buttons fits a
+*   **One scale factor (`UiScale`).** A wide screen scales off 1920 units across, as before; a tall one off 1600, so a column of buttons fits a
     phone held upright and the buttons stay about as big as a finger.
 *   **Landscape is unchanged:** one row of buttons along the top (Map, History, Auto, Menu), the map-guide toggles (Clans, Links, Range, Fog)
     stacked down the left, the Kin Inspector top right.
@@ -1583,8 +1583,10 @@ an ad has loaded, and given back if the next one fails; with no network or no Go
 *   `Source/Game/AdBanner.cs`: the platform-independent side (wanted or not, how tall).
 *   `Platforms/Android/AndroidAds.cs`: the AdMob `AdView`, added over the game's window (`Activity.AddContentView`), paused and resumed with
     the activity. `Platforms/Android/AdConfig.cs` holds the ids.
-*   **The ids in the code are Google's TEST ids** (they always show a marked test ad and are safe to click). Before the game is released,
-    replace `AdConfig.AppId` and `AdConfig.BannerUnitId` with the real ones from the AdMob console. Never click live ads on your own account.
+*   **`AdConfig.AppId` and `AdConfig.BannerUnitId` are the game's real AdMob ids** (app `ca-app-pub-4400173019354346~3719730997`, banner unit
+    `ca-app-pub-4400173019354346/4753521775`). A new ad unit can take a while to start filling. Never tap live ads on your own account while
+    testing (AdMob suspends accounts for it): register the test phone under Test devices in the AdMob console, or put Google's test ids
+    (listed in `AdConfig.cs`) back for a while.
 *   Package: `Xamarin.GooglePlayServices.Ads` 123.6.0.1, the newest binding built for `net8.0-android` (later ones need .NET 9).
 *   **Before release, not yet done:** a privacy policy; the consent form for users in the EEA and the UK (Google's User Messaging Platform,
     required for personalised ads there); the child-directed setting if children may play (it limits ad personalisation, and revenue); the

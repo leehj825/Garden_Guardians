@@ -1357,19 +1357,22 @@ matter most:
 ## Phase 44: Upright and Sideways, and a Banner Ad
 *   ✅ **The game plays in portrait as well as landscape** (2026-10-05) and follows the screen when it changes (a phone turned, a window
     resized): the activity is `FullSensor`, and every panel and button is laid out from the current screen size each frame. One scale factor
-    (`UiScale`: 1920 units across when wide, 1200 when tall); in portrait the top buttons wrap onto a second row, the map-guide toggles run across
+    (`UiScale`: 1920 units across when wide, 1600 when tall: the upright buttons were 25% smaller than first tried); in portrait the top buttons wrap onto a second row, the map-guide toggles run across
     the screen, and the Kin Inspector takes the full width under them. Menus, loading, settings, the History screen, alert banners, the Director's
     caption and the controls for taking a Bramblekin's wheel all fit either way. See "Upright and Sideways" in the Design doc.
 *   ✅ **raylib follows the rotation:** raylib 6.0's Android backend never learns of it, so `native/gg_resize_window.inc.c` (appended to
     `rcore_android.c` by `build-raylib.sh`) adds `gg_resize_window`, and `WindowWatcher` + `Game.SyncWindowSize` call it when the window's size
     changes. System bars and a camera notch are read as insets (`ScreenInsets`) and kept clear of.
 *   ✅ **Banner ad (Google AdMob)** along the bottom while a garden is shown (not on the menu, settings or loading screen), with the UI kept clear
-    of it (`Game.UiBottom`); ids are Google's test ids until the real ones are put in `Platforms/Android/AdConfig.cs`. The Android project now
+    of it (`Game.UiBottom`); ids are the game's own AdMob ids (`Platforms/Android/AdConfig.cs`). The Android project now
     references `Xamarin.GooglePlayServices.Ads` 123.6.0.1 and asks for the internet permission. The monetization plan (rewarded video, a one-time
     "Remove ads", cosmetics) is in the Design doc.
 *   ✅ **The thorn is gone:** the old red-tipped stick held out in front of any kin that was fighting, attacking, hunting or dueling (unless a
     Swordsman, Raider or Hunter), seen as a red dot and a line in front of the face (picking up while controlled showed it too). Every job now
     has real gear and clips, so nothing is drawn but the gear itself.
-*   ⬜ **Not yet:** the consent form for the EEA and the UK, the privacy policy, and the real AdMob ids (see the Design doc); an adaptive banner
+*   ⬜ **Not yet:** the consent form for the EEA and the UK, the privacy policy, (see the Design doc); an adaptive banner
     (it fills the width and pays a little more); rewarded video and "Remove ads". The Android parts (rotation, the ad) could only be built by CI,
     not on the machine they were written on; they need trying on a phone.
+*   ✅ **Follow-up (2026-10-06):** upright buttons and text 25% smaller (`PortraitReferenceWidth` 1600); the messages about the player's items
+    ("Water bottle", "Nothing to pick up", "Pack full", "Not hungry"...) are twice the size of the other pop-ups (`ItemTextSize`; floating texts
+    carry a size); eating no longer plays the pick-up clip (it started over again and again while the meal lasted), picking up and drinking still do.

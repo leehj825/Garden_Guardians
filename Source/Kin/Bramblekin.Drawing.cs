@@ -224,8 +224,8 @@ public sealed partial class Bramblekin
         switch (State)
         {
             // (Blows are started where they are struck: see BeginBlow.)
-            case BramblekinState.Collecting or BramblekinState.Foraging or BramblekinState.Stockpiling or BramblekinState.Eating or BramblekinState.Drinking:
-                return BramblekinClip.PickingUp; // bending to pick up, to eat, to drink
+            case BramblekinState.Collecting or BramblekinState.Foraging or BramblekinState.Stockpiling or BramblekinState.Drinking:
+                return BramblekinClip.PickingUp; // bending to pick up and to drink (eating does not: it would start the pick-up again and again for as long as the meal lasts)
             default:
                 return null;
         }
