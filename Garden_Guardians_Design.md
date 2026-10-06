@@ -1603,7 +1603,7 @@ an ad has loaded, and given back if the next one fails; with no network or no Go
     (the branch APKs from CI) ask for Google's TEST banner unit**, which always shows a marked test ad and is safe to tap; **Release builds ask
     for the game's own unit** (`ca-app-pub-4400173019354346/4753521775`). All in `Platforms/Android/AdConfig.cs`. A new live ad unit can take
     hours to start filling. Never tap live ads on your own account while testing (AdMob suspends accounts for it).
-*   Package: `Xamarin.GooglePlayServices.Ads` 125.5.0, which needs .NET 9: the Android target is `net9.0-android` (the desktop stays `net8.0`). The net8 bindings (123.6 and 124.6) were answered with HTTP 403, see the roadmap.
+*   Package: `Xamarin.GooglePlayServices.Ads` 125.5.0, which needs .NET 9: the Android target is `net9.0-android` (the desktop stays `net8.0`). The net8 bindings (123.6 and 124.6) were answered with HTTP 403, see the detailed roadmap in docs/archive.
 *   **Before release, not yet done:** a privacy policy; the consent form for users in the EEA and the UK (Google's User Messaging Platform,
     required for personalised ads there); the child-directed setting if children may play (it limits ad personalisation, and revenue); the
     store's data-safety and ads declarations.
