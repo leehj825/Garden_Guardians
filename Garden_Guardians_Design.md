@@ -1587,7 +1587,7 @@ an ad has loaded, and given back if the next one fails; with no network or no Go
     the game's real AdMob ids** (app `ca-app-pub-4400173019354346~3719730997`, banner unit `ca-app-pub-4400173019354346/4753521775`), set in
     `Platforms/Android/AdConfig.cs`. A new live ad unit can take hours to start filling. Never tap live ads on your own account while testing
     (AdMob suspends accounts for it): register the test phone under Test devices in the AdMob console.
-*   Package: `Xamarin.GooglePlayServices.Ads` 123.6.0.1, the newest binding built for `net8.0-android` (later ones need .NET 9).
+*   Package: `Xamarin.GooglePlayServices.Ads` 124.6.0, the newest binding built for `net8.0-android` (later ones need .NET 9; 123.6 was refused with HTTP 403, see the roadmap).
 *   **Before release, not yet done:** a privacy policy; the consent form for users in the EEA and the UK (Google's User Messaging Platform,
     required for personalised ads there); the child-directed setting if children may play (it limits ad personalisation, and revenue); the
     store's data-safety and ads declarations.
