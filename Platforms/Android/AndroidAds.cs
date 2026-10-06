@@ -127,20 +127,25 @@ internal static class AndroidAds
         try
         {
             await Task.Delay(500); // (the SDK writes its reasons just after the failure is reported)
-            Java.Lang.Process? process = Java.Lang.Runtime.GetRuntime()?.Exec(new[] { "logcat", "-d", "-t", "400", "-s", "Ads:V", "AdRequest:V", "chromium:E" });
+            // The whole of the app's own log, not just the ad SDK's tag: the lines that mention ads, Google Play services, HTTP or the
+            // WebView, or are warnings and errors, so a refusal's reason can show up wherever it was written.
+            Java.Lang.Process? process = Java.Lang.Runtime.GetRuntime()?.Exec(new[] { "logcat", "-d", "-t", "1500", "-v", "brief" });
             if (process?.InputStream is null)
                 return;
             using var reader = new Java.IO.BufferedReader(new Java.IO.InputStreamReader(process.InputStream));
             var lines = new List<string>();
             string? line;
+            string[] interesting = { "Ads", "ads", "403", "HTTP", "http", "gms", "Gms", "GMS", "settings", "WebView", "chromium", "Exception", "denied", "blocked", "refus" };
             while ((line = reader.ReadLine()) is not null)
             {
-                int tag = line.IndexOf(": ", StringComparison.Ordinal);
-                string text = tag >= 0 ? line[(tag + 2)..] : line;
-                if (text.Length > 0 && !text.StartsWith("---"))
-                    lines.Add(text.Length > 180 ? text[..180] : text);
+                bool warning = line.Length > 2 && (line[0] is 'W' or 'E') && line[1] == '/';
+                if (!warning && !interesting.Any(word => line.Contains(word, StringComparison.Ordinal)))
+                    continue;
+                string text = line.Length > 175 ? line[..175] : line;
+                if (lines.Count == 0 || lines[^1] != text) // (a line repeated straight away is shown once)
+                    lines.Add(text);
             }
-            AdBanner.SdkLog = lines.TakeLast(7).ToArray();
+            AdBanner.SdkLog = lines.TakeLast(16).ToArray();
         }
         catch (Exception ex)
         {
