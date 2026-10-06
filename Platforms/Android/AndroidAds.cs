@@ -11,7 +11,7 @@
 // =============================================================================
 
 using Android.Content;
-using Android.Gms.Ads;
+using Google.Android.Gms.Ads; // (the 124.x binding renamed the namespace from Android.Gms.Ads)
 using Android.Util;
 using Android.Views;
 using Android.Widget;
