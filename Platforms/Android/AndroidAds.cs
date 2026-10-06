@@ -11,6 +11,7 @@
 // =============================================================================
 
 using Android.Content;
+using Android.Content.PM;
 using Google.Android.Gms.Ads; // (the 124.x binding renamed the namespace from Android.Gms.Ads)
 using Android.Util;
 using Android.Views;
@@ -62,6 +63,16 @@ internal static class AndroidAds
                 _anchor?.Post(Apply);
                 AdBanner.Status = $"requested {Label(AdConfig.BannerUnitId)}, waiting for an ad";
 #if DEBUG
+                string manifestId = "unreadable";
+                try
+                {
+                    manifestId = activity.PackageManager?.GetApplicationInfo(activity.PackageName!, PackageInfoFlags.MetaData)?.MetaData?.GetString("com.google.android.gms.ads.APPLICATION_ID") ?? "MISSING from the manifest";
+                }
+                catch (Exception ex)
+                {
+                    manifestId = ex.GetType().Name;
+                }
+                AdBanner.Setup = $"SDK {MobileAds.Version?.ToString() ?? "?"}, {manifestId}, {activity.PackageName}";
                 // With no log to read, ask both ad units in hidden views and say what each answered: a test unit that is
                 // refused too points at the phone's network (a VPN, private DNS or ad blocker), not at the AdMob account.
                 Probe(activity, AdConfig.TestBannerUnitId);

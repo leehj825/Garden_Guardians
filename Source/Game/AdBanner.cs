@@ -23,6 +23,9 @@ internal static class AdBanner
     /// <summary>Debug builds on Android: what the test ad unit and the game's own unit each answered when asked in turn.</summary>
     public static volatile string Probes = "";
 
+    /// <summary>Debug builds on Android: the SDK's version and the app id found in the installed manifest.</summary>
+    public static volatile string Setup = "";
+
     private static bool _wanted;
 
     /// <summary>Whether the game wants the banner showing right now.</summary>
