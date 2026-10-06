@@ -29,7 +29,7 @@ Code lives under `Source/` (engine, world, kin, wildlife, game), one type per fi
 GitHub Actions builds the Android APKs automatically:
 
 - `debug-build.yml` runs on every push to a branch other than `main` and uploads a debug APK.
-- `release-build.yml` runs on every push to `main` and uploads a signed APK. It needs the `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` repository secrets.
+- `release-build.yml` runs on every push to `main` and uploads a signed APK (`garden-guardians-release-apk`, to sideload) and a signed Android App Bundle (`garden-guardians-release-aab`, the file Google Play takes). Each build's version code is the workflow's run number, so every upload to Google Play is higher than the last. It needs the `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` repository secrets.
 
 The game plays upright (portrait) or sideways (landscape) and lays itself out again when the screen changes; `GARDEN_SIZE=720x1280` opens the desktop window at another shape and `GARDEN_AD_TEST=1` draws a stand-in for the banner ad. On Android a Google AdMob banner (the real app id always; Google's test banner unit in Debug builds, the live one in Release: `Platforms/Android/AdConfig.cs`) lies along the bottom while a garden is shown.
 
