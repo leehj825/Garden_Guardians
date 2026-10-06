@@ -7,7 +7,7 @@
     <!-- Desktop (net8.0) is the day-to-day prototyping target; Android is
          built by CI. Pass -p:DesktopOnly=true to skip Android on machines
          that don't have the 'android' workload installed. -->
-    <TargetFrameworks>net8.0;net8.0-android</TargetFrameworks>
+    <TargetFrameworks>net8.0;net9.0-android</TargetFrameworks>
     <TargetFrameworks Condition="'$(DesktopOnly)' == 'true'">net8.0</TargetFrameworks>
 
     <OutputType>Exe</OutputType>
@@ -18,7 +18,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(TargetFramework)' != 'net8.0-android'">
+  <ItemGroup Condition="'$(TargetFramework)' != 'net9.0-android'">
     <PackageReference Include="Raylib-cs" Version="8.1.0" />
     <!-- Desktop reads these straight off disk (relative to the working
          directory), so they just need to land next to the built exe. -->
@@ -39,27 +39,19 @@
        binaries are desktop builds, and NuGet treats android-x64 as a kind of
        linux-x64, so without ExcludeAssets the glibc linux-x64 libraylib.so
        would be packed into the APK instead of our NDK build (see below). -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-android'">
+  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0-android'">
     <PackageReference Include="Raylib-cs" Version="8.1.0" ExcludeAssets="native" />
-    <!-- Google AdMob banner ads (Platforms/Android/AndroidAds.cs). 124.6.0 (the SDK of September 2025) is the newest binding built for
-         net8.0-android; 123.6 (January 2025) was answered with HTTP 403 even for test ads, which an out-of-date SDK may be. Newer ones need .NET 9. -->
-    <PackageReference Include="Xamarin.GooglePlayServices.Ads" Version="124.6.0" />
-    <!-- The ads package wants AndroidX Lifecycle 2.9.3 while one of its dependencies wants 2.9.2.1 (NuGet NU1107): pin them all to 2.9.3. -->
-    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Common" Version="2.9.3" />
-    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Common.Jvm" Version="2.9.3" />
-    <PackageReference Include="Xamarin.AndroidX.Lifecycle.ViewModel" Version="2.9.3" />
-    <PackageReference Include="Xamarin.AndroidX.Lifecycle.ViewModel.Android" Version="2.9.3" />
-    <PackageReference Include="Xamarin.AndroidX.Lifecycle.ViewModelSavedState" Version="2.9.3" />
-    <PackageReference Include="Xamarin.AndroidX.Lifecycle.ViewModelSavedState.Android" Version="2.9.3" />
-    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core" Version="2.9.3" />
-    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Runtime" Version="2.9.3" />
-    <PackageReference Include="Xamarin.AndroidX.Lifecycle.Runtime.Android" Version="2.9.3" />
+    <!-- Google AdMob banner ads (Platforms/Android/AndroidAds.cs). The current bindings are built for .NET 9 and up, which is why the Android
+         target is net9.0-android: net8 stopped at 124.6.0 (September 2025), and with it (and 123.6 before) the ad servers answered HTTP 403. -->
+    <PackageReference Include="Xamarin.GooglePlayServices.Ads" Version="125.5.0" />
+    <!-- Two of its dependencies want different versions of AndroidX Tracing (NuGet NU1107): pin the newer. -->
+    <PackageReference Include="Xamarin.AndroidX.Tracing.Tracing" Version="2.0.0" />
   </ItemGroup>
 
   <!-- ===================================================================
        Android-only settings
        =================================================================== -->
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-android'">
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net9.0-android'">
     <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
     <ApplicationId>com.gardenguardians.game</ApplicationId>
     <ApplicationTitle>Garden Guardians</ApplicationTitle>
@@ -87,7 +79,7 @@
        JIT, nothing trimmed and nothing compiled ahead of time. Trimming
        and AOT change what runs on the phone (the save reads and writes
        World's fields by reflection) and can't be tried out before main. -->
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-android' And '$(Configuration)' == 'Release'">
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net9.0-android' And '$(Configuration)' == 'Release'">
     <PublishTrimmed>false</PublishTrimmed>
     <AndroidLinkMode>None</AndroidLinkMode>
     <RunAOTCompilation>false</RunAOTCompilation>
@@ -95,7 +87,7 @@
   </PropertyGroup>
 
   <!-- Android entry point (MainActivity) is only compiled for Android. -->
-  <ItemGroup Condition="'$(TargetFramework)' != 'net8.0-android'">
+  <ItemGroup Condition="'$(TargetFramework)' != 'net9.0-android'">
     <Compile Remove="Platforms/Android/**" />
   </ItemGroup>
 
@@ -103,7 +95,7 @@
        libraylib.so. The NuGet package has no Android build, so
        Platforms/Android/build-raylib.sh compiles one per ABI into
        Platforms/Android/libs/<abi>/ (the ABI is inferred from the folder). -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-android'">
+  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0-android'">
     <AndroidNativeLibrary Include="Platforms/Android/libs/arm64-v8a/libraylib.so" />
     <AndroidNativeLibrary Include="Platforms/Android/libs/x86_64/libraylib.so" />
   </ItemGroup>
@@ -111,7 +103,7 @@
   <!-- Without libraylib.so the APK would build fine and crash on launch, so
        stop the build early with instructions instead. -->
   <Target Name="EnsureAndroidRaylib" BeforeTargets="BeforeBuild"
-          Condition="'$(TargetFramework)' == 'net8.0-android'">
+          Condition="'$(TargetFramework)' == 'net9.0-android'">
     <Error Condition="!Exists('%(AndroidNativeLibrary.FullPath)')"
            Text="Missing native raylib for Android: %(AndroidNativeLibrary.Identity). Run Platforms/Android/build-raylib.sh first (requires the Android NDK)." />
   </Target>
