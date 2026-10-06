@@ -1583,10 +1583,11 @@ an ad has loaded, and given back if the next one fails; with no network or no Go
 *   `Source/Game/AdBanner.cs`: the platform-independent side (wanted or not, how tall).
 *   `Platforms/Android/AndroidAds.cs`: the AdMob `AdView`, shown in a `PopupWindow` along the bottom edge (a view added to the activity itself
     is never drawn: a NativeActivity gives its window surface to the game), paused and resumed with the activity. `Platforms/Android/AdConfig.cs` holds the ids.
-*   **Debug builds (the branch APKs from CI) use Google's TEST ids**, which always show a marked test ad and are safe to tap; **Release builds use
-    the game's real AdMob ids** (app `ca-app-pub-4400173019354346~3719730997`, banner unit `ca-app-pub-4400173019354346/4753521775`), set in
-    `Platforms/Android/AdConfig.cs`. A new live ad unit can take hours to start filling. Never tap live ads on your own account while testing
-    (AdMob suspends accounts for it): register the test phone under Test devices in the AdMob console.
+*   **The manifest always carries the game's real AdMob app id** (`ca-app-pub-4400173019354346~3719730997`): the SDK looks the app's settings
+    up by it, and Google refused the sample app id from this app (HTTP 403, "Not retrying to fetch app settings" in the SDK log). **Debug builds
+    (the branch APKs from CI) ask for Google's TEST banner unit**, which always shows a marked test ad and is safe to tap; **Release builds ask
+    for the game's own unit** (`ca-app-pub-4400173019354346/4753521775`). All in `Platforms/Android/AdConfig.cs`. A new live ad unit can take
+    hours to start filling. Never tap live ads on your own account while testing (AdMob suspends accounts for it).
 *   Package: `Xamarin.GooglePlayServices.Ads` 124.6.0, the newest binding built for `net8.0-android` (later ones need .NET 9; 123.6 was refused with HTTP 403, see the roadmap).
 *   **Before release, not yet done:** a privacy policy; the consent form for users in the EEA and the UK (Google's User Messaging Platform,
     required for personalised ads there); the child-directed setting if children may play (it limits ad personalisation, and revenue); the
