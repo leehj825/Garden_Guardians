@@ -25,8 +25,8 @@ using Android.Util;
 namespace GardenGuardians;
 
 [Activity(
-    Name = "com.gardenguardians.game.MainActivity",   // Stable Java name (used by adb/tests).
-    Label = "Garden Guardians",
+    Name = "com.bramblekin.game.MainActivity",   // Stable Java name (used by adb/tests).
+    Label = "Bramblekin",
     MainLauncher = true,
     Exported = true,
     Theme = "@android:style/Theme.NoTitleBar.Fullscreen",

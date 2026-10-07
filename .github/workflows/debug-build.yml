@@ -79,7 +79,7 @@ jobs:
           path: Tools/AdTest/bin/Debug/net9.0-android/publish/*-Signed.apk
           if-no-files-found: error
 
-      # The same diagnostic app under the game's package name (com.gardenguardians.game), still with Google's sample app id: if this one
+      # The same diagnostic app under the game's package name (com.bramblekin.game), still with Google's sample app id: if this one
       # is refused while the one above works, Google is refusing the game's package name itself. (Uninstall the game to install it.)
       - name: Publish ad test APK under the game's package name
         run: >
@@ -87,7 +87,7 @@ jobs:
           -f net9.0-android
           -c Debug
           -p:EmbedAssembliesIntoApk=true
-          -p:ApplicationId=com.gardenguardians.game
+          -p:ApplicationId=com.bramblekin.game
           -p:IntermediateOutputPath=obj/GamePackage/
           -o Tools/AdTest/publish-game-package
 

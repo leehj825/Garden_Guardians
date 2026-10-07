@@ -1,5 +1,5 @@
 # Garden_Guardians
-Garden Guardians
+Bramblekin: Tiny Garden Kingdoms (the game was called Garden Guardians while it was built; the repository and the source folders keep that name)
 
 An emergent survival simulation set in a hilly backyard modelled in 3D, at the foot of a giant oak and beside a pond, where the Bramblekin live in villages of acorns. You watch, tap any Bramblekin to follow it and see what makes it tick, or take the wheel of one yourself.
 

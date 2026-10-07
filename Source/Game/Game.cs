@@ -301,13 +301,13 @@ public static partial class Game
         // GetScreenHeight() rather than the ScreenWidth/ScreenHeight
         // constants, so it fills whatever size that turns out to be.
         if (platform == GamePlatform.Android)
-            Raylib.InitWindow(0, 0, "Garden Guardians");
+            Raylib.InitWindow(0, 0, "Bramblekin");
         else
         {
             // (GARDEN_SIZE=720x1280: a development aid, opens the window at another shape, to look at the upright layout.)
             int[] size = (Environment.GetEnvironmentVariable("GARDEN_SIZE") ?? "").Split('x').Select(part => int.TryParse(part, out int n) ? n : 0).ToArray();
             bool sized = size.Length == 2 && size[0] > 0 && size[1] > 0;
-            Raylib.InitWindow(sized ? size[0] : ScreenWidth, sized ? size[1] : ScreenHeight, "Garden Guardians");
+            Raylib.InitWindow(sized ? size[0] : ScreenWidth, sized ? size[1] : ScreenHeight, "Bramblekin");
             Image icon = Raylib.LoadImage("Assets/icon.png");
             if (icon.Width > 0)
                 Raylib.SetWindowIcon(icon);
