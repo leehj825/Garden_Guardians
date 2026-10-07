@@ -53,8 +53,8 @@
        =================================================================== -->
   <PropertyGroup Condition="'$(TargetFramework)' == 'net9.0-android'">
     <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
-    <ApplicationId>com.gardenguardians.game</ApplicationId>
-    <ApplicationTitle>Garden Guardians</ApplicationTitle>
+    <ApplicationId>com.bramblekin.game</ApplicationId>
+    <ApplicationTitle>Bramblekin</ApplicationTitle>
     <ApplicationVersion>1</ApplicationVersion>
     <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
     <AndroidManifest>Platforms/Android/AndroidManifest.xml</AndroidManifest>

@@ -48,7 +48,7 @@ public static partial class Game
             int buttonHeight = (int)(96 * uiScale), gap = (int)(18 * uiScale), chipHeight = (int)(68 * uiScale);
             int wide = Math.Min((int)(width * 0.8f), (int)(1000 * uiScale));
             int left = (width - wide) / 2;
-            int titleSize = FitFontSize("Garden Guardians", ScaledFontSize(2.6f), (int)(width * 0.94f)), subtitleSize = ScaledFontSize(0.8f);
+            int titleSize = FitFontSize("Bramblekin", ScaledFontSize(2.6f), (int)(width * 0.94f)), subtitleSize = ScaledFontSize(0.8f);
 
             int y = (int)(height * 0.08f);
             int titleY = y;
@@ -153,7 +153,7 @@ public static partial class Game
 
             Raylib.BeginDrawing();
             Raylib.DrawRectangleGradientV(0, 0, width, height, new Color(150, 200, 235, 255), new Color(95, 150, 80, 255));
-            DrawCentred("Garden Guardians", width / 2, titleY, titleSize, new Color(40, 55, 30, 255));
+            DrawCentred("Bramblekin", width / 2, titleY, titleSize, new Color(40, 55, 30, 255));
             settingsButton.Draw("Settings", highlighted: false);
             for (int slot = 1; slot <= SaveSystem.Slots; slot++)
                 chips[slot].Draw($"Garden {slot}", highlighted: slot == chosen, disabled: summaries[slot] is null && slot != chosen);
@@ -209,11 +209,11 @@ public static partial class Game
         SyncWindowSize();
         float uiScale = UiScale;
         int width = Raylib.GetScreenWidth(), height = Raylib.GetScreenHeight();
-        int titleSize = FitFontSize("Garden Guardians", ScaledFontSize(2.6f), (int)(width * 0.94f)), textSize = ScaledFontSize(0.9f);
+        int titleSize = FitFontSize("Bramblekin", ScaledFontSize(2.6f), (int)(width * 0.94f)), textSize = ScaledFontSize(0.9f);
         Color ink = new(40, 55, 30, 255);
         Raylib.BeginDrawing();
         Raylib.DrawRectangleGradientV(0, 0, width, height, new Color(150, 200, 235, 255), new Color(95, 150, 80, 255));
-        DrawCentred("Garden Guardians", width / 2, (int)(height * 0.08f), titleSize, ink);
+        DrawCentred("Bramblekin", width / 2, (int)(height * 0.08f), titleSize, ink);
         int barWidth = Math.Min((int)(width * 0.7f), (int)(900 * uiScale)), barHeight = (int)(44 * uiScale);
         int barX = (width - barWidth) / 2, barY = (int)(height * 0.45f);
         DrawCentred(Loading.Text + "...", width / 2, barY - textSize - (int)(24 * uiScale), textSize, ink);

@@ -9,7 +9,7 @@
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <!-- The ad SDK reads the advertising id (Android 13+ hands back zeros without this; Google Play also asks for it in the app content declaration). -->
   <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
-  <application android:label="Garden Guardians" android:allowBackup="true" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" />
+  <application android:label="Bramblekin" android:allowBackup="true" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" />
   <!-- Raylib renders through OpenGL ES; declare it so stores filter correctly. -->
   <uses-feature android:glEsVersion="0x00020000" android:required="true" />
 </manifest>
