@@ -153,7 +153,9 @@ public static unsafe class KinGear
                 Vector3 centre = left - Vector3.UnitX * 0.03f + forward * 0.05f;
                 if (bowRaised)
                 {
-                    woodWay = leftFingers;
+                    // Drawn, the bow points where the arm does (shoulder to hand): the forearm-to-hand direction is bent across the body in this clip (about
+                    // 90° to the left of the way the kin faces, where the whole arm is about 50°), which turned the bow sideways to the shot.
+                    woodWay = Centroid(pose, "mixamorig:LeftShoulder", out Vector3 shoulder) && Vector3.DistanceSquared(shoulder, left) > 1e-6f ? Vector3.Normalize(left - shoulder) : leftFingers;
                     along = Vector3.UnitY - Vector3.Dot(Vector3.UnitY, woodWay) * woodWay;
                     along = along.LengthSquared() < 1e-6f ? Vector3.UnitY : Vector3.Normalize(along);
                     centre = left + woodWay * 0.02f;

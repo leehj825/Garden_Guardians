@@ -74,10 +74,11 @@ internal static class AndroidAds
                 }
                 _ = Task.Run(CheckNetwork);
                 AdBanner.Setup = $"SDK {MobileAds.Version?.ToString() ?? "?"}, {manifestId}, {activity.PackageName}";
-                // With no log to read, ask both ad units in hidden views and say what each answered: a test unit that is
-                // refused too points at the phone's network (a VPN, private DNS or ad blocker), not at the AdMob account.
+                // With no log to read, ask Google's test unit in a hidden view and say what it answered. (The game's live unit is not
+                // asked from a Debug build: repeated live requests from a test install can count as invalid traffic.)
                 Probe(activity, AdConfig.TestBannerUnitId);
-                Probe(activity, AdConfig.LiveBannerUnitId);
+                // The Settings page's "Ad test" button opens a plain Android screen with a test banner (AdTestActivity).
+                AdBanner.OpenTestScreen = () => activity.RunOnUiThread(() => activity.StartActivity(new Android.Content.Intent(activity, typeof(AdTestActivity))));
 #endif
               }
               catch (Exception ex)

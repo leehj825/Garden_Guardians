@@ -86,6 +86,12 @@
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
   </PropertyGroup>
 
+  <!-- Tools/ holds scripts and the separate GG Ad Test app (its own project): none of it is part of the game. -->
+  <ItemGroup>
+    <Compile Remove="Tools/**" />
+    <None Remove="Tools/**" />
+  </ItemGroup>
+
   <!-- Android entry point (MainActivity) is only compiled for Android. -->
   <ItemGroup Condition="'$(TargetFramework)' != 'net9.0-android'">
     <Compile Remove="Platforms/Android/**" />

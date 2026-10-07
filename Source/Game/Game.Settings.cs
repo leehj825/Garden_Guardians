@@ -69,12 +69,16 @@ public static partial class Game
             var plus = new UiButton(new Rectangle(left + wide - stepWidth, barY, stepWidth, buttonHeight));
             var bar = new Rectangle(left + stepWidth + gap, barY, wide - (stepWidth + gap) * 2, buttonHeight);
             var back = new UiButton(new Rectangle(left, barY + buttonHeight + gap * 4, wide, buttonHeight));
+            // (Debug builds on Android: a diagnostic screen with a test banner, see AdTestActivity.)
+            UiButton? adTest = AdBanner.OpenTestScreen is null ? null : new UiButton(new Rectangle(left, back.Bounds.Y + buttonHeight + gap * 2, wide, buttonHeight));
 
             Vector2 mouse = Raylib.GetMousePosition();
             bool pressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
             float volume = MusicPlayer.Volume;
             if (pressed && back.Contains(mouse))
                 return;
+            if (pressed && adTest is not null && adTest.Contains(mouse))
+                AdBanner.OpenTestScreen?.Invoke();
             if (pressed && minus.Contains(mouse))
                 volume = MathF.Round((volume - 0.1f) * 10f) / 10f;
             else if (pressed && plus.Contains(mouse))
@@ -99,6 +103,7 @@ public static partial class Game
             Raylib.DrawRectangle((int)bar.X + 4, (int)bar.Y + 4, (int)((bar.Width - 8) * MusicPlayer.Volume), (int)bar.Height - 8, new Color(230, 190, 60, 255));
             Raylib.DrawRectangleLinesEx(bar, 2f, ink);
             back.Draw("Back", highlighted: true);
+            adTest?.Draw("Ad test", highlighted: false);
             Raylib.EndDrawing();
         }
     }

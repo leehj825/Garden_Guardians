@@ -32,6 +32,9 @@ internal static class AdBanner
     /// <summary>Debug builds on Android: the last lines the ad SDK wrote to the app's own log (tag Ads) after a failure, newest last.</summary>
     public static volatile string[] SdkLog = Array.Empty<string>();
 
+    /// <summary>Debug builds on Android: opens a plain Android screen with Google's test banner (the Settings page's "Ad test" button). Null elsewhere.</summary>
+    public static Action? OpenTestScreen;
+
     private static bool _wanted;
 
     /// <summary>Whether the game wants the banner showing right now.</summary>

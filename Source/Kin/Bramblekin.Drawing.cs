@@ -284,8 +284,8 @@ public sealed partial class Bramblekin
     /// <summary>While the aim clip plays.</summary>
     private bool IsAiming => (_actionActive && _actionClip == BramblekinClip.AimRecoil) || ForcedClip == BramblekinClip.AimRecoil;
 
-    /// <summary>In the aim clip the bow arm points this far (radians, about 34°) to the left of the way the body faces, measured from the clip's drawn pose.</summary>
-    private const float AimBodyTurn = 0.59f;
+    /// <summary>In the aim clip the bow arm points this far (radians, about 49°: the shoulder-to-hand direction through the clip, 0.84 to 0.91) to the left of the way the body faces, measured from the clip's drawn pose.</summary>
+    private const float AimBodyTurn = 0.85f;
 
     /// <summary>In the stab clip the spear's point, at the height of the thrust, is about 38° to the left of the way the body faces (measured from the hands in the clip).</summary>
     private const float StabBodyTurn = 1.25f;
