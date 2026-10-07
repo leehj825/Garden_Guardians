@@ -103,7 +103,13 @@ public static partial class Game
             Raylib.DrawRectangle((int)bar.X + 4, (int)bar.Y + 4, (int)((bar.Width - 8) * MusicPlayer.Volume), (int)bar.Height - 8, new Color(230, 190, 60, 255));
             Raylib.DrawRectangleLinesEx(bar, 2f, ink);
             back.Draw("Back", highlighted: true);
-            adTest?.Draw("Ad test", highlighted: false);
+            if (adTest is not null) // (a Debug build on Android: the game's own banner's state, and the plain test screen)
+            {
+                adTest.Draw("Ad test", highlighted: false);
+                int statusSize = Math.Max(12, (int)(textSize * 0.8f));
+                string status = $"Banner: {AdBanner.Status}";
+                DrawCentred(Fit(status, statusSize, (int)(width * 0.94f)), width / 2, (int)adTest.Bounds.Y + buttonHeight + gap, statusSize, ink);
+            }
             Raylib.EndDrawing();
         }
     }

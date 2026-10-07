@@ -35,9 +35,12 @@ public static class Detail
         FarView = Pixels(camera.Target, 1f) < FarMeterPixels;
     }
 
+    /// <summary>Set while something is drawn on its own (an inventory icon, from a camera of its own): the world's camera says nothing of how big it looks, so everything is drawn in full.</summary>
+    public static bool ForceClose;
+
     /// <summary>Roughly how many pixels across something of <paramref name="radius"/> at <paramref name="at"/> looks.</summary>
     public static float Pixels(Vector3 at, float radius) =>
-        radius * _pixelsPerMeter / MathF.Max(0.5f, Vector3.Distance(_eye, at));
+        ForceClose ? 1000f : radius * _pixelsPerMeter / MathF.Max(0.5f, Vector3.Distance(_eye, at));
 
     /// <summary>A sphere, with as many segments as its size on screen calls for (at most raylib's usual 16×16).</summary>
     public static void Sphere(Vector3 center, float radius, Color color) => Sphere(center, radius, color, center);
