@@ -35,7 +35,6 @@ public sealed class Ant : ICombatant
     /// <summary>It stays angry at its attacker this long.</summary>
     private const float AngerSeconds = 5f;
 
-    private static readonly Color LoadColor = new(210, 40, 45, 255);
     private static readonly Color AphidLoadColor = new(150, 210, 90, 255);
 
     private readonly GroundMover _mover;
@@ -249,6 +248,12 @@ public sealed class Ant : ICombatant
         _lastPosition = here;
         PropModels.DrawAnt(here, _mover.Heading, ModelScale, Color.White, _walkCycle, _mover.IsMoving);
         if (IsLaden)
-            Detail.Sphere(Position + new Vector3(0f, 0.5f, 0f), 0.14f, CarriesAphid ? AphidLoadColor : LoadColor);
+        {
+            // A berry rides on its back as the berry model (the aphid it carries off is still a pale green ball).
+            if (CarriesAphid)
+                Detail.Sphere(Position + new Vector3(0f, 0.5f, 0f), 0.14f, AphidLoadColor);
+            else
+                LooseModels.Draw(LooseModels.Kind.Berry, Position + new Vector3(0f, 0.36f, 0f), LooseModels.YawAlong(_mover.Heading), 0.8f, Color.White);
+        }
     }
 }

@@ -74,23 +74,40 @@ public static class InventoryUi
         Raylib.DrawTexturePro(icon.Texture, source, new Rectangle(box.X + pad, box.Y + pad, box.Width - pad * 2, box.Height - pad * 2), Vector2.Zero, 0f, Color.White);
     }
 
-    /// <summary>How much room (m) each item's model takes up, so the camera can frame it.</summary>
+    /// <summary>How much room (m) each item's model takes up, so the camera can frame it: its longest side with a margin.</summary>
     private static float Span(ItemKind kind) => kind switch
     {
-        ItemKind.Berry or ItemKind.Acorn or ItemKind.Seed or ItemKind.Honeydew => 0.32f,
-        ItemKind.Meat or ItemKind.Stone => 0.42f,
-        ItemKind.Mushroom or ItemKind.Cress or ItemKind.Fish => 0.46f,
-        ItemKind.Water => 0.5f,
-        ItemKind.Twig => 0.6f,
-        ItemKind.Branch => 1.5f,
+        ItemKind.Berry or ItemKind.Seed or ItemKind.Honeydew => 0.42f,
+        ItemKind.Acorn => 0.48f,
+        ItemKind.Meat => 0.46f,
+        ItemKind.Stone => 0.46f,
+        ItemKind.Mushroom or ItemKind.Cress => 0.4f,
+        ItemKind.Fish => 0.56f,
+        ItemKind.Water => 0.42f,
+        ItemKind.Twig => 0.58f,
+        ItemKind.Branch => 1.7f,
         _ => 0.5f,
+    };
+
+    /// <summary>How high (m) the middle of each item's model is above where it stands, so the camera looks at its middle (not at a point a quarter of the frame up, which cut the tall ones off at the top).</summary>
+    private static float Middle(ItemKind kind) => kind switch
+    {
+        ItemKind.Berry or ItemKind.Meat or ItemKind.Honeydew or ItemKind.Water => 0.16f,
+        ItemKind.Acorn => 0.19f,
+        ItemKind.Seed => 0.15f,
+        ItemKind.Mushroom => 0.15f,
+        ItemKind.Cress => 0.1f,
+        ItemKind.Stone or ItemKind.Branch => 0.13f,
+        ItemKind.Fish => 0.05f,
+        ItemKind.Twig => 0.04f,
+        _ => 0.12f,
     };
 
     private static RenderTexture2D RenderIcon(ItemKind kind)
     {
         RenderTexture2D target = Raylib.LoadRenderTexture(IconPixels, IconPixels);
         float span = Span(kind);
-        Vector3 centre = new(0f, span * 0.25f, 0f);
+        Vector3 centre = new(0f, Middle(kind), 0f);
         var camera = new Camera3D
         {
             Target = centre,
@@ -103,6 +120,7 @@ public static class InventoryUi
         Raylib.BeginTextureMode(target);
         Raylib.ClearBackground(new Color(0, 0, 0, 0));
         Raylib.BeginMode3D(camera);
+        Detail.ForceClose = true; // (the models are drawn from this camera, not the world's: the world's would make them stand-in spheres)
         switch (kind)
         {
             case ItemKind.Water:
@@ -121,6 +139,7 @@ public static class InventoryUi
                 FoodShard.DrawKind(ItemInfo.FoodOf(kind), Vector3.Zero, 30f);
                 break;
         }
+        Detail.ForceClose = false;
         Raylib.EndMode3D();
         Raylib.EndTextureMode();
         return target;

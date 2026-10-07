@@ -161,9 +161,9 @@ A Release build has the **Explore** button (where a Debug build has **Control**)
 gentler form (`Build.Explore`; `PlayControl.Explore`; `Bramblekin.PlayerExplorer`):
 
 *   **Controls:** the stick and the camera drag as in Control, **Jump**, **Items** (the bag: tap a box to eat or drink what is in it), **Pick up** and **Exit**.
-    No Attack, Shoot, Kin or Job button and no run toggle: the kin has no job and takes no side.
+    No Attack, Shoot, Kin or Job button: the kin has no job and takes no side.
 *   **Running:** push the stick right to its edge (92 % of its radius): the knob turns gold and the kin runs. A faint ring on the stick shows where that is.
-    The same works in the Debug build, beside its Run toggle. On the desktop, Shift with W A S D runs.
+    The same works in the Debug build, (the Debug build no longer has a Run button). On the desktop, Shift with W A S D runs.
 *   **On its own:** it picks up food, twigs, stones and branches it walks within 0.9 m of (it bends to pick each one up, and the item's name pops up at twice the
     usual size); it eats (from the pack, from food near it or from its clan's store when it is in reach) and drinks at the water's edge when hungry or thirsty,
     even while walking; it fills bottles at the shore. The Pick up button still picks up by hand (and fills a bottle).

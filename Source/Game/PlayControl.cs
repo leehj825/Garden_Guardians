@@ -77,7 +77,10 @@ public sealed class PlayControl
         _focus = kin.Position + new Vector3(0f, LookHeight, 0f);
         _stickTouch = _lookTouch = _attackTouch = _shootTouch = -1;
         _stick = Vector2.Zero;
-        _bagOpen = false;
+        _bagOpen = Environment.GetEnvironmentVariable("GARDEN_PLAY_BAG") == "1"; // (GARDEN_PLAY_BAG=1: a development aid, starts with the bag open and a little of everything in it)
+        if (_bagOpen)
+            foreach (ItemKind item in new[] { ItemKind.Berry, ItemKind.Acorn, ItemKind.Seed, ItemKind.Meat, ItemKind.Honeydew, ItemKind.Mushroom, ItemKind.Cress, ItemKind.Fish, ItemKind.Twig })
+                kin.Pack.Add(item);
         _spent.Clear();
         for (int i = 0; i < Raylib.GetTouchPointCount(); i++)
             _spent.Add(Raylib.GetTouchPointId(i)); // The press that chose "Control" is not a first touch of the stick or the view.
@@ -122,12 +125,11 @@ public sealed class PlayControl
     private static Vector2 ShootCenter => new(Raylib.GetScreenWidth() - 190f * Scale, BaseY - 270f * Scale);
     private static float ShootRadius => 90f * Scale;
 
-    /// <summary>A row of four buttons under the Attack button, right-aligned: Jump, Run, Items and Pick up (index 0 to 3).</summary>
+    /// <summary>A row of buttons under the Attack button, right-aligned: Jump, Items and Pick up (index 1 to 3; index 0 is empty).</summary>
     private static UiButton RowButton(int index) => new(new Rectangle(
         Raylib.GetScreenWidth() - (20 + (4 - index) * 215 + (3 - index) * 12) * Scale, BaseY + 135 * Scale, 215 * Scale, 110 * Scale));
 
-    private static UiButton JumpButton => RowButton(Explore ? 1 : 0); // (Explore has no run toggle: its three buttons sit to the right)
-    private static UiButton RunToggle => RowButton(1);
+    private static UiButton JumpButton => RowButton(1); // (no run toggle: running is the stick pushed to its edge; the three buttons sit to the right)
     private static UiButton BagButton => RowButton(2);
     private static UiButton PickUpButton => RowButton(3);
 
@@ -230,11 +232,6 @@ public sealed class PlayControl
                 kin.CyclePlayerJob();
                 _spent.Add(id);
             }
-            else if (!Explore && RunToggle.Contains(at))
-            {
-                kin.PlayerRunning = !kin.PlayerRunning;
-                _spent.Add(id);
-            }
             else if (JumpButton.Contains(at))
             {
                 _jumpPressed = true;
@@ -293,7 +290,7 @@ public sealed class PlayControl
         if (Raylib.IsKeyPressed(KeyboardKey.J))
             _jumpPressed = true;
         if (!Explore && Raylib.IsKeyPressed(KeyboardKey.R))
-            kin.PlayerRunning = !kin.PlayerRunning;
+            kin.PlayerRunning = !kin.PlayerRunning; // (a desktop keyboard's run toggle; there is no button for it)
         if (Raylib.IsKeyPressed(KeyboardKey.G))
             kin.PlayerPickUp(world);
         if (Raylib.IsKeyPressed(KeyboardKey.I))
@@ -374,8 +371,6 @@ public sealed class PlayControl
             int shootFont = (int)(40 * s);
             Raylib.DrawText("Shoot", (int)(ShootCenter.X - Raylib.MeasureText("Shoot", shootFont) / 2f), (int)(ShootCenter.Y - shootFont / 2f), shootFont, Color.White);
         }
-        if (!Explore)
-            RunToggle.Draw(kin.PlayerRunning ? "Run: on" : "Run: off", highlighted: kin.PlayerRunning);
         bool airborne = kin.IsAirborne || Raylib.IsKeyDown(KeyboardKey.J);
         JumpButton.Draw("Jump", highlighted: airborne);
         if (!Explore)
