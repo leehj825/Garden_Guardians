@@ -1,11 +1,9 @@
 using Android.App;
 
-// The app id is the game's own (from the AdMob console) in every build. AdMob ties an app id to the package name of the app
-// registered under it (the store listing it is linked to): the SDK is refused the app's settings (HTTP 403, "Not retrying to fetch
-// app settings") when the package of the running app, com.bramblekin.game, is not that one. The sample app id and the id of
-// another app were refused the same way. Debug builds (the APKs CI makes for every branch) ask for Google's TEST banner unit, which
-// always fills with a clearly marked test ad and is safe to tap; Release builds ask for the game's own banner unit. Do not tap live
-// ads while testing: clicking your own ads can get an AdMob account suspended.
+// Release builds (the AAB for Google Play) use the game's own AdMob app id and banner unit. Debug builds (the APKs CI makes for every branch)
+// use Google's sample app id and TEST banner unit, which work from any package whatever state its AdMob app is in (linked to the store or
+// not, in review or not), and always fill with a clearly marked test ad that is safe to tap. Do not tap live ads while testing: clicking your
+// own ads can get an AdMob account suspended.
 [assembly: MetaData("com.google.android.gms.ads.APPLICATION_ID", Value = GardenGuardians.AdConfig.AppId)]
 
 namespace GardenGuardians;
@@ -16,15 +14,20 @@ internal static class AdConfig
     public const string TestBannerUnitId = "ca-app-pub-3940256099942544/6300978111";
 
     /// <summary>The game's own banner unit.</summary>
-    public const string LiveBannerUnitId = "ca-app-pub-4400173019354346/4753521775";
+    public const string LiveBannerUnitId = "ca-app-pub-4400173019354346/2239023160";
 
-    /// <summary>The AdMob app id written into the manifest by the attribute above.</summary>
-    public const string AppId = "ca-app-pub-4400173019354346~3719730997";
+    /// <summary>Google's sample app id: pairs with the test banner unit.</summary>
+    public const string SampleAppId = "ca-app-pub-3940256099942544~3347511713";
+
+    /// <summary>The game's own AdMob app id.</summary>
+    public const string LiveAppId = "ca-app-pub-4400173019354346~9600481746";
 
 #if DEBUG
-    /// <summary>The banner ad unit shown along the bottom of the garden: Google's test banner.</summary>
+    /// <summary>The AdMob app id written into the manifest by the attribute above, and the banner unit shown along the bottom of the garden: Google's test ones.</summary>
+    public const string AppId = SampleAppId;
     public const string BannerUnitId = TestBannerUnitId;
 #else
+    public const string AppId = LiveAppId;
     /// <summary>The banner ad unit shown along the bottom of the garden.</summary>
     public const string BannerUnitId = LiveBannerUnitId;
 #endif

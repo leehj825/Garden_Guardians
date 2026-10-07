@@ -17,20 +17,8 @@ internal static class AdBanner
     /// <summary>Set by the platform: the banner view's height in pixels (0 until an ad has loaded; the space is not reserved before then).</summary>
     public static volatile int LoadedHeightPx;
 
-    /// <summary>What the platform's ad is doing, for the stats bar of a Debug build (nothing else shows why an ad is missing when there is no log to read).</summary>
+    /// <summary>What the platform's ad is doing (the Settings page's Ad test shows it in a Debug build).</summary>
     public static volatile string Status = "no ads on this platform";
-
-    /// <summary>Debug builds on Android: what the test ad unit and the game's own unit each answered when asked in turn.</summary>
-    public static volatile string Probes = "";
-
-    /// <summary>Debug builds on Android: the SDK's version and the app id found in the installed manifest.</summary>
-    public static volatile string Setup = "";
-
-    /// <summary>Debug builds on Android: what plain HTTPS requests to Google's servers answered, and the load error's domain and cause.</summary>
-    public static volatile string Net = "";
-
-    /// <summary>Debug builds on Android: the last lines the ad SDK wrote to the app's own log (tag Ads) after a failure, newest last.</summary>
-    public static volatile string[] SdkLog = Array.Empty<string>();
 
     /// <summary>Debug builds on Android: opens a plain Android screen with Google's test banner (the Settings page's "Ad test" button). Null elsewhere.</summary>
     public static Action? OpenTestScreen;

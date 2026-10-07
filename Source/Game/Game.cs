@@ -1507,8 +1507,7 @@ public static partial class Game
 
         // The Stats button sits at the bottom-left, just above where the stats bar is, whether it shows or not,
         // with the Log button and the log above it.
-        string[] sdkLog = AdBanner.SdkLog; // (a Debug build on Android: what the ad SDK wrote to the log)
-        int statLines = 12 + sdkLog.Length;
+        int statLines = 7;
         // (Upright, the lines are cut short at the screen's edge: a developer readout, so a smaller font is all it gets.)
         int fontSize = IsPortrait ? Math.Max(10, (int)(Raylib.GetScreenWidth() / 62f)) : ScaledFontSize(0.8f);
         int lineHeight = fontSize + fontSize / 6;
@@ -1561,14 +1560,7 @@ public static partial class Game
             $"Fleeing {Count(BramblekinState.Fleeing)}   Fighting {Count(BramblekinState.Fighting)}   Robbing {Count(BramblekinState.Attacking)}   Asleep {Count(BramblekinState.Sleeping)}{(world.Feasts.Count > 0 ? $"   Feasting {Count(BramblekinState.Feasting)}" : "")}",
             $"Arrived {world.Arrivals}   Died: starved {world.DeathsByStarvation}, thirst {world.DeathsByThirst}, old age {world.DeathsByOldAge}, predators {world.DeathsByPredator}, kin {world.DeathsByKin}, sickness {world.DeathsBySickness}   Sick {world.SickCount}",
             $"Born {world.Births} (gen {world.MaxGeneration})   Couples {world.LivingCouples}   Politics: {world.Departures} left, {world.Splinters} splits, {world.Coups} coups, {world.Exiles} exiles   Raids {world.StoreRaids}",
-            $"Banner ad: {AdBanner.Status}{(AdBanner.Wanted ? "" : " (not wanted here)")}   reserved {AdBanner.HeightPx} px",
-            $"Ad probes: {AdBanner.Probes}",
-            $"Ad setup: {AdBanner.Setup}",
-            $"Ad net: {AdBanner.Net}",
-            $"Ad SDK log: {(sdkLog.Length == 0 ? "(none yet)" : "")}",
         };
-        if (sdkLog.Length > 0)
-            lines = lines.Concat(sdkLog.Select(entry => "  " + entry)).ToArray();
 
         // UI Text Scaling: a background bar goes underneath, sized off
         // fontSize/lineHeight, so the text stays legible over a busy map.
