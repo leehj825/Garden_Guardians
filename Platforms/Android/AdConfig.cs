@@ -25,6 +25,12 @@ internal static class AdConfig
     /// <summary>Google's test rewarded video: always fills, from any app.</summary>
     public const string TestRewardedUnitId = "ca-app-pub-3940256099942544/5224354917";
 
+    /// <summary>
+    /// The rewarded video is switched off while it is being sorted out: opening the Guide set it up and the app closed (the cause is not yet known).
+    /// Turn it on again once the crash is understood (see AndroidRewarded).
+    /// </summary>
+    public const bool RewardedEnabled = false;
+
     /// <summary>The game's own rewarded video unit (AdMob app Bramblekin, ad unit "Reward"). The app id is the one above.</summary>
     public const string LiveRewardedUnitId = "ca-app-pub-4400173019354346/3811439768";
 

@@ -24,7 +24,7 @@ internal static class AndroidRewarded
     /// </summary>
     public static void Start(Activity activity)
     {
-        if (string.IsNullOrEmpty(AdConfig.RewardedUnitId))
+        if (!AdConfig.RewardedEnabled || string.IsNullOrEmpty(AdConfig.RewardedUnitId))
             return;
         _activity = activity;
         AdBanner.BeginRewarded = Begin;
