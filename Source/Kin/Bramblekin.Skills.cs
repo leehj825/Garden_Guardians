@@ -37,6 +37,15 @@ public sealed partial class Bramblekin
     /// <summary>A newborn starts with this fraction of its handier parent's skill in each — a family trade.</summary>
     private const float InheritedSkill = 0.25f;
 
+    /// <summary>A veteran fighter grows up to this much bigger than a novice (shown on screen).</summary>
+    private const float VeteranGrowth = 0.12f;
+
+    /// <summary>1 for a novice, up to 1.12 for a master fighter: growth you can see.</summary>
+    public float VeteranScale => 1f + VeteranGrowth * SkillAt(Skill.Fighting);
+
+    /// <summary>It has become a master of something (it wears a gold mark above its head).</summary>
+    public bool IsMaster => _mastered != 0;
+
     private readonly float[] _skills = new float[SkillCount];
 
     /// <summary>Which skills it has already mastered — so the chronicle hears of each only once.</summary>
