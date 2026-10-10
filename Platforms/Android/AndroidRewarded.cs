@@ -4,6 +4,7 @@
 // =============================================================================
 
 using Android.App;
+using Android.Runtime;
 using Android.Util;
 using Google.Android.Gms.Ads;
 using Google.Android.Gms.Ads.Rewarded;
@@ -70,6 +71,9 @@ internal static class AndroidRewarded
 
     private sealed class LoadCallback : RewardedAdLoadCallback
     {
+        // The SDK's callback is generic (AdLoadCallback<RewardedAd>); the binding sees it as taking an Object, and Java then finds two
+        // methods that clash after erasure. Registering the real signature makes the generated Java override the right one.
+        [Register("onAdLoaded", "(Lcom/google/android/gms/ads/rewarded/RewardedAd;)V", "")]
         public override void OnAdLoaded(Java.Lang.Object ad)
         {
             _loading = false;
