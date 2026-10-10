@@ -76,7 +76,7 @@ public sealed partial class Bramblekin
     /// <summary>An explorer picks up what lies this near (m), and looks again this often (s).</summary>
     private const float PlayerAutoPickReach = 0.9f, PlayerAutoPickEvery = 0.35f;
 
-    private float _autoPickCooldown;
+    private float _autoPickCooldown, _lookTimer;
 
     /// <summary>Set while the attack button is held.</summary>
     public bool PlayerWantsStrike { get; set; }
@@ -223,6 +223,12 @@ public sealed partial class Bramblekin
         if (PlayerExplorer)
         {
             UpdateQuests(deltaTime, world);
+            _lookTimer -= deltaTime;
+            if (_lookTimer <= 0f)
+            {
+                _lookTimer = 0.5f;
+                world.LookForDiscoveries(this);
+            }
             _autoPickCooldown -= deltaTime;
             if (moving && _autoPickCooldown <= 0f)
             {
