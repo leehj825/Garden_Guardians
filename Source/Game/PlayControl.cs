@@ -129,6 +129,7 @@ public sealed class PlayControl
     private static UiButton RowButton(int index) => new(new Rectangle(
         Raylib.GetScreenWidth() - (20 + (4 - index) * 215 + (3 - index) * 12) * Scale, BaseY + 135 * Scale, 215 * Scale, 110 * Scale));
 
+    private static UiButton TalkButton => RowButton(0); // (Explore only: the slot left of Jump)
     private static UiButton JumpButton => RowButton(1); // (no run toggle: running is the stick pushed to its edge; the three buttons sit to the right)
     private static UiButton BagButton => RowButton(2);
     private static UiButton PickUpButton => RowButton(3);
@@ -235,6 +236,11 @@ public sealed class PlayControl
             else if (JumpButton.Contains(at))
             {
                 _jumpPressed = true;
+                _spent.Add(id);
+            }
+            else if (Explore && TalkButton.Contains(at))
+            {
+                kin.PlayerTalk(world);
                 _spent.Add(id);
             }
             else if (PickUpButton.Contains(at))
@@ -378,6 +384,8 @@ public sealed class PlayControl
         ExitButton.Draw("Exit", highlighted: false);
         BagButton.Draw("Items", highlighted: _bagOpen);
         PickUpButton.Draw("Pick up", highlighted: false);
+        if (Explore)
+            TalkButton.Draw("Talk", highlighted: false);
         if (_bagOpen)
             DrawBag(kin);
 

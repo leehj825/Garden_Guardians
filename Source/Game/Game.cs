@@ -1438,6 +1438,7 @@ public static partial class Game
         return new List<(string Text, Color Color)>
         {
             ($"{(kin.IsFavourite ? "* " : "")}{kin.Name}  ({kin.Sex.ToString().ToLowerInvariant()}, {role}{(kin.IsYoung ? ", young" : kin.IsElder ? ", elder" : "")})", ink),
+            ($"\"{kin.Utterance(world)}\"", ink),
             ($"Age {kin.DescribeAge()}, generation {kin.Generation}", ink),
             ((kin.ParentNames is { } parents ? $"Child of {parents.Mother} & {parents.Father}" : "Wandered in from the edge") +
                 (kin.GuardianNames is { } guardians ? $", raised by {guardians.A} & {guardians.B}" : ""), ink),
