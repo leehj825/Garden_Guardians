@@ -288,7 +288,7 @@ public sealed class WolfSpider : ICombatant
         }
         else
         {
-            _sinceVibration = _prey.IsVibrating ? 0f : _sinceVibration + deltaTime;
+            _sinceVibration = _prey.IsVibrating || _prey.IsMovingExplorer ? 0f : _sinceVibration + deltaTime;
             if (_sinceVibration > ChaseMemory)
                 _prey = null;
         }
@@ -343,6 +343,16 @@ public sealed class WolfSpider : ICombatant
 
             caught = bramblekin;
             break;
+        }
+
+        if (caught is { PlayerExplorer: true, IsPlayerControlled: true })
+        {
+            // An explorer is never hurt: it is knocked flat and loses its pack, and the spider, having had its pounce, recovers.
+            caught.ExplorerCaught(world);
+            _prey = null;
+            _timer = RecoverDuration;
+            SetState(SpiderState.Recovering);
+            return;
         }
 
         if (caught is not null)
@@ -438,7 +448,7 @@ public sealed class WolfSpider : ICombatant
             Bramblekin bramblekin = nearby[i];
             // IsVibrating is already false for a dead Bramblekin; checked
             // again explicitly so this never targets one even if that changes.
-            if (bramblekin.IsDead || !bramblekin.IsVibrating || bramblekin.IsSheltered)
+            if (bramblekin.IsDead || !(bramblekin.IsVibrating || bramblekin.IsMovingExplorer) || bramblekin.IsSheltered)
                 continue;
             if (world.IsInsidePalisade(bramblekin.Position))
                 continue; // Stakes it won't go past.

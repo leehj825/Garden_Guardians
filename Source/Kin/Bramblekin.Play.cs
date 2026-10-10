@@ -156,6 +156,13 @@ public sealed partial class Bramblekin
     /// <summary>One step under control: a swing, a meal or a drink under way, the strike button, eating or drinking where it stands, else the stick.</summary>
     private void UpdatePlayerControl(float deltaTime, World world)
     {
+        if (_caughtTimer > 0f)
+        {
+            _caughtTimer -= deltaTime; // (knocked down by the spider: it can only wait)
+            SetState(BramblekinState.Idle);
+            _mover.Idle();
+            return;
+        }
         _perceptionTimer -= deltaTime;
         if (_perceptionTimer <= 0f)
         {
@@ -496,6 +503,22 @@ public sealed partial class Bramblekin
             _mover.Heading = Vector2.Normalize(face);
         Train(best is Bramblekin ? Skill.Fighting : Skill.Hunting, world, best is StagBeetle or WolfSpider ? 2f : 1f);
         best.TakeHit(best is Bramblekin ? StrikeDamage : HuntingDamage, this, world);
+    }
+
+    /// <summary>Seconds it is still knocked flat after the Wolf Spider caught it (Explore only: see <see cref="ExplorerCaught"/>).</summary>
+    private float _caughtTimer;
+
+    private const float CaughtSeconds = 2f;
+
+    /// <summary>The Wolf Spider notices an explorer on the move within its reach, as it does a busy worker (the explorer cannot be hurt, but it can be caught).</summary>
+    public bool IsMovingExplorer => PlayerExplorer && IsPlayerControlled && !IsDead && PlayerMove.LengthSquared() > 0.01f;
+
+    /// <summary>The spider's pounce reached the explorer: it is knocked flat for a moment and drops its pack — never hurt. Push the stick to its edge to outrun the spider.</summary>
+    public void ExplorerCaught(World world)
+    {
+        _caughtTimer = CaughtSeconds;
+        world.SpillExplorerPack(this);
+        world.QueueFloatingText(Position, "Caught by the spider!", new Color(255, 170, 140, 255), 1.5f);
     }
 
     /// <summary>For the HUD: what a controlled kin can do about being hungry or thirsty.</summary>
