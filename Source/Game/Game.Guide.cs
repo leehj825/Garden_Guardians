@@ -120,7 +120,7 @@ public static partial class Game
                 DrawGuideButton(actions[i], $"{World.GuideLabel(action)} {World.GuideCost(action):0}", affordable, highlighted: action == GuideAction.Site && _guideWaitingForSite);
             }
             if (watch is not null)
-                DrawGuideButton(watch, "Watch +3", true, highlighted: false);
+                DrawGuideButton(watch, "Ad: +3", true, highlighted: false);
         }
         string? message = _guideMessageLeft > 0f ? _guideMessage : _guideWaitingForSite ? "Tap the ground to choose the place" : null;
         if (message is not null)
