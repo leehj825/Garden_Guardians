@@ -588,6 +588,8 @@ public static partial class Game
                 if (!Detail.FarView)
                     DrawStatusBars(camera, world);
                 DrawNameTag(camera, world);
+                if (world.IsStorming && !World.LowDetail)
+                    Raylib.DrawRectangle(0, 0, Raylib.GetScreenWidth(), Raylib.GetScreenHeight(), new Color(20, 30, 55, 50)); // (a storm dims the sky)
                 DrawFloatingTexts(camera, world);
                 if (playing)
                 {
