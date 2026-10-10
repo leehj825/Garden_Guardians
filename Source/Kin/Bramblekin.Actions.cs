@@ -144,8 +144,7 @@ public sealed partial class Bramblekin
             world.StealFood(this, victim);
         if (State == BramblekinState.Fighting && _threatIsAllyDefense)
             world.NoteDefended(this, target);
-        if (target is not Bramblekin)
-            Train(Skill.Hunting, world, target is StagBeetle or WolfSpider ? 2f : 1f);
+        Train(target is Bramblekin ? Skill.Fighting : Skill.Hunting, world, target is StagBeetle or WolfSpider ? 2f : 1f);
         BeginBlow(world);
         target.TakeHit(target is Bramblekin ? StrikeDamage : HuntingDamage, this, world);
     }

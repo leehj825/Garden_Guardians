@@ -71,8 +71,8 @@ public sealed partial class Bramblekin
     /// <summary>The sum of a fading series: <paramref name="first"/>, then each term <see cref="EggFade"/> times the one before, for each egg eaten.</summary>
     private float EggSeries(float first) => first * (1f - MathF.Pow(EggFade, EggsEaten)) / (1f - EggFade);
 
-    /// <summary>Born strength, plus what eggs have added, less a fifth while shaken. How hard it hits and how well it stands a blow.</summary>
-    public float Strength => (Personality.Strength + EggSeries(EggStrengthFirst)) * (IsShaken ? ShakenStrengthFactor : 1f);
+    /// <summary>Born strength, plus what eggs and fighting practice have added, less a fifth while shaken. How hard it hits and how well it stands a blow.</summary>
+    public float Strength => (Personality.Strength + EggSeries(EggStrengthFirst) + FightingStrengthBonus * SkillAt(Skill.Fighting)) * (IsShaken ? ShakenStrengthFactor : 1f);
 
     /// <summary>Vigor, its energy: the eggs it has eaten slow its hunger…</summary>
     private float VigorHungerFactor => 1f - EggSeries(EggHungerCutFirst);

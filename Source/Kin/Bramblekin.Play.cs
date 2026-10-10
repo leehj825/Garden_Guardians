@@ -266,8 +266,7 @@ public sealed partial class Bramblekin
     /// <summary>The damage an arrow of this kin does to <paramref name="target"/> (and the hunting practice it earns): see <see cref="World.LooseArrow"/>.</summary>
     public int ArrowHit(ICombatant target, World world)
     {
-        if (target is not Bramblekin)
-            Train(Skill.Hunting, world, target is StagBeetle or WolfSpider ? 2f : 1f);
+        Train(target is Bramblekin ? Skill.Fighting : Skill.Hunting, world, target is StagBeetle or WolfSpider ? 2f : 1f);
         return (int)MathF.Round(BaseStrike * Profile.Arrow * (target is Bramblekin ? 1f : 1f + 0.5f * SkillAt(Skill.Hunting)));
     }
 
@@ -486,8 +485,7 @@ public sealed partial class Bramblekin
         var face = new Vector2(best.Position.X - Position.X, best.Position.Z - Position.Z);
         if (face.LengthSquared() > 1e-6f)
             _mover.Heading = Vector2.Normalize(face);
-        if (best is not Bramblekin)
-            Train(Skill.Hunting, world, best is StagBeetle or WolfSpider ? 2f : 1f);
+        Train(best is Bramblekin ? Skill.Fighting : Skill.Hunting, world, best is StagBeetle or WolfSpider ? 2f : 1f);
         best.TakeHit(best is Bramblekin ? StrikeDamage : HuntingDamage, this, world);
     }
 

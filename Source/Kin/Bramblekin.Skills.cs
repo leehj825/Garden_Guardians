@@ -8,6 +8,7 @@ public enum Skill
     Building,
     Fishing,
     Healing,
+    Fighting, // (added last: saves keep their skills in this order)
 }
 
 public sealed partial class Bramblekin
@@ -18,6 +19,9 @@ public sealed partial class Bramblekin
     public const float MasterySkill = 0.75f;
 
     /// <summary>Each act of practice closes this fraction of the gap to perfect (times its learning pace — see <see cref="Practice"/>).</summary>
+    /// <summary>A master fighter hits and stands blows as if this much stronger (added to Strength).</summary>
+    public const float FightingStrengthBonus = 0.15f;
+
     private const float PracticeGain = 0.025f;
 
     /// <summary>Skills rust by this much a second.</summary>
@@ -101,13 +105,14 @@ public sealed partial class Bramblekin
         Skill.Farming => "farmer",
         Skill.Building => "builder",
         Skill.Healing => "healer",
+        Skill.Fighting => "fighter",
         _ => "fisher",
     };
 
     /// <summary>"hunting 0.52, building 0.21" for the Kin Inspector — every skill it has any of.</summary>
     public string DescribeSkills()
     {
-        string list = string.Join(", ", Enum.GetValues<Skill>().Where(s => SkillAt(s) >= 0.05f).Select(s => $"{s.ToString().ToLowerInvariant()} {SkillAt(s):0.00}"));
+        string list = string.Join(", ", Enum.GetValues<Skill>().Where(s => SkillAt(s) >= 0.01f).Select(s => $"{s.ToString().ToLowerInvariant()} {SkillAt(s):0.00}"));
         return list.Length > 0 ? list : "none yet";
     }
 
