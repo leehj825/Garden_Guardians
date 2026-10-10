@@ -169,6 +169,9 @@ public sealed partial class World
     /// <summary>Which map guides are drawn (clan range, kin links, kin range) — set from the buttons on the map.</summary>
     public static MapOverlays Overlays { get; set; } = MapOverlays.All;
 
+    /// <summary>Low detail (a Settings choice for slower phones): no grass, flowers or small stones on the ground.</summary>
+    public static bool LowDetail { get; set; }
+
     // --- Encounters & groups ------------------------------------------------------
 
     /// <summary>Two Bramblekin closer than this (m) have "crossed paths" — see <see cref="ResolveEncounter"/>.</summary>

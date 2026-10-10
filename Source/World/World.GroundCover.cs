@@ -62,6 +62,8 @@ public sealed unsafe partial class World
         float radius = kin is not null || zoom <= CoverFullZoom ? CoverRadius
             : zoom >= CoverOffZoom ? 0f
             : CoverRadius + (CoverFarRadius - CoverRadius) * (zoom - CoverFullZoom) / (CoverOffZoom - CoverFullZoom);
+        if (LowDetail)
+            radius = 0f;
         if (radius <= 0f)
         {
             _coverIdle += Raylib.GetFrameTime();

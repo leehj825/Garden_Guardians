@@ -6,6 +6,13 @@ namespace GardenGuardians;
 public static partial class Game
 {
     private const string MusicVolumeSetting = "musicvolume";
+    private const string DetailSetting = "detail";
+
+    private enum DetailLevel
+    {
+        Normal,
+        Low,
+    }
 
     /// <summary>The "back to the start menu?" question is open (see the Menu button): the garden waits, and the question takes every tap.</summary>
     private static bool _confirmMenu;
@@ -68,7 +75,8 @@ public static partial class Game
             var minus = new UiButton(new Rectangle(left, barY, stepWidth, buttonHeight));
             var plus = new UiButton(new Rectangle(left + wide - stepWidth, barY, stepWidth, buttonHeight));
             var bar = new Rectangle(left + stepWidth + gap, barY, wide - (stepWidth + gap) * 2, buttonHeight);
-            var back = new UiButton(new Rectangle(left, barY + buttonHeight + gap * 4, wide, buttonHeight));
+            var detail = new UiButton(new Rectangle(left, barY + buttonHeight + gap * 3, wide, buttonHeight));
+            var back = new UiButton(new Rectangle(left, detail.Bounds.Y + buttonHeight + gap * 2, wide, buttonHeight));
             // (Debug builds on Android: a diagnostic screen with a test banner, see AdTestActivity.)
             UiButton? adTest = AdBanner.OpenTestScreen is null ? null : new UiButton(new Rectangle(left, back.Bounds.Y + buttonHeight + gap * 2, wide, buttonHeight));
 
@@ -77,6 +85,11 @@ public static partial class Game
             float volume = MusicPlayer.Volume;
             if (pressed && back.Contains(mouse))
                 return;
+            if (pressed && detail.Contains(mouse))
+            {
+                World.LowDetail = !World.LowDetail;
+                Preferences.Set(DetailSetting, World.LowDetail ? DetailLevel.Low : DetailLevel.Normal);
+            }
             if (pressed && adTest is not null && adTest.Contains(mouse))
                 AdBanner.OpenTestScreen?.Invoke();
             if (pressed && minus.Contains(mouse))
@@ -102,6 +115,7 @@ public static partial class Game
             Raylib.DrawRectangleRec(bar, new Color(235, 235, 225, 255));
             Raylib.DrawRectangle((int)bar.X + 4, (int)bar.Y + 4, (int)((bar.Width - 8) * MusicPlayer.Volume), (int)bar.Height - 8, new Color(230, 190, 60, 255));
             Raylib.DrawRectangleLinesEx(bar, 2f, ink);
+            detail.Draw(World.LowDetail ? "Detail: low (no grass)" : "Detail: normal", highlighted: World.LowDetail);
             back.Draw("Back", highlighted: true);
             if (adTest is not null) // (a Debug build on Android: the game's own banner's state, and the plain test screen)
             {

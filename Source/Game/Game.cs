@@ -345,6 +345,7 @@ public static partial class Game
         _statsView = Preferences.Get(StatsViewSetting, StatsView.Shown);
         _alertsOn = Preferences.Get(AlertsSetting, AlertsView.On) == AlertsView.On;
         World.Overlays = Preferences.Get(OverlaySetting, MapOverlays.All);
+        World.LowDetail = Preferences.Get(DetailSetting, DetailLevel.Normal) == DetailLevel.Low;
         MusicPlayer.Volume = Math.Clamp(Preferences.GetNumber(MusicVolumeSetting, 0.5f), 0f, 1f);
         _gardenSlot = (int)Preferences.Get(GardenSetting, GardenSlot.Garden1);
         TerrainData.GrowNewGardens = Preferences.Get(TerrainSetting, TerrainMode.Fixed) == TerrainMode.Random;
