@@ -18,33 +18,50 @@ internal static class AndroidRewarded
     private static IntPtr _class, _load, _show, _isReady, _consume;
     private static Action? _onReward;
 
-    /// <summary>Hooks the rewarded video up and starts loading one. Does nothing without a rewarded unit id (see AdConfig).</summary>
+    /// <summary>
+    /// Offers the rewarded video to the game without touching it: nothing is loaded and no Java is called until the player first opens the
+    /// Guide (see <see cref="Begin"/>), so a problem with the ad can never stop the game from starting.
+    /// </summary>
     public static void Start(Activity activity)
     {
         if (string.IsNullOrEmpty(AdConfig.RewardedUnitId))
             return;
-        try
+        _activity = activity;
+        AdBanner.BeginRewarded = Begin;
+    }
+
+    private static bool _begun;
+    private static float _sincePoll;
+
+    /// <summary>The first time the Guide is opened: sets the Java side up and starts loading a video (on the UI thread).</summary>
+    private static void Begin()
+    {
+        if (_begun || _activity is not { } activity)
+            return;
+        _begun = true;
+        activity.RunOnUiThread(() =>
         {
-            IntPtr local = JNIEnv.FindClass("com/bramblekin/ads/RewardedBridge");
-            _class = JNIEnv.NewGlobalRef(local);
-            JNIEnv.DeleteLocalRef(local);
-            const string activityAndUnit = "(Landroid/app/Activity;Ljava/lang/String;)V";
-            _load = JNIEnv.GetStaticMethodID(_class, "load", activityAndUnit);
-            _show = JNIEnv.GetStaticMethodID(_class, "show", activityAndUnit);
-            _isReady = JNIEnv.GetStaticMethodID(_class, "isReady", "()Z");
-            _consume = JNIEnv.GetStaticMethodID(_class, "consumeReward", "()Z");
-            _activity = activity;
-            Call(_load);
-            AdBanner.ShowRewarded = Show;
-            AdBanner.PollRewarded = Poll;
-        }
-        catch (Exception ex)
-        {
-            // No rewarded video is better than no game.
-            Log.Error(LogTag, $"Could not set up the rewarded ad: {ex}");
-            AdBanner.ShowRewarded = null;
-            AdBanner.PollRewarded = null;
-        }
+            try
+            {
+                IntPtr local = JNIEnv.FindClass("com/bramblekin/ads/RewardedBridge");
+                _class = JNIEnv.NewGlobalRef(local);
+                JNIEnv.DeleteLocalRef(local);
+                const string activityAndUnit = "(Landroid/app/Activity;Ljava/lang/String;)V";
+                _load = JNIEnv.GetStaticMethodID(_class, "load", activityAndUnit);
+                _show = JNIEnv.GetStaticMethodID(_class, "show", activityAndUnit);
+                _isReady = JNIEnv.GetStaticMethodID(_class, "isReady", "()Z");
+                _consume = JNIEnv.GetStaticMethodID(_class, "consumeReward", "()Z");
+                Call(_load);
+                AdBanner.ShowRewarded = Show;
+                AdBanner.PollRewarded = Poll;
+            }
+            catch (Exception ex)
+            {
+                // No rewarded video is better than no game.
+                Log.Error(LogTag, $"Could not set up the rewarded ad: {ex}");
+                _class = IntPtr.Zero;
+            }
+        });
     }
 
     /// <summary>Calls the bridge's load or show with the activity and the unit id.</summary>
@@ -65,32 +82,47 @@ internal static class AndroidRewarded
 
     private static void Show(Action onReward)
     {
-        if (!AdBanner.RewardedReady)
+        if (!AdBanner.RewardedReady || _activity is not { } activity)
             return;
         _onReward = onReward;
-        Call(_show);
+        activity.RunOnUiThread(() =>
+        {
+            try
+            {
+                Call(_show);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(LogTag, $"Could not show the rewarded ad: {ex}");
+            }
+        });
     }
 
-    /// <summary>Once a frame, from the game thread: is a video loaded, and has the viewer just earned the reward?</summary>
+    /// <summary>Called by the Guide every frame, from the game thread: about twice a second it asks the UI thread whether a video is loaded and whether the reward was just earned.</summary>
     private static void Poll()
     {
-        if (_class == IntPtr.Zero)
+        _sincePoll += 1f / 60f;
+        if (_sincePoll < 0.5f || _class == IntPtr.Zero || _activity is not { } activity)
             return;
-        try
+        _sincePoll = 0f;
+        activity.RunOnUiThread(() =>
         {
-            AdBanner.RewardedReady = JNIEnv.CallStaticBooleanMethod(_class, _isReady);
-            if (JNIEnv.CallStaticBooleanMethod(_class, _consume))
+            try
             {
-                Action? give = _onReward;
-                _onReward = null;
-                give?.Invoke();
+                AdBanner.RewardedReady = JNIEnv.CallStaticBooleanMethod(_class, _isReady);
+                if (JNIEnv.CallStaticBooleanMethod(_class, _consume))
+                {
+                    Action? give = _onReward;
+                    _onReward = null;
+                    give?.Invoke();
+                }
             }
-        }
-        catch (Exception ex)
-        {
-            Log.Error(LogTag, $"Rewarded ad poll failed: {ex}");
-            AdBanner.RewardedReady = false;
-            AdBanner.PollRewarded = null;
-        }
+            catch (Exception ex)
+            {
+                Log.Error(LogTag, $"Rewarded ad poll failed: {ex}");
+                AdBanner.RewardedReady = false;
+                AdBanner.PollRewarded = null;
+            }
+        });
     }
 }

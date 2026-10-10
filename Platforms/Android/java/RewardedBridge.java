@@ -26,23 +26,27 @@ public final class RewardedBridge {
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                if (loading || ad != null) {
-                    return;
-                }
-                loading = true;
-                RewardedAd.load(activity, unitId, new AdRequest.Builder().build(), new RewardedAdLoadCallback() {
-                    @Override
-                    public void onAdLoaded(RewardedAd loaded) {
-                        ad = loaded;
-                        loading = false;
+                try {
+                    if (loading || ad != null) {
+                        return;
                     }
+                    loading = true;
+                    RewardedAd.load(activity, unitId, new AdRequest.Builder().build(), new RewardedAdLoadCallback() {
+                        @Override
+                        public void onAdLoaded(RewardedAd loaded) {
+                            ad = loaded;
+                            loading = false;
+                        }
 
-                    @Override
-                    public void onAdFailedToLoad(LoadAdError error) {
-                        ad = null;
-                        loading = false;
-                    }
-                });
+                        @Override
+                        public void onAdFailedToLoad(LoadAdError error) {
+                            ad = null;
+                            loading = false;
+                        }
+                    });
+                } catch (Throwable t) {
+                    loading = false; // no rewarded video, but never a crash
+                }
             }
         });
     }
@@ -66,6 +70,7 @@ public final class RewardedBridge {
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
+                try {
                 shown.setFullScreenContentCallback(new FullScreenContentCallback() {
                     @Override
                     public void onAdDismissedFullScreenContent() {
@@ -85,6 +90,9 @@ public final class RewardedBridge {
                         earned = true;
                     }
                 });
+                } catch (Throwable t) {
+                    ad = null;
+                }
             }
         });
     }

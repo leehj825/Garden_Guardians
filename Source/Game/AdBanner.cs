@@ -29,6 +29,9 @@ internal static class AdBanner
     /// <summary>Set by the platform: called once a frame by the Guide so the platform can report whether a video is loaded and hand over a reward just earned.</summary>
     public static Action? PollRewarded;
 
+    /// <summary>Set by the platform: asks it to set the rewarded video up (called when the player first opens the Guide, never at start-up).</summary>
+    public static Action? BeginRewarded;
+
     private static bool _wanted;
 
     /// <summary>Whether the game wants the banner showing right now.</summary>
