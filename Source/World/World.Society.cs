@@ -104,6 +104,7 @@ public sealed partial class World
                     Game.AddEventLog($"[GROUP] {group.Leader!.Name} now leads {group.Title}{(heir ? ", as its named heir" : "")}");
                     Chronicle(heir ? $"{group.Leader.Name} succeeded {previousLeader.Name} as Leader of {group.Title}"
                                    : $"{group.Leader.Name} became Leader of {group.Title}", group);
+                    NoteFavourite(group.Leader, $"now leads {group.Title}");
                 }
                 continue;
             }

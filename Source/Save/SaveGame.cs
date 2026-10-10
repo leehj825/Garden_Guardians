@@ -166,6 +166,9 @@ public sealed class KinSave
 
     /// <summary>Hunting, farming, building and fishing skill; null in a save from before skills.</summary>
     public float[]? Skills { get; set; }
+
+    /// <summary>Marked as a favourite by the player.</summary>
+    public bool Favourite { get; set; }
 }
 
 public sealed class ErrandSave

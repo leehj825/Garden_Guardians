@@ -17,6 +17,9 @@ public sealed partial class Bramblekin
 
     public void NoteChampionWin() => ChampionWins++;
 
+    /// <summary>Marked by the player to be followed in the news: its children, illness, leadership, mastery and death make a headline (see World.NoteFavourite).</summary>
+    public bool IsFavourite { get; set; }
+
     // --- Infamy: reputation between individuals ---------------------------------------
 
     /// <summary>Infamy never climbs past this.</summary>

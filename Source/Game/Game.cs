@@ -443,6 +443,7 @@ public static partial class Game
                 _topBarBottom = navRowY + speedButtonHeight + speedButtonMargin;
                 _contentTop = _topBarBottom + OverlayRowHeight(uiScale);
                 UiButton? followButton = _showChronicle || playing ? null : FollowButton(world);
+                UiButton? favouriteButton = followButton is null ? null : FavouriteButton(followButton);
                 UiButton? controlButton = followButton is null || !(Build.KinControl || Build.Explore) ? null : ControlButton(world, followButton);
                 UiButton menuButton = MenuButton(autoButton?.Bounds ?? historyButton.Bounds, navRowY, speedButtonMargin, speedButtonHeight, uiScale);
                 var overlayButtons = _showChronicle ? null : OverlayButtons(uiScale, _topBarBottom, speedButtonMargin);
@@ -534,6 +535,8 @@ public static partial class Game
                 }
                 else if (mousePressed && followButton is not null && followButton.Contains(mousePosition))
                     followCamera.ToggleFollow(world);
+                else if (mousePressed && favouriteButton is not null && favouriteButton.Contains(mousePosition) && world.SelectedKin is { } marked)
+                    marked.IsFavourite = !marked.IsFavourite;
                 else
                     input.Update(camera, world);
                 if (playing)
@@ -606,6 +609,7 @@ public static partial class Game
                 if (!_showChronicle)
                     DrawKinPanel(world); // The History screen covers it (its header names the selected clan).
                 followButton?.Draw(followCamera.IsFollowing ? "Following" : "Follow", highlighted: followCamera.IsFollowing);
+                favouriteButton?.Draw(world.SelectedKin is { IsFavourite: true } ? "Favourite" : "Add to favourites", highlighted: world.SelectedKin is { IsFavourite: true });
                 controlButton?.Draw(Build.KinControl ? "Control" : "Explore", highlighted: false);
                 int hudTop = DrawHud(world);
                 int captionHeight = director.Caption is null ? 0 : ScaledFontSize(0.55f) + 2 * ((int)(10 * UiScale) + 2) + 6;
@@ -1405,6 +1409,10 @@ public static partial class Game
         return new UiButton(new Rectangle(x, y, width, height));
     }
 
+    /// <summary>The "Favourite" toggle, under "Follow": marks the selected Bramblekin so its news (children, illness, leadership, mastery, death) makes a headline.</summary>
+    private static UiButton FavouriteButton(UiButton follow) =>
+        new(new Rectangle(follow.Bounds.X, follow.Bounds.Y + follow.Bounds.Height + 10 * UiScale, follow.Bounds.Width, follow.Bounds.Height * 0.8f));
+
     /// <summary>The "Control" button, just left of "Follow": take the selected Bramblekin's wheel (see <see cref="PlayControl"/>).</summary>
     private static UiButton ControlButton(World world, UiButton follow) =>
         new(new Rectangle(follow.Bounds.X - follow.Bounds.Width - 10 * UiScale, follow.Bounds.Y, follow.Bounds.Width, follow.Bounds.Height));
@@ -1422,7 +1430,7 @@ public static partial class Game
 
         return new List<(string Text, Color Color)>
         {
-            ($"{kin.Name}  ({kin.Sex.ToString().ToLowerInvariant()}, {role}{(kin.IsYoung ? ", young" : kin.IsElder ? ", elder" : "")})", ink),
+            ($"{(kin.IsFavourite ? "* " : "")}{kin.Name}  ({kin.Sex.ToString().ToLowerInvariant()}, {role}{(kin.IsYoung ? ", young" : kin.IsElder ? ", elder" : "")})", ink),
             ($"Age {kin.DescribeAge()}, generation {kin.Generation}", ink),
             ((kin.ParentNames is { } parents ? $"Child of {parents.Mother} & {parents.Father}" : "Wandered in from the edge") +
                 (kin.GuardianNames is { } guardians ? $", raised by {guardians.A} & {guardians.B}" : ""), ink),

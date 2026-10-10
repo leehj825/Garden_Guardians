@@ -17,6 +17,7 @@ public sealed partial class World
         string noun = Bramblekin.TradeNoun(skill);
         Game.AddEventLog($"[SKILL] {kin.Name} has become a master {noun}");
         Chronicle($"{kin.Name} became a master {noun}", GroupOf(kin));
+        NoteFavourite(kin, $"has become a master {noun}");
     }
 
     /// <summary>A skilled farmer's extra piece from <paramref name="crop"/>, straight into <paramref name="store"/>.</summary>

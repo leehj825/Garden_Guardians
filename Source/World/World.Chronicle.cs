@@ -71,6 +71,18 @@ public sealed partial class World
             _moments.RemoveAt(0);
     }
 
+    /// <summary>News of a favourite (see <see cref="Bramblekin.IsFavourite"/>): a headline with its name, if <paramref name="kin"/> is one. Urgent for a death.</summary>
+    public void NoteFavourite(Bramblekin kin, string what, bool urgent = false)
+    {
+        if (!kin.IsFavourite)
+            return;
+        string text = $"{kin.Name} {what}";
+        _moments.Add(new Moment("Favourite", text, kin.Position, urgent)); // (a banner only: the chronicle has its own lines for the big ones)
+        Spotlight(text, urgent ? 10f : 8f, kin.Position);
+        if (_moments.Count > MomentCapacity)
+            _moments.RemoveAt(0);
+    }
+
     /// <summary>The headlines since last asked (for the banners), oldest first.</summary>
     public List<Moment> TakeMoments()
     {

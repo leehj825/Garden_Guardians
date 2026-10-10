@@ -64,6 +64,7 @@ public sealed partial class World
     public void NoteFellSick(Bramblekin kin)
     {
         SicknessCases++;
+        NoteFavourite(kin, "has fallen ill");
         if (GroupOf(kin) is not { } group)
             return;
         int sick = 0;

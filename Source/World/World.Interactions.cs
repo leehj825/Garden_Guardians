@@ -222,6 +222,7 @@ public sealed partial class World
             Chronicle($"Leader {kin.Name} {how}", clan);
         else if (cause == DeathCause.OldAge && kin.Children >= 5)
             Chronicle($"{kin.Name} {how}", GroupOf(kin));
+        NoteFavourite(kin, how, urgent: true);
     }
 
     /// <summary>
