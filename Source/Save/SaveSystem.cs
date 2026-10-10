@@ -102,6 +102,9 @@ public static class SaveSystem
     /// </summary>
     public static World? TryLoad(string path, Random rng) => LoadFile(path, rng) ?? LoadFile(BackupPath(path), rng);
 
+    /// <summary>When the garden last loaded was saved (UTC): how long the player has been away.</summary>
+    public static DateTime LastLoadedAt { get; private set; }
+
     private static World? LoadFile(string path, Random rng)
     {
         if (!File.Exists(path))
@@ -117,6 +120,7 @@ public static class SaveSystem
                 KeepOldVersion(path, save?.Version);
                 return null;
             }
+            LastLoadedAt = save.SavedAt;
             int terrain = save.Numbers.TryGetValue(TerrainKey, out double saved) ? (int)saved : 0; // A garden from before terrains were chosen kept the original.
             return World.FromSave(save, new Terrain(terrain), rng);
         }

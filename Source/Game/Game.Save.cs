@@ -44,6 +44,7 @@ public static partial class Game
         if (SaveSystem.TryLoad(savePath, new Random()) is { } saved)
         {
             AddEventLog($"[SAVE] Welcome back - garden {_gardenSlot} carries on in Year {saved.Year}");
+            BeginCatchUp(saved);
             return saved;
         }
         return NewWorld();
@@ -61,6 +62,7 @@ public static partial class Game
     private static World StartNewGarden(string savePath)
     {
         SaveSystem.Delete(savePath);
+        _catchUpLeft = 0f;
         _debugLogs.Clear();
         _showChronicle = false;
         _chronicleScroll = 0f;

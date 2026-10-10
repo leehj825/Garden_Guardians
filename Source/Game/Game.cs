@@ -260,6 +260,11 @@ public static partial class Game
             _lootTestDone = true;
             world.StartTestLoot(lootLevel);
         }
+        if (_catchUpLeft > 0f)
+        {
+            CatchUp(world);
+            return;
+        }
         _simulationBacklog += realDeltaTime * _timeScale;
         // A frame's drawing costs the same however fast the garden runs, so on a device where it is slow it would swallow most of the frame and leave the
         // simulation a sliver (50x managing a few x): at 10x and up the simulation gets a share that grows with the draw time, up to a cap.
@@ -614,6 +619,7 @@ public static partial class Game
                 int hudTop = DrawHud(world);
                 int captionHeight = director.Caption is null ? 0 : ScaledFontSize(0.55f) + 2 * ((int)(10 * UiScale) + 2) + 6;
                 DrawBanner(_contentTop + captionHeight);
+                DrawCatchUp();
                 if (!_showChronicle)
                     DrawDirectorCaption(director, _contentTop);
                 if (_showChronicle)
@@ -666,6 +672,7 @@ public static partial class Game
                 ClearBanners();
                 _showChronicle = false;
                 _simulationBacklog = 0f;
+                _catchUpLeft = 0f;
                 _confirmMenu = false;
             }
         } while (leaveToMenu);
