@@ -99,11 +99,12 @@ public sealed partial class Bramblekin
             return;
         }
 
-        _bottleTimer += deltaTime;
+        _bottleTimer += deltaTime * (1f + GatheringSpeedBonus * SkillAt(Skill.Gathering));
         if (_bottleTimer < BottleFillSeconds)
             return;
         _bottleTimer = 0f;
         Pack.Add(ItemKind.Water);
+        Train(Skill.Gathering, world, 0.5f);
         StartAction(BramblekinClip.PickingUp, lockMovement: false); // bends to fill the bottle (walking on cuts it short)
     }
 

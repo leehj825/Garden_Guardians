@@ -8,7 +8,8 @@ public enum Skill
     Building,
     Fishing,
     Healing,
-    Fighting, // (added last: saves keep their skills in this order)
+    Fighting, // (new skills go last: saves keep their skills in this order)
+    Gathering,
 }
 
 public sealed partial class Bramblekin
@@ -19,6 +20,9 @@ public sealed partial class Bramblekin
     public const float MasterySkill = 0.75f;
 
     /// <summary>Each act of practice closes this fraction of the gap to perfect (times its learning pace — see <see cref="Practice"/>).</summary>
+    /// <summary>A master gatherer walks to food, and fills water bottles, up to this much faster.</summary>
+    public const float GatheringSpeedBonus = 0.3f;
+
     /// <summary>A master fighter hits and stands blows as if this much stronger (added to Strength).</summary>
     public const float FightingStrengthBonus = 0.15f;
 
@@ -106,6 +110,7 @@ public sealed partial class Bramblekin
         Skill.Building => "builder",
         Skill.Healing => "healer",
         Skill.Fighting => "fighter",
+        Skill.Gathering => "gatherer",
         _ => "fisher",
     };
 
