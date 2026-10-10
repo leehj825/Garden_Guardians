@@ -53,8 +53,6 @@ public static partial class Game
         if (toggle.Contains(point))
         {
             _guideOpen = !_guideOpen;
-            if (_guideOpen)
-                AdBanner.BeginRewarded?.Invoke();
             _guideWaitingForSite = false;
             return true;
         }

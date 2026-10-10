@@ -32,6 +32,9 @@ internal static class AdBanner
     /// <summary>Set by the platform: asks it to set the rewarded video up (called when the player first opens the Guide, never at start-up).</summary>
     public static Action? BeginRewarded;
 
+    /// <summary>Set by the platform: what the rewarded video is doing, for the Ad test page.</summary>
+    public static volatile string RewardedStatus = "no rewarded ads on this platform";
+
     private static bool _wanted;
 
     /// <summary>Whether the game wants the banner showing right now.</summary>

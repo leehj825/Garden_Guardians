@@ -30,7 +30,7 @@ internal static class AdConfig
     /// (adb logcat -b crash) from a build with this set to true would show why. It guards itself (see AndroidRewarded.GuardAllows) so that it
     /// switches itself off after two such crashes.
     /// </summary>
-    public const bool RewardedEnabled = false;
+    public const bool RewardedEnabled = false; // (no longer read: the video starts from the Settings page Ad test, not the Guide)
 
     /// <summary>The game's own rewarded video unit (AdMob app Bramblekin, ad unit "Reward"). The app id is the one above.</summary>
     public const string LiveRewardedUnitId = "ca-app-pub-4400173019354346/3811439768";

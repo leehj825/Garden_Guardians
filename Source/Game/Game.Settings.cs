@@ -108,7 +108,11 @@ public static partial class Game
             var sleep = new UiButton(new Rectangle(left, detail.Bounds.Y + buttonHeight + gap, wide, buttonHeight));
             // (A Debug build only: play as the Release game, to test it without a Release build.)
             UiButton? asRelease = Build.IsDebugBuild ? new UiButton(new Rectangle(left, sleep.Bounds.Y + buttonHeight + gap, wide, buttonHeight)) : null;
-            var back = new UiButton(new Rectangle(left, (asRelease ?? sleep).Bounds.Y + buttonHeight + gap * 2, wide, buttonHeight));
+            // (Back; and in a Debug build the Ad test page beside it.)
+            int rowY = (int)(asRelease ?? sleep).Bounds.Y + buttonHeight + gap * 2;
+            int half = (wide - gap) / 2;
+            var back = new UiButton(new Rectangle(left, rowY, Build.IsDebugBuild ? half : wide, buttonHeight));
+            UiButton? adTest = Build.IsDebugBuild ? new UiButton(new Rectangle(left + half + gap, rowY, half, buttonHeight)) : null;
 
             Vector2 mouse = Raylib.GetMousePosition();
             bool pressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
@@ -119,6 +123,11 @@ public static partial class Game
             {
                 Build.PlayAsRelease = !Build.PlayAsRelease;
                 Preferences.Set(PlayAsReleaseSetting, Build.PlayAsRelease ? ReleaseChoice.On : ReleaseChoice.Off);
+            }
+            if (pressed && adTest is not null && adTest.Contains(mouse))
+            {
+                ShowAdTest();
+                continue;
             }
             if (pressed && sleep.Contains(mouse))
             {
@@ -157,6 +166,7 @@ public static partial class Game
             sleep.Draw(_sleepMode ? "Sleep mode: on (15 fps, dim)" : "Sleep mode: off", highlighted: _sleepMode);
             asRelease?.Draw(Build.PlayAsRelease ? "Play as Release: ON (test the Release game)" : "Play as Release: off (Debug tools)", highlighted: Build.PlayAsRelease);
             back.Draw("Back", highlighted: true);
+            adTest?.Draw("Ad test", highlighted: false);
             Raylib.EndDrawing();
         }
     }

@@ -1,7 +1,7 @@
 // =============================================================================
-//  The rewarded video (Google AdMob): the Guide's "Ad: +3" button. The ad itself is handled by
-//  Platforms/Android/java/RewardedBridge.java (the SDK's load callback is generic, which a C# subclass cannot express);
-//  this file calls it over JNI and polls it from the game thread.
+//  The rewarded video (Google AdMob). The ad itself is handled by Platforms/Android/java/RewardedBridge.java (the SDK's load callback is
+//  generic, which a C# subclass cannot express); this file calls it over JNI. It is started from the Settings page's Ad test (Game.AdTest),
+//  and every step goes into a breadcrumb file (RewardedDiag) that page shows, because opening it once closed the app and there is no crash log.
 // =============================================================================
 
 using Android.App;
@@ -15,83 +15,68 @@ internal static class AndroidRewarded
     private const string LogTag = "GardenGuardians";
 
     private static Activity? _activity;
-    private static IntPtr _class, _load, _show, _isReady, _consume, _result;
-    private static bool _showing;
+    private static IntPtr _class, _load, _show, _isReady, _consume, _result, _info;
     private static Action? _onReward;
+    private static bool _begun;
+    private static float _sincePoll;
+    private static int _lastResult;
+    private static string _lastInfo = "";
 
-    /// <summary>
-    /// Offers the rewarded video to the game without touching it: nothing is loaded and no Java is called until the player first opens the
-    /// Guide (see <see cref="Begin"/>), so a problem with the ad can never stop the game from starting.
-    /// </summary>
+    /// <summary>Makes the rewarded video available to the game; nothing is loaded and no Java is called until <see cref="Begin"/>.</summary>
     public static void Start(Activity activity)
     {
-        if (!AdConfig.RewardedEnabled || string.IsNullOrEmpty(AdConfig.RewardedUnitId))
+        if (string.IsNullOrEmpty(AdConfig.RewardedUnitId))
             return;
         _activity = activity;
         AdBanner.BeginRewarded = Begin;
+        AdBanner.RewardedStatus = "not started";
     }
 
-    private static bool _begun;
-
-    // The rewarded video has crashed the app before, for a reason not yet known. So each attempt is marked in the settings file before it starts and
-    // cleared once the ad has answered; if the app finds the mark still there next time, that attempt killed it. After two such deaths the video
-    // stays off (delete "rewardedfails" from settings.txt to try again).
-    private const string TryingKey = "rewardedtrying", FailsKey = "rewardedfails";
-
-    private static bool GuardAllows()
+    private static void Say(string text)
     {
-        float fails = Preferences.GetNumber(FailsKey, 0f);
-        if (Preferences.GetNumber(TryingKey, 0f) > 0f)
-        {
-            fails++;
-            Preferences.SetNumber(FailsKey, fails);
-            Preferences.SetNumber(TryingKey, 0f);
-        }
-        if (fails >= 2f)
-            return false;
-        Preferences.SetNumber(TryingKey, 1f);
-        return true;
+        AdBanner.RewardedStatus = text;
+        RewardedDiag.Step(text);
     }
 
-    private static void GuardCleared()
-    {
-        if (Preferences.GetNumber(TryingKey, 0f) > 0f)
-            Preferences.SetNumber(TryingKey, 0f);
-        if (Preferences.GetNumber(FailsKey, 0f) > 0f)
-            Preferences.SetNumber(FailsKey, 0f);
-    }
-    private static float _sincePoll;
-
-    /// <summary>The first time the Guide is opened: sets the Java side up and starts loading a video (on the UI thread).</summary>
+    /// <summary>Sets the Java side up and starts loading a video, on the UI thread, writing each step down first.</summary>
     private static void Begin()
     {
         if (_begun || _activity is not { } activity)
             return;
         _begun = true;
-        if (!GuardAllows())
-            return;
+        Say("starting (unit " + AdConfig.RewardedUnitId + ")");
         activity.RunOnUiThread(() =>
         {
             try
             {
+                Say("finding the Java class");
                 IntPtr local = JNIEnv.FindClass("com/bramblekin/ads/RewardedBridge");
                 _class = JNIEnv.NewGlobalRef(local);
                 JNIEnv.DeleteLocalRef(local);
+                Say("finding the Java methods");
                 const string activityAndUnit = "(Landroid/app/Activity;Ljava/lang/String;)V";
                 _load = JNIEnv.GetStaticMethodID(_class, "load", activityAndUnit);
                 _show = JNIEnv.GetStaticMethodID(_class, "show", activityAndUnit);
                 _isReady = JNIEnv.GetStaticMethodID(_class, "isReady", "()Z");
                 _consume = JNIEnv.GetStaticMethodID(_class, "consumeReward", "()Z");
                 _result = JNIEnv.GetStaticMethodID(_class, "result", "()I");
+                _info = JNIEnv.GetStaticMethodID(_class, "info", "()Ljava/lang/String;");
+                Say("installing the crash log");
+                IntPtr logPath = JNIEnv.NewString(RewardedDiag.Path);
+                IntPtr install = JNIEnv.GetStaticMethodID(_class, "installCrashLog", "(Ljava/lang/String;)V");
+                JNIEnv.CallStaticVoidMethod(_class, install, new JValue(logPath));
+                JNIEnv.DeleteLocalRef(logPath);
+                Say("asking for an ad");
                 Call(_load);
                 AdBanner.ShowRewarded = Show;
                 AdBanner.PollRewarded = Poll;
+                Say("load requested, waiting for an answer");
             }
             catch (Exception ex)
             {
-                // No rewarded video is better than no game.
                 Log.Error(LogTag, $"Could not set up the rewarded ad: {ex}");
                 _class = IntPtr.Zero;
+                Say($"FAILED to start: {ex.GetType().Name}: {ex.Message}");
             }
         });
     }
@@ -117,8 +102,7 @@ internal static class AndroidRewarded
         if (!AdBanner.RewardedReady || _activity is not { } activity)
             return;
         _onReward = onReward;
-        Preferences.SetNumber(TryingKey, 1f);
-        _showing = true;
+        Say("showing the ad");
         activity.RunOnUiThread(() =>
         {
             try
@@ -127,12 +111,12 @@ internal static class AndroidRewarded
             }
             catch (Exception ex)
             {
-                Log.Error(LogTag, $"Could not show the rewarded ad: {ex}");
+                Say($"FAILED to show: {ex.GetType().Name}: {ex.Message}");
             }
         });
     }
 
-    /// <summary>Called by the Guide every frame, from the game thread: about twice a second it asks the UI thread whether a video is loaded and whether the reward was just earned.</summary>
+    /// <summary>Called every frame from the game thread: about twice a second, asks the UI thread whether a video is loaded and whether the reward was just earned.</summary>
     private static void Poll()
     {
         _sincePoll += 1f / 60f;
@@ -144,21 +128,30 @@ internal static class AndroidRewarded
             try
             {
                 AdBanner.RewardedReady = JNIEnv.CallStaticBooleanMethod(_class, _isReady);
-                if (JNIEnv.CallStaticIntMethod(_class, _result) != 0 && (!_showing || !AdBanner.RewardedReady))
+                int result = JNIEnv.CallStaticIntMethod(_class, _result);
+                if (result != _lastResult)
                 {
-                    GuardCleared(); // the ad has answered, and a video that was shown has been closed: it did not kill the app
-                    _showing = false;
+                    _lastResult = result;
+                    Say(result == 1 ? "an ad is loaded and ready" : "the ad failed to load");
+                }
+                IntPtr text = JNIEnv.CallStaticObjectMethod(_class, _info);
+                string info = JNIEnv.GetString(text, JniHandleOwnership.TransferLocalRef) ?? "";
+                if (info != _lastInfo)
+                {
+                    _lastInfo = info;
+                    Say(info);
                 }
                 if (JNIEnv.CallStaticBooleanMethod(_class, _consume))
                 {
                     Action? give = _onReward;
                     _onReward = null;
+                    Say("the reward was earned");
                     give?.Invoke();
                 }
             }
             catch (Exception ex)
             {
-                Log.Error(LogTag, $"Rewarded ad poll failed: {ex}");
+                Say($"poll failed: {ex.GetType().Name}: {ex.Message}");
                 AdBanner.RewardedReady = false;
                 AdBanner.PollRewarded = null;
             }
