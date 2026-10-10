@@ -1,6 +1,6 @@
 // =============================================================================
 //  The rewarded video (Google AdMob). The ad itself is handled by Platforms/Android/java/RewardedBridge.java (the SDK's load callback is
-//  generic, which a C# subclass cannot express); this file calls it over JNI. It is started from the Settings page's Ad test (Game.AdTest),
+//  generic, which a C# subclass cannot express); this file calls it through Java reflection (JNIEnv.FindClass closed the app on a device). It is started from the Settings page's Ad test (Game.AdTest),
 //  and every step goes into a breadcrumb file (RewardedDiag) that page shows, because opening it once closed the app and there is no crash log.
 // =============================================================================
 
@@ -15,7 +15,7 @@ internal static class AndroidRewarded
     private const string LogTag = "GardenGuardians";
 
     private static Activity? _activity;
-    private static IntPtr _class, _load, _show, _isReady, _consume, _result, _info;
+    private static Java.Lang.Reflect.Method? _load, _show, _isReady, _consume, _result, _info;
     private static Action? _onReward;
     private static bool _begun;
     private static float _sincePoll;
@@ -50,22 +50,20 @@ internal static class AndroidRewarded
             try
             {
                 Say("finding the Java class");
-                IntPtr local = JNIEnv.FindClass("com/bramblekin/ads/RewardedBridge");
-                _class = JNIEnv.NewGlobalRef(local);
-                JNIEnv.DeleteLocalRef(local);
+                // (through the activity's own class loader: a thread coming in from native code only sees the system's classes)
+                Java.Lang.Class cls = Java.Lang.Class.ForName("com.bramblekin.ads.RewardedBridge", true, activity.ClassLoader)
+                    ?? throw new InvalidOperationException("class not found");
                 Say("finding the Java methods");
-                const string activityAndUnit = "(Landroid/app/Activity;Ljava/lang/String;)V";
-                _load = JNIEnv.GetStaticMethodID(_class, "load", activityAndUnit);
-                _show = JNIEnv.GetStaticMethodID(_class, "show", activityAndUnit);
-                _isReady = JNIEnv.GetStaticMethodID(_class, "isReady", "()Z");
-                _consume = JNIEnv.GetStaticMethodID(_class, "consumeReward", "()Z");
-                _result = JNIEnv.GetStaticMethodID(_class, "result", "()I");
-                _info = JNIEnv.GetStaticMethodID(_class, "info", "()Ljava/lang/String;");
+                Java.Lang.Class activityType = Java.Lang.Class.FromType(typeof(Activity));
+                Java.Lang.Class stringType = Java.Lang.Class.FromType(typeof(Java.Lang.String));
+                _load = cls.GetMethod("load", activityType, stringType);
+                _show = cls.GetMethod("show", activityType, stringType);
+                _isReady = cls.GetMethod("isReady");
+                _consume = cls.GetMethod("consumeReward");
+                _result = cls.GetMethod("result");
+                _info = cls.GetMethod("info");
                 Say("installing the crash log");
-                IntPtr logPath = JNIEnv.NewString(RewardedDiag.Path);
-                IntPtr install = JNIEnv.GetStaticMethodID(_class, "installCrashLog", "(Ljava/lang/String;)V");
-                JNIEnv.CallStaticVoidMethod(_class, install, new JValue(logPath));
-                JNIEnv.DeleteLocalRef(logPath);
+                cls.GetMethod("installCrashLog", stringType)?.Invoke(null, new Java.Lang.String(RewardedDiag.Path));
                 Say("asking for an ad");
                 Call(_load);
                 AdBanner.ShowRewarded = Show;
@@ -75,26 +73,18 @@ internal static class AndroidRewarded
             catch (Exception ex)
             {
                 Log.Error(LogTag, $"Could not set up the rewarded ad: {ex}");
-                _class = IntPtr.Zero;
+                _load = null;
                 Say($"FAILED to start: {ex.GetType().Name}: {ex.Message}");
             }
         });
     }
 
     /// <summary>Calls the bridge's load or show with the activity and the unit id.</summary>
-    private static void Call(IntPtr method)
+    private static void Call(Java.Lang.Reflect.Method? method)
     {
-        if (_activity is not { } activity)
+        if (method is null || _activity is not { } activity)
             return;
-        IntPtr unit = JNIEnv.NewString(AdConfig.RewardedUnitId);
-        try
-        {
-            JNIEnv.CallStaticVoidMethod(_class, method, new JValue(activity.Handle), new JValue(unit));
-        }
-        finally
-        {
-            JNIEnv.DeleteLocalRef(unit);
-        }
+        method.Invoke(null, activity, new Java.Lang.String(AdConfig.RewardedUnitId));
     }
 
     private static void Show(Action onReward)
@@ -120,28 +110,27 @@ internal static class AndroidRewarded
     private static void Poll()
     {
         _sincePoll += 1f / 60f;
-        if (_sincePoll < 0.5f || _class == IntPtr.Zero || _activity is not { } activity)
+        if (_sincePoll < 0.5f || _isReady is null || _activity is not { } activity)
             return;
         _sincePoll = 0f;
         activity.RunOnUiThread(() =>
         {
             try
             {
-                AdBanner.RewardedReady = JNIEnv.CallStaticBooleanMethod(_class, _isReady);
-                int result = JNIEnv.CallStaticIntMethod(_class, _result);
+                AdBanner.RewardedReady = _isReady?.Invoke(null)?.JavaCast<Java.Lang.Boolean>().BooleanValue() ?? false;
+                int result = _result?.Invoke(null)?.JavaCast<Java.Lang.Integer>().IntValue() ?? 0;
                 if (result != _lastResult)
                 {
                     _lastResult = result;
                     Say(result == 1 ? "an ad is loaded and ready" : "the ad failed to load");
                 }
-                IntPtr text = JNIEnv.CallStaticObjectMethod(_class, _info);
-                string info = JNIEnv.GetString(text, JniHandleOwnership.TransferLocalRef) ?? "";
+                string info = _info?.Invoke(null)?.ToString() ?? "";
                 if (info != _lastInfo)
                 {
                     _lastInfo = info;
                     Say(info);
                 }
-                if (JNIEnv.CallStaticBooleanMethod(_class, _consume))
+                if (_consume?.Invoke(null)?.JavaCast<Java.Lang.Boolean>().BooleanValue() ?? false)
                 {
                     Action? give = _onReward;
                     _onReward = null;
