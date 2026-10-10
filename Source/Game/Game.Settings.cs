@@ -100,8 +100,6 @@ public static partial class Game
             var detail = new UiButton(new Rectangle(left, barY + buttonHeight + gap * 3, wide, buttonHeight));
             var sleep = new UiButton(new Rectangle(left, detail.Bounds.Y + buttonHeight + gap, wide, buttonHeight));
             var back = new UiButton(new Rectangle(left, sleep.Bounds.Y + buttonHeight + gap * 2, wide, buttonHeight));
-            // (Debug builds on Android: a diagnostic screen with a test banner, see AdTestActivity.)
-            UiButton? adTest = AdBanner.OpenTestScreen is null ? null : new UiButton(new Rectangle(left, back.Bounds.Y + buttonHeight + gap * 2, wide, buttonHeight));
 
             Vector2 mouse = Raylib.GetMousePosition();
             bool pressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
@@ -118,8 +116,6 @@ public static partial class Game
                 World.LowDetail = !World.LowDetail;
                 Preferences.Set(DetailSetting, World.LowDetail ? DetailLevel.Low : DetailLevel.Normal);
             }
-            if (pressed && adTest is not null && adTest.Contains(mouse))
-                AdBanner.OpenTestScreen?.Invoke();
             if (pressed && minus.Contains(mouse))
                 volume = MathF.Round((volume - 0.1f) * 10f) / 10f;
             else if (pressed && plus.Contains(mouse))
@@ -146,13 +142,6 @@ public static partial class Game
             detail.Draw(World.LowDetail ? "Detail: low (no grass)" : "Detail: normal", highlighted: World.LowDetail);
             sleep.Draw(_sleepMode ? "Sleep mode: on (15 fps, dim)" : "Sleep mode: off", highlighted: _sleepMode);
             back.Draw("Back", highlighted: true);
-            if (adTest is not null) // (a Debug build on Android: the game's own banner's state, and the plain test screen)
-            {
-                adTest.Draw("Ad test", highlighted: false);
-                int statusSize = Math.Max(12, (int)(textSize * 0.8f));
-                string status = $"Banner: {AdBanner.Status}";
-                DrawCentred(Fit(status, statusSize, (int)(width * 0.94f)), width / 2, (int)adTest.Bounds.Y + buttonHeight + gap, statusSize, ink);
-            }
             Raylib.EndDrawing();
         }
     }

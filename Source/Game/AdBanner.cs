@@ -17,11 +17,8 @@ internal static class AdBanner
     /// <summary>Set by the platform: the banner view's height in pixels (0 until an ad has loaded; the space is not reserved before then).</summary>
     public static volatile int LoadedHeightPx;
 
-    /// <summary>What the platform's ad is doing (the Settings page's Ad test shows it in a Debug build).</summary>
+    /// <summary>What the platform's ad is doing (shown in the Debug stats bar).</summary>
     public static volatile string Status = "no ads on this platform";
-
-    /// <summary>Debug builds on Android: opens a plain Android screen with Google's test banner (the Settings page's "Ad test" button). Null elsewhere.</summary>
-    public static Action? OpenTestScreen;
 
     private static bool _wanted;
 

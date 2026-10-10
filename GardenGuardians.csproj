@@ -86,7 +86,7 @@
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
   </PropertyGroup>
 
-  <!-- Tools/ holds scripts and the separate GG Ad Test app (its own project): none of it is part of the game. -->
+  <!-- Tools/ holds scripts: none of it is part of the game. -->
   <ItemGroup>
     <Compile Remove="Tools/**" />
     <None Remove="Tools/**" />
