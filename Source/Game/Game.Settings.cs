@@ -7,6 +7,28 @@ public static partial class Game
 {
     private const string MusicVolumeSetting = "musicvolume";
     private const string DetailSetting = "detail";
+    private const string SleepSetting = "sleep";
+
+    /// <summary>Sleep mode: for leaving the garden running in the background — a low frame rate and a dim screen, to save battery. The garden itself goes on at its usual pace.</summary>
+    private static bool _sleepMode;
+
+    private const int SleepFps = 15;
+    private static int _appliedFps = TargetFps;
+
+    private enum SleepChoice
+    {
+        Off,
+        On,
+    }
+
+    private static void ApplyFrameRate()
+    {
+        int wanted = _sleepMode ? SleepFps : TargetFps;
+        if (wanted == _appliedFps)
+            return;
+        _appliedFps = wanted;
+        Raylib.SetTargetFPS(wanted);
+    }
 
     private enum DetailLevel
     {
@@ -76,7 +98,8 @@ public static partial class Game
             var plus = new UiButton(new Rectangle(left + wide - stepWidth, barY, stepWidth, buttonHeight));
             var bar = new Rectangle(left + stepWidth + gap, barY, wide - (stepWidth + gap) * 2, buttonHeight);
             var detail = new UiButton(new Rectangle(left, barY + buttonHeight + gap * 3, wide, buttonHeight));
-            var back = new UiButton(new Rectangle(left, detail.Bounds.Y + buttonHeight + gap * 2, wide, buttonHeight));
+            var sleep = new UiButton(new Rectangle(left, detail.Bounds.Y + buttonHeight + gap, wide, buttonHeight));
+            var back = new UiButton(new Rectangle(left, sleep.Bounds.Y + buttonHeight + gap * 2, wide, buttonHeight));
             // (Debug builds on Android: a diagnostic screen with a test banner, see AdTestActivity.)
             UiButton? adTest = AdBanner.OpenTestScreen is null ? null : new UiButton(new Rectangle(left, back.Bounds.Y + buttonHeight + gap * 2, wide, buttonHeight));
 
@@ -85,6 +108,11 @@ public static partial class Game
             float volume = MusicPlayer.Volume;
             if (pressed && back.Contains(mouse))
                 return;
+            if (pressed && sleep.Contains(mouse))
+            {
+                _sleepMode = !_sleepMode;
+                Preferences.Set(SleepSetting, _sleepMode ? SleepChoice.On : SleepChoice.Off);
+            }
             if (pressed && detail.Contains(mouse))
             {
                 World.LowDetail = !World.LowDetail;
@@ -116,6 +144,7 @@ public static partial class Game
             Raylib.DrawRectangle((int)bar.X + 4, (int)bar.Y + 4, (int)((bar.Width - 8) * MusicPlayer.Volume), (int)bar.Height - 8, new Color(230, 190, 60, 255));
             Raylib.DrawRectangleLinesEx(bar, 2f, ink);
             detail.Draw(World.LowDetail ? "Detail: low (no grass)" : "Detail: normal", highlighted: World.LowDetail);
+            sleep.Draw(_sleepMode ? "Sleep mode: on (15 fps, dim)" : "Sleep mode: off", highlighted: _sleepMode);
             back.Draw("Back", highlighted: true);
             if (adTest is not null) // (a Debug build on Android: the game's own banner's state, and the plain test screen)
             {

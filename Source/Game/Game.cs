@@ -346,6 +346,7 @@ public static partial class Game
         _alertsOn = Preferences.Get(AlertsSetting, AlertsView.On) == AlertsView.On;
         World.Overlays = Preferences.Get(OverlaySetting, MapOverlays.All);
         World.LowDetail = Preferences.Get(DetailSetting, DetailLevel.Normal) == DetailLevel.Low;
+        _sleepMode = Preferences.Get(SleepSetting, SleepChoice.Off) == SleepChoice.On;
         MusicPlayer.Volume = Math.Clamp(Preferences.GetNumber(MusicVolumeSetting, 0.5f), 0f, 1f);
         _gardenSlot = (int)Preferences.Get(GardenSetting, GardenSlot.Garden1);
         TerrainData.GrowNewGardens = Preferences.Get(TerrainSetting, TerrainMode.Fixed) == TerrainMode.Random;
@@ -393,6 +394,7 @@ public static partial class Game
             while (!Raylib.WindowShouldClose())
             {
                 SyncWindowSize();
+                ApplyFrameRate();
                 AdBanner.Show(true);
                 float rawDeltaTime = MathF.Min(Raylib.GetFrameTime(), MaxDeltaTime);
                 MusicPlayer.Update(Raylib.GetFrameTime(), MusicPlayer.For(world), silent: _timeScale >= 10f); // (no music when sped up to 10x and over)
@@ -624,6 +626,8 @@ public static partial class Game
                 int captionHeight = director.Caption is null ? 0 : ScaledFontSize(0.55f) + 2 * ((int)(10 * UiScale) + 2) + 6;
                 DrawBanner(_contentTop + captionHeight);
                 DrawCatchUp();
+                if (_sleepMode)
+                    Raylib.DrawRectangle(0, 0, Raylib.GetScreenWidth(), Raylib.GetScreenHeight(), new Color(0, 0, 0, 150));
                 if (!_showChronicle)
                     DrawDirectorCaption(director, _contentTop);
                 if (_showChronicle)
