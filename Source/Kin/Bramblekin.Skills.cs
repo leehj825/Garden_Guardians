@@ -67,6 +67,8 @@ public sealed partial class Bramblekin
         float before = SkillAt(skill);
         if (Practice(skill, acts))
             world.NoteMastery(this, skill);
+        else if ((IsPlayerControlled || world.SelectedKin == this) && SkillAt(skill) - before >= 0.005f)
+            world.QueueFloatingText(Position, $"{TradeName(skill)} +{SkillAt(skill) - before:0.00}  ({SkillAt(skill):0.00})", SkillTextColor, 1.3f); // (the one you are watching or playing: every gain shows)
         else if (Crossed(before, SkillAt(skill)) is { } milestone)
             world.QueueFloatingText(Position, $"{TradeName(skill)} {milestone}", SkillTextColor);
     }
