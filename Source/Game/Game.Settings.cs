@@ -8,6 +8,13 @@ public static partial class Game
     private const string MusicVolumeSetting = "musicvolume";
     private const string DetailSetting = "detail";
     private const string SleepSetting = "sleep";
+    private const string PlayAsReleaseSetting = "playasrelease";
+
+    private enum ReleaseChoice
+    {
+        Off,
+        On,
+    }
 
     /// <summary>Sleep mode: for leaving the garden running in the background — a low frame rate and a dim screen, to save battery. The garden itself goes on at its usual pace.</summary>
     private static bool _sleepMode;
@@ -99,13 +106,20 @@ public static partial class Game
             var bar = new Rectangle(left + stepWidth + gap, barY, wide - (stepWidth + gap) * 2, buttonHeight);
             var detail = new UiButton(new Rectangle(left, barY + buttonHeight + gap * 3, wide, buttonHeight));
             var sleep = new UiButton(new Rectangle(left, detail.Bounds.Y + buttonHeight + gap, wide, buttonHeight));
-            var back = new UiButton(new Rectangle(left, sleep.Bounds.Y + buttonHeight + gap * 2, wide, buttonHeight));
+            // (A Debug build only: play as the Release game, to test it without a Release build.)
+            UiButton? asRelease = Build.IsDebugBuild ? new UiButton(new Rectangle(left, sleep.Bounds.Y + buttonHeight + gap, wide, buttonHeight)) : null;
+            var back = new UiButton(new Rectangle(left, (asRelease ?? sleep).Bounds.Y + buttonHeight + gap * 2, wide, buttonHeight));
 
             Vector2 mouse = Raylib.GetMousePosition();
             bool pressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
             float volume = MusicPlayer.Volume;
             if (pressed && back.Contains(mouse))
                 return;
+            if (pressed && asRelease is not null && asRelease.Contains(mouse))
+            {
+                Build.PlayAsRelease = !Build.PlayAsRelease;
+                Preferences.Set(PlayAsReleaseSetting, Build.PlayAsRelease ? ReleaseChoice.On : ReleaseChoice.Off);
+            }
             if (pressed && sleep.Contains(mouse))
             {
                 _sleepMode = !_sleepMode;
@@ -141,6 +155,7 @@ public static partial class Game
             Raylib.DrawRectangleLinesEx(bar, 2f, ink);
             detail.Draw(World.LowDetail ? "Detail: low (no grass)" : "Detail: normal", highlighted: World.LowDetail);
             sleep.Draw(_sleepMode ? "Sleep mode: on (15 fps, dim)" : "Sleep mode: off", highlighted: _sleepMode);
+            asRelease?.Draw(Build.PlayAsRelease ? "Play as Release: ON (test the Release game)" : "Play as Release: off (Debug tools)", highlighted: Build.PlayAsRelease);
             back.Draw("Back", highlighted: true);
             Raylib.EndDrawing();
         }
