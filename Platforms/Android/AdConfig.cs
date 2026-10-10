@@ -26,10 +26,11 @@ internal static class AdConfig
     public const string TestRewardedUnitId = "ca-app-pub-3940256099942544/5224354917";
 
     /// <summary>
-    /// The rewarded video. Opening the Guide once closed the app, for a reason not yet known, so it now guards itself (see AndroidRewarded.GuardAllows):
-    /// if an attempt kills the app twice it stays off. Set this to false to switch it off for good.
+    /// The rewarded video is OFF: opening the Guide with it on closes the app (confirmed on a device), for a reason not yet known. A crash log
+    /// (adb logcat -b crash) from a build with this set to true would show why. It guards itself (see AndroidRewarded.GuardAllows) so that it
+    /// switches itself off after two such crashes.
     /// </summary>
-    public const bool RewardedEnabled = true;
+    public const bool RewardedEnabled = false;
 
     /// <summary>The game's own rewarded video unit (AdMob app Bramblekin, ad unit "Reward"). The app id is the one above.</summary>
     public const string LiveRewardedUnitId = "ca-app-pub-4400173019354346/3811439768";
