@@ -126,6 +126,8 @@ public sealed partial class Bramblekin
             AssignJob(KinJob.None);
             IsPlayerControlled = false;
             PlayerExplorer = false;
+            PlayerQuest = null;
+            _questTimer = FirstQuestDelay;
             PlayerStickRun = false;
             if (AwayGroupId is { } clan && world.GroupExists(clan))
             {
@@ -220,6 +222,7 @@ public sealed partial class Bramblekin
         bool moving = PlayerMove.LengthSquared() > 0.01f;
         if (PlayerExplorer)
         {
+            UpdateQuests(deltaTime, world);
             _autoPickCooldown -= deltaTime;
             if (moving && _autoPickCooldown <= 0f)
             {
@@ -493,7 +496,7 @@ public sealed partial class Bramblekin
     public string? PlayerHint =>
         PlayerExplorer && IsThirsty ? "Thirsty: walk to the water's edge to drink"
         : PlayerExplorer && IsHungry ? "Hungry: eat from the bag, or walk to food or your clan's store"
-        : PlayerExplorer ? null
+        : PlayerExplorer ? QuestHint
         : IsThirsty ? "Thirsty: stand still at the water's edge to drink"
         : Job == KinJob.Fisher && !IsHungry ? "Fisher: stand still at the water's edge to fish"
         : IsHungry ? "Hungry: stand still by food or at your own home's store to eat"
