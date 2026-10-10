@@ -6,7 +6,7 @@ namespace GardenGuardians;
 public static partial class Game
 {
     /// <summary>What the start menu decided: which kept garden, and whether to carry on with it or begin a new one (with the fixed or a grown terrain).</summary>
-    private sealed record MenuChoice(int Slot, bool Resume, bool GrowTerrain, int Size, Era StartEra = Era.StoneAge);
+    private sealed record MenuChoice(int Slot, bool Resume, bool GrowTerrain, int Size, Era StartEra = Era.StoneAge, Scenario Scenario = Scenario.Normal);
 
     /// <summary>A second tap within this many seconds confirms starting a new garden over a kept one.</summary>
     private const float MenuConfirmSeconds = 4f;
@@ -37,6 +37,7 @@ public static partial class Game
         int frames = 0;
         int size = Math.Clamp((int)Preferences.Get(MapSizeSetting, MapSize.Small), 0, TerrainData.MapSizes.Length - 1);
         int startAge = Build.TestingChoices ? Math.Clamp((int)Preferences.Get(StartAgeSetting, StartAge.Stone), 0, 3) : 0; // (a Release build always starts in the Stone Age)
+        int scenario = 0; // a Scenario: how a new garden begins (tap the chip to cycle)
         int armed = 0; // 0 nothing, 1 new (fixed), 2 new (grown): tapped once over a kept garden.
         float armedFor = 0f;
         while (!Raylib.WindowShouldClose())
@@ -69,6 +70,8 @@ public static partial class Game
             int sizeWidth = (wide - gap * (sizeChips.Length - 1)) / sizeChips.Length;
             for (int k = 0; k < sizeChips.Length; k++)
                 sizeChips[k] = new UiButton(new Rectangle(left + k * (sizeWidth + gap), y, sizeWidth, chipHeight));
+            y += chipHeight + gap;
+            var scenarioChip = new UiButton(new Rectangle(left, y, wide, chipHeight));
             y += chipHeight + gap;
             int ageCaptionY = y;
             var ageChips = new UiButton[4];
@@ -124,6 +127,11 @@ public static partial class Game
                         Preferences.Set(MapSizeSetting, (MapSize)k);
                     }
                 }
+                if (scenarioChip.Contains(mouse))
+                {
+                    scenario = (scenario + 1) % Enum.GetValues<Scenario>().Length;
+                    armed = 0;
+                }
                 for (int k = 0; k < ageChips.Length && Build.TestingChoices; k++)
                 {
                     if (ageChips[k].Contains(mouse) && k != startAge)
@@ -142,7 +150,7 @@ public static partial class Game
                     if (!button.Contains(mouse))
                         continue;
                     if (kept is null || armed == which)
-                        return new MenuChoice(chosen, Resume: false, GrowTerrain: which == 2, size, (Era)startAge);
+                        return new MenuChoice(chosen, Resume: false, GrowTerrain: which == 2, size, (Era)startAge, (Scenario)scenario);
                     armed = which;
                     armedFor = MenuConfirmSeconds;
                 }
@@ -165,6 +173,7 @@ public static partial class Game
             DrawCentred("Size of a random terrain", width / 2, sizeCaptionY, subtitleSize, ink);
             for (int k = 0; k < sizeChips.Length; k++)
                 sizeChips[k].Draw(TerrainData.MapSizes[k].Name, highlighted: k == size);
+            scenarioChip.Draw($"New garden starts: {World.ScenarioName((Scenario)scenario)}", highlighted: scenario != 0);
             if (Build.TestingChoices)
             {
                 DrawCentred("Age a new garden starts in (for testing)", width / 2, ageCaptionY, subtitleSize, ink);

@@ -50,6 +50,9 @@ public sealed partial class World
     }
 
     /// <summary>A dying Bramblekin's pack spills on the ground — everything but the water.</summary>
+    /// <summary>An explorer caught by the Wolf Spider drops everything it carries where it stands.</summary>
+    public void SpillExplorerPack(Bramblekin kin) => SpillPack(kin);
+
     private void SpillPack(Bramblekin kin)
     {
         int room = MaxDropped; // (a full pack is up to 90 pieces: only this many are dropped in all)
@@ -222,6 +225,7 @@ public sealed partial class World
             Chronicle($"Leader {kin.Name} {how}", clan);
         else if (cause == DeathCause.OldAge && kin.Children >= 5)
             Chronicle($"{kin.Name} {how}", GroupOf(kin));
+        NoteFavourite(kin, how, urgent: true);
     }
 
     /// <summary>

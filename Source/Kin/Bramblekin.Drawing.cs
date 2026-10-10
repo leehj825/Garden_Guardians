@@ -115,7 +115,7 @@ public sealed partial class Bramblekin
         float sinHalf = MathF.Sqrt(Math.Max(0f, 1f - rotation.W * rotation.W));
         Vector3 axis = sinHalf > 1e-6f ? new Vector3(rotation.X, rotation.Y, rotation.Z) / sinHalf : Vector3.UnitY;
 
-        float scale = BodyScale * (BodyHeight / BramblekinModel.RawHeightUnits);
+        float scale = BodyScale * VeteranScale * (BodyHeight / BramblekinModel.RawHeightUnits);
         if (speck)
         {
             // Grown so it never drops under a few pixels: zoomed right out, a
@@ -133,6 +133,13 @@ public sealed partial class Bramblekin
         var top = Position + new Vector3(0, (BodyHeight - BodyRadius) * scale, 0);
         if (props)
             DrawSickness(top);
+        if (props && !speck && IsMaster)
+        {
+            // A master wears a small gold mark above its head.
+            var mark = Position + new Vector3(0.12f, BodyHeight * BodyScale * VeteranScale + 0.2f, 0f);
+            Raylib.DrawCube(mark, 0.08f, 0.08f, 0.08f, new Color(245, 205, 60, 255));
+            Raylib.DrawCubeWires(mark, 0.08f, 0.08f, 0.08f, new Color(160, 110, 20, 255));
+        }
 
         if (group is not null && group.Leader == this)
         {

@@ -76,7 +76,7 @@ public sealed partial class Bramblekin
     /// <summary>An explorer picks up what lies this near (m), and looks again this often (s).</summary>
     private const float PlayerAutoPickReach = 0.9f, PlayerAutoPickEvery = 0.35f;
 
-    private float _autoPickCooldown;
+    private float _autoPickCooldown, _lookTimer;
 
     /// <summary>Set while the attack button is held.</summary>
     public bool PlayerWantsStrike { get; set; }
@@ -126,6 +126,8 @@ public sealed partial class Bramblekin
             AssignJob(KinJob.None);
             IsPlayerControlled = false;
             PlayerExplorer = false;
+            PlayerQuest = null;
+            _questTimer = FirstQuestDelay;
             PlayerStickRun = false;
             if (AwayGroupId is { } clan && world.GroupExists(clan))
             {
@@ -154,6 +156,13 @@ public sealed partial class Bramblekin
     /// <summary>One step under control: a swing, a meal or a drink under way, the strike button, eating or drinking where it stands, else the stick.</summary>
     private void UpdatePlayerControl(float deltaTime, World world)
     {
+        if (_caughtTimer > 0f)
+        {
+            _caughtTimer -= deltaTime; // (knocked down by the spider: it can only wait)
+            SetState(BramblekinState.Idle);
+            _mover.Idle();
+            return;
+        }
         _perceptionTimer -= deltaTime;
         if (_perceptionTimer <= 0f)
         {
@@ -220,6 +229,13 @@ public sealed partial class Bramblekin
         bool moving = PlayerMove.LengthSquared() > 0.01f;
         if (PlayerExplorer)
         {
+            UpdateQuests(deltaTime, world);
+            _lookTimer -= deltaTime;
+            if (_lookTimer <= 0f)
+            {
+                _lookTimer = 0.5f;
+                world.LookForDiscoveries(this);
+            }
             _autoPickCooldown -= deltaTime;
             if (moving && _autoPickCooldown <= 0f)
             {
@@ -266,8 +282,7 @@ public sealed partial class Bramblekin
     /// <summary>The damage an arrow of this kin does to <paramref name="target"/> (and the hunting practice it earns): see <see cref="World.LooseArrow"/>.</summary>
     public int ArrowHit(ICombatant target, World world)
     {
-        if (target is not Bramblekin)
-            Train(Skill.Hunting, world, target is StagBeetle or WolfSpider ? 2f : 1f);
+        Train(target is Bramblekin ? Skill.Fighting : Skill.Hunting, world, target is StagBeetle or WolfSpider ? 2f : 1f);
         return (int)MathF.Round(BaseStrike * Profile.Arrow * (target is Bramblekin ? 1f : 1f + 0.5f * SkillAt(Skill.Hunting)));
     }
 
@@ -486,16 +501,31 @@ public sealed partial class Bramblekin
         var face = new Vector2(best.Position.X - Position.X, best.Position.Z - Position.Z);
         if (face.LengthSquared() > 1e-6f)
             _mover.Heading = Vector2.Normalize(face);
-        if (best is not Bramblekin)
-            Train(Skill.Hunting, world, best is StagBeetle or WolfSpider ? 2f : 1f);
+        Train(best is Bramblekin ? Skill.Fighting : Skill.Hunting, world, best is StagBeetle or WolfSpider ? 2f : 1f);
         best.TakeHit(best is Bramblekin ? StrikeDamage : HuntingDamage, this, world);
+    }
+
+    /// <summary>Seconds it is still knocked flat after the Wolf Spider caught it (Explore only: see <see cref="ExplorerCaught"/>).</summary>
+    private float _caughtTimer;
+
+    private const float CaughtSeconds = 2f;
+
+    /// <summary>The Wolf Spider notices an explorer on the move within its reach, as it does a busy worker (the explorer cannot be hurt, but it can be caught).</summary>
+    public bool IsMovingExplorer => PlayerExplorer && IsPlayerControlled && !IsDead && PlayerMove.LengthSquared() > 0.01f;
+
+    /// <summary>The spider's pounce reached the explorer: it is knocked flat for a moment and drops its pack — never hurt. Push the stick to its edge to outrun the spider.</summary>
+    public void ExplorerCaught(World world)
+    {
+        _caughtTimer = CaughtSeconds;
+        world.SpillExplorerPack(this);
+        world.QueueFloatingText(Position, "Caught by the spider!", new Color(255, 170, 140, 255), 1.5f);
     }
 
     /// <summary>For the HUD: what a controlled kin can do about being hungry or thirsty.</summary>
     public string? PlayerHint =>
         PlayerExplorer && IsThirsty ? "Thirsty: walk to the water's edge to drink"
         : PlayerExplorer && IsHungry ? "Hungry: eat from the bag, or walk to food or your clan's store"
-        : PlayerExplorer ? null
+        : PlayerExplorer ? QuestHint
         : IsThirsty ? "Thirsty: stand still at the water's edge to drink"
         : Job == KinJob.Fisher && !IsHungry ? "Fisher: stand still at the water's edge to fish"
         : IsHungry ? "Hungry: stand still by food or at your own home's store to eat"

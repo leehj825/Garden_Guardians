@@ -165,6 +165,18 @@ public static partial class Game
             left.Add(("   " + holder, false));
         }
 
+        if (world.Ancestors.Count > 0)
+        {
+            left.Add(("Hall of ancestors", true));
+            foreach (LifeRecord ancestor in world.Ancestors.Take(12))
+                left.Add(($"   {ancestor.Name} - {ancestor.Honour}{(ancestor.Clan is { } clan ? $", {clan}" : "")}, {ancestor.AgeYears:0.0} years", false));
+        }
+
+        int reached = Enumerable.Range(0, World.Achievements.Length).Count(world.HasAchieved);
+        left.Add(($"Achievements ({reached} of {World.Achievements.Length})", true));
+        for (int i = 0; i < World.Achievements.Length; i++)
+            left.Add(($"   {(world.HasAchieved(i) ? "[x]" : "[ ]")} {World.Achievements[i].Name}: {World.Achievements[i].Goal}", false));
+
         var right = new List<(string Text, bool Heading)> { ("Family", true) };
         if (world.SelectedKin is { IsDead: false } kin)
             right.AddRange(FamilyLines(world, kin).Select(line => (line, false)));

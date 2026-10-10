@@ -64,11 +64,54 @@ public sealed partial class World
     public void Headline(string title, string text, Vector3? where, bool urgent, params KinGroup?[] clans)
     {
         Chronicle(title, text, clans);
-        _moments.Add(new Moment(title, text, where, urgent));
+        AddMoment(new Moment(title, text, where, urgent));
         if (where is { } spot)
             Spotlight(text, urgent ? 10f : 8f, spot);
+    }
+
+    /// <summary>Queues <paramref name="moment"/> for a banner, and keeps it for the day's recap (see <see cref="UpdateStoryOfTheDay"/>).</summary>
+    private void AddMoment(Moment moment)
+    {
+        _moments.Add(moment);
         if (_moments.Count > MomentCapacity)
             _moments.RemoveAt(0);
+        _dayMoments.Add(moment);
+    }
+
+    /// <summary>The headlines of the day so far (for its recap).</summary>
+    private readonly List<Moment> _dayMoments = new();
+    private int _storyDay = -1;
+
+    /// <summary>
+    /// The Story of the Day: at each dawn, the biggest headline of the day just ended comes round again as a banner — tap it to fly to where it
+    /// happened. Only on a busy day (two or more headlines, or an urgent one): a lone routine headline was just on screen.
+    /// </summary>
+    private void UpdateStoryOfTheDay()
+    {
+        int day = (int)(ElapsedSeconds / DayLength);
+        if (_storyDay < 0)
+            _storyDay = day;
+        if (day == _storyDay)
+            return;
+        _storyDay = day;
+        if (_dayMoments.Count >= 2 || _dayMoments.Any(m => m.Urgent))
+        {
+            Moment best = _dayMoments.Where(m => m.Urgent).DefaultIfEmpty(_dayMoments[^1]).Last();
+            _moments.Add(new Moment("Yesterday", best.Text, best.Where, false)); // (not kept for tomorrow's recap)
+            if (_moments.Count > MomentCapacity)
+                _moments.RemoveAt(0);
+        }
+        _dayMoments.Clear();
+    }
+
+    /// <summary>News of a favourite (see <see cref="Bramblekin.IsFavourite"/>): a headline with its name, if <paramref name="kin"/> is one. Urgent for a death.</summary>
+    public void NoteFavourite(Bramblekin kin, string what, bool urgent = false)
+    {
+        if (!kin.IsFavourite)
+            return;
+        string text = $"{kin.Name} {what}";
+        AddMoment(new Moment("Favourite", text, kin.Position, urgent)); // (a banner only: the chronicle has its own lines for the big ones)
+        Spotlight(text, urgent ? 10f : 8f, kin.Position);
     }
 
     /// <summary>The headlines since last asked (for the banners), oldest first.</summary>

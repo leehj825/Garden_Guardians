@@ -19,6 +19,46 @@ public sealed partial class World
 
     private float _calendarTimer;
 
+    /// <summary>Planting Day falls this far (0..1) into spring, once a year, for every clan that farms.</summary>
+    private const float PlantingProgress = 0.3f;
+
+    private int _plantingYear;
+
+    /// <summary>Planting days kept, clan by clan (for the headless report).</summary>
+    public int PlantingDaysKept { get; private set; }
+
+    /// <summary>
+    /// Planting Day: in spring every farming clan sows the year's first crop together — its grown members practise farming
+    /// and spirits lift. One headline names the first clan to do it and how many followed.
+    /// </summary>
+    private void KeepPlantingDay()
+    {
+        KinGroup? first = null;
+        int clans = 0;
+        foreach (KinGroup group in _groups.Values)
+        {
+            if (group.Home is not { IsBuilt: true, IsCollapsed: false } home || !KnowsFarming(group))
+                continue;
+            foreach (Bramblekin member in group.Members)
+            {
+                if (member.IsDead || member.IsYoung)
+                    continue;
+                member.SetLoyalty(member.Loyalty + 0.05f);
+                if (member.Practice(Skill.Farming, 3f))
+                    NoteMastery(member, Skill.Farming);
+            }
+            QueueFloatingText(home.Position + new Vector3(0f, 2.6f, 0f), "Planting day!", FeastTextColor);
+            first ??= group;
+            clans++;
+            PlantingDaysKept++;
+        }
+        if (first is null)
+            return;
+        string others = clans == 1 ? "" : $", and {clans - 1} more {(clans == 2 ? "clan" : "clans")} with it";
+        Game.AddEventLog($"[CALENDAR] Planting day: {first.CapitalTitle} sows the year's crop{others}");
+        Headline("Planting day", $"{first.CapitalTitle} sows the year's crop{others}", PlaceOf(first), false, first);
+    }
+
     /// <summary>Solstice festivals held (for the headless report).</summary>
     public int SolsticesKept { get; private set; }
 
@@ -33,6 +73,12 @@ public sealed partial class World
         if (_calendarTimer > 0f)
             return;
         _calendarTimer = 1f;
+
+        if (CurrentSeason == Season.Spring && SeasonProgress >= PlantingProgress && !IsNight && _plantingYear != Year)
+        {
+            _plantingYear = Year;
+            KeepPlantingDay();
+        }
 
         Season season = CurrentSeason;
         if (season is not (Season.Summer or Season.Winter) || SeasonProgress < SolsticeProgress || IsNight)

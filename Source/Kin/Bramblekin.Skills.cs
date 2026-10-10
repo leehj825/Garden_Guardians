@@ -1,3 +1,5 @@
+using Raylib_cs;
+
 namespace GardenGuardians;
 
 /// <summary>What a Bramblekin gets better at by doing it — see Bramblekin.Skills.</summary>
@@ -8,6 +10,9 @@ public enum Skill
     Building,
     Fishing,
     Healing,
+    Fighting, // (new skills go last: saves keep their skills in this order)
+    Gathering,
+    Crafting,
 }
 
 public sealed partial class Bramblekin
@@ -18,6 +23,12 @@ public sealed partial class Bramblekin
     public const float MasterySkill = 0.75f;
 
     /// <summary>Each act of practice closes this fraction of the gap to perfect (times its learning pace — see <see cref="Practice"/>).</summary>
+    /// <summary>A master gatherer walks to food, and fills water bottles, up to this much faster.</summary>
+    public const float GatheringSpeedBonus = 0.3f;
+
+    /// <summary>A master fighter hits and stands blows as if this much stronger (added to Strength).</summary>
+    public const float FightingStrengthBonus = 0.15f;
+
     private const float PracticeGain = 0.025f;
 
     /// <summary>Skills rust by this much a second.</summary>
@@ -25,6 +36,15 @@ public sealed partial class Bramblekin
 
     /// <summary>A newborn starts with this fraction of its handier parent's skill in each — a family trade.</summary>
     private const float InheritedSkill = 0.25f;
+
+    /// <summary>A veteran fighter grows up to this much bigger than a novice (shown on screen).</summary>
+    private const float VeteranGrowth = 0.12f;
+
+    /// <summary>1 for a novice, up to 1.12 for a master fighter: growth you can see.</summary>
+    public float VeteranScale => 1f + VeteranGrowth * SkillAt(Skill.Fighting);
+
+    /// <summary>It has become a master of something (it wears a gold mark above its head).</summary>
+    public bool IsMaster => _mastered != 0;
 
     private readonly float[] _skills = new float[SkillCount];
 
@@ -53,9 +73,25 @@ public sealed partial class Bramblekin
     /// <summary>Practises <paramref name="skill"/>, telling the World if that makes it a master.</summary>
     private void Train(Skill skill, World world, float acts = 1f)
     {
+        float before = SkillAt(skill);
         if (Practice(skill, acts))
             world.NoteMastery(this, skill);
+        else if ((IsPlayerControlled || world.SelectedKin == this) && SkillAt(skill) - before >= 0.005f)
+            world.QueueFloatingText(Position, $"{TradeName(skill)} +{SkillAt(skill) - before:0.00}  ({SkillAt(skill):0.00})", SkillTextColor, 1.3f); // (the one you are watching or playing: every gain shows)
+        else if (Crossed(before, SkillAt(skill)) is { } milestone)
+            world.QueueFloatingText(Position, $"{TradeName(skill)} {milestone}", SkillTextColor);
     }
+
+    private static readonly Color SkillTextColor = new(170, 230, 150, 255);
+
+    /// <summary>"Hunting" — the skill's name for a pop-up.</summary>
+    private static string TradeName(Skill skill) => skill.ToString();
+
+    /// <summary>The pop-up for a skill that has just passed a milestone — a first taste, practised (0.25), skilled (0.5) — or null if it hasn't.</summary>
+    private static string? Crossed(float before, float after) =>
+        before < 0.01f && after >= 0.01f ? "+" :
+        before < 0.25f && after >= 0.25f ? "practised!" :
+        before < 0.5f && after >= 0.5f ? "skilled!" : null;
 
     /// <summary>Skills rust a little without use (practice easily outpaces it).</summary>
     private void RustSkills(float deltaTime)
@@ -101,13 +137,16 @@ public sealed partial class Bramblekin
         Skill.Farming => "farmer",
         Skill.Building => "builder",
         Skill.Healing => "healer",
+        Skill.Fighting => "fighter",
+        Skill.Gathering => "gatherer",
+        Skill.Crafting => "craftsman",
         _ => "fisher",
     };
 
     /// <summary>"hunting 0.52, building 0.21" for the Kin Inspector — every skill it has any of.</summary>
     public string DescribeSkills()
     {
-        string list = string.Join(", ", Enum.GetValues<Skill>().Where(s => SkillAt(s) >= 0.05f).Select(s => $"{s.ToString().ToLowerInvariant()} {SkillAt(s):0.00}"));
+        string list = string.Join(", ", Enum.GetValues<Skill>().Where(s => SkillAt(s) >= 0.01f).Select(s => $"{s.ToString().ToLowerInvariant()} {SkillAt(s):0.00}"));
         return list.Length > 0 ? list : "none yet";
     }
 

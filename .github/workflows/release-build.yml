@@ -4,7 +4,7 @@
 #
 # Google Play wants every upload to have a higher version code than the last, so the
 # build passes the workflow's run number as ApplicationVersion (the display version,
-# 0.1.0, is still set in GardenGuardians.csproj).
+# 0.2.0, is still set in GardenGuardians.csproj).
 #
 # Required repository secrets:
 #   KEYSTORE_BASE64    - the .keystore file, base64-encoded (base64 -w0 release.keystore); KEYSTORE_B64 works too

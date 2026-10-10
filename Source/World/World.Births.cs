@@ -72,6 +72,8 @@ public sealed partial class World
         Bramblekin child = Bramblekin.BornTo(mother, father, spot, Rng, group.Culture);
         mother.NoteChildBorn();
         father.NoteChildBorn();
+        NoteFavourite(mother, $"had a child, {child.Name}");
+        NoteFavourite(father, $"had a child, {child.Name}");
         child.JoinGroup(group.Id);
         child.SetHome(nursery);
         _pendingKinSpawns.Add(child);

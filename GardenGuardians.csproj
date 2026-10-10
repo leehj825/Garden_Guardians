@@ -56,7 +56,7 @@
     <ApplicationId>com.bramblekin.game</ApplicationId>
     <ApplicationTitle>Bramblekin</ApplicationTitle>
     <ApplicationVersion>1</ApplicationVersion>
-    <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>0.2.0</ApplicationDisplayVersion>
     <AndroidManifest>Platforms/Android/AndroidManifest.xml</AndroidManifest>
 
     <!-- Always produce a sideloadable .apk (Release would default to .aab). -->

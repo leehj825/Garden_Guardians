@@ -111,6 +111,11 @@ public static partial class Game
               (world.DescribeRelations(clan) is { } relations ? $", {relations}" : "");
         Raylib.DrawText(Fit(header, headerSize, width - tabWidth * tabs.Length - margin), x, y, headerSize, PanelInk);
         y += Math.Max(headerSize, tabHeight - margin / 4) + margin / 2;
+        if (clan is null)
+        {
+            Raylib.DrawText(Fit($"Found by exploring: {world.DescribeDiscoveries()}", textSize, width), x, y - margin / 4, textSize, PanelInk with { A = 190 });
+            y += lineHeight;
+        }
 
         int listBottom = (int)(panel.Y + panel.Height) - margin / 2;
         if (_historyTab == HistoryTab.Heroes)

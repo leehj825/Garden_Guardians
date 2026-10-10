@@ -169,6 +169,9 @@ public sealed partial class World
     /// <summary>Which map guides are drawn (clan range, kin links, kin range) — set from the buttons on the map.</summary>
     public static MapOverlays Overlays { get; set; } = MapOverlays.All;
 
+    /// <summary>Low detail (a Settings choice for slower phones): no grass, flowers or small stones on the ground.</summary>
+    public static bool LowDetail { get; set; }
+
     // --- Encounters & groups ------------------------------------------------------
 
     /// <summary>Two Bramblekin closer than this (m) have "crossed paths" — see <see cref="ResolveEncounter"/>.</summary>
@@ -298,7 +301,7 @@ public sealed partial class World
     public int HornetsKilled { get; private set; }
     public int SpidersKilled { get; private set; }
 
-    public World(Terrain terrain, Random rng, int initialKinCount)
+    public World(Terrain terrain, Random rng, int initialKinCount, bool exactKinCount = false)
     {
         Terrain = terrain;
         Rng = rng;
@@ -324,7 +327,8 @@ public sealed partial class World
         // rolled Personality (see the Bramblekin constructor) — groups only
         // ever form later, out of encounters.
         Loading.Report(0.94f, "Settling the Bramblekin");
-        initialKinCount = Scaled(initialKinCount); // A bigger garden starts with more of them.
+        if (!exactKinCount)
+            initialKinCount = Scaled(initialKinCount); // A bigger garden starts with more of them.
         for (int i = 0; i < initialKinCount; i++)
             Colony.Add(Newcomer(RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin)));
         foreach (Bramblekin kin in Colony)
@@ -450,6 +454,8 @@ public sealed partial class World
         UpdateWeather(deltaTime);
         Prof.Mark("UpdateWeather");
         UpdateHistory(deltaTime);
+        UpdateStoryOfTheDay();
+        UpdateAchievements(deltaTime);
         Prof.Mark("UpdateHistory");
         AccumulateExposure(deltaTime);
         Prof.Mark("AccumulateExposure");

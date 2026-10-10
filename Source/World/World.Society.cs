@@ -104,6 +104,7 @@ public sealed partial class World
                     Game.AddEventLog($"[GROUP] {group.Leader!.Name} now leads {group.Title}{(heir ? ", as its named heir" : "")}");
                     Chronicle(heir ? $"{group.Leader.Name} succeeded {previousLeader.Name} as Leader of {group.Title}"
                                    : $"{group.Leader.Name} became Leader of {group.Title}", group);
+                    NoteFavourite(group.Leader, $"now leads {group.Title}");
                 }
                 continue;
             }
@@ -402,10 +403,37 @@ public sealed partial class World
         return false;
     }
 
-    private static void SetMutualRelationship(Bramblekin a, Bramblekin b, RelationshipState state)
+    private void SetMutualRelationship(Bramblekin a, Bramblekin b, RelationshipState state)
     {
+        RelationshipState? before = a.RelationshipTo(b);
         a.SetRelationship(b, state);
         b.SetRelationship(a, state);
+        if (before != state && a.RelationshipTo(b) == state)
+            NoteBond(a, b, state);
+    }
+
+    /// <summary>Game seconds between two friendship or rivalry stories (they would crowd out everything else).</summary>
+    private const float BondStoryGap = 60f;
+
+    /// <summary>Chance a bond between two unremarkable Bramblekin makes a story anyway.</summary>
+    private const double CommonBondStoryChance = 0.15;
+
+    private float _lastBondStory = -BondStoryGap;
+
+    /// <summary>
+    /// A new friendship or rivalry makes a story when a leader, a master or a favourite is in it (or, now and then, anyone), and not too often:
+    /// a headline on the banner and a line in the chronicle, so there are people to follow.
+    /// </summary>
+    private void NoteBond(Bramblekin a, Bramblekin b, RelationshipState state)
+    {
+        if (state is not (RelationshipState.Friend or RelationshipState.Enemy) || ElapsedSeconds - _lastBondStory < BondStoryGap)
+            return;
+        bool notable(Bramblekin k) => k.IsFavourite || k.IsMaster || GroupOf(k)?.Leader == k;
+        if (!notable(a) && !notable(b) && Rng.NextDouble() >= CommonBondStoryChance)
+            return;
+        _lastBondStory = ElapsedSeconds;
+        bool friends = state == RelationshipState.Friend;
+        Headline(friends ? "Friends" : "Rivals", $"{a.Name} and {b.Name} have become {(friends ? "friends" : "rivals")}", a.Position, false, GroupOf(a), GroupOf(b));
     }
 
     /// <summary>Any blow struck between two Bramblekin, or a robbery attempt, makes them Enemies for good.</summary>

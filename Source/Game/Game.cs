@@ -260,6 +260,11 @@ public static partial class Game
             _lootTestDone = true;
             world.StartTestLoot(lootLevel);
         }
+        if (_catchUpLeft > 0f)
+        {
+            CatchUp(world);
+            return;
+        }
         _simulationBacklog += realDeltaTime * _timeScale;
         // A frame's drawing costs the same however fast the garden runs, so on a device where it is slow it would swallow most of the frame and leave the
         // simulation a sliver (50x managing a few x): at 10x and up the simulation gets a share that grows with the draw time, up to a cap.
@@ -340,6 +345,8 @@ public static partial class Game
         _statsView = Preferences.Get(StatsViewSetting, StatsView.Shown);
         _alertsOn = Preferences.Get(AlertsSetting, AlertsView.On) == AlertsView.On;
         World.Overlays = Preferences.Get(OverlaySetting, MapOverlays.All);
+        World.LowDetail = Preferences.Get(DetailSetting, DetailLevel.Normal) == DetailLevel.Low;
+        _sleepMode = Preferences.Get(SleepSetting, SleepChoice.Off) == SleepChoice.On;
         MusicPlayer.Volume = Math.Clamp(Preferences.GetNumber(MusicVolumeSetting, 0.5f), 0f, 1f);
         _gardenSlot = (int)Preferences.Get(GardenSetting, GardenSlot.Garden1);
         TerrainData.GrowNewGardens = Preferences.Get(TerrainSetting, TerrainMode.Fixed) == TerrainMode.Random;
@@ -369,6 +376,7 @@ public static partial class Game
                 }
                 TerrainData.NewGardenSize = choice.Size;
                 _startEra = choice.StartEra;
+                _scenario = choice.Scenario;
                 world = MakeWorld(() => choice.Resume ? LoadOrCreateWorld(GardenPath) : StartNewGarden(GardenPath));
             }
             camera = OverviewCamera(world.Terrain.Size);
@@ -380,11 +388,13 @@ public static partial class Game
             Camera3D overview = camera;
             DebugShot.Place(ref camera, world);
             float autosaveTimer = AutosaveInterval;
+            _inGarden = true;
 
             // --- Main loop -------------------------------------------------------
             while (!Raylib.WindowShouldClose())
             {
                 SyncWindowSize();
+                ApplyFrameRate();
                 AdBanner.Show(true);
                 float rawDeltaTime = MathF.Min(Raylib.GetFrameTime(), MaxDeltaTime);
                 MusicPlayer.Update(Raylib.GetFrameTime(), MusicPlayer.For(world), silent: _timeScale >= 10f); // (no music when sped up to 10x and over)
@@ -442,6 +452,7 @@ public static partial class Game
                 _topBarBottom = navRowY + speedButtonHeight + speedButtonMargin;
                 _contentTop = _topBarBottom + OverlayRowHeight(uiScale);
                 UiButton? followButton = _showChronicle || playing ? null : FollowButton(world);
+                UiButton? favouriteButton = followButton is null ? null : FavouriteButton(followButton);
                 UiButton? controlButton = followButton is null || !(Build.KinControl || Build.Explore) ? null : ControlButton(world, followButton);
                 UiButton menuButton = MenuButton(autoButton?.Bounds ?? historyButton.Bounds, navRowY, speedButtonMargin, speedButtonHeight, uiScale);
                 var overlayButtons = _showChronicle ? null : OverlayButtons(uiScale, _topBarBottom, speedButtonMargin);
@@ -533,6 +544,8 @@ public static partial class Game
                 }
                 else if (mousePressed && followButton is not null && followButton.Contains(mousePosition))
                     followCamera.ToggleFollow(world);
+                else if (mousePressed && favouriteButton is not null && favouriteButton.Contains(mousePosition) && world.SelectedKin is { } marked)
+                    marked.IsFavourite = !marked.IsFavourite;
                 else
                     input.Update(camera, world);
                 if (playing)
@@ -577,6 +590,8 @@ public static partial class Game
                 if (!Detail.FarView)
                     DrawStatusBars(camera, world);
                 DrawNameTag(camera, world);
+                if (world.IsStorming && !World.LowDetail)
+                    Raylib.DrawRectangle(0, 0, Raylib.GetScreenWidth(), Raylib.GetScreenHeight(), new Color(20, 30, 55, 50)); // (a storm dims the sky)
                 DrawFloatingTexts(camera, world);
                 if (playing)
                 {
@@ -605,10 +620,14 @@ public static partial class Game
                 if (!_showChronicle)
                     DrawKinPanel(world); // The History screen covers it (its header names the selected clan).
                 followButton?.Draw(followCamera.IsFollowing ? "Following" : "Follow", highlighted: followCamera.IsFollowing);
+                favouriteButton?.Draw(world.SelectedKin is { IsFavourite: true } ? "Favourite" : "Add to favourites", highlighted: world.SelectedKin is { IsFavourite: true });
                 controlButton?.Draw(Build.KinControl ? "Control" : "Explore", highlighted: false);
                 int hudTop = DrawHud(world);
                 int captionHeight = director.Caption is null ? 0 : ScaledFontSize(0.55f) + 2 * ((int)(10 * UiScale) + 2) + 6;
                 DrawBanner(_contentTop + captionHeight);
+                DrawCatchUp();
+                if (_sleepMode)
+                    Raylib.DrawRectangle(0, 0, Raylib.GetScreenWidth(), Raylib.GetScreenHeight(), new Color(0, 0, 0, 150));
                 if (!_showChronicle)
                     DrawDirectorCaption(director, _contentTop);
                 if (_showChronicle)
@@ -644,8 +663,16 @@ public static partial class Game
                     autosaveTimer = AutosaveInterval;
                     SaveSystem.Save(world, GardenPath);
                 }
+                if (_saveRequested)
+                {
+                    _saveRequested = false;
+                    autosaveTimer = AutosaveInterval;
+                    SaveSystem.Save(world, GardenPath);
+                    SaveDone.Set();
+                }
             }
 
+            _inGarden = false;
             SaveSystem.Save(world, GardenPath);
             AdBanner.Show(false);
             if (leaveToMenu)
@@ -653,6 +680,7 @@ public static partial class Game
                 ClearBanners();
                 _showChronicle = false;
                 _simulationBacklog = 0f;
+                _catchUpLeft = 0f;
                 _confirmMenu = false;
             }
         } while (leaveToMenu);
@@ -1396,6 +1424,10 @@ public static partial class Game
         return new UiButton(new Rectangle(x, y, width, height));
     }
 
+    /// <summary>The "Favourite" toggle, under "Follow": marks the selected Bramblekin so its news (children, illness, leadership, mastery, death) makes a headline.</summary>
+    private static UiButton FavouriteButton(UiButton follow) =>
+        new(new Rectangle(follow.Bounds.X, follow.Bounds.Y + follow.Bounds.Height + 10 * UiScale, follow.Bounds.Width, follow.Bounds.Height * 0.8f));
+
     /// <summary>The "Control" button, just left of "Follow": take the selected Bramblekin's wheel (see <see cref="PlayControl"/>).</summary>
     private static UiButton ControlButton(World world, UiButton follow) =>
         new(new Rectangle(follow.Bounds.X - follow.Bounds.Width - 10 * UiScale, follow.Bounds.Y, follow.Bounds.Width, follow.Bounds.Height));
@@ -1413,7 +1445,8 @@ public static partial class Game
 
         return new List<(string Text, Color Color)>
         {
-            ($"{kin.Name}  ({kin.Sex.ToString().ToLowerInvariant()}, {role}{(kin.IsYoung ? ", young" : kin.IsElder ? ", elder" : "")})", ink),
+            ($"{(kin.IsFavourite ? "* " : "")}{kin.Name}  ({kin.Sex.ToString().ToLowerInvariant()}, {role}{(kin.IsYoung ? ", young" : kin.IsElder ? ", elder" : "")})", ink),
+            ($"\"{kin.Utterance(world)}\"", ink),
             ($"Age {kin.DescribeAge()}, generation {kin.Generation}", ink),
             ((kin.ParentNames is { } parents ? $"Child of {parents.Mother} & {parents.Father}" : "Wandered in from the edge") +
                 (kin.GuardianNames is { } guardians ? $", raised by {guardians.A} & {guardians.B}" : ""), ink),

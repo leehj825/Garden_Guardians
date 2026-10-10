@@ -567,6 +567,8 @@ public sealed partial class Bramblekin : ICombatant
             amount = Math.Max(1, (int)MathF.Round(amount * factor));
         }
         Health = Math.Max(0, Health - amount);
+        if (cause == DeathCause.Kin && Health > 0)
+            Train(Skill.Fighting, world, 0.5f); // A blow taken teaches too, less than one dealt.
 
         // A leadership duel is a contest, not a feud: no lingering threat, no enmity.
         if (source is not null && ReferenceEquals(source, _duelOpponent))

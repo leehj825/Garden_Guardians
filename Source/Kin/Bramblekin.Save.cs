@@ -65,6 +65,7 @@ public sealed partial class Bramblekin
         Sickness = SicknessState.Sickness,
         Immunity = SicknessState.Immunity,
         Skills = SkillsForSave,
+        Favourite = IsFavourite,
         Errand = _errand is { } errand
             ? new ErrandSave
             {
@@ -109,6 +110,7 @@ public sealed partial class Bramblekin
             SpiderKills = save.SpiderKills,
             EggsEaten = save.EggsEaten,
             ChampionWins = save.ChampionWins,
+            IsFavourite = save.Favourite,
         };
         _nextId = Math.Max(_nextId, save.Id + 1);
         kin.Christen(save.GivenName, save.FamilyName);

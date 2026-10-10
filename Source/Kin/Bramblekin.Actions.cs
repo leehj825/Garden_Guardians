@@ -32,6 +32,7 @@ public sealed partial class Bramblekin
             ReleaseFoodClaim();
             StartAction(BramblekinClip.PickingUp, lockMovement: true); // bends to pick it up, and finishes that first
             World.PickUpFood(food);
+            Train(Skill.Gathering, world);
             if (!Stow(food, world))
                 _carried = food; // (a full pack: held in hand)
             else if (eatOnArrival)
@@ -44,7 +45,7 @@ public sealed partial class Bramblekin
             return;
         }
 
-        MoveTo(food.Position, speed, deltaTime, world);
+        MoveTo(food.Position, speed * (1f + GatheringSpeedBonus * SkillAt(Skill.Gathering)), deltaTime, world);
     }
 
     private void StartEating()
@@ -144,8 +145,7 @@ public sealed partial class Bramblekin
             world.StealFood(this, victim);
         if (State == BramblekinState.Fighting && _threatIsAllyDefense)
             world.NoteDefended(this, target);
-        if (target is not Bramblekin)
-            Train(Skill.Hunting, world, target is StagBeetle or WolfSpider ? 2f : 1f);
+        Train(target is Bramblekin ? Skill.Fighting : Skill.Hunting, world, target is StagBeetle or WolfSpider ? 2f : 1f);
         BeginBlow(world);
         target.TakeHit(target is Bramblekin ? StrikeDamage : HuntingDamage, this, world);
     }

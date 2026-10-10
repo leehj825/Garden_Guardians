@@ -49,21 +49,32 @@ public sealed partial class World
             }
             if (group.Home is not { IsBuilt: true, IsCollapsed: false } || !Knows(group, Craft.Tools))
                 continue;
-            group.GoodsTimer += deltaTime * Math.Min(3, group.Members.Count(m => !m.IsDead && !m.IsYoung)) / 2f;
+            // The clan's best hand at crafting is its maker: its skill speeds the work up to 30%, and each good made teaches it more.
+            Bramblekin? maker = group.Members.Where(m => !m.IsDead && !m.IsYoung).MaxBy(m => m.SkillAt(Skill.Crafting));
+            group.GoodsTimer += deltaTime * Math.Min(3, group.Members.Count(m => !m.IsDead && !m.IsYoung)) / 2f * (1f + 0.3f * (maker?.SkillAt(Skill.Crafting) ?? 0f));
             bool weaves = Knows(group, Craft.Weaving), cuts = Knows(group, Craft.Stonecutting);
             if (weaves && group.GoodsTimer >= ClothSeconds && group.Cloth < MaxGoods)
             {
                 group.GoodsTimer = 0f;
                 group.Cloth++;
                 GoodsMade++;
+                TeachCrafting(maker);
             }
             else if (cuts && group.GoodsTimer >= StoneSeconds && group.CutStone < MaxGoods)
             {
                 group.GoodsTimer = 0f;
                 group.CutStone++;
                 GoodsMade++;
+                TeachCrafting(maker);
             }
         }
+    }
+
+    /// <summary>A good well made: the maker practises crafting (a good is a big job, worth several acts).</summary>
+    private void TeachCrafting(Bramblekin? maker)
+    {
+        if (maker is not null && maker.Practice(Skill.Crafting, 4f))
+            NoteMastery(maker, Skill.Crafting);
     }
 
     /// <summary>Allied clans both holding a market: <paramref name="seller"/> sells two of what it has most of for food from <paramref name="buyer"/>'s stores.</summary>
