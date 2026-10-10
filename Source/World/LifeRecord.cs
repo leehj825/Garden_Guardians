@@ -30,4 +30,11 @@ public sealed class LifeRecord
     public float AgeYears { get; set; }
     public float LeaderSeconds { get; set; }
     public int SpiderKills { get; set; }
+
+    /// <summary>"Leader" or "master hunter" — why it is remembered with a memorial stone where it died; null for an ordinary life.</summary>
+    public string? Honour { get; set; }
+
+    /// <summary>Where its memorial stands (only if <see cref="Honour"/> is set).</summary>
+    public float GraveX { get; set; }
+    public float GraveZ { get; set; }
 }

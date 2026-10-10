@@ -165,6 +165,13 @@ public static partial class Game
             left.Add(("   " + holder, false));
         }
 
+        if (world.Ancestors.Count > 0)
+        {
+            left.Add(("Hall of ancestors", true));
+            foreach (LifeRecord ancestor in world.Ancestors.Take(12))
+                left.Add(($"   {ancestor.Name} - {ancestor.Honour}{(ancestor.Clan is { } clan ? $", {clan}" : "")}, {ancestor.AgeYears:0.0} years", false));
+        }
+
         var right = new List<(string Text, bool Heading)> { ("Family", true) };
         if (world.SelectedKin is { IsDead: false } kin)
             right.AddRange(FamilyLines(world, kin).Select(line => (line, false)));
