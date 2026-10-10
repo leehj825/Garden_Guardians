@@ -17,6 +17,8 @@ internal static class RewardedDiag
             lock (Gate)
             {
                 Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);
+                if (File.Exists(Path) && new FileInfo(Path).Length > 64 * 1024)
+                    File.Delete(Path); // (the log never grows past a page or two)
                 File.AppendAllText(Path, $"{DateTime.Now:HH:mm:ss} {text}\n");
             }
         }
