@@ -1,3 +1,5 @@
+using Raylib_cs;
+
 namespace GardenGuardians;
 
 /// <summary>What a Bramblekin gets better at by doing it — see Bramblekin.Skills.</summary>
@@ -62,9 +64,23 @@ public sealed partial class Bramblekin
     /// <summary>Practises <paramref name="skill"/>, telling the World if that makes it a master.</summary>
     private void Train(Skill skill, World world, float acts = 1f)
     {
+        float before = SkillAt(skill);
         if (Practice(skill, acts))
             world.NoteMastery(this, skill);
+        else if (Crossed(before, SkillAt(skill)) is { } milestone)
+            world.QueueFloatingText(Position, $"{TradeName(skill)} {milestone}", SkillTextColor);
     }
+
+    private static readonly Color SkillTextColor = new(170, 230, 150, 255);
+
+    /// <summary>"Hunting" — the skill's name for a pop-up.</summary>
+    private static string TradeName(Skill skill) => skill.ToString();
+
+    /// <summary>The pop-up for a skill that has just passed a milestone — a first taste, practised (0.25), skilled (0.5) — or null if it hasn't.</summary>
+    private static string? Crossed(float before, float after) =>
+        before < 0.01f && after >= 0.01f ? "+" :
+        before < 0.25f && after >= 0.25f ? "practised!" :
+        before < 0.5f && after >= 0.5f ? "skilled!" : null;
 
     /// <summary>Skills rust a little without use (practice easily outpaces it).</summary>
     private void RustSkills(float deltaTime)
