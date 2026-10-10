@@ -33,6 +33,9 @@ public sealed partial class World
     /// <summary>A clan that knows the far shore rates ground within this far (m) of it this much better for a new village.</summary>
     private const float FarShoreSettleReach = 14f, FarShoreSettleBonus = 12f;
 
+    /// <summary>Ground within this far (m) of the spot the Guide pointed a clan to rates this much better for a new village.</summary>
+    private const float GuidedSiteReach = 12f, GuidedSiteBonus = 45f;
+
     private bool _farShoreClaimed;
 
     /// <summary>Clans that have reached the pond's far side (for the headless report).</summary>
@@ -175,6 +178,8 @@ public sealed partial class World
         float penalty = knowing.Known.IsKnown(candidate) ? 0f : UnknownGroundPenalty;
         if (knowing is { FarShoreFound: true, FarShore: { } far } && GroundMover.HorizontalDistance(far, candidate) <= FarShoreSettleReach)
             penalty -= FarShoreSettleBonus; // Good ground on the far bank, known from the scouts' visit.
+        if (knowing.GuidedSite is { } guided && GroundMover.HorizontalDistance(guided, candidate) <= GuidedSiteReach)
+            penalty -= GuidedSiteBonus; // The player has pointed the way.
         return penalty;
     }
 

@@ -486,6 +486,10 @@ public static partial class Game
                 {
                     _confirmMenu = true;
                 }
+                else if (mousePressed && !playing && GuideTap(mousePosition, world, camera))
+                {
+                    // The Guide took the tap.
+                }
                 else if (mousePressed && TapBanner(mousePosition, followCamera))
                 {
                     director.Stop(); // Flew to the banner's big moment.
@@ -624,9 +628,12 @@ public static partial class Game
                 favouriteButton?.Draw(world.SelectedKin is { IsFavourite: true } ? "Favourite" : "Add to favourites", highlighted: world.SelectedKin is { IsFavourite: true });
                 controlButton?.Draw(Build.KinControl ? "Control" : "Explore", highlighted: false);
                 int hudTop = DrawHud(world);
+                _guideBase = hudTop;
                 int captionHeight = director.Caption is null ? 0 : ScaledFontSize(0.55f) + 2 * ((int)(10 * UiScale) + 2) + 6;
                 DrawBanner(_contentTop + captionHeight);
                 DrawCatchUp();
+                if (!playing)
+                    DrawGuide(world);
                 if (_sleepMode)
                     Raylib.DrawRectangle(0, 0, Raylib.GetScreenWidth(), Raylib.GetScreenHeight(), new Color(0, 0, 0, 150));
                 if (!_showChronicle)

@@ -20,6 +20,12 @@ internal static class AdBanner
     /// <summary>What the platform's ad is doing (shown in the Debug stats bar).</summary>
     public static volatile string Status = "no ads on this platform";
 
+    /// <summary>Set by the platform: a rewarded video is loaded and can be shown (the Guide's "Watch" button appears).</summary>
+    public static volatile bool RewardedReady;
+
+    /// <summary>Set by the platform: shows the rewarded video and calls the action on the game thread's next frame if the viewer earned the reward. Null where there are no ads.</summary>
+    public static Action<Action>? ShowRewarded;
+
     private static bool _wanted;
 
     /// <summary>Whether the game wants the banner showing right now.</summary>
