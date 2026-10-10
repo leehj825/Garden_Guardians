@@ -17,11 +17,23 @@ internal static class AdBanner
     /// <summary>Set by the platform: the banner view's height in pixels (0 until an ad has loaded; the space is not reserved before then).</summary>
     public static volatile int LoadedHeightPx;
 
-    /// <summary>What the platform's ad is doing (the Settings page's Ad test shows it in a Debug build).</summary>
+    /// <summary>What the platform's ad is doing (shown in the Debug stats bar).</summary>
     public static volatile string Status = "no ads on this platform";
 
-    /// <summary>Debug builds on Android: opens a plain Android screen with Google's test banner (the Settings page's "Ad test" button). Null elsewhere.</summary>
-    public static Action? OpenTestScreen;
+    /// <summary>Set by the platform: a rewarded video is loaded and can be shown (the Guide's "Watch" button appears).</summary>
+    public static volatile bool RewardedReady;
+
+    /// <summary>Set by the platform: shows the rewarded video and calls the action on the game thread's next frame if the viewer earned the reward. Null where there are no ads.</summary>
+    public static Action<Action>? ShowRewarded;
+
+    /// <summary>Set by the platform: called once a frame by the Guide so the platform can report whether a video is loaded and hand over a reward just earned.</summary>
+    public static Action? PollRewarded;
+
+    /// <summary>Set by the platform: asks it to set the rewarded video up (called when the player first opens the Guide, never at start-up).</summary>
+    public static Action? BeginRewarded;
+
+    /// <summary>Set by the platform: what the rewarded video is doing, for the Ad test page.</summary>
+    public static volatile string RewardedStatus = "no rewarded ads on this platform";
 
     private static bool _wanted;
 

@@ -28,7 +28,7 @@ public sealed partial class World
     {
         if (LowDetail)
             return;
-        _wetness = IsStorming ? MathF.Min(1f, _wetness + Raylib.GetFrameTime() * 0.4f) : MathF.Max(0f, _wetness - Raylib.GetFrameTime() / 60f);
+        _wetness = IsStorming || GoodRainLeft > 0f ? MathF.Min(1f, _wetness + Raylib.GetFrameTime() * 0.4f) : MathF.Max(0f, _wetness - Raylib.GetFrameTime() / 60f);
         float spread = MathF.Min(30f, Vector3.Distance(camera.Position, camera.Target) * 0.5f);
         int reach = (int)(spread / PuddleCell) + 1;
         int cx = (int)MathF.Floor(camera.Target.X / PuddleCell), cz = (int)MathF.Floor(camera.Target.Z / PuddleCell);

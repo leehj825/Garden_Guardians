@@ -66,7 +66,9 @@ public sealed partial class World
     public int Storms { get; private set; }
 
     /// <summary>How the season's weather scales its Food — see <see cref="FoodAbundance"/>.</summary>
-    public float WeatherFoodFactor => CurrentWeather switch
+    public float WeatherFoodFactor => (GoodRainLeft > 0f ? 1.4f : 1f) * WeatherFoodBase;
+
+    private float WeatherFoodBase => CurrentWeather switch
     {
         Weather.Bountiful => 1.5f,
         Weather.Drought => 0.5f,
@@ -180,10 +182,10 @@ public sealed partial class World
     /// <summary>Rain streaks around the camera's focus while a storm blows.</summary>
     private void DrawRain(Camera3D camera)
     {
-        if (!IsStorming)
+        if (!IsStorming && GoodRainLeft <= 0f)
             return;
         float spread = MathF.Min(40f, Vector3.Distance(camera.Position, camera.Target) * 0.6f);
-        for (int i = 0; i < 220; i++)
+        for (int i = 0; i < (IsStorming ? 220 : 90); i++)
         {
             float x = camera.Target.X + ((float)VisualRng.NextDouble() * 2f - 1f) * spread;
             float z = camera.Target.Z + ((float)VisualRng.NextDouble() * 2f - 1f) * spread;

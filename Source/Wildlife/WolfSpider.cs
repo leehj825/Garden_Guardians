@@ -277,6 +277,12 @@ public sealed class WolfSpider : ICombatant
 
     private void Hunt(float deltaTime, World world)
     {
+        if (world.SpiderQuietLeft > 0f)
+        {
+            _prey = null;
+            StartProwling();
+            return;
+        }
         // Keep chasing while the prey is alive, in range, and either still
         // vibrating or only recently gone quiet. Otherwise switch to another
         // busy worker if there is one, or give up. (A Bramblekin is marked
@@ -438,6 +444,8 @@ public sealed class WolfSpider : ICombatant
     /// <summary>The nearest vibrating Bramblekin within <see cref="VibrationRadius"/>, if any.</summary>
     private Bramblekin? FindPrey(World world)
     {
+        if (world.SpiderQuietLeft > 0f)
+            return null; // The Guide has hushed it for a day.
         Bramblekin? best = null;
         float bestDistanceSquared = VibrationRadius * VibrationRadius;
         // The Spatial Grid: only the Colony chunks around this spider — out

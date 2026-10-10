@@ -84,6 +84,9 @@ public sealed class KinGroup
     /// <summary>How far its shrine is raised, 0..1.</summary>
     public float ShrineRaised { get; set; }
 
+    /// <summary>Where the player has pointed this clan to settle a new village (the Guide's Site nudge); pioneers rate ground near it much better.</summary>
+    public Vector3? GuidedSite { get; set; }
+
     public string ShortId => Id.ToString("N")[..4];
 
     /// <summary>The group's name — "Thornwood clan", after the family of the Leader it was founded under (see World.NameGroup). Null for a moment while it's being founded.</summary>

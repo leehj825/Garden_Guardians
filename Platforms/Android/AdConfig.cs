@@ -22,13 +22,28 @@ internal static class AdConfig
     /// <summary>The game's own AdMob app id.</summary>
     public const string LiveAppId = "ca-app-pub-4400173019354346~9600481746";
 
+    /// <summary>Google's test rewarded video: always fills, from any app.</summary>
+    public const string TestRewardedUnitId = "ca-app-pub-3940256099942544/5224354917";
+
+    /// <summary>
+    /// The rewarded video is OFF: opening the Guide with it on closes the app (confirmed on a device), for a reason not yet known. A crash log
+    /// (adb logcat -b crash) from a build with this set to true would show why. It guards itself (see AndroidRewarded.GuardAllows) so that it
+    /// switches itself off after two such crashes.
+    /// </summary>
+    public const bool RewardedEnabled = false;
+
+    /// <summary>The game's own rewarded video unit (AdMob app Bramblekin, ad unit "Reward"). The app id is the one above.</summary>
+    public const string LiveRewardedUnitId = "ca-app-pub-4400173019354346/3811439768";
+
 #if DEBUG
     /// <summary>The AdMob app id written into the manifest by the attribute above, and the banner unit shown along the bottom of the garden: Google's test ones.</summary>
     public const string AppId = SampleAppId;
     public const string BannerUnitId = TestBannerUnitId;
+    public const string RewardedUnitId = TestRewardedUnitId;
 #else
     public const string AppId = LiveAppId;
     /// <summary>The banner ad unit shown along the bottom of the garden.</summary>
     public const string BannerUnitId = LiveBannerUnitId;
+    public const string RewardedUnitId = LiveRewardedUnitId;
 #endif
 }

@@ -46,6 +46,8 @@
     <PackageReference Include="Xamarin.GooglePlayServices.Ads" Version="125.5.0" />
     <!-- Two of its dependencies want different versions of AndroidX Tracing (NuGet NU1107): pin the newer. -->
     <PackageReference Include="Xamarin.AndroidX.Tracing.Tracing" Version="2.0.0" />
+    <!-- The rewarded video's Java side (the SDK's load callback is generic, so it is written in Java): see Platforms/Android/AndroidRewarded.cs. -->
+    <AndroidJavaSource Include="Platforms/Android/java/RewardedBridge.java" />
   </ItemGroup>
 
   <!-- ===================================================================
@@ -86,7 +88,7 @@
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
   </PropertyGroup>
 
-  <!-- Tools/ holds scripts and the separate GG Ad Test app (its own project): none of it is part of the game. -->
+  <!-- Tools/ holds scripts: none of it is part of the game. -->
   <ItemGroup>
     <Compile Remove="Tools/**" />
     <None Remove="Tools/**" />

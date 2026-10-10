@@ -8,6 +8,13 @@ public static partial class Game
     private const string MusicVolumeSetting = "musicvolume";
     private const string DetailSetting = "detail";
     private const string SleepSetting = "sleep";
+    private const string PlayAsReleaseSetting = "playasrelease";
+
+    private enum ReleaseChoice
+    {
+        Off,
+        On,
+    }
 
     /// <summary>Sleep mode: for leaving the garden running in the background — a low frame rate and a dim screen, to save battery. The garden itself goes on at its usual pace.</summary>
     private static bool _sleepMode;
@@ -99,15 +106,29 @@ public static partial class Game
             var bar = new Rectangle(left + stepWidth + gap, barY, wide - (stepWidth + gap) * 2, buttonHeight);
             var detail = new UiButton(new Rectangle(left, barY + buttonHeight + gap * 3, wide, buttonHeight));
             var sleep = new UiButton(new Rectangle(left, detail.Bounds.Y + buttonHeight + gap, wide, buttonHeight));
-            var back = new UiButton(new Rectangle(left, sleep.Bounds.Y + buttonHeight + gap * 2, wide, buttonHeight));
-            // (Debug builds on Android: a diagnostic screen with a test banner, see AdTestActivity.)
-            UiButton? adTest = AdBanner.OpenTestScreen is null ? null : new UiButton(new Rectangle(left, back.Bounds.Y + buttonHeight + gap * 2, wide, buttonHeight));
+            // (A Debug build only: play as the Release game, to test it without a Release build.)
+            UiButton? asRelease = Build.IsDebugBuild ? new UiButton(new Rectangle(left, sleep.Bounds.Y + buttonHeight + gap, wide, buttonHeight)) : null;
+            // (Back; and in a Debug build the Ad test page beside it.)
+            int rowY = (int)(asRelease ?? sleep).Bounds.Y + buttonHeight + gap * 2;
+            int half = (wide - gap) / 2;
+            var back = new UiButton(new Rectangle(left, rowY, Build.IsDebugBuild ? half : wide, buttonHeight));
+            UiButton? adTest = Build.IsDebugBuild ? new UiButton(new Rectangle(left + half + gap, rowY, half, buttonHeight)) : null;
 
             Vector2 mouse = Raylib.GetMousePosition();
             bool pressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
             float volume = MusicPlayer.Volume;
             if (pressed && back.Contains(mouse))
                 return;
+            if (pressed && asRelease is not null && asRelease.Contains(mouse))
+            {
+                Build.PlayAsRelease = !Build.PlayAsRelease;
+                Preferences.Set(PlayAsReleaseSetting, Build.PlayAsRelease ? ReleaseChoice.On : ReleaseChoice.Off);
+            }
+            if (pressed && adTest is not null && adTest.Contains(mouse))
+            {
+                ShowAdTest();
+                continue;
+            }
             if (pressed && sleep.Contains(mouse))
             {
                 _sleepMode = !_sleepMode;
@@ -118,8 +139,6 @@ public static partial class Game
                 World.LowDetail = !World.LowDetail;
                 Preferences.Set(DetailSetting, World.LowDetail ? DetailLevel.Low : DetailLevel.Normal);
             }
-            if (pressed && adTest is not null && adTest.Contains(mouse))
-                AdBanner.OpenTestScreen?.Invoke();
             if (pressed && minus.Contains(mouse))
                 volume = MathF.Round((volume - 0.1f) * 10f) / 10f;
             else if (pressed && plus.Contains(mouse))
@@ -145,14 +164,9 @@ public static partial class Game
             Raylib.DrawRectangleLinesEx(bar, 2f, ink);
             detail.Draw(World.LowDetail ? "Detail: low (no grass)" : "Detail: normal", highlighted: World.LowDetail);
             sleep.Draw(_sleepMode ? "Sleep mode: on (15 fps, dim)" : "Sleep mode: off", highlighted: _sleepMode);
+            asRelease?.Draw(Build.PlayAsRelease ? "Play as Release: ON (test the Release game)" : "Play as Release: off (Debug tools)", highlighted: Build.PlayAsRelease);
             back.Draw("Back", highlighted: true);
-            if (adTest is not null) // (a Debug build on Android: the game's own banner's state, and the plain test screen)
-            {
-                adTest.Draw("Ad test", highlighted: false);
-                int statusSize = Math.Max(12, (int)(textSize * 0.8f));
-                string status = $"Banner: {AdBanner.Status}";
-                DrawCentred(Fit(status, statusSize, (int)(width * 0.94f)), width / 2, (int)adTest.Bounds.Y + buttonHeight + gap, statusSize, ink);
-            }
+            adTest?.Draw("Ad test", highlighted: false);
             Raylib.EndDrawing();
         }
     }

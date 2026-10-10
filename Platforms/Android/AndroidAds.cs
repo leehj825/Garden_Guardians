@@ -61,10 +61,6 @@ internal static class AndroidAds
                 _anchor = activity.Window?.DecorView;
                 _anchor?.Post(Apply);
                 AdBanner.Status = $"requested {Label(AdConfig.BannerUnitId)}, waiting for an ad";
-#if DEBUG
-                // The Settings page's "Ad test" button opens a plain Android screen with a test banner (AdTestActivity).
-                AdBanner.OpenTestScreen = () => activity.RunOnUiThread(() => activity.StartActivity(new Android.Content.Intent(activity, typeof(AdTestActivity))));
-#endif
               }
               catch (Exception ex)
               {

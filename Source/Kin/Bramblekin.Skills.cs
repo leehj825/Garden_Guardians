@@ -46,6 +46,20 @@ public sealed partial class Bramblekin
     /// <summary>It has become a master of something (it wears a gold mark above its head).</summary>
     public bool IsMaster => _mastered != 0;
 
+    /// <summary>Seconds left of a blessing from the Guide: it learns twice as fast.</summary>
+    private float _blessLeft;
+
+    private const float BlessSeconds = 180f;
+
+    /// <summary>The Guide's blessing: healed, eased of hunger and thirst, and quick to learn for a while.</summary>
+    public void Bless()
+    {
+        Heal(HealthCap);
+        Hunger = MathF.Max(0f, Hunger - 40f);
+        Thirst = MathF.Max(0f, Thirst - 40f);
+        _blessLeft = BlessSeconds;
+    }
+
     private readonly float[] _skills = new float[SkillCount];
 
     /// <summary>Which skills it has already mastered — so the chronicle hears of each only once.</summary>
@@ -61,6 +75,8 @@ public sealed partial class Bramblekin
     /// </summary>
     public bool Practice(Skill skill, float acts = 1f)
     {
+        if (_blessLeft > 0f)
+            acts *= 2f; // blessed: learns twice as fast
         ref float level = ref _skills[(int)skill];
         level = MathF.Min(1f, level + PracticeGain * acts * (0.7f + 0.6f * Personality.Intelligence) * (1f - level));
         int bit = 1 << (int)skill;
@@ -96,6 +112,7 @@ public sealed partial class Bramblekin
     /// <summary>Skills rust a little without use (practice easily outpaces it).</summary>
     private void RustSkills(float deltaTime)
     {
+        _blessLeft = MathF.Max(0f, _blessLeft - deltaTime);
         for (int i = 0; i < _skills.Length; i++)
             _skills[i] = MathF.Max(0f, _skills[i] - SkillRustPerSecond * deltaTime);
     }

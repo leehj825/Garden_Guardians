@@ -37,6 +37,7 @@ public static partial class Game
         int frames = 0;
         int size = Math.Clamp((int)Preferences.Get(MapSizeSetting, MapSize.Small), 0, TerrainData.MapSizes.Length - 1);
         int startAge = Build.TestingChoices ? Math.Clamp((int)Preferences.Get(StartAgeSetting, StartAge.Stone), 0, 3) : 0; // (a Release build always starts in the Stone Age)
+        int ignoreTaps = 0; // frames of taps to ignore (just after the Settings page)
         int scenario = 0; // a Scenario: how a new garden begins (tap the chip to cycle)
         int armed = 0; // 0 nothing, 1 new (fixed), 2 new (grown): tapped once over a kept garden.
         float armedFor = 0f;
@@ -101,11 +102,14 @@ public static partial class Game
             if (armedFor <= 0f)
                 armed = 0;
 
-            bool pressed = Raylib.IsMouseButtonPressed(MouseButton.Left);
+            // (A tap that closed the Settings page must not also land on whatever the menu has under that spot: a few frames are ignored.)
+            bool pressed = Raylib.IsMouseButtonPressed(MouseButton.Left) && ignoreTaps <= 0;
+            ignoreTaps = Math.Max(0, ignoreTaps - 1);
             Vector2 mouse = Raylib.GetMousePosition();
             if (pressed && settingsButton.Contains(mouse))
             {
                 ShowSettings();
+                ignoreTaps = 12;
                 continue;
             }
             if (pressed)
