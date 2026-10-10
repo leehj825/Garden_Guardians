@@ -1,13 +1,12 @@
 // =============================================================================
-//  The rewarded video (Google AdMob): the Guide's "Watch" button. One ad is kept loaded; when the viewer
-//  has watched it, the reward (favour) is handed back through AdBanner.ShowRewarded's action.
+//  The rewarded video (Google AdMob): the Guide's "Ad: +3" button. The ad itself is handled by
+//  Platforms/Android/java/RewardedBridge.java (the SDK's load callback is generic, which a C# subclass cannot express);
+//  this file calls it over JNI and polls it from the game thread.
 // =============================================================================
 
 using Android.App;
 using Android.Runtime;
 using Android.Util;
-using Google.Android.Gms.Ads;
-using Google.Android.Gms.Ads.Rewarded;
 
 namespace GardenGuardians;
 
@@ -16,97 +15,82 @@ internal static class AndroidRewarded
     private const string LogTag = "GardenGuardians";
 
     private static Activity? _activity;
-    private static RewardedAd? _ad;
-    private static bool _loading;
+    private static IntPtr _class, _load, _show, _isReady, _consume;
     private static Action? _onReward;
 
-    /// <summary>Hooks the rewarded video up and starts loading one. Does nothing until the game has a rewarded unit id (see AdConfig).</summary>
+    /// <summary>Hooks the rewarded video up and starts loading one. Does nothing without a rewarded unit id (see AdConfig).</summary>
     public static void Start(Activity activity)
     {
         if (string.IsNullOrEmpty(AdConfig.RewardedUnitId))
             return;
-        _activity = activity;
-        AdBanner.ShowRewarded = Show;
-        Load();
+        try
+        {
+            IntPtr local = JNIEnv.FindClass("com/bramblekin/ads/RewardedBridge");
+            _class = JNIEnv.NewGlobalRef(local);
+            JNIEnv.DeleteLocalRef(local);
+            const string activityAndUnit = "(Landroid/app/Activity;Ljava/lang/String;)V";
+            _load = JNIEnv.GetStaticMethodID(_class, "load", activityAndUnit);
+            _show = JNIEnv.GetStaticMethodID(_class, "show", activityAndUnit);
+            _isReady = JNIEnv.GetStaticMethodID(_class, "isReady", "()Z");
+            _consume = JNIEnv.GetStaticMethodID(_class, "consumeReward", "()Z");
+            _activity = activity;
+            Call(_load);
+            AdBanner.ShowRewarded = Show;
+            AdBanner.PollRewarded = Poll;
+        }
+        catch (Exception ex)
+        {
+            // No rewarded video is better than no game.
+            Log.Error(LogTag, $"Could not set up the rewarded ad: {ex}");
+            AdBanner.ShowRewarded = null;
+            AdBanner.PollRewarded = null;
+        }
     }
 
-    private static void Load()
+    /// <summary>Calls the bridge's load or show with the activity and the unit id.</summary>
+    private static void Call(IntPtr method)
     {
-        if (_loading || _ad is not null || _activity is not { } activity)
+        if (_activity is not { } activity)
             return;
-        _loading = true;
-        activity.RunOnUiThread(() =>
+        IntPtr unit = JNIEnv.NewString(AdConfig.RewardedUnitId);
+        try
         {
-            try
-            {
-                RewardedAd.Load(activity, AdConfig.RewardedUnitId, new AdRequest.Builder().Build(), new LoadCallback());
-            }
-            catch (Exception ex)
-            {
-                _loading = false;
-                Log.Error(LogTag, $"Rewarded ad load failed: {ex}");
-            }
-        });
+            JNIEnv.CallStaticVoidMethod(_class, method, new JValue(activity.Handle), new JValue(unit));
+        }
+        finally
+        {
+            JNIEnv.DeleteLocalRef(unit);
+        }
     }
 
     private static void Show(Action onReward)
     {
-        if (_ad is not { } ad || _activity is not { } activity)
+        if (!AdBanner.RewardedReady)
             return;
         _onReward = onReward;
-        activity.RunOnUiThread(() =>
-        {
-            ad.FullScreenContentCallback = new ContentCallback();
-            ad.Show(activity, new Earned());
-        });
+        Call(_show);
     }
 
-    /// <summary>The ad has been shown (or could not be): it is spent, and the next one starts loading.</summary>
-    private static void Spent()
+    /// <summary>Once a frame, from the game thread: is a video loaded, and has the viewer just earned the reward?</summary>
+    private static void Poll()
     {
-        _ad = null;
-        AdBanner.RewardedReady = false;
-        Load();
-    }
-
-    private sealed class LoadCallback : RewardedAdLoadCallback
-    {
-        // The SDK's callback is generic (AdLoadCallback<RewardedAd>); the binding sees it as taking an Object, and Java then finds two
-        // methods that clash after erasure. Registering the real signature makes the generated Java override the right one.
-        [Register("onAdLoaded", "(Lcom/google/android/gms/ads/rewarded/RewardedAd;)V", "")]
-        public override void OnAdLoaded(Java.Lang.Object ad)
+        if (_class == IntPtr.Zero)
+            return;
+        try
         {
-            _loading = false;
-            _ad = ad as RewardedAd;
-            AdBanner.RewardedReady = _ad is not null;
+            AdBanner.RewardedReady = JNIEnv.CallStaticBooleanMethod(_class, _isReady);
+            if (JNIEnv.CallStaticBooleanMethod(_class, _consume))
+            {
+                Action? give = _onReward;
+                _onReward = null;
+                give?.Invoke();
+            }
         }
-
-        public override void OnAdFailedToLoad(LoadAdError error)
+        catch (Exception ex)
         {
-            _loading = false;
+            Log.Error(LogTag, $"Rewarded ad poll failed: {ex}");
             AdBanner.RewardedReady = false;
-            Log.Warn(LogTag, $"Rewarded ad failed to load: {error.Message}");
-        }
-    }
-
-    private sealed class ContentCallback : FullScreenContentCallback
-    {
-        public override void OnAdDismissedFullScreenContent() => Spent();
-
-        public override void OnAdFailedToShowFullScreenContent(AdError error)
-        {
-            Log.Warn(LogTag, $"Rewarded ad failed to show: {error.Message}");
-            Spent();
-        }
-    }
-
-    private sealed class Earned : Java.Lang.Object, IOnUserEarnedRewardListener
-    {
-        public void OnUserEarnedReward(IRewardItem reward)
-        {
-            Action? give = _onReward;
-            _onReward = null;
-            give?.Invoke();
+            AdBanner.PollRewarded = null;
         }
     }
 }

@@ -108,6 +108,7 @@ public static partial class Game
         if (_showChronicle)
             return;
         _guideMessageLeft = MathF.Max(0f, _guideMessageLeft - Raylib.GetFrameTime());
+        AdBanner.PollRewarded?.Invoke();
         var (toggle, actions, watch) = GuideLayout();
         toggle.Draw($"Guide  {world.Favour:0.0}/{World.MaxFavour:0}", highlighted: _guideOpen);
         int fontSize = Math.Max(12, (int)(actions[0].Bounds.Height * 0.38f));

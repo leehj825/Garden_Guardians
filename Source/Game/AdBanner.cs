@@ -26,6 +26,9 @@ internal static class AdBanner
     /// <summary>Set by the platform: shows the rewarded video and calls the action on the game thread's next frame if the viewer earned the reward. Null where there are no ads.</summary>
     public static Action<Action>? ShowRewarded;
 
+    /// <summary>Set by the platform: called once a frame by the Guide so the platform can report whether a video is loaded and hand over a reward just earned.</summary>
+    public static Action? PollRewarded;
+
     private static bool _wanted;
 
     /// <summary>Whether the game wants the banner showing right now.</summary>
