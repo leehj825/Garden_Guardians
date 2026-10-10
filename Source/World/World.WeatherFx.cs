@@ -35,7 +35,7 @@ public sealed partial class World
 
         if (_wetness > 0.02f)
         {
-            var water = new Color(110, 140, 175, (byte)(120 * _wetness));
+            var water = new Color((byte)110, (byte)140, (byte)175, (byte)(120 * _wetness));
             for (int gx = cx - reach; gx <= cx + reach; gx++)
             {
                 for (int gz = cz - reach; gz <= cz + reach; gz++)
