@@ -44,8 +44,14 @@ public static class SaveSystem
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
             string temporary = path + ".tmp";
             using (FileStream stream = File.Create(temporary))
+            {
                 JsonSerializer.Serialize(stream, save, SaveJsonContext.Default.SaveGame);
-            File.Move(temporary, path, overwrite: true);
+                stream.Flush(flushToDisk: true); // (on disk before it replaces the old save, so a power cut can't leave an empty file)
+            }
+            if (File.Exists(path))
+                File.Replace(temporary, path, BackupPath(path)); // the save it replaces is kept as the backup
+            else
+                File.Move(temporary, path);
             return true;
         }
         catch (Exception e)
@@ -56,11 +62,16 @@ public static class SaveSystem
         }
     }
 
+    /// <summary>Where the save before the latest one is kept, in case the latest can't be read.</summary>
+    private static string BackupPath(string path) => path + ".bak";
+
     /// <summary>What the start menu shows of a saved garden.</summary>
     public sealed record SaveSummary(int Year, int Kin, int Groups, DateTime SavedAt, bool Grown);
 
     /// <summary>A quick look at the garden saved at <paramref name="path"/> (its year, how many Bramblekin and clans, when it was saved, whether its terrain was grown from a seed), or null if there isn't a readable one from this version.</summary>
-    public static SaveSummary? Peek(string path)
+    public static SaveSummary? Peek(string path) => PeekFile(path) ?? PeekFile(BackupPath(path));
+
+    private static SaveSummary? PeekFile(string path)
     {
         if (!File.Exists(path))
             return null;
@@ -89,7 +100,9 @@ public static class SaveSystem
     /// one — or it can't be read, or is from an incompatible version (it's
     /// left in place, and a fresh garden starts instead).
     /// </summary>
-    public static World? TryLoad(string path, Random rng)
+    public static World? TryLoad(string path, Random rng) => LoadFile(path, rng) ?? LoadFile(BackupPath(path), rng);
+
+    private static World? LoadFile(string path, Random rng)
     {
         if (!File.Exists(path))
             return null;
@@ -101,6 +114,7 @@ public static class SaveSystem
             if (save is null || save.Version != SaveGame.CurrentVersion)
             {
                 Console.Error.WriteLine($"Garden Guardians: ignoring {path} (save version {save?.Version}, expected {SaveGame.CurrentVersion})");
+                KeepOldVersion(path, save?.Version);
                 return null;
             }
             int terrain = save.Numbers.TryGetValue(TerrainKey, out double saved) ? (int)saved : 0; // A garden from before terrains were chosen kept the original.
@@ -114,12 +128,28 @@ public static class SaveSystem
         }
     }
 
+    /// <summary>A save from another version is about to be written over by a fresh garden: set a copy aside first, once, so nothing is ever lost for good.</summary>
+    private static void KeepOldVersion(string path, int? version)
+    {
+        try
+        {
+            string copy = $"{path}.v{version}.old";
+            if (!File.Exists(copy))
+                File.Copy(path, copy);
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"Garden Guardians: couldn't keep a copy of {path}: {e.Message}");
+        }
+    }
+
     /// <summary>Forgets the saved garden (for "New garden").</summary>
     public static void Delete(string path)
     {
         try
         {
             File.Delete(path);
+            File.Delete(BackupPath(path)); // (a new garden must not come back from its backup)
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {

@@ -380,6 +380,7 @@ public static partial class Game
             Camera3D overview = camera;
             DebugShot.Place(ref camera, world);
             float autosaveTimer = AutosaveInterval;
+            _inGarden = true;
 
             // --- Main loop -------------------------------------------------------
             while (!Raylib.WindowShouldClose())
@@ -644,8 +645,16 @@ public static partial class Game
                     autosaveTimer = AutosaveInterval;
                     SaveSystem.Save(world, GardenPath);
                 }
+                if (_saveRequested)
+                {
+                    _saveRequested = false;
+                    autosaveTimer = AutosaveInterval;
+                    SaveSystem.Save(world, GardenPath);
+                    SaveDone.Set();
+                }
             }
 
+            _inGarden = false;
             SaveSystem.Save(world, GardenPath);
             AdBanner.Show(false);
             if (leaveToMenu)

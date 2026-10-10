@@ -53,6 +53,7 @@ public class MainActivity : NativeActivity
 
     protected override void OnPause()
     {
+        Game.SaveNowAndWait(1500); // (the app may be killed from the background: save first, while the game thread still runs)
         AndroidAds.Pause();
         base.OnPause();
     }

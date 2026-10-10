@@ -7,6 +7,22 @@ public static partial class Game
     /// <summary>Real seconds between autosaves (the game also saves on the way out).</summary>
     private const float AutosaveInterval = 30f;
 
+    private static volatile bool _saveRequested, _inGarden;
+    private static readonly ManualResetEventSlim SaveDone = new(false);
+
+    /// <summary>
+    /// Android is pausing the app (it may be killed from the background): asks the game loop to save right now and waits for it, up to
+    /// <paramref name="milliseconds"/>. Called from the UI thread before the pause reaches the game thread, so the loop is still running.
+    /// </summary>
+    public static void SaveNowAndWait(int milliseconds)
+    {
+        if (!_inGarden)
+            return; // (in the menu there is nothing to save)
+        SaveDone.Reset();
+        _saveRequested = true;
+        SaveDone.Wait(milliseconds);
+    }
+
     /// <summary>Preferences key for the garden being played (see <see cref="GardenSlot"/>).</summary>
     private const string GardenSetting = "garden";
     private const string TerrainSetting = "terrain";
