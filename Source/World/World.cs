@@ -450,6 +450,7 @@ public sealed partial class World
         UpdateWeather(deltaTime);
         Prof.Mark("UpdateWeather");
         UpdateHistory(deltaTime);
+        UpdateStoryOfTheDay();
         Prof.Mark("UpdateHistory");
         AccumulateExposure(deltaTime);
         Prof.Mark("AccumulateExposure");
