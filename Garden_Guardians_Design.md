@@ -359,7 +359,7 @@ gentler form (`Build.Explore`; `PlayControl.Explore`; `Bramblekin.PlayerExplorer
     what it does. Hunting (each blow struck at a creature, twice for big
     game), farming (planting, and a little for each picking), building
     (every twig, stone and branch delivered), fishing (every cast and
-    catch), healing (every patient tended) and gathering (each food picked up, a little for each bottle filled; a gatherer walks to food, and fills bottles, up to 30% faster) and fighting (every blow dealt to, or taken from, another Bramblekin; a master fighter has up to +0.15 Strength) each run 0..1: every act of
+    catch), healing (every patient tended) and gathering (each food picked up, a little for each bottle filled; a gatherer walks to food, and fills bottles, up to 30% faster) crafting (each cloth or cut stone its clan's best hand makes; the clan's goods come up to 30% faster), and fighting (every blow dealt to, or taken from, another Bramblekin; a master fighter has up to +0.15 Strength) each run 0..1: every act of
     practice closes a fortieth of the gap to perfect (faster for a sharp
     mind), and skills rust very slowly without use. Skill pays: a skilled
     hunter hits creatures up to half as hard again; a skilled builder,

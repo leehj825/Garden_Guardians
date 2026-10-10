@@ -10,6 +10,7 @@ public enum Skill
     Healing,
     Fighting, // (new skills go last: saves keep their skills in this order)
     Gathering,
+    Crafting,
 }
 
 public sealed partial class Bramblekin
@@ -111,6 +112,7 @@ public sealed partial class Bramblekin
         Skill.Healing => "healer",
         Skill.Fighting => "fighter",
         Skill.Gathering => "gatherer",
+        Skill.Crafting => "craftsman",
         _ => "fisher",
     };
 
