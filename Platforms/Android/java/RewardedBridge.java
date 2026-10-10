@@ -19,6 +19,7 @@ public final class RewardedBridge {
     private static volatile RewardedAd ad;
     private static volatile boolean loading;
     private static volatile boolean earned;
+    private static volatile int result; // 0: no answer yet, 1: an ad loaded, 2: loading failed
 
     private RewardedBridge() {}
 
@@ -36,12 +37,14 @@ public final class RewardedBridge {
                         public void onAdLoaded(RewardedAd loaded) {
                             ad = loaded;
                             loading = false;
+                            result = 1;
                         }
 
                         @Override
                         public void onAdFailedToLoad(LoadAdError error) {
                             ad = null;
                             loading = false;
+                            result = 2;
                         }
                     });
                 } catch (Throwable t) {
@@ -49,6 +52,11 @@ public final class RewardedBridge {
                 }
             }
         });
+    }
+
+    /** 0 until the first load has answered, then 1 (loaded) or 2 (failed). */
+    public static int result() {
+        return result;
     }
 
     public static boolean isReady() {

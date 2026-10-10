@@ -15,7 +15,8 @@ internal static class AndroidRewarded
     private const string LogTag = "GardenGuardians";
 
     private static Activity? _activity;
-    private static IntPtr _class, _load, _show, _isReady, _consume;
+    private static IntPtr _class, _load, _show, _isReady, _consume, _result;
+    private static bool _showing;
     private static Action? _onReward;
 
     /// <summary>
@@ -31,6 +32,34 @@ internal static class AndroidRewarded
     }
 
     private static bool _begun;
+
+    // The rewarded video has crashed the app before, for a reason not yet known. So each attempt is marked in the settings file before it starts and
+    // cleared once the ad has answered; if the app finds the mark still there next time, that attempt killed it. After two such deaths the video
+    // stays off (delete "rewardedfails" from settings.txt to try again).
+    private const string TryingKey = "rewardedtrying", FailsKey = "rewardedfails";
+
+    private static bool GuardAllows()
+    {
+        float fails = Preferences.GetNumber(FailsKey, 0f);
+        if (Preferences.GetNumber(TryingKey, 0f) > 0f)
+        {
+            fails++;
+            Preferences.SetNumber(FailsKey, fails);
+            Preferences.SetNumber(TryingKey, 0f);
+        }
+        if (fails >= 2f)
+            return false;
+        Preferences.SetNumber(TryingKey, 1f);
+        return true;
+    }
+
+    private static void GuardCleared()
+    {
+        if (Preferences.GetNumber(TryingKey, 0f) > 0f)
+            Preferences.SetNumber(TryingKey, 0f);
+        if (Preferences.GetNumber(FailsKey, 0f) > 0f)
+            Preferences.SetNumber(FailsKey, 0f);
+    }
     private static float _sincePoll;
 
     /// <summary>The first time the Guide is opened: sets the Java side up and starts loading a video (on the UI thread).</summary>
@@ -39,6 +68,8 @@ internal static class AndroidRewarded
         if (_begun || _activity is not { } activity)
             return;
         _begun = true;
+        if (!GuardAllows())
+            return;
         activity.RunOnUiThread(() =>
         {
             try
@@ -51,6 +82,7 @@ internal static class AndroidRewarded
                 _show = JNIEnv.GetStaticMethodID(_class, "show", activityAndUnit);
                 _isReady = JNIEnv.GetStaticMethodID(_class, "isReady", "()Z");
                 _consume = JNIEnv.GetStaticMethodID(_class, "consumeReward", "()Z");
+                _result = JNIEnv.GetStaticMethodID(_class, "result", "()I");
                 Call(_load);
                 AdBanner.ShowRewarded = Show;
                 AdBanner.PollRewarded = Poll;
@@ -85,6 +117,8 @@ internal static class AndroidRewarded
         if (!AdBanner.RewardedReady || _activity is not { } activity)
             return;
         _onReward = onReward;
+        Preferences.SetNumber(TryingKey, 1f);
+        _showing = true;
         activity.RunOnUiThread(() =>
         {
             try
@@ -110,6 +144,11 @@ internal static class AndroidRewarded
             try
             {
                 AdBanner.RewardedReady = JNIEnv.CallStaticBooleanMethod(_class, _isReady);
+                if (JNIEnv.CallStaticIntMethod(_class, _result) != 0 && (!_showing || !AdBanner.RewardedReady))
+                {
+                    GuardCleared(); // the ad has answered, and a video that was shown has been closed: it did not kill the app
+                    _showing = false;
+                }
                 if (JNIEnv.CallStaticBooleanMethod(_class, _consume))
                 {
                     Action? give = _onReward;
