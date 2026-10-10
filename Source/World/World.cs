@@ -301,7 +301,7 @@ public sealed partial class World
     public int HornetsKilled { get; private set; }
     public int SpidersKilled { get; private set; }
 
-    public World(Terrain terrain, Random rng, int initialKinCount)
+    public World(Terrain terrain, Random rng, int initialKinCount, bool exactKinCount = false)
     {
         Terrain = terrain;
         Rng = rng;
@@ -327,7 +327,8 @@ public sealed partial class World
         // rolled Personality (see the Bramblekin constructor) — groups only
         // ever form later, out of encounters.
         Loading.Report(0.94f, "Settling the Bramblekin");
-        initialKinCount = Scaled(initialKinCount); // A bigger garden starts with more of them.
+        if (!exactKinCount)
+            initialKinCount = Scaled(initialKinCount); // A bigger garden starts with more of them.
         for (int i = 0; i < initialKinCount; i++)
             Colony.Add(Newcomer(RandomFreePoint(Bramblekin.BodyRadius, Bramblekin.EdgeMargin)));
         foreach (Bramblekin kin in Colony)

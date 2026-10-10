@@ -54,6 +54,13 @@ public sealed partial class World
     public bool IsStorming => StormTimeLeft > 0f;
 
     public int Droughts { get; private set; }
+
+    /// <summary>The Drought-year scenario: the garden begins in a drought (berries come at half rate until the season turns).</summary>
+    public void StartInDrought()
+    {
+        CurrentWeather = Weather.Drought;
+        Droughts++;
+    }
     public int HarshWinters { get; private set; }
     public int BountifulSeasons { get; private set; }
     public int Storms { get; private set; }

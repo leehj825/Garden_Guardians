@@ -375,6 +375,7 @@ public static partial class Game
                 }
                 TerrainData.NewGardenSize = choice.Size;
                 _startEra = choice.StartEra;
+                _scenario = choice.Scenario;
                 world = MakeWorld(() => choice.Resume ? LoadOrCreateWorld(GardenPath) : StartNewGarden(GardenPath));
             }
             camera = OverviewCamera(world.Terrain.Size);

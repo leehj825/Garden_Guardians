@@ -32,6 +32,9 @@ public static partial class Game
     /// <summary>The age a new garden starts in (chosen on the start menu).</summary>
     private static Era _startEra;
 
+    /// <summary>How a new garden begins (chosen on the start menu).</summary>
+    private static Scenario _scenario;
+
     /// <summary>Which kept garden is open, 1 to <see cref="SaveSystem.Slots"/>.</summary>
     private static int _gardenSlot = 1;
 
@@ -53,8 +56,10 @@ public static partial class Game
     private static World NewWorld()
     {
         var rng = new Random();
-        var world = new World(new Terrain(ForcedTerrain ?? TerrainData.RandomIndex(rng)), rng, InitialKinCount);
+        int? count = World.ScenarioKinCount(_scenario);
+        var world = new World(new Terrain(ForcedTerrain ?? TerrainData.RandomIndex(rng)), rng, count ?? InitialKinCount, exactKinCount: count is not null);
         world.GrantEra(_startEra);
+        world.ApplyScenario(_scenario);
         return world;
     }
 
