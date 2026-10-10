@@ -22,13 +22,21 @@ internal static class AdConfig
     /// <summary>The game's own AdMob app id.</summary>
     public const string LiveAppId = "ca-app-pub-4400173019354346~9600481746";
 
+    /// <summary>Google's test rewarded video: always fills, from any app.</summary>
+    public const string TestRewardedUnitId = "ca-app-pub-3940256099942544/5224354917";
+
+    /// <summary>The game's own rewarded video unit. EMPTY until one is made in the AdMob console (Ad units > Rewarded) and pasted here: with none, a Release build shows no "Watch" button.</summary>
+    public const string LiveRewardedUnitId = "";
+
 #if DEBUG
     /// <summary>The AdMob app id written into the manifest by the attribute above, and the banner unit shown along the bottom of the garden: Google's test ones.</summary>
     public const string AppId = SampleAppId;
     public const string BannerUnitId = TestBannerUnitId;
+    public const string RewardedUnitId = TestRewardedUnitId;
 #else
     public const string AppId = LiveAppId;
     /// <summary>The banner ad unit shown along the bottom of the garden.</summary>
     public const string BannerUnitId = LiveBannerUnitId;
+    public const string RewardedUnitId = LiveRewardedUnitId;
 #endif
 }

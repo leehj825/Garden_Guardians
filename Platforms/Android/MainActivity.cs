@@ -49,6 +49,7 @@ public class MainActivity : NativeActivity
         base.OnCreate(savedInstanceState);
         WindowWatcher.Start(this);
         AndroidAds.Start(this);
+        AndroidRewarded.Start(this);
     }
 
     protected override void OnPause()
