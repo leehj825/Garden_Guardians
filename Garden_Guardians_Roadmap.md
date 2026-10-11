@@ -122,3 +122,8 @@ First picks if this is revisited: roads, workshops with tools, a fuller tech tre
 *   **Pathfinding round rocks and homes** is a short sideways detour; fine at today's density.
 *   **A bigger garden** than ±50 m needs several grids and spawn amounts to scale (the generated gardens already scale some).
 *   **Tuning:** every rate is a constant at the top of its class; the headless survival trend is the tool for revisiting them.
+
+
+## 0.2.0: growth, the Guide and the story layer
+
+Built after the phases above (see the last section of `Garden_Guardians_Design.md` for how each works): three new skills with visible growth; the Guide (favour and nine nudges, a rewarded video, the garden's mood); favourites, the "while you were away" catch-up, Story of the Day, season recaps, a winter food check, friendship and rivalry headlines, memorials and a Hall of ancestors, achievements and speech bubbles; Explore risks, errands, things to find and Talk; Planting Day, weather effects, trade caravans and start scenarios; Low detail, Sleep mode and safer saving. Version 0.2.0; release notes in `store/release-notes.md`.
