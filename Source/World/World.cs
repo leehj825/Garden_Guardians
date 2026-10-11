@@ -458,6 +458,7 @@ public sealed partial class World
         UpdateAchievements(deltaTime);
         UpdateGuide(deltaTime);
         UpdateSpeech(deltaTime);
+        UpdateMood(deltaTime);
         Prof.Mark("UpdateHistory");
         AccumulateExposure(deltaTime);
         Prof.Mark("AccumulateExposure");
