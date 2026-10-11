@@ -50,7 +50,7 @@ public sealed partial class World
             if (group.Home is not { IsBuilt: true, IsCollapsed: false } || !Knows(group, Craft.Tools))
                 continue;
             // The clan's best hand at crafting is its maker: its skill speeds the work up to 30%, and each good made teaches it more.
-            Bramblekin? maker = group.Members.Where(m => !m.IsDead && !m.IsYoung).MaxBy(m => m.SkillAt(Skill.Crafting));
+            Bramblekin? maker = MakerOf(group);
             group.GoodsTimer += deltaTime * Math.Min(3, group.Members.Count(m => !m.IsDead && !m.IsYoung)) / 2f * (1f + 0.3f * (maker?.SkillAt(Skill.Crafting) ?? 0f));
             bool weaves = Knows(group, Craft.Weaving), cuts = Knows(group, Craft.Stonecutting);
             if (weaves && group.GoodsTimer >= ClothSeconds && group.Cloth < MaxGoods)
@@ -68,6 +68,30 @@ public sealed partial class World
                 TeachCrafting(maker);
             }
         }
+    }
+
+    private readonly Dictionary<Guid, (Bramblekin? Maker, float Until)> _makers = new();
+
+    /// <summary>The clan's best hand at crafting, looked up again every few seconds rather than every step.</summary>
+    private Bramblekin? MakerOf(KinGroup group)
+    {
+        if (_makers.TryGetValue(group.Id, out var cached) && cached.Until > ElapsedSeconds && cached.Maker is not { IsDead: true })
+            return cached.Maker;
+        Bramblekin? maker = null;
+        float best = -1f;
+        foreach (Bramblekin member in group.Members)
+        {
+            if (member.IsDead || member.IsYoung)
+                continue;
+            float skill = member.SkillAt(Skill.Crafting);
+            if (skill > best)
+            {
+                best = skill;
+                maker = member;
+            }
+        }
+        _makers[group.Id] = (maker, ElapsedSeconds + 3f);
+        return maker;
     }
 
     /// <summary>A good well made: the maker practises crafting (a good is a big job, worth several acts).</summary>
@@ -117,5 +141,7 @@ public sealed partial class World
         }
         if (seller.Leader is { } leader)
             QueueFloatingText(leader.Position, $"Sold {what}", GoodsTextColor);
+        if (seller.Home is { } from && buyer.Home is { } to)
+            _caravans.Add(new Caravan(from.Position, to.Position, cloth));
     }
 }

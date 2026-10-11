@@ -96,6 +96,7 @@ public sealed partial class World
         DrawRain(camera);
         DrawWeatherFx(camera);
         DrawMemorials(camera);
+        DrawCaravans(camera);
         bool winter = CurrentSeason == Season.Winter;
         foreach (Crop bush in far ? Enumerable.Empty<Crop>() : Crops)
         {
