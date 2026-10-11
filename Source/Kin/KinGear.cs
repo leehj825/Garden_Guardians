@@ -101,7 +101,7 @@ public static unsafe class KinGear
     }
 
     /// <summary>Draws the gear a Bramblekin of this job carries; <paramref name="body"/> is where it stands and how big (mesh units to world).</summary>
-    public static void Draw(in Model pose, Matrix4x4 body, bool sword, bool shield, bool bow, bool quiver, bool spear = false, bool bowRaised = false, bool stabbing = false, bool spearInHand = false)
+    public static void Draw(in Model pose, Matrix4x4 body, bool sword, bool shield, bool bow, bool quiver, bool spear = false, bool bowRaised = false, bool stabbing = false)
     {
         var forward = Vector3.UnitZ; // the mesh faces +Z; its left hand is at +X
         if (sword && Hand(pose, "mixamorig:RightHand", "mixamorig:RightForeArm", out Vector3 right, out Vector3 rightFingers))
@@ -116,14 +116,7 @@ public static unsafe class KinGear
             // Carried pointing forward (a touch up), held low in the right hand; in a stab it is gripped in both hands and driven forward along them.
             Vector3 along = Vector3.Normalize(new Vector3(0f, 0.12f, 1f));
             Vector3 centre = grip + along * (0.3f * SpearLength);
-            if (spearInHand)
-            {
-                // Moving or striking: gripped in the right fist across the hand like a sword — the shaft is the fingers' direction turned a quarter-turn
-                // (so it is square to the arm), and it turns with the hand, in a run and in a blow — with the point a little beyond the fist.
-                along = Turned(pose, "mixamorig:RightHand", new Vector3(-0.5f, -1f, SwordBindUp));
-                centre = grip + along * (0.25f * SpearLength);
-            }
-            else if (stabbing && Hand(pose, "mixamorig:LeftHand", "mixamorig:LeftForeArm", out Vector3 front, out _) && Vector3.DistanceSquared(front, grip) > 1e-4f)
+            if (stabbing && Hand(pose, "mixamorig:LeftHand", "mixamorig:LeftForeArm", out Vector3 front, out _) && Vector3.DistanceSquared(front, grip) > 1e-4f)
             {
                 // Held in both hands: the shaft runs through them, the point on the left hand's side (the left hand leads the thrust). The direction
                 // is never turned round to face forwards: the hands cross and come together at the end of the stab, and that turned the spear end for end.
@@ -136,7 +129,7 @@ public static unsafe class KinGear
                 along = Vector3.Normalize(between * trust + carried * (1f - trust) * 1.4f);
                 centre = (front + grip) * 0.5f + along * (0.25f * SpearLength);
             }
-            GearModels.Draw(GearModels.Gear.Spear, Matrix4x4.CreateScale(SpearLength) * Frame(along, spearInHand ? -Vector3.UnitX : Vector3.UnitY, centre) * body);
+            GearModels.Draw(GearModels.Gear.Spear, Matrix4x4.CreateScale(SpearLength) * Frame(along, Vector3.UnitY, centre) * body);
         }
         if ((shield || bow) && Hand(pose, "mixamorig:LeftHand", "mixamorig:LeftForeArm", out Vector3 left, out Vector3 leftFingers))
         {

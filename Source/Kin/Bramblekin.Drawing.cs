@@ -213,9 +213,10 @@ public sealed partial class Bramblekin
         BramblekinClip clip;
         if (ranged || (Job == KinJob.Hunter && !IsPlayerControlled)) // (a controlled Hunter's blow is a plain one: its bow is the Shoot button's)
             clip = BramblekinClip.AimRecoil;
+        else if (Job == KinJob.Spearman || (Job == KinJob.Swordsman && world.GroupOf(this) is { } clan && World.Knows(clan, Craft.Spears)))
+            clip = BramblekinClip.SpearStab;
         else
         {
-            // (A spear is struck and swung like a sword: the same two blows, with the spear held across the fist — see KinGear.)
             clip = _nextBlowIsAttack ? BramblekinClip.SwordAttack : BramblekinClip.Combat;
             _nextBlowIsAttack = !_nextBlowIsAttack;
         }
@@ -316,8 +317,7 @@ public sealed partial class Bramblekin
         if (IsYoung || !(hunter || guard || spearman))
             return; // (A swordsman's wooden sword and shield, a spearman's spear and a hunter's bow for the time being: no quiver.)
         bool aiming = IsAiming;
-        KinGear.Draw(pose, body, sword: guard, shield: guard, bow: hunter, quiver: false, spear: spearman, bowRaised: aiming, stabbing: (_actionActive && _actionClip == BramblekinClip.SpearStab) || ForcedClip == BramblekinClip.SpearStab,
-            spearInHand: spearman && (_mover.IsMoving || (_actionActive && _actionClip is BramblekinClip.Combat or BramblekinClip.SwordAttack or BramblekinClip.SpearStab)));
+        KinGear.Draw(pose, body, sword: guard, shield: guard, bow: hunter, quiver: false, spear: spearman, bowRaised: aiming, stabbing: (_actionActive && _actionClip == BramblekinClip.SpearStab) || ForcedClip == BramblekinClip.SpearStab);
     }
 
     private static readonly Color ShieldColor = new(95, 55, 35, 255);
