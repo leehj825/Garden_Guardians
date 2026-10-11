@@ -12,6 +12,9 @@ public enum GuideAction
     Calm,
     Quiet,
     Site,
+    Feast,
+    Aid,
+    Peace,
 }
 
 public sealed partial class World
@@ -28,6 +31,8 @@ public sealed partial class World
         GuideAction.Rain => 2f,
         GuideAction.Quiet => 2f,
         GuideAction.Site => 2f,
+        GuideAction.Feast => 2f,
+        GuideAction.Peace => 2f,
         _ => 1f,
     };
 
@@ -38,6 +43,9 @@ public sealed partial class World
         GuideAction.Bless => "Bless",
         GuideAction.Calm => "Calm",
         GuideAction.Quiet => "Hush",
+        GuideAction.Feast => "Feast",
+        GuideAction.Aid => "Aid",
+        GuideAction.Peace => "Peace",
         _ => "Site",
     };
 
@@ -49,6 +57,9 @@ public sealed partial class World
         GuideAction.Bless => "Heal the selected Bramblekin; it learns twice as fast for a while",
         GuideAction.Calm => "Ease the selected clan's quarrels with its neighbours",
         GuideAction.Quiet => "The Wolf Spider rests for a day",
+        GuideAction.Feast => "The selected clan holds its harvest feast now (autumn, with food in store)",
+        GuideAction.Aid => "A neighbour with food to spare sends some to the selected clan",
+        GuideAction.Peace => "End the selected clan's wars",
         _ => "Point the selected clan to a place for a new village, then tap the ground",
     };
 
@@ -132,6 +143,55 @@ public sealed partial class World
                     return "The spider is already resting";
                 SpiderQuietLeft = DayLength;
                 told = "The Wolf Spider rests for a day";
+                break;
+            case GuideAction.Feast:
+                if (clan is null)
+                    return "Tap a Bramblekin or home of a clan first";
+                if (CurrentSeason != Season.Autumn)
+                    return "Harvest feasts are held in autumn";
+                if (clan.LastFeastYear == Year || _feasts.Any(f => f.Host == clan))
+                    return $"{clan.CapitalTitle} has already feasted this year";
+                if (clan.Leader is not { IsDead: false } host || clan.Home is not { IsBuilt: true } feastHome)
+                    return $"{clan.CapitalTitle} has no home or leader to host it";
+                if (StoredFood(clan) < clan.Members.Count)
+                    return $"{clan.CapitalTitle} has too little food in store";
+                StartFeast(clan, host, feastHome);
+                told = $"{clan.CapitalTitle} holds a feast";
+                break;
+            case GuideAction.Aid:
+                if (clan is null)
+                    return "Tap a Bramblekin or home of a clan first";
+                KinGroup? donor = _groups.Values
+                    .Where(o => o != clan && StanceBetween(clan.Id, o.Id) != GroupStance.AtWar && StoredFood(o) >= 8)
+                    .OrderByDescending(StoredFood).FirstOrDefault();
+                if (donor is null)
+                    return "No neighbour has food to spare";
+                int moved = 0, wanted = Math.Min(5, StoredFood(donor) - 4);
+                foreach (Shelter home in GroupHomes(clan))
+                {
+                    while (moved < wanted && home.TryDeposit())
+                        moved++;
+                }
+                if (moved == 0)
+                    return $"{clan.CapitalTitle}'s stores are full";
+                TakeFromStores(donor, moved, null);
+                told = $"{donor.CapitalTitle} sends {moved} food to {clan.CapitalTitle}";
+                break;
+            case GuideAction.Peace:
+                if (clan is null)
+                    return "Tap a Bramblekin or home of a clan first";
+                int ended = 0;
+                foreach (KinGroup foe in _groups.Values.ToList())
+                {
+                    if (foe == clan || !AreAtWar(clan.Id, foe.Id))
+                        continue;
+                    SetStance(clan, foe, GroupStance.Neutral);
+                    RelationBetween(clan.Id, foe.Id).Grievance = 0f;
+                    ended++;
+                }
+                if (ended == 0)
+                    return $"{clan.CapitalTitle} is not at war";
+                told = $"{clan.CapitalTitle} makes peace ({ended})";
                 break;
             default:
                 if (clan is null)
