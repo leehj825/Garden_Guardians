@@ -180,6 +180,7 @@ public static partial class Game
             $"Age: {World.EraName(World.EraOf(clan))}",
             $"Members: {clan.Members.Count} ({clan.Members.Count(m => m.IsYoung)} young, {clan.Members.Count(m => m.IsElder)} elders)",
             $"Leader: {clan.Leader?.Name ?? "nobody"}",
+            $"Larder: {world.DescribeLarder(clan)} ({world.StoredFood(clan)} food for {clan.Members.Count} members){(clan.Members.Count(m => m.IsSick) is var ill and > 0 ? $", {ill} sick" : "")}",
             DescribeClanHomes(clan, homes, houses, tents),
             $"Food stored: {world.StoredFood(clan)}",
             $"Stores hold: {homes.Sum(h => h.Stock.Count(ItemKind.Twig))} twigs, {homes.Sum(h => h.Stock.Count(ItemKind.Stone))} stones, {homes.Sum(h => h.Stock.Count(ItemKind.Branch))} branches",

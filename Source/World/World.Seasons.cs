@@ -56,12 +56,26 @@ public sealed partial class World
     public float FoodAbundance => AbundanceOf(CurrentSeason) * WeatherFoodFactor;
 
     /// <summary>Announces each change of season in the event log.</summary>
+    private bool _recapReady;
+    private int _recapBirths, _recapCasualties, _recapVillages;
+
     private void UpdateSeason()
     {
         Season season = CurrentSeason;
         if (season == _announcedSeason)
             return;
 
+        if (_recapReady)
+        {
+            // The season that has just ended, in a line.
+            int born = Births - _recapBirths, lost = Casualties - _recapCasualties, villages = Villages.Count - _recapVillages;
+            string founded = villages > 0 ? $", {villages} new {(villages == 1 ? "village" : "villages")}" : "";
+            Headline("Season ends", $"{_announcedSeason} ends: {born} born, {lost} lost{founded}", null, false);
+        }
+        _recapReady = true;
+        _recapBirths = Births;
+        _recapCasualties = Casualties;
+        _recapVillages = Villages.Count;
         _announcedSeason = season;
         _starvedThisSeason = 0;
         RollWeather(season);

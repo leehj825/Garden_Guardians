@@ -82,7 +82,12 @@ public sealed partial class World
             return;
         if (Rng.NextDouble() >= FeastChance * (0.5 + leader.Personality.Sociability))
             return;
+        StartFeast(group, leader, home);
+    }
 
+    /// <summary>Holds <paramref name="group"/>'s harvest feast now (its checks having been made): the feast, its guests, the food it costs.</summary>
+    private void StartFeast(KinGroup group, Bramblekin leader, Shelter home)
+    {
         var guests = new HashSet<Guid>();
         foreach (KinGroup other in _groups.Values)
         {

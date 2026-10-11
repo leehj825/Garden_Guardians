@@ -7,7 +7,7 @@ The version code Google Play compares comes from the release workflow's run numb
 ### Play Console "What's new" (500 characters at most)
 
 ```
-Bramblekin grow! New skills (fighting, gathering, crafting) and masters wear a gold mark. Mark favourites and get news of their lives. The garden catches up while you were away. Explore: run from the Wolf Spider, run errands for clanmates, find the ant hill and shrines, and talk to anyone. Spring planting days, puddles and falling leaves, stories of friends and rivals, memorials, achievements, new-garden scenarios, and Low detail and Sleep modes.
+New Guide: spend favour on gentle nudges (rain, bless, calm, hush the spider, feast, aid, peace) and watch an ad for more. Bramblekin grow with new skills and speak in bubbles. Mark favourites for news of their lives; the garden catches up while you are away. Explore: outrun the Wolf Spider, run errands, find the ant hill. Winter warnings, season recaps, trade caravans, memorials and achievements.
 ```
 
 ### Full list of changes

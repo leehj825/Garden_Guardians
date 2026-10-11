@@ -28,30 +28,47 @@ Legend: `[ ]` to do, `[~]` waiting on something outside the code, `[x]` done.
 
 *   `[ ]` **Drop off food at the clan's store.** Walk into one of the clan's homes and the pack empties into the store, which feeds the clan; show "your clan now has N food". *(The small goal that makes walking worth it. Do first.)*
 *   `[ ]` **Small quests from the garden:** a hungry child, a sick elder, a lost tool ("bring 3 berries to Mira").
-*   `[ ]` **Things to find:** the ant hill, the beehive in the oak, the shrines; a "discovered" list on the History screen.
-*   `[ ]` **A gentle risk:** keep the explorer unhurtable, but let a spider chase it so running (pushing the stick to its edge) matters.
+*   `[x]` **Things to find:** the ant hill, the beehive in the oak, the shrines; a "discovered" list on the History screen.
+*   `[x]` **A gentle risk:** keep the explorer unhurtable, but let a spider chase it so running (pushing the stick to its edge) matters.
 *   `[ ]` **Photo mode:** hide the buttons and save a picture.
-*   `[ ]` **Talk to a Bramblekin:** tap one nearby for a line about what it is doing and thinking, from the traits the game already tracks.
+*   `[x]` **Talk to a Bramblekin:** tap one nearby for a line about what it is doing and thinking, from the traits the game already tracks.
 
 ## 4. The simulation: more fun to watch
 
-*   `[ ]` **"Story of the day" card:** the biggest event of the day as a sentence, with a button that flies the camera there (the Auto camera and the History screen already hold the material).
-*   `[ ]` **Favourites:** mark a Bramblekin, and say when it has a child, falls ill or becomes a leader.
-*   `[ ]` **"While you were away"** summary on return: a feast, a new village, a spider attack.
-*   `[ ]` **Gentle nudges:** one free action every so often (a day of rain, food sent to a village), so a watcher feels they are helping without a menu of buttons.
-*   `[ ]` **Start scenarios** for a new garden: drought year, twins, a lone survivor.
-*   `[ ]` **Pace options:** a slow "sleep mode", or an optional 2x for long waits (the Release build has no fast-forward).
+*   `[x]` **"Story of the day" card:** the biggest event of the day as a sentence, with a button that flies the camera there (the Auto camera and the History screen already hold the material).
+*   `[x]` **Favourites:** mark a Bramblekin, and say when it has a child, falls ill or becomes a leader.
+*   `[x]` **"While you were away"** summary on return: a feast, a new village, a spider attack.
+*   `[x]` **Gentle nudges:** one free action every so often (a day of rain, food sent to a village), so a watcher feels they are helping without a menu of buttons.
+*   `[x]` **Start scenarios** for a new garden: drought year, twins, a lone survivor.
+*   `[x]` **Pace options:** a slow "sleep mode", or an optional 2x for long waits (the Release build has no fast-forward).
 
 ## 5. Growing the game
 
 *   `[ ]` **Store listing:** a 30-second trailer or GIF of a village with the camera flying; a first screenshot with a short caption; replace the feature graphic (a soft first draft, see `store/`) with real art.
 *   `[ ]` **Ratings:** ask for a rating after a good moment, never on first launch.
 *   `[ ]` **Share:** a "share this garden's story" button that exports a screenshot with the headline.
-*   `[ ]` **Money, later** (see "Monetization" in the Design doc): rewarded video (a day of good rain, choose a newborn's traits), a one-time "Remove ads", cosmetic packs.
+*   `[~]` **Money:** the rewarded video is in (the Guide's "Ad: +3" button, AdMob unit `…/3811439768`); a one-time "Remove ads" and cosmetic packs are not (see "Monetization" in the Design doc). *Original note:*  (see "Monetization" in the Design doc): rewarded video (a day of good rain, choose a newborn's traits), a one-time "Remove ads", cosmetic packs.
 
 ---
 
-## Done recently (for context)
+## Done in 0.2.0 (for context)
+
+*   `[x]` Skills: Fighting (+ up to 0.15 Strength, masters grow up to 12% bigger), Gathering, Crafting; masters wear a gold mark; skill-gain pop-ups and skill bars in the Kin Inspector.
+*   `[x]` The Guide: favour (a point a minute, 5 at most) spent on Rain, Clear, Bless, Calm, Hush the spider, Site, Feast, Aid and Peace; rewarded video for +3 favour; the garden's mood line above it.
+*   `[x]` Story layer: favourites, "while you were away" catch-up (10 minutes of garden time at most), Story of the Day, friendship and rivalry headlines, memorial stones and a Hall of ancestors, 15 achievements, season recaps, a winter food check, speech bubbles.
+*   `[x]` Explore: the Wolf Spider chases and knocks down (never hurts) a moving explorer, errands for clanmates, things to find, a Talk button.
+*   `[x]` The garden: Planting Day, puddles, falling leaves, trade caravans, new-garden scenarios (Drought year, Twins, Lone survivor).
+*   `[x]` Settings: Low detail, Sleep mode, Play as Release (Debug builds), the rewarded-ad test page (Debug builds).
+*   `[x]` Saving: saves on Android pause, flushed to disk, a rolling `.bak`, a save from another version set aside as `.old`.
+
+## Still to check by hand (nothing here could be tested without a phone)
+
+*   `[ ]` **The Release build, both orientations, 30+ minutes:** the Guide bar against the bottom buttons, speech bubbles, caravans, the catch-up bar. *(Top priority; use Settings > Play as Release in a Debug build.)*
+*   `[ ]` **Performance on a mid-range phone** with the new drawing (puddles, leaves, bubbles, caravans, memorials); Low detail switches most of it off.
+*   `[ ]` **Saves:** kill the app mid-play and during a save, then update it from Play: the garden should come back (or its `.bak`).
+*   `[ ]` **The rewarded video** in a Release build with the live unit, once AdMob serves it.
+
+## Done earlier (for context)
 
 *   `[x]` Upright and sideways layout; Android follows rotation (native patch for raylib).
 *   `[x]` AdMob banner (SDK 25.5, .NET 9); app-ads.txt published and verified; AD_ID permission declared.

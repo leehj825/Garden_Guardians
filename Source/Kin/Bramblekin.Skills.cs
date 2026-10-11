@@ -163,7 +163,9 @@ public sealed partial class Bramblekin
     /// <summary>"hunting 0.52, building 0.21" for the Kin Inspector — every skill it has any of.</summary>
     public string DescribeSkills()
     {
-        string list = string.Join(", ", Enum.GetValues<Skill>().Where(s => SkillAt(s) >= 0.01f).Select(s => $"{s.ToString().ToLowerInvariant()} {SkillAt(s):0.00}"));
+        // (a little bar for each: "Hunting [###--] 0.52")
+        string Bar(float level) => new string('#', (int)MathF.Round(level * 5f)) + new string('-', 5 - (int)MathF.Round(level * 5f));
+        string list = string.Join("  ", Enum.GetValues<Skill>().Where(s => SkillAt(s) >= 0.01f).Select(s => $"{s} [{Bar(SkillAt(s))}] {SkillAt(s):0.00}"));
         return list.Length > 0 ? list : "none yet";
     }
 

@@ -24,6 +24,52 @@ public sealed partial class World
 
     private int _plantingYear;
 
+    /// <summary>Late in autumn a clan wants this much stored food for each member to see the winter through.</summary>
+    private const float WinterFoodPerMember = 3f;
+
+    /// <summary>Autumn is this far (0..1) through when the winter check is made, once a year.</summary>
+    private const float WinterWatchProgress = 0.6f;
+
+    private int _winterWatchYear;
+
+    /// <summary>Clans warned of a lean winter, in all (for the headless report).</summary>
+    public int WinterWarnings { get; private set; }
+
+    /// <summary>
+    /// The winter check: late in autumn each clan's store is weighed against its members. One headline names the clan most short of food and how many
+    /// others are too — the cue to help them (rain, aid, a new site: see the Guide) before the cold comes.
+    /// </summary>
+    private void UpdateWinterWatch()
+    {
+        if (CurrentSeason != Season.Autumn || SeasonProgress < WinterWatchProgress || _winterWatchYear == Year)
+            return;
+        _winterWatchYear = Year;
+        KinGroup? worst = null;
+        float worstShare = 1f;
+        int short_ = 0;
+        foreach (KinGroup group in _groups.Values)
+        {
+            int members = group.Members.Count(m => !m.IsDead);
+            if (members < 3 || group.Home is not { IsBuilt: true, IsCollapsed: false })
+                continue;
+            float share = StoredFood(group) / (members * WinterFoodPerMember);
+            if (share >= 1f)
+                continue;
+            short_++;
+            if (share < worstShare)
+            {
+                worstShare = share;
+                worst = group;
+            }
+        }
+        if (worst is null)
+            return;
+        WinterWarnings += short_;
+        string others = short_ == 1 ? "" : $", and {short_ - 1} more {(short_ == 2 ? "clan" : "clans")} are short too";
+        Game.AddEventLog($"[WINTER] {worst.CapitalTitle} has {worstShare * 100f:0}% of the food it needs for winter{others}");
+        Headline("Winter is coming", $"{worst.CapitalTitle} has only {worstShare * 100f:0}% of the food it needs for winter{others}", PlaceOf(worst), worstShare < 0.4f, worst);
+    }
+
     /// <summary>Planting days kept, clan by clan (for the headless report).</summary>
     public int PlantingDaysKept { get; private set; }
 
@@ -73,6 +119,8 @@ public sealed partial class World
         if (_calendarTimer > 0f)
             return;
         _calendarTimer = 1f;
+
+        UpdateWinterWatch();
 
         if (CurrentSeason == Season.Spring && SeasonProgress >= PlantingProgress && !IsNight && _plantingYear != Year)
         {

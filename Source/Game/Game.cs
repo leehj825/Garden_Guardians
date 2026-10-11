@@ -569,6 +569,8 @@ public static partial class Game
                     director.Update(ref camera, world, rawDeltaTime, touchCamera.DraggedThisGesture || followCamera.IsBusy);
                 }
 
+                UpdateChatter(world, camera, rawDeltaTime);
+
                 // 2) Simulation, in fixed steps (see StepSimulation).
                 long simStart = System.Diagnostics.Stopwatch.GetTimestamp();
                 if (!_confirmMenu)
@@ -598,6 +600,7 @@ public static partial class Game
                 if (world.IsStorming && !World.LowDetail)
                     Raylib.DrawRectangle(0, 0, Raylib.GetScreenWidth(), Raylib.GetScreenHeight(), new Color(20, 30, 55, 50)); // (a storm dims the sky)
                 DrawFloatingTexts(camera, world);
+                DrawSpeechBubbles(camera, world);
                 if (playing)
                 {
                     play.DrawHud(world);

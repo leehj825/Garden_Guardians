@@ -25,22 +25,28 @@ public static partial class Game
 
     private static int GuideBarHeight => (int)(86 * UiScale);
 
-    /// <summary>The Guide button and, when it is open, the row of nudges (and the rewarded-video button if one is ready), left to right.</summary>
+    /// <summary>How many nudges sit on the bottom row beside the Guide button; the rest are on a row above.</summary>
+    private const int GuidePerRow = 5;
+
+    /// <summary>The Guide button and, when it is open, the nudges (the first <see cref="GuidePerRow"/> beside it, the rest on a row above) and the rewarded-video button if one is ready.</summary>
     private static (UiButton Toggle, UiButton[] Actions, UiButton? Watch) GuideLayout()
     {
         int margin = (int)(14 * UiScale), gap = (int)(8 * UiScale), height = GuideBarHeight;
-        int y = (_guideBase > 0 ? Math.Min(_guideBase, UiBottom) : UiBottom) - height - margin;
+        int baseY = (_guideBase > 0 ? Math.Min(_guideBase, UiBottom) : UiBottom) - height - margin;
         int toggleWidth = (int)(300 * UiScale);
-        var toggle = new UiButton(new Rectangle(margin, y, toggleWidth, height));
+        var toggle = new UiButton(new Rectangle(margin, baseY, toggleWidth, height));
         bool watch = AdBanner.RewardedReady;
-        int count = GuideActions.Length + (watch ? 1 : 0);
+        int bottomCount = Math.Min(GuidePerRow, GuideActions.Length) + (watch ? 1 : 0);
         int room = Raylib.GetScreenWidth() - margin * 2 - toggleWidth - gap;
-        int width = (room - gap * (count - 1)) / count;
+        int width = (room - gap * (bottomCount - 1)) / bottomCount;
+        int x0 = margin + toggleWidth + gap;
         var actions = new UiButton[GuideActions.Length];
-        int x = margin + toggleWidth + gap;
-        for (int i = 0; i < actions.Length; i++, x += width + gap)
-            actions[i] = new UiButton(new Rectangle(x, y, width, height));
-        UiButton? watchButton = watch ? new UiButton(new Rectangle(x, y, width, height)) : null;
+        for (int i = 0; i < actions.Length; i++)
+        {
+            int row = i / GuidePerRow, col = i % GuidePerRow;
+            actions[i] = new UiButton(new Rectangle(x0 + col * (width + gap), baseY - row * (height + gap), width, height));
+        }
+        UiButton? watchButton = watch ? new UiButton(new Rectangle(x0 + GuidePerRow * (width + gap), baseY, width, height)) : null;
         return (toggle, actions, watchButton);
     }
 
@@ -125,12 +131,24 @@ public static partial class Game
             if (watch is not null)
                 DrawGuideButton(watch, "Ad: +3", true, highlighted: false);
         }
+        int topY = (int)(_guideOpen ? actions.Min(b => b.Bounds.Y) : toggle.Bounds.Y);
+        {
+            // The garden's mood, above the Guide.
+            string mood = $"Garden: {world.MoodLabel}";
+            int moodSize = ScaledFontSize(0.5f), moodPad = (int)(6 * UiScale);
+            Color moodColor = world.MoodLevel == 0 ? new Color(70, 140, 60, 235) : world.MoodLevel == 1 ? new Color(200, 150, 40, 235) : new Color(190, 60, 45, 235);
+            int moodWidth = Raylib.MeasureText(mood, moodSize) + moodPad * 2;
+            var pill = new Rectangle((int)toggle.Bounds.X, topY - moodSize - moodPad * 3, moodWidth, moodSize + moodPad * 2);
+            Raylib.DrawRectangleRec(pill, moodColor);
+            Raylib.DrawText(mood, (int)pill.X + moodPad, (int)pill.Y + moodPad, moodSize, Color.White);
+            topY = (int)pill.Y;
+        }
         string? message = _guideMessageLeft > 0f ? _guideMessage : _guideWaitingForSite ? "Tap the ground to choose the place" : null;
         if (message is not null)
         {
             int size = ScaledFontSize(0.6f), pad = (int)(8 * UiScale);
             int width = Raylib.MeasureText(message, size);
-            int x = Math.Max(0, (Raylib.GetScreenWidth() - width) / 2), y = (int)toggle.Bounds.Y - size - pad * 3;
+            int x = Math.Max(0, (Raylib.GetScreenWidth() - width) / 2), y = topY - size - pad * 3;
             Raylib.DrawRectangle(x - pad, y - pad, width + pad * 2, size + pad * 2, PanelFill);
             Raylib.DrawText(message, x, y, size, PanelInk);
         }
