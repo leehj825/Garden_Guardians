@@ -76,8 +76,8 @@ public sealed partial class Bramblekin
             }
         }
         if (nearest is null)
-            world.QueueFloatingText(Position, "No one close enough to talk to", TalkColor, 1.5f);
+            world.Say(this, "No one is close enough to talk to.", 3f);
         else
-            world.QueueFloatingText(nearest.Position, $"\"{nearest.Utterance(world)}\"", TalkColor, 1.5f);
+            world.Say(nearest, nearest.Utterance(world), 6f);
     }
 }
